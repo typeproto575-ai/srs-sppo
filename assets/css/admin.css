@@ -1,0 +1,100 @@
+/* =====================================================================
+   SPPO-IS — ADMIN STYLESHEET (staff/staff-workspace pages)
+   =====================================================================
+   Sections: master header bar, admin layout grid (sidebar + content),
+   sidebar groups/menus, stat cards, queues/tables, and admin buttons.
+   Loaded together with style.css on every /admin page.
+   ===================================================================== */
+
+/* SPPO-IS admin/priest dashboard layout */
+
+.admin-layout { display: flex; min-height: 100vh; }
+
+.admin-sidebar {
+    width: 240px;
+    background: #1f3d2b;
+    color: #fff;
+    padding: 1.5rem 1rem;
+}
+.admin-sidebar a { color: #dcecdf; text-decoration: none; }
+.admin-sidebar ul { list-style: none; padding-left: 0.75rem; }
+.admin-sidebar > ul { padding-left: 0; }
+.admin-user { font-weight: bold; margin-bottom: 1rem; }
+
+.admin-content { flex: 1; padding: 2rem; }
+
+.stat-cards { display: flex; gap: 1rem; margin-top: 1rem; }
+.stat-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    min-width: 180px;
+}
+.stat-number { font-size: 2rem; font-weight: bold; margin: 0; }
+.stat-label { margin: 0; color: #555; }
+
+.login-page {
+    max-width: 340px;
+    margin: 4rem auto;
+    padding: 2rem;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.filter-form { align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.filter-form label { margin-bottom: 0; min-width: 160px; }
+
+.admin-table { width: 100%; border-collapse: collapse; background: #fff; }
+.admin-table th, .admin-table td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid #e4e4e4; font-size: 0.9rem; vertical-align: top; }
+.admin-table th { background: #f5f3ee; font-weight: 600; }
+.admin-table tr.row-flagged { background: #fdf6e3; }
+.admin-table select { width: auto; display: inline-block; margin: 0; }
+.admin-table form.inline-fields { align-items: center; }
+
+.btn-small { padding: 0.35rem 0.8rem; font-size: 0.82rem; }
+
+.status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: #e8e5da;
+    color: #4a4438;
+    white-space: nowrap;
+}
+.status-pending, .status-submitted { background: #fbf1d9; color: #8a6d1d; }
+.status-under_review, .status-documents_pending, .status-interview_scheduled,
+.status-banns_in_progress, .status-seminar_pending, .status-ready_for_approval { background: #e3edf7; color: #2c5d8f; }
+.status-approved, .status-scheduled { background: #e3f5e6; color: #2f5e3f; }
+.status-ready_for_pickup { background: #e6e0f7; color: #5b3d94; }
+.status-released, .status-completed { background: #dcf0e0; color: #1f3d2b; }
+.status-rejected { background: #fbe4e4; color: #a13a3a; }
+
+.flag-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: #fbe9d0;
+    color: #8a5a1d;
+    font-size: 0.78rem;
+    cursor: help;
+}
+
+.cert-preview { background: #fff; border: 1px solid var(--color-rule, #D8CFB4); border-radius: 8px; padding: 1.5rem; }
+.cert-paper {
+    background: var(--color-parchment, #F6F1E4);
+    border: 2px solid var(--color-brass, #B08D45);
+    border-radius: 4px;
+    padding: 2rem;
+    margin: 1rem 0;
+    text-align: center;
+}
+.cert-parish { font-family: var(--font-mono, monospace); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; color: #6b6355; }
+.cert-paper h3 { font-family: var(--font-display, serif); font-size: 1.4rem; margin-bottom: 1.5rem; }
+.cert-fields { width: 100%; margin: 0 auto; max-width: 500px; text-align: left; }
+.cert-fields th { text-align: right; padding: 0.3rem 0.75rem 0.3rem 0; color: #6b6355; font-weight: 600; width: 45%; }
+.cert-fields td { text-align: left; padding: 0.3rem 0; }
+.cert-purpose { margin-top: 1.5rem; font-style: italic; }

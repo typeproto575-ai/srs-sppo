@@ -1,0 +1,11 @@
+# Uploaded / generated files (keep folder guard files)
+/storage/*
+!/storage/index.php
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Logs
+*.log

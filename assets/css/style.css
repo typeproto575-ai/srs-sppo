@@ -1,0 +1,222 @@
+/* =====================================================================
+   SPPO-IS — MAIN STYLESHEET (public pages)
+   =====================================================================
+   Sections: design tokens (CSS variables), base/reset, header + nav,
+   hero, announcements, calendar preview, forms, alerts, buttons,
+   footer, and responsive breakpoints. Admin pages add admin.css.
+   ===================================================================== */
+
+/* =====================================================================
+   SPPO-IS — Design tokens
+   Grounded in the parish's own materials: the cream certificate stock,
+   the deep green of the St. Patrick shamrock crest, and the ruled rows
+   of the physical baptismal register.
+   ===================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+
+:root {
+    --color-parchment: #F6F1E4;
+    --color-parchment-deep: #EDE5D0;
+    --color-parish-green: #2F5E3F;
+    --color-ledger-dark: #1F3D2B;
+    --color-ink: #2B2620;
+    --color-brass: #B08D45;
+    --color-rule: #D8CFB4;
+
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: 'Inter', 'Segoe UI', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--color-ink);
+    background: var(--color-parchment);
+    line-height: 1.55;
+}
+
+h1, h2, h3 { font-family: var(--font-display); color: var(--color-ledger-dark); margin-top: 0; }
+
+.site-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: var(--color-parish-green);
+    color: #fff;
+}
+
+.site-header a { color: #fff; text-decoration: none; margin-left: 1.25rem; font-size: 0.95rem; }
+.site-header a:hover { color: var(--color-parchment); }
+.site-brand { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; margin-left: 0; }
+
+.site-main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+
+.site-footer {
+    text-align: center;
+    padding: 1.5rem;
+    color: #6b6355;
+    font-size: 0.85rem;
+    border-top: 1px solid var(--color-rule);
+}
+
+fieldset { border: 1px solid var(--color-rule); border-radius: 6px; margin-bottom: 1.5rem; padding: 1rem; background: #fff; }
+legend { font-family: var(--font-display); font-weight: 600; padding: 0 0.5rem; color: var(--color-ledger-dark); }
+
+label { display: block; margin-bottom: 0.75rem; font-size: 0.95rem; }
+input, select, textarea {
+    display: block;
+    width: 100%;
+    padding: 0.55rem 0.6rem;
+    margin-top: 0.3rem;
+    border: 1px solid #c9c1ac;
+    border-radius: 4px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+}
+input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 1px;
+}
+
+.inline-fields { display: flex; gap: 1rem; }
+.inline-fields label { flex: 1; }
+
+.btn {
+    display: inline-block;
+    background: var(--color-parish-green);
+    color: #fff;
+    padding: 0.65rem 1.4rem;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background 0.15s ease;
+}
+.btn:hover { background: var(--color-ledger-dark); }
+.btn-secondary { background: transparent; color: var(--color-parish-green); border: 1.5px solid var(--color-parish-green); }
+.btn-secondary:hover { background: var(--color-parish-green); color: #fff; }
+
+.alert { padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+.alert-success { background: #e3f5e6; border: 1px solid #8dc79a; }
+.alert-error { background: #fbe4e4; border: 1px solid #d98c8c; }
+.alert-warning { background: #fbf1d9; border: 1px solid #e0c477; }
+
+.checkbox-label { display: flex; align-items: center; gap: 0.5rem; }
+.checkbox-label input[type="checkbox"] { width: auto; margin: 0; }
+
+.field-hint { color: #6b6355; font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem; }
+
+.tracking-number { font-family: var(--font-mono); font-size: 1.3rem; letter-spacing: 1px; }
+
+.option-list { list-style: none; padding: 0; }
+.option-list li { margin-bottom: 0.5rem; }
+
+/* =====================================================================
+   Workflow ledger — the signature element of how-it-works.php
+   Rows are ruled like the physical baptismal register: an entry number
+   in a fixed left column, a description to the right, a hairline rule
+   beneath each row echoing the logbook photographs.
+   ===================================================================== */
+
+.workflow-hero {
+    padding: 3.5rem 1rem 2.5rem;
+    text-align: left;
+    max-width: 720px;
+    margin: 0 auto;
+}
+.workflow-hero .eyebrow {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.78rem;
+    color: var(--color-brass);
+    display: block;
+    margin-bottom: 0.9rem;
+}
+.workflow-hero h1 {
+    font-size: clamp(1.9rem, 4vw, 2.7rem);
+    line-height: 1.15;
+    font-weight: 600;
+    margin-bottom: 0.9rem;
+}
+.workflow-hero p { font-size: 1.05rem; color: #4a4438; max-width: 46ch; }
+
+.ledger {
+    max-width: 780px;
+    margin: 1rem auto 3rem;
+    padding: 0 1rem;
+    counter-reset: ledger-row;
+}
+
+.ledger-row {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 1.25rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--color-rule);
+    opacity: 0;
+    transform: translateY(10px);
+    animation: ledger-in 0.5s ease forwards;
+}
+.ledger-row:last-child { border-bottom: none; }
+.ledger-row:nth-child(1) { animation-delay: 0.05s; }
+.ledger-row:nth-child(2) { animation-delay: 0.15s; }
+.ledger-row:nth-child(3) { animation-delay: 0.25s; }
+.ledger-row:nth-child(4) { animation-delay: 0.35s; }
+.ledger-row:nth-child(5) { animation-delay: 0.45s; }
+
+.ledger-no {
+    counter-increment: ledger-row;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.6rem;
+    color: var(--color-brass);
+    line-height: 1;
+}
+.ledger-no::before { content: "No. " counter(ledger-row); }
+
+.ledger-row h3 { font-size: 1.15rem; margin-bottom: 0.35rem; }
+.ledger-row p { margin: 0; color: #4a4438; font-size: 0.95rem; max-width: 52ch; }
+
+@keyframes ledger-in {
+    to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ledger-row { animation: none; opacity: 1; transform: none; }
+}
+
+/* Two-path cards: Certificate Request vs. Sacrament Application */
+.path-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    max-width: 780px;
+    margin: 0 auto 3rem;
+    padding: 0 1rem;
+}
+@media (max-width: 640px) {
+    .path-cards { grid-template-columns: 1fr; }
+}
+.path-card {
+    background: #fff;
+    border: 1px solid var(--color-rule);
+    border-top: 3px solid var(--color-parish-green);
+    border-radius: 6px;
+    padding: 1.5rem;
+}
+.path-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.path-card p { color: #4a4438; font-size: 0.92rem; margin-bottom: 1rem; }
+
+.workflow-cta {
+    text-align: center;
+    padding: 1rem 1rem 3.5rem;
+}
+.workflow-cta .btn { margin: 0 0.4rem; }
