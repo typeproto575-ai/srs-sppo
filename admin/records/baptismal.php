@@ -105,19 +105,9 @@ if ($q !== '') {
 $records = $stmt->fetchAll();
 
 $isSecretary = current_user()['role'] === 'secretary';
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Baptismal Records</h1>
         <p class="field-hint">This is a digital index of the physical baptismal logbook, used for fast retrieval when matching certificate requests. The physical logbook remains the canonical record.</p>
 
@@ -222,7 +212,4 @@ $isSecretary = current_user()['role'] === 'secretary';
             <button type="submit" name="add_record" value="1" class="btn">Save Record</button>
         </form>
 
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

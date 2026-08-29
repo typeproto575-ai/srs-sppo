@@ -105,18 +105,11 @@ $unmatched['first_communion'] = $pdo->query("SELECT id, communicant_full_name AS
 $unmatched['marriage_husband'] = $pdo->query("SELECT id, husband_full_name AS display_name FROM marriage_records WHERE husband_person_id IS NULL OR husband_person_id = 0 ORDER BY id DESC LIMIT 200")->fetchAll();
 $unmatched['marriage_wife'] = $pdo->query("SELECT id, wife_maiden_name AS display_name FROM marriage_records WHERE wife_person_id IS NULL OR wife_person_id = 0 ORDER BY id DESC LIMIT 200")->fetchAll();
 
+$pageTitle = 'Person Mapper';
+
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Person Mapper | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
         <h1>Person Mapper</h1>
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
 
@@ -168,7 +161,4 @@ $unmatched['marriage_wife'] = $pdo->query("SELECT id, wife_maiden_name AS displa
             </section>
         <?php endforeach; ?>
 
-    </main>
-    </div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

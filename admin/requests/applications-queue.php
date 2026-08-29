@@ -128,19 +128,9 @@ foreach ($applications as &$app) {
     }
 }
 unset($app);
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Sacrament Applications Queue</h1>
 
         <form method="get" class="inline-fields filter-form">
@@ -216,7 +206,4 @@ unset($app);
         </table>
         <p class="field-hint">Flagged rows (age outside configured range, prerequisite documents pending, etc.) are shown for review — they are never auto-rejected. <?php if ($filterSacrament === 'marriage' || $filterSacrament === ''): ?>Marriage applications use the <a href="<?= $basePath ?>/admin/requests/marriage-detail.php">Marriage Detail</a> page for clearance recording and approval.<?php endif; ?></p>
         <?php endif; ?>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

@@ -91,19 +91,9 @@ function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
 }
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Certificate Requests Queue</h1>
 
         <form method="get" class="inline-fields filter-form">
@@ -170,7 +160,4 @@ function humanize_label(string $s): string
             </tbody>
         </table>
         <?php endif; ?>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

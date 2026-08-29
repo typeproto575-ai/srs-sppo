@@ -81,19 +81,9 @@ if (isset($_GET['added'])) $success = 'Announcement posted.';
 $stmt = $pdo->query("SELECT * FROM announcements ORDER BY created_at DESC");
 $announcements = $stmt->fetchAll();
 $isSecretary = current_user()['role'] === 'secretary';
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Announcements</h1>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
@@ -150,7 +140,4 @@ $isSecretary = current_user()['role'] === 'secretary';
             <button type="submit" name="add_announcement" value="1" class="btn">Post Announcement</button>
         </form>
         <?php endif; ?>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

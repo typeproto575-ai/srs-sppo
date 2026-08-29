@@ -73,19 +73,9 @@ foreach (['users','baptismal_records','confirmation_records','first_communion_re
           'certificate_requests','sacrament_applications','announcements','audit_logs'] as $t) {
     $tableCounts[$t] = (int) $pdo->query("SELECT COUNT(*) c FROM `{$t}`")->fetch()['c'];
 }
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Database Backup / Export</h1>
         <p class="field-hint">Downloads a full .sql dump (structure + data) of the database. Store this somewhere safe outside the server — this is your disaster-recovery copy alongside the physical logbooks.</p>
 
@@ -102,7 +92,4 @@ foreach (['users','baptismal_records','confirmation_records','first_communion_re
             <a href="?download=1" class="btn">Download Full Backup (.sql)</a>
         </p>
         <p class="field-hint">This may take a moment for large tables. The download starts automatically once ready.</p>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

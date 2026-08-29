@@ -107,19 +107,11 @@ function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
 }
+// Page title for the browser tab (shared shell renders it).
+$pageTitle = 'Marriage Application Detail';
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Marriage Application Detail | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/requests/applications-queue.php">&larr; Back to Queue</a></p>
         <h1>Marriage Application — <?= e($app['groom_full_name']) ?> &amp; <?= e($app['bride_full_name']) ?></h1>
         <p>Tracking No.: <?= e($app['tracking_number']) ?> &middot; Status: <span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></p>
 
@@ -211,7 +203,4 @@ function humanize_label(string $s): string
         <?php else: ?>
         <p class="field-hint">This application is currently <?= e(humanize_label($app['status'])) ?>. Only applications with status "Submitted", "Documents Pending", or "Ready for Approval" can be approved/rejected from here.</p>
         <?php endif; ?>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

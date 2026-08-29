@@ -109,7 +109,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <div class="alert alert-success">
             <p>Your request has been submitted. Your tracking number is:</p>
             <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. A confirmation has also been sent to your email.</p>
+            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
         </div>
     <?php else: ?>
 

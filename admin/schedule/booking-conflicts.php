@@ -45,19 +45,9 @@ function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
 }
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Booking Conflict Review</h1>
         <p class="field-hint">Compares each pending marriage application's preferred wedding date against the calendar. Nothing here is auto-resolved — the secretary or priest confirms manually and adjusts the calendar as needed.</p>
 
@@ -97,7 +87,4 @@ function humanize_label(string $s): string
         <?php endif; ?>
 
         <p style="margin-top:1.5rem;"><a href="<?= $basePath ?>/admin/schedule/calendar.php" class="btn btn-secondary btn-small">Go to Calendar</a></p>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

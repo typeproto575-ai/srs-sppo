@@ -50,19 +50,9 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($params);
 $logs = $stmt->fetchAll();
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Audit Log</h1>
 
         <form method="get" class="inline-fields filter-form">
@@ -100,7 +90,4 @@ $logs = $stmt->fetchAll();
         </table>
         <p class="field-hint">Showing the most recent 200 entries. Public-form submissions (with no logged-in user) show as "System / Public Form".</p>
         <?php endif; ?>
-    </main>
-</div>
-</body>
-</html>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

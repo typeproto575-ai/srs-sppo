@@ -129,19 +129,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         }
     }
 }
+// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
+require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><?= e($pageTitle) ?> | SPPO-IS</title>
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
-</head>
-<body>
-<div class="admin-layout">
-    <main class="admin-content">
-        <p><a href="<?= $basePath ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
         <h1>Encode Walk-in Request</h1>
         <p class="field-hint">Use this when a parishioner requests a certificate in person instead of through the public form.</p>
 
@@ -284,15 +274,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
             <button type="submit" class="btn">Encode Request</button>
         </form>
-    </main>
-</div>
-<script>
-    // Show only the selected sacrament's detail section (all hidden by default).
-    function showSection(type) {
-        document.querySelectorAll('.sacrament-section').forEach(function (section) {
-            section.style.display = (section.id === 'section-' + type) ? '' : 'none';
-        });
-    }
-</script>
-</body>
-</html>
+    <script>
+        // Show only the selected sacrament's detail section (all hidden by default).
+        function showSection(type) {
+            document.querySelectorAll('.sacrament-section').forEach(function (section) {
+                section.style.display = (section.id === 'section-' + type) ? '' : 'none';
+            });
+        }
+    </script>
+<?php require_once __DIR__ . '/../../includes/admin-footer.php';

@@ -7,11 +7,16 @@
  *          all admin and priest pages.
  * =====================================================================
  */
+
+// Reuse the subfolder-safe prefix computed by the page / admin-header.php.
+$basePath = $basePath ?? base_path();
 ?>
 </main>
 </div>
 <footer class="site-footer">
     <p>&copy; <?= date('Y') ?> St. Patrick's Parish Office — Parish System Administration.</p>
 </footer>
+<!-- Site-wide scripts (vanilla JS helpers; loaded last, after the DOM is ready) -->
+<script src="<?= $basePath ?>/assets/js/main.js"></script>
 </body>
 </html>

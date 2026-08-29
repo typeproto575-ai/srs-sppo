@@ -66,7 +66,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <title>Staff Login | SPPO-IS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
+    <!-- Login layout styles (.login-page) live in admin.css -->
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
 </head>
 <body>
 <main class="login-page">
