@@ -102,14 +102,46 @@ function e(?string $value): string
 function base_path(): string
 {
     static $path = null; // compute only once per request
-    if ($path === null) {
-        $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
-        $appDir  = str_replace('\\', '/', dirname(__DIR__)); // project root (parent of /includes)
-        // If the app is inside DOCUMENT_ROOT, expose the difference as the prefix.
-        $path = ($docRoot !== '' && strpos($appDir, $docRoot) === 0)
-            ? substr($appDir, strlen($docRoot))
-            : '';
+    if ($path !== null) {
+        return $path;
     }
+
+    $path = '';
+    $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
+    $appDir  = rtrim(str_replace('\\', '/', realpath(__DIR__ . '/..') ?: dirname(__DIR__)), '/');
+    $appName = basename($appDir);
+
+    // Standard case: project sits beneath DOCUMENT_ROOT (common XAMPP setup).
+    if ($docRoot !== '' && strpos($appDir, $docRoot) === 0) {
+        $path = substr($appDir, strlen($docRoot));
+    }
+
+    // Fallback for environments where DOCUMENT_ROOT is missing or the app is
+    // mounted under a URL subfolder without a standard server layout.
+    if ($path === '') {
+        $candidates = [
+            $_SERVER['SCRIPT_NAME'] ?? '',
+            $_SERVER['PHP_SELF'] ?? '',
+            $_SERVER['REQUEST_URI'] ?? '',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = '/' . trim((string) $candidate, '/');
+            if ($normalized === '/' || $normalized === '') {
+                continue;
+            }
+
+            $uriPath = parse_url($normalized, PHP_URL_PATH) ?: $normalized;
+            $needle  = '/' . $appName;
+            $pos     = strpos($uriPath, $needle);
+
+            if ($pos !== false) {
+                $path = substr($uriPath, 0, $pos + strlen($needle));
+                break;
+            }
+        }
+    }
+
     return $path;
 }
 

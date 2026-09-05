@@ -21,6 +21,8 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Baptismal Records';
 $errors  = [];
 $success = null;
+$ministerFilter = trim($_GET['minister'] ?? '');
+$yearFilter = trim($_GET['year'] ?? '');
 
 // --- Handle new record submission (secretary/priest only encode from the physical logbook) ---
 // CSRF guard: reject any POST whose token is missing or stale (see
@@ -96,13 +98,33 @@ if (isset($_GET['added'])) $success = 'Baptismal record saved.';
 
 // --- Search / list ------------------------------------------------------
 $q = trim($_GET['q'] ?? '');
+$ministerFilter = trim($_GET['minister'] ?? '');
+$yearFilter = trim($_GET['year'] ?? '');
+
+$sql = 'SELECT * FROM baptismal_records WHERE 1=1';
+$params = [];
+
 if ($q !== '') {
-    $stmt = $pdo->prepare("SELECT * FROM baptismal_records WHERE child_full_name LIKE ? ORDER BY baptism_date DESC LIMIT 100");
-    $stmt->execute(['%' . $q . '%']);
-} else {
-    $stmt = $pdo->query("SELECT * FROM baptismal_records ORDER BY baptism_date DESC LIMIT 100");
+    $sql .= ' AND child_full_name LIKE ?';
+    $params[] = '%' . $q . '%';
 }
+
+if ($ministerFilter !== '') {
+    $sql .= ' AND minister_name LIKE ?';
+    $params[] = '%' . $ministerFilter . '%';
+}
+
+if ($yearFilter !== '') {
+    $sql .= ' AND YEAR(baptism_date) = ?';
+    $params[] = $yearFilter;
+}
+
+$sql .= ' ORDER BY baptism_date DESC LIMIT 100';
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 $records = $stmt->fetchAll();
+
+$availableYears = $pdo->query("SELECT DISTINCT YEAR(baptism_date) AS yr FROM baptismal_records ORDER BY yr DESC")->fetchAll(PDO::FETCH_COLUMN);
 
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
@@ -116,18 +138,59 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>Search by Child's Name
-                <input type="text" name="q" value="<?= e($q) ?>" placeholder="e.g. Maria Santos">
-            </label>
-            <button type="submit" class="btn btn-small">Search</button>
-            <?php if ($q !== ''): ?><a href="<?= $basePath ?>/admin/records/baptismal.php" class="btn btn-secondary btn-small">Clear</a><?php endif; ?>
+        <form method="get" class="record-toolbar">
+            <div class="record-filter-row">
+                <div class="filter-field">
+                    <label for="minister-filter">Minister</label>
+                    <select id="minister-filter" name="minister">
+                        <option value="">All ministers</option>
+                        <?php
+                            $ministerOptions = $pdo->query("SELECT DISTINCT minister_name FROM baptismal_records WHERE minister_name IS NOT NULL AND minister_name <> '' ORDER BY minister_name ASC")->fetchAll(PDO::FETCH_COLUMN);
+                            foreach ($ministerOptions as $ministerOption):
+                                $selected = $ministerFilter !== '' && $ministerFilter === $ministerOption ? ' selected' : '';
+                                echo '<option value="' . e($ministerOption) . '"' . $selected . '>' . e($ministerOption) . '</option>';
+                            endforeach;
+                        ?>
+                    </select>
+                </div>
+
+                <div class="filter-field">
+                    <label for="year-filter">Year</label>
+                    <select id="year-filter" name="year">
+                        <option value="">All years</option>
+                        <?php foreach ($availableYears as $year): ?>
+                            <option value="<?= e($year) ?>" <?= $yearFilter !== '' && $yearFilter === (string) $year ? 'selected' : '' ?>><?= e($year) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="toolbar-filter-actions">
+                    <button type="submit" class="btn btn-small">Apply Filter</button>
+                    <?php if ($q !== '' || $ministerFilter !== '' || $yearFilter !== ''): ?>
+                        <a href="<?= $basePath ?>/admin/records/baptismal.php" class="btn btn-secondary btn-small">Reset</a>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="record-actions-row">
+                <div class="search-field-wrap">
+                    <label for="search-q">Search by Child's Name</label>
+                    <input id="search-q" type="text" name="q" value="<?= e($q) ?>" placeholder="e.g. Maria Santos">
+                </div>
+
+                <div class="record-action-buttons">
+                    <a href="#encode-entry" class="btn btn-success btn-small">Add</a>
+                    <a href="#record-table" class="btn btn-warning btn-small">Edit</a>
+                    <button type="button" class="btn btn-danger btn-small">Remove</button>
+                    <button type="submit" class="btn btn-small">Search</button>
+                </div>
+            </div>
         </form>
 
         <?php if (empty($records)): ?>
             <p>No baptismal records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
         <?php else: ?>
-        <table class="admin-table">
+        <table id="record-table" class="admin-table">
             <thead>
                 <tr>
                     <th>Child's Name</th>
@@ -135,6 +198,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th>Parents</th>
                     <th>Minister</th>
                     <th>Book/Page/Line</th>
+                    <th>Certificate</th>
                 </tr>
             </thead>
             <tbody>
@@ -145,13 +209,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($rec['father_name']) ?> &amp; <?= e($rec['mother_name']) ?></td>
                         <td><?= e($rec['minister_name']) ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
+                        <td><a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=baptismal&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
         <?php endif; ?>
 
-        <h2 style="margin-top:2.5rem;">Encode New Entry</h2>
+        <h2 id="encode-entry" style="margin-top:2.5rem;">Encode New Entry</h2>
         <p class="field-hint">Use this to digitize an entry from the physical logbook. This does not replace the physical record.</p>
         <form method="post" action="">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->

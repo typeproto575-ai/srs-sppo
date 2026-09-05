@@ -28,8 +28,11 @@ $basePath  = $basePath ?? base_path();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitle) ?> | SPPO-IS</title>
+    <?php
+        $publicStyleVersion = file_exists(__DIR__ . '/../assets/css/style.css') ? filemtime(__DIR__ . '/../assets/css/style.css') : time();
+    ?>
     <!-- Main stylesheet for the public site -->
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $publicStyleVersion ?>">
 </head>
 <body>
 <!-- Top navigation bar -->

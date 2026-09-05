@@ -3,9 +3,11 @@
  * =====================================================================
  * SPPO-IS ACCOUNT MANAGEMENT (admin, secretary-only)
  * =====================================================================
- * Purpose: Create/edit/deactivate staff accounts (usernames, roles,
- *          active flag). Only the secretary can reach this page;
- *          passwords are stored as modern hashes (password_hash()).
+ * Purpose: Create/edit/deactivate secretary accounts (full name, username,
+ *          email, active flag). Only the secretary role exists in the current
+ *          design — the priest role was retired (see PROJECT_CONTEXT.md) —
+ *          so the role selector only offers Secretary; passwords are stored
+ *          as modern hashes (password_hash()).
  * =====================================================================
  */
 
@@ -45,7 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $isActive = isset($_POST['is_active']) ? 1 : 0;
     $password = trim($_POST['password'] ?? '');
 
-    if ($fullName === '' || $username === '' || $email === '' || !in_array($role, ['secretary', 'priest'], true)) {
+    // Role is validated strictly: the schema is ENUM('secretary') and the
+    // priest role no longer exists in the design, so anything else is junk.
+    if ($fullName === '' || $username === '' || $email === '' || $role !== 'secretary') {
         $message = 'Please complete all required fields.';
         $messageType = 'error';
     } else {
@@ -137,9 +141,10 @@ $extraHead = '';
                 </label>
                 <label>
                     Role
+                    <!-- Only the secretary role is available: the priest role was
+                         removed from the design and from the users.role ENUM. -->
                     <select name="role">
                         <option value="secretary" <?= (($editingUser['role'] ?? 'secretary') === 'secretary') ? 'selected' : '' ?>>Secretary</option>
-                        <option value="priest" <?= (($editingUser['role'] ?? 'secretary') === 'priest') ? 'selected' : '' ?>>Priest</option>
                     </select>
                 </label>
                 <label class="checkbox-row">

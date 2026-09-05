@@ -121,6 +121,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th>Sponsor</th>
                     <th>Baptismal Record (prerequisite)</th>
                     <th>Book/Page/Line</th>
+                    <th>Certificate</th>
                 </tr>
             </thead>
             <tbody>
@@ -131,6 +132,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($rec['sponsor_name']) ?></td>
                         <td><?= $rec['baptismal_name'] ? e($rec['baptismal_name']) . ' (#' . (int) $rec['baptismal_record_id'] . ')' : '<span class="flag-badge" title="No baptismal record linked yet">Not linked</span>' ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
+                        <td><a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=confirmation&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

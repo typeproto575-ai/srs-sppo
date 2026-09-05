@@ -17,6 +17,7 @@ $basePath = $basePath ?? base_path();
     <p>&copy; <?= date('Y') ?> St. Patrick's Parish Office — Parish System Administration.</p>
 </footer>
 <!-- Site-wide scripts (vanilla JS helpers; loaded last, after the DOM is ready) -->
-<script src="<?= $basePath ?>/assets/js/main.js"></script>
+<?php $mainJsVersion = file_exists(__DIR__ . '/../assets/js/main.js') ? filemtime(__DIR__ . '/../assets/js/main.js') : time(); ?>
+<script src="<?= $basePath ?>/assets/js/main.js?v=<?= (int) $mainJsVersion ?>"></script>
 </body>
 </html>

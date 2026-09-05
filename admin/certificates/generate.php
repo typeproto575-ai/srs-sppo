@@ -82,6 +82,30 @@ unset($req);
 // --- Preview a specific request's certificate content --------------------
 $previewData = null;
 $previewSacrament = null;
+
+if (!empty($_GET['record_type']) && !empty($_GET['record_id']) && isset(CERT_EXT[$_GET['record_type']])) {
+    $recordType = $_GET['record_type'];
+    $recordId = (int) $_GET['record_id'];
+    $extTable = CERT_EXT[$recordType]['ext'];
+
+    $stmt = $pdo->prepare(
+        "SELECT cr.*
+         FROM certificate_requests cr
+         INNER JOIN {$extTable} ext ON ext.request_id = cr.id
+         WHERE ext.matched_record_id = ? AND cr.status IN ('approved', 'ready_for_pickup')
+         ORDER BY cr.date_submitted DESC
+         LIMIT 1"
+    );
+    $stmt->execute([$recordId]);
+    $reqRow = $stmt->fetch();
+
+    if ($reqRow) {
+        $_GET['preview'] = (int) $reqRow['id'];
+    } else {
+        $notice = 'No approved certificate request is linked to this record yet.';
+    }
+}
+
 if (!empty($_GET['preview'])) {
     $reqId = (int) $_GET['preview'];
     $stmt = $pdo->prepare("SELECT * FROM certificate_requests WHERE id = ?");
@@ -145,6 +169,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="cert-purpose">Purpose: <?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></p>
                 </div>
 
+                <button type="button" class="btn btn-primary" onclick="window.print()">Print Certificate</button>
                 <form method="post" style="margin-top:1rem;">
                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                     <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">

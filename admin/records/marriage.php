@@ -133,6 +133,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th>Marriage Date</th>
                     <th>Minister</th>
                     <th>Book/Page/Line</th>
+                    <th>Certificate</th>
                 </tr>
             </thead>
             <tbody>
@@ -143,6 +144,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e(date('M j, Y', strtotime($rec['marriage_date']))) ?></td>
                         <td><?= e($rec['officiating_minister']) ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
+                        <td><a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=marriage&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
