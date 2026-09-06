@@ -705,3 +705,146 @@ body {
         color: #000;
     }
 }
+
+/* =====================================================================
+   Responsive — admin / staff interface
+   Builds on the base breakpoints above (900px / 720px) and the public
+   responsive section in style.css (loaded before this file). Keeps the
+   desktop-first pattern: these rules only kick in at narrower widths.
+   ===================================================================== */
+
+html, body {
+    overflow-x: hidden;
+}
+
+/* Let flex/grid children shrink below their content width so wide tables,
+   toolbar rows, and cards never force the page to scroll horizontally. */
+.admin-content,
+.dashboard-shell,
+.panel-card,
+.panel-grid,
+.mini-panel,
+.registry-summary,
+.cert-paper,
+.record-toolbar,
+.mapper-actions {
+    min-width: 0;
+}
+
+.admin-hero,
+.dashboard-actions,
+.quick-actions {
+    flex-wrap: wrap;
+}
+
+/* Person-mapper per-record action row (replaces the old inline min-width). */
+.mapper-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 360px;
+    text-align: right;
+}
+
+@media (max-width: 1080px) {
+    /* Registry summary drops from 4-across to 2-across before stacking. */
+    .registry-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .master-utilities {
+        gap: 0.5rem 0.8rem;
+    }
+}
+
+@media (max-width: 720px) {
+    /* Sidebar converts from a tall stacked column into a touch-scrollable
+       strip of groups, so all 4 nav sections stay one swipe away. */
+    .admin-sidebar {
+        width: 100%;
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: flex-start;
+        gap: 0.6rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 0.75rem 0.6rem;
+        border-right: none;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .admin-sidebar .sidebar-group {
+        flex: 0 0 auto;
+        min-width: 140px;
+        margin-bottom: 0;
+        padding-top: 0;
+    }
+    .admin-sidebar .sidebar-group + .sidebar-group {
+        border-top: none;
+        padding-top: 0;
+        border-left: 1px solid rgba(255,255,255,0.12);
+        padding-left: 0.6rem;
+    }
+
+    /* Data tables scroll inside their own box instead of widening the page. */
+    .admin-table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Hero + action rows stack vertically on tablets/phones. */
+    .admin-hero,
+    .dashboard-hero {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.9rem;
+    }
+
+    .mapper-actions {
+        min-width: 0;
+        width: 100%;
+        justify-content: flex-start;
+        text-align: left;
+    }
+}
+
+@media (max-width: 560px) {
+    .registry-grid {
+        grid-template-columns: 1fr;
+    }
+    .cert-paper {
+        padding: 1rem;
+    }
+    .cert-paper h3 {
+        font-size: 1.2rem;
+    }
+    .login-page {
+        margin: 2rem auto;
+        padding: 1.5rem;
+    }
+    .master-utilities {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        justify-content: flex-start;
+        padding-bottom: 0.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-content {
+        padding: 0.75rem;
+    }
+    /* Stack primary dashboard/hero CTAs full-width on small phones. */
+    .dashboard-actions .btn,
+    .quick-actions .btn {
+        display: block;
+        width: 100%;
+        text-align: center;
+    }
+}

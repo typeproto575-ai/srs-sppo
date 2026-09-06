@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($parentGuardian === '')     $errors[] = 'Parent/Guardian name is required.';
     if ($contactNumber === '')      $errors[] = 'Contact number is required.';
     if ($email === '')              $errors[] = 'Email address is required.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
 
     // Eligibility check: flag only, never block submission.
     $ageEligibilityFlag = 0;

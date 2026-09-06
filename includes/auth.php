@@ -7,13 +7,13 @@
  *   require_role(['secretary', 'priest']); // either role
  */
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Make sure helper functions (redirect_to, e, ...) are available even if
-// the including page loaded auth.php before functions.php.
+// Make sure helper functions (secure_session_start, redirect_to, e, ...)
+// are available even if the including page loaded auth.php before functions.php.
 require_once __DIR__ . '/functions.php';
+
+// Start the session with hardened cookie parameters (HttpOnly, SameSite=Lax,
+// Secure on HTTPS — see functions.php). No-op if a session is already active.
+secure_session_start();
 
 function current_user(): ?array
 {

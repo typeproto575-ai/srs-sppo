@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($requesterName === '')         $errors[] = 'Requester name is required.';
     if ($requesterRelationship === '') $errors[] = 'Relationship is required.';
     if ($requesterEmail === '')        $errors[] = 'Email address is required.';
+    if (!filter_var($requesterEmail, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
     if ($requesterContact === '')      $errors[] = 'Contact number is required.';
     if ($husbandName === '')           $errors[] = "Husband's full name is required.";
     if ($wifeMaidenName === '')        $errors[] = "Wife's maiden name is required.";

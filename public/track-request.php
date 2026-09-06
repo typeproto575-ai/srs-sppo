@@ -41,6 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($trackingNumber === '' || $email === '') {
             $error = 'Please enter both your tracking number and the email address you used when submitting.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = 'Please enter a valid email address.';
         } else {
             // 1. Look in certificate_requests first -- email lives directly on the shared table.
             $stmt = $pdo->prepare(

@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($groomBirthplace === '') $errors[] = "Groom's birthplace is required.";
     if ($groomContact === '')    $errors[] = "Groom's contact number is required.";
     if ($groomEmail === '')      $errors[] = "Groom's email address is required.";
+    if (!filter_var($groomEmail, FILTER_VALIDATE_EMAIL)) $errors[] = "Groom's email is not a valid address.";
     if ($groomMaritalStatus === '') $errors[] = "Groom's marital status is required.";
 
     if ($brideName === '')       $errors[] = "Bride's full name is required.";
@@ -73,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($brideBirthplace === '') $errors[] = "Bride's birthplace is required.";
     if ($brideContact === '')    $errors[] = "Bride's contact number is required.";
     if ($brideEmail === '')      $errors[] = "Bride's email address is required.";
+    if (!filter_var($brideEmail, FILTER_VALIDATE_EMAIL)) $errors[] = "Bride's email is not a valid address.";
     if ($brideMaritalStatus === '') $errors[] = "Bride's marital status is required.";
 
     if ($preferredWeddingDate === '') $errors[] = 'Preferred wedding date is required.';

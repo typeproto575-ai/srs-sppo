@@ -157,6 +157,34 @@ function redirect_to(string $appPath): void
 }
 
 /**
+ * Start (or reuse) the PHP session with hardened cookie parameters.
+ *
+ * Always prefer this to a raw session_start() call. It sets:
+ *   - HttpOnly     : the session id stays out of client-side JavaScript
+ *   - SameSite=Lax : blocks most cross-site cookie-sending CSRF attempts
+ *   - Secure       : enabled automatically when the site is served over HTTPS
+ *   - scoped path  : the app's base path (or / when installed at the root)
+ */
+function secure_session_start(): void
+{
+    // If a session is already active, cookie parameters are locked in — do nothing.
+    if (session_status() !== PHP_SESSION_NONE) {
+        return;
+    }
+
+    session_set_cookie_params([
+        'lifetime' => 0,                                  // browser-session cookie
+        'path'     => base_path() ?: '/',                 // scope to this app
+        'domain'   => '',
+        'secure'   => !empty($_SERVER['HTTPS']),          // HTTPS-only when available
+        'httponly' => true,                               // JS cannot read the session id
+        'samesite' => 'Lax',                              // mitigates CSRF via the cookie
+    ]);
+
+    session_start();
+}
+
+/**
  * Get (or lazily create) the per-session CSRF token.
  * A random 32-byte hex value stored in the session and echoed into forms.
  */
@@ -164,9 +192,7 @@ function csrf_token(): string
 {
     // Public form pages never log in, so make sure a session exists
     // before touching $_SESSION (idempotent if one is already active).
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
+    secure_session_start();
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }

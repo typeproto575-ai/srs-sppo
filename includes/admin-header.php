@@ -39,6 +39,8 @@ $isActive = function (string $navPath) use ($currentUri): string {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- Responsive viewport: without this, phones render the admin shell scaled-down -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitle) ?> | SPPO-IS</title>
     <?php
         $styleVersion = file_exists(__DIR__ . '/../assets/css/style.css') ? filemtime(__DIR__ . '/../assets/css/style.css') : time();
@@ -97,6 +99,7 @@ $isActive = function (string $navPath) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?>>Confirmation</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?>>First Communion</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?>>Marriage</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Mapper</a></li>
             </ul>
         </div>
 

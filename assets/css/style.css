@@ -220,3 +220,89 @@ input:focus, select:focus, textarea:focus {
     padding: 1rem 1rem 3.5rem;
 }
 .workflow-cta .btn { margin: 0 0.4rem; }
+
+/* =====================================================================
+   Responsive — public site
+   Desktop-first breakpoints, matching the convention already used above.
+   This section only ADDS/overrides at narrower widths; nothing above is
+   changed so non-responsive browsers degrade gracefully.
+   ===================================================================== */
+
+html, body {
+    /* Kill stray horizontal scrollbars caused by tracking numbers, long
+       names, and field-grid overflow on narrow screens. */
+    overflow-x: hidden;
+}
+
+/* Intermediate widths: never let .inline-fields rows squeeze below
+   a usable field width — allow wrapping before they stack. */
+.inline-fields {
+    flex-wrap: wrap;
+}
+
+.site-header {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+}
+
+@media (max-width: 900px) {
+    .site-header {
+        padding: 0.85rem 1.25rem;
+    }
+}
+
+@media (max-width: 720px) {
+    /* Top nav becomes a touch-scrollable strip so all four links stay
+       reachable without wrapping into a tall block. */
+    .site-header nav {
+        display: flex;
+        width: 100%;
+        gap: 0.4rem 1.1rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.25rem;
+    }
+    .site-header nav a {
+        white-space: nowrap;
+        margin-left: 0;
+    }
+    .site-main {
+        margin: 1.4rem auto;
+        padding: 0 0.9rem;
+    }
+}
+
+@media (max-width: 640px) {
+    /* Stack everything that was side-by-side into a single readable column. */
+    .inline-fields {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 560px) {
+    .site-brand {
+        font-size: 1.1rem;
+    }
+    .site-header {
+        padding: 0.7rem 0.9rem;
+    }
+    fieldset {
+        padding: 0.8rem;
+    }
+    .workflow-hero {
+        padding: 2.25rem 0.9rem 1.75rem;
+    }
+    .ledger-row {
+        grid-template-columns: 52px 1fr;
+        gap: 0.8rem;
+    }
+    .path-card {
+        padding: 1.15rem;
+    }
+    .workflow-cta .btn {
+        display: block;
+        width: 100%;
+        margin: 0.5rem 0;
+    }
+}

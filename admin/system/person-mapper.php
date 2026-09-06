@@ -34,13 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $action = $_POST['action'] ?? '';
 
-    // Whitelist of allowed table names (prevents SQL injection via table)
+    // Whitelist of allowed table names (prevents SQL injection via table).
+    // NOTE: Death/Burial was removed from the design (see PROJECT_CONTEXT.md),
+    // so 'death_burial_records' is intentionally NOT listed here anymore.
     $allowedTables = [
         'baptismal_records',
         'confirmation_records',
         'first_communion_records',
         'marriage_records',
-        'death_burial_records',
     ];
 
     // Whitelist of allowed column names (prevents SQL injection via column)
@@ -127,7 +128,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <strong>#<?= (int)$r['id'] ?></strong>
                                 <div><?= e($r['display_name'] ?: '—') ?></div>
                             </div>
-                            <div style="min-width:360px; text-align:right;">
+                            <div class="mapper-actions">
                                 <!-- Assign existing person form -->
                                 <form method="post" style="display:inline-block; margin-right:0.5rem;">
                                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
