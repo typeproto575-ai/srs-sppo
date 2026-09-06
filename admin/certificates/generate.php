@@ -150,6 +150,80 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 $ext = $previewData['ext'];
                 $rec = $previewData['record'];
                 $source = $rec ?: $ext; // prefer matched canonical record, fall back to what was submitted
+
+                // ---- Compose a proper certificate presentation -------------------
+                // Instead of dumping database columns, we build a curated set of
+                // label/value rows per sacrament. Values are kept raw here; the
+                // render loop below escapes every one of them.
+                $certTitle   = humanize_label($previewSacrament);
+                $certSubject = '—';
+                $certPhrase  = '';
+                $certRows    = [];
+
+                switch ($previewSacrament) {
+                    case 'baptismal':
+                        $certTitle   = 'Baptism';
+                        $certSubject = (string) ($source['child_full_name'] ?? '—');
+                        $certPhrase  = 'received the Sacrament of Holy Baptism';
+                        $date = $source['baptism_date'] ?? $source['date_of_baptism'] ?? null;
+                        if ($date) $certRows['Date of Baptism'] = date('F j, Y', strtotime($date));
+                        $certRows['Father']   = $source['father_full_name'] ?? '—';
+                        $certRows['Mother']   = $source['mother_full_name'] ?? '—';
+                        if (!empty($source['sponsors_text'])) {
+                            $certRows['Sponsors'] = $source['sponsors_text'];
+                        }
+                        $certRows['Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
+                        break;
+
+                    case 'confirmation':
+                        $certTitle   = 'Confirmation';
+                        $certSubject = (string) ($source['confirmand_full_name'] ?? '—');
+                        $certPhrase  = 'received the Sacrament of Confirmation';
+                        $date = $source['confirmation_date'] ?? $source['date_of_confirmation'] ?? null;
+                        if ($date) $certRows['Date of Confirmation'] = date('F j, Y', strtotime($date));
+                        $certRows['Bishop / Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
+                        $certRows['Sponsor'] = $source['sponsor_name'] ?? '—';
+                        $certRows['Father']  = $source['father_full_name'] ?? '—';
+                        $certRows['Mother']  = $source['mother_full_name'] ?? '—';
+                        break;
+
+                    case 'first_communion':
+                        $certTitle   = 'First Holy Communion';
+                        $certSubject = (string) ($source['communicant_full_name'] ?? '—');
+                        $certPhrase  = 'received the Sacrament of the Holy Eucharist (First Holy Communion)';
+                        $date = $source['communion_date'] ?? $source['date_of_first_communion'] ?? null;
+                        if ($date) $certRows['Date of First Communion'] = date('F j, Y', strtotime($date));
+                        $certRows['Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
+                        $certRows['Father']   = $source['father_full_name'] ?? '—';
+                        $certRows['Mother']   = $source['mother_full_name'] ?? '—';
+                        break;
+
+                    case 'marriage':
+                        $certTitle   = 'Marriage';
+                        $husband = (string) ($source['husband_full_name'] ?? '');
+                        $wife    = (string) ($source['wife_maiden_name'] ?? '');
+                        $certSubject = ($husband !== '' || $wife !== '') ? trim($husband . '  &  ' . $wife) : '—';
+                        $certPhrase  = 'were united in the Sacrament of Holy Matrimony';
+                        $date = $source['marriage_date'] ?? $source['date_of_marriage'] ?? null;
+                        if ($date) $certRows['Date of Marriage'] = date('F j, Y', strtotime($date));
+                        $certRows['Husband']   = $husband !== '' ? $husband : '—';
+                        $certRows['Wife (maiden name)'] = $wife !== '' ? $wife : '—';
+                        $certRows['Officiating Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
+                        break;
+                }
+
+                // Register entry reference (book / page / line).
+                $refParts = array_filter([$source['book_no'] ?? '', $source['page_no'] ?? '', $source['line_no'] ?? '']);
+                $certRows['Register Entry (Book / Page / Line)'] = $refParts
+                    ? implode(' / ', $refParts)
+                    : 'Not stated';
+
+                // Request metadata — always taken from the shared request row.
+                $certRows['Requested by'] = $req['requester_name'] ?? '—';
+                $certRows['Purpose'] = (!empty($req['purpose_other']) && ($req['purpose'] ?? '') === 'other')
+                    ? $req['purpose_other']
+                    : humanize_label($req['purpose'] ?? '');
+                $certRows['Copies'] = (string) (int) ($req['num_copies'] ?? 1);
             ?>
             <div class="cert-preview">
                 <h2>Certificate Preview — <?= e(humanize_label($previewSacrament)) ?></h2>
@@ -159,14 +233,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                 <div class="cert-paper">
                     <p class="cert-parish">Prelature of Infanta — St. Patrick Parish, Dingalan, Aurora</p>
-                    <h3>Certificate of <?= e(humanize_label($previewSacrament)) ?></h3>
+                    <h3>Certificate of <?= e($certTitle) ?></h3>
+                    <p class="cert-intro">This is to certify that, according to the records of this parish,</p>
+                    <p class="cert-subject"><?= e($certSubject) ?></p>
+                    <p class="cert-body"><?= e($certPhrase) ?>, as recorded in the parish register.</p>
+
                     <table class="cert-fields">
-                        <?php foreach ($source as $key => $value): ?>
-                            <?php if (in_array($key, ['id','request_id','matched_record_id','encoded_by','date_encoded'])) continue; ?>
-                            <tr><th><?= e(humanize_label($key)) ?></th><td><?= e((string) $value) ?></td></tr>
+                        <?php foreach ($certRows as $label => $value): ?>
+                            <tr><th><?= e($label) ?></th><td><?= e((string) $value) ?></td></tr>
                         <?php endforeach; ?>
                     </table>
-                    <p class="cert-purpose">Purpose: <?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></p>
+
+                    <p class="cert-issued">Issued this <?= date('j F Y') ?> at St. Patrick Parish Office, Dingalan, Aurora. This certificate is not valid without the signature of the Parish Secretary and the parish seal.</p>
+                    <div class="cert-signature">
+                        <span class="sign-line">Parish Secretary</span>
+                    </div>
                 </div>
 
                 <button type="button" class="btn btn-primary" onclick="window.print()">Print Certificate</button>

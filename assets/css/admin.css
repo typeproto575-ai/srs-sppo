@@ -682,6 +682,27 @@ body {
 .cert-fields th { text-align: right; padding: 0.3rem 0.75rem 0.3rem 0; color: #6b6355; font-weight: 600; width: 45%; }
 .cert-fields td { text-align: left; padding: 0.3rem 0; }
 .cert-purpose { margin-top: 1.5rem; font-style: italic; }
+.cert-intro { margin: 0.4rem 0 0; color: #6b6355; font-size: 0.95rem; }
+.cert-subject {
+    font-family: var(--font-display, Georgia, serif);
+    font-size: 1.55rem;
+    color: #1f2f26;
+    margin: 0.35rem 0 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+}
+.cert-body { margin: 0 0 1.2rem; color: #2b2d2a; font-size: 0.98rem; }
+.cert-issued { margin-top: 1.75rem; color: #6b6355; font-size: 0.9rem; }
+.cert-signature { margin: 2.25rem 0 0.5rem; text-align: right; }
+.cert-signature .sign-line {
+    display: inline-block;
+    border-top: 1px solid #8a8377;
+    padding-top: 0.35rem;
+    min-width: 230px;
+    font-weight: 600;
+    color: #1f2f26;
+}
 
 @media print {
     body * {

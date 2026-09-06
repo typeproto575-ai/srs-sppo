@@ -8,13 +8,20 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 2. Start Apache and MySQL from the XAMPP control panel.
 3. Open phpMyAdmin and import `database/sppo_is_schema.sql` (or run it via the `mysql` CLI).
 4. Adjust `config/database.php` if your MySQL credentials differ from the XAMPP defaults.
-5. Create a secretary account manually (there's no seeded user yet):
-   ```sql
-   INSERT INTO users (full_name, username, email, password_hash, role)
-   VALUES ('Test Secretary', 'secretary', 'secretary@example.com',
-           '$2y$10$replace_with_a_real_password_hash', 'secretary');
-   ```
-   Generate the hash with `password_hash('yourpassword', PASSWORD_DEFAULT)` in a quick PHP script.
+5. Create the secretary account **or** use the demo dataset:
+   - **Recommended (demo):** after importing the schema, also import
+     `database/seed_demo_data.sql`. It seeds a complete demo parish dataset
+     (records, requests, applications, calendar) and the secretary account
+     **`secretary`** / **`SPPOsecretary2026`** — change the password after
+     first login. Safe to re-run (uses `INSERT IGNORE`).
+   - **Manual:** create one account by hand:
+     ```sql
+     INSERT INTO users (full_name, username, email, password_hash, role)
+     VALUES ('Test Secretary', 'secretary', 'secretary@example.com',
+             '$2y$10$replace_with_a_real_password_hash', 'secretary');
+     ```
+     Generate the hash with `password_hash('yourpassword', PASSWORD_DEFAULT)`
+     in a quick PHP script.
 6. Visit `http://localhost/sppo-is/public/index.php` for the public site, and
    `http://localhost/sppo-is/admin/login.php` for staff login.
 
@@ -33,7 +40,8 @@ sppo-is/
 │   ├── auth.php                         session guard (require_login / require_role)
 │   └── view-upload.php                  410 stub — ID uploads removed by design
 ├── database/
-│   └── sppo_is_schema.sql        full DB schema
+│   ├── sppo_is_schema.sql        full DB schema
+│   └── seed_demo_data.sql        optional demo dataset + secretary account
 ├── public/                       parishioner-facing, no login required
 │   ├── index.php                 landing page with FullCalendar.js calendar + announcements
 │   ├── certificate-request.php   step 1: choose request type + sacrament
@@ -61,7 +69,7 @@ sppo-is/
 
 - **Fully built:** All public forms (4 certificate requests + 4 sacrament applications), secretary dashboard, all admin queues/records/certificates/schedule/reports/system pages, Marriage clearance detail page, walk-in encoding, tracking/status-check, public calendar, audit logging, database backup/export.
 - **Not implemented:** actual email sending (every form has a `// TODO: send confirmation email` marker where SMTP config would go — no mail server is configured yet).
-- Certificate preview currently shows a raw database field dump — real HTML/CSS certificate templates matching the parish's official layout are a planned improvement.
+- Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles — layout mirrors a typical parish certificate and can be restyled to the parish's official format in `assets/css/admin.css`.
 
 ## Design decisions (see PROJECT_CONTEXT.md for full details)
 
