@@ -59,6 +59,7 @@ sppo-is/
 │   ├── reports/                  monthly/yearly
 │   └── system/                   backup/export, accounts, audit log
 ├── priest/                       redirect stubs only — priest is not a system user (design doc)
+├── docs/                         defense guide + archived design-process artifacts
 └── assets/
     ├── css/style.css             public site styles
     ├── css/admin.css             admin dashboard layout
