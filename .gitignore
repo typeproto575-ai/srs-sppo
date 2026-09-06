@@ -1,6 +1,10 @@
 # Uploaded / generated files (keep folder guard files)
 /storage/*
 !/storage/index.php
+!/storage/.htaccess
+
+# Tool artifacts
+.freebuff/
 
 # OS junk
 Thumbs.db
