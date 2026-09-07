@@ -87,8 +87,8 @@ function e(?string $value): string
  * NOTE: The valid-ID upload feature was REMOVED per the updated design doc
  * (PROJECT_CONTEXT.md): applicants no longer upload IDs online — identity
  * is verified in person when the certificate is picked up. The former
- * handle_id_upload() helper was therefore deleted; the valid_id_path
- * columns remain in the schema but stay unused (always NULL).
+ * handle_id_upload() helper was therefore deleted, and its columns were
+ * removed from the schema.
  */
 
 /**

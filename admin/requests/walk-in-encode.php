@@ -105,8 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 "INSERT INTO certificate_requests
                     (tracking_number, sacrament_type, requester_name, requester_relationship,
                      requester_relationship_other, requester_email, requester_contact_number,
-                     purpose, purpose_other, num_copies, notes, valid_id_path, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending')"
+                     purpose, purpose_other, num_copies, notes, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
             );
             $stmt->execute([
                 $trackingNumber, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther,

@@ -8,7 +8,7 @@
  *          confirmation_applications. Age is checked against the
  *          configurable eligibility range — flagged only, never blocked.
  * Flow:    Enters as 'submitted'; reviewed in the admin applications
- *          queue. valid_id_path stays NULL (no online ID upload).
+ *          queue (no online ID upload).
  * =====================================================================
  */
 
@@ -74,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO confirmation_applications
                     (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name,
                      contact_number, email, baptized_here, baptismal_cert_status,
-                     preferred_batch, sponsor_name, age_eligibility_flag, valid_id_path)
-                 VALUES                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)"
+                     preferred_batch, sponsor_name, age_eligibility_flag)
+                 VALUES                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $applicantName, $applicantBirthdate, $parentGuardian,

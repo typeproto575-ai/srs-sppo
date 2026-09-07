@@ -9,7 +9,7 @@
  *          godparent in baptismal_application_godparents.
  * Flow:    Enters as 'submitted'; the secretary reviews it in
  *          admin/requests/applications-queue.php. No online ID upload —
- *          identity is verified in person (parent_valid_id_path = NULL).
+ *          identity is verified in person at pickup.
  * =====================================================================
  */
 
@@ -70,8 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO baptismal_applications
                     (application_id, child_full_name, child_birthdate, child_birthplace,
                      father_full_name, mother_full_name, parent_guardian_name,
-                     contact_number, email, preferred_date, notes, parent_valid_id_path)
-                 VALUES                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)"
+                     contact_number, email, preferred_date, notes)
+                 VALUES                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childBirthplace,

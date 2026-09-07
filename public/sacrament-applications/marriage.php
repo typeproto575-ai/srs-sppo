@@ -109,18 +109,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO marriage_applications
                     (application_id,
                      groom_full_name, groom_birthdate, groom_birthplace, groom_contact_number, groom_email,
-                     groom_marital_status, groom_baptized_here, groom_baptismal_cert_status, groom_confirmation_cert_status, groom_valid_id_path,
+                     groom_marital_status, groom_baptized_here, groom_baptismal_cert_status, groom_confirmation_cert_status,
                      bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email,
-                     bride_marital_status, bride_baptized_here, bride_baptismal_cert_status, bride_confirmation_cert_status, bride_valid_id_path,
+                     bride_marital_status, bride_baptized_here, bride_baptismal_cert_status, bride_confirmation_cert_status,
                      preferred_wedding_date, pre_cana_seminar_completed, pre_cana_completion_date,
                      canonical_interview_completed, canonical_interview_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId,
-                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail,                     $groomMaritalStatus, $groomBaptizedHere, $groomBaptismalCertStatus, $groomConfirmationCertStatus, NULL,
+                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail,                     $groomMaritalStatus, $groomBaptizedHere, $groomBaptismalCertStatus, $groomConfirmationCertStatus,
                      $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail,
-                     $brideMaritalStatus, $brideBaptizedHere, $brideBaptismalCertStatus, $brideConfirmationCertStatus, NULL,                     $preferredWeddingDate, 0, NULL,
+                     $brideMaritalStatus, $brideBaptizedHere, $brideBaptismalCertStatus, $brideConfirmationCertStatus,                     $preferredWeddingDate, 0, NULL,
                      0, NULL,
             ]);
             $marriageApplicationId = (int) $pdo->lastInsertId();

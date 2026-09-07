@@ -14,9 +14,8 @@
 --   username: secretary    password: SPPOsecretary2026
 --   Please change the password after first login.
 --
--- NOTE: the canonical schema does NOT include the `persons` table used by
--- the Person Mapper page (it lives in migrations/001). To keep the demo
--- self-contained we create it idempotently here.
+-- NOTE: the `persons` table (used by the Person Mapper) is part of the
+-- canonical schema; the INSERT below relies on it.
 -- =====================================================================
 
 USE sppo_is_db;
@@ -32,23 +31,6 @@ VALUES (1, 'Rosario D. Santos', 'secretary', 'secretary@sppo-is.local',
 -- =====================================================================
 -- 2. PERSONS (master record used by the Person Mapper)
 -- =====================================================================
-CREATE TABLE IF NOT EXISTS persons (
-  id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  first_name        VARCHAR(100) NOT NULL,
-  middle_name       VARCHAR(100),
-  last_name         VARCHAR(100) NOT NULL,
-  suffix            VARCHAR(20),
-  maiden_name       VARCHAR(150),
-  sex               ENUM('male', 'female') NOT NULL,
-  birth_date        DATE,
-  birth_place       VARCHAR(150),
-  address           VARCHAR(255),
-  contact_number    VARCHAR(30),
-  email             VARCHAR(150),
-  baptismal_status  ENUM('baptized_catholic', 'baptized_non_catholic', 'unbaptized') NOT NULL DEFAULT 'unbaptized',
-  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
 INSERT IGNORE INTO persons (id, first_name, middle_name, last_name, suffix, maiden_name, sex, birth_date, birth_place, address, baptismal_status) VALUES
   (1, 'Mateo Rafael', 'Alcantara', 'De Guzman', NULL, NULL, 'male', '2025-11-20', 'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', 'baptized_catholic'),
   (2, 'Sofia Isabel', 'Villanueva', 'Reyes', NULL, NULL, 'female', '2025-12-01', 'Dingalan, Aurora', 'Brgy. Tanawan, Dingalan, Aurora', 'baptized_catholic'),
@@ -144,32 +126,32 @@ INSERT IGNORE INTO marriage_witnesses (id, marriage_record_id, witness_name, wit
 INSERT IGNORE INTO certificate_requests
   (id, tracking_number, sacrament_type, requester_name, requester_relationship,
    requester_relationship_other, requester_email, requester_contact_number,
-   purpose, purpose_other, num_copies, notes, valid_id_path, status,
+   purpose, purpose_other, num_copies, notes, status,
    date_submitted, date_processed, processed_by)
 VALUES
   (1, 'SPPO-2026-000031', 'baptismal', 'Elena V. De Guzman', 'parent', NULL,
    'elena.deguzman@example.com', '0917 111 2233',
-   'school', NULL, 2, 'Requested for Kinder school enrollment. Original plus one photocopy.', NULL,
+   'school', NULL, 2, 'Requested for Kinder school enrollment. Original plus one photocopy.',
    'pending', '2026-09-01 09:12:00', NULL, NULL),
   (2, 'SPPO-2026-000032', 'confirmation', 'Fe B. Aquino', 'parent', NULL,
    'fe.aquino@example.com', '0918 222 3344',
-   'employment', NULL, 1, NULL, NULL,
+   'employment', NULL, 1, NULL,
    'under_review', '2026-08-28 14:30:00', '2026-08-30 10:00:00', NULL),
   (3, 'SPPO-2026-000033', 'marriage', 'Juan Miguel P. Dela Cruz', 'self', NULL,
    'juan.delacruz@example.com', '0919 333 4455',
-   'civil_registration', NULL, 1, 'For the civil registration copy of the marriage.', NULL,
+   'civil_registration', NULL, 1, 'For the civil registration copy of the marriage.',
    'approved', '2026-08-20 09:00:00', '2026-08-22 11:00:00', NULL),
   (4, 'SPPO-2026-000034', 'first_communion', 'Marites L. Navarro', 'parent', NULL,
    'marites.navarro@example.com', '0920 444 5566',
-   'school', NULL, 2, NULL, NULL,
+   'school', NULL, 2, NULL,
    'ready_for_pickup', '2026-08-10 08:45:00', '2026-08-15 14:00:00', NULL),
   (5, 'SPPO-2026-000035', 'baptismal', 'Andres V. Reyes', 'parent', NULL,
    'andres.reyes@example.com', '0921 555 6677',
-   'travel', NULL, 1, NULL, NULL,
+   'travel', NULL, 1, NULL,
    'released', '2026-07-20 10:20:00', '2026-07-25 09:30:00', NULL),
   (6, 'SPPO-2026-000036', 'baptismal', 'Lorna C. Alvarez', 'guardian', NULL,
    'lorna.alvarez@example.com', '0922 666 7788',
-   'other', 'Family record for the Alvarez family archive', 1, NULL, NULL,
+   'other', 'Family record for the Alvarez family archive', 1, NULL,
    'pending', '2026-09-04 16:05:00', NULL, NULL);
 
 INSERT IGNORE INTO baptismal_certificate_requests
@@ -231,12 +213,12 @@ VALUES
 INSERT IGNORE INTO baptismal_applications
   (id, application_id, child_full_name, child_birthdate, child_birthplace,
    father_full_name, mother_full_name, parent_guardian_name,
-   contact_number, email, preferred_date, notes, parent_valid_id_path)
+   contact_number, email, preferred_date, notes)
 VALUES
   (1, 1, 'Ethan Marco D. Villanueva', '2026-07-19', 'Dingalan, Aurora',
    'Robert D. Villanueva', 'Annie S. Villanueva', 'Annie S. Villanueva',
    '0917 777 8899', 'annie.villanueva@example.com', '2026-10-10',
-   'Please advise on the pre-baptism seminar schedule.', NULL);
+   'Please advise on the pre-baptism seminar schedule.');
 
 INSERT IGNORE INTO baptismal_application_godparents (id, baptismal_application_id, godparent_name, godparent_residence) VALUES
   (1, 1, 'Miguel D. Villanueva', 'Brgy. Poblacion, Dingalan, Aurora'),
@@ -246,41 +228,41 @@ INSERT IGNORE INTO confirmation_applications
   (id, application_id, applicant_full_name, applicant_birthdate,
    parent_guardian_name, contact_number, email, baptized_here,
    baptismal_record_id, baptismal_cert_status, preferred_batch, sponsor_name,
-   age_eligibility_flag, valid_id_path)
+   age_eligibility_flag)
 VALUES
   (1, 2, 'Rafael Luis M. Tolentino', '2011-05-12',
    'Mercy M. Tolentino', '0918 888 9900', 'mercy.tolentino@example.com', 1,
    NULL, 'pending', 'Batch - June 2026', 'Ramon M. Tolentino',
-   0, NULL);
+   0);
 
 INSERT IGNORE INTO first_communion_applications
   (id, application_id, applicant_full_name, applicant_birthdate,
    parent_guardian_name, contact_number, email, baptized_here,
    baptismal_record_id, baptismal_cert_status, preferred_batch,
-   age_eligibility_flag, valid_id_path)
+   age_eligibility_flag)
 VALUES
   (1, 4, 'Francine Nicole A. Ramos', '2015-09-25',
    'Liza A. Ramos', '0919 999 0011', 'liza.ramos@example.com', 1,
    NULL, 'pending', 'Batch - June 2026',
-   0, NULL);
+   0);
 
 INSERT IGNORE INTO marriage_applications
   (id, application_id,
    groom_full_name, groom_birthdate, groom_birthplace, groom_contact_number, groom_email,
    groom_marital_status, groom_baptized_here, groom_baptismal_record_id,
-   groom_baptismal_cert_status, groom_confirmation_cert_status, groom_valid_id_path,
+   groom_baptismal_cert_status, groom_confirmation_cert_status,
    bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email,
    bride_marital_status, bride_baptized_here, bride_baptismal_record_id,
-   bride_baptismal_cert_status, bride_confirmation_cert_status, bride_valid_id_path,
+   bride_baptismal_cert_status, bride_confirmation_cert_status,
    preferred_wedding_date, pre_cana_seminar_completed, pre_cana_completion_date,
    canonical_interview_completed, canonical_interview_date,
    banns_date_1, banns_date_2, banns_date_3, assigned_priest_name)
 VALUES
   (1, 3,
    'Marco Antonio D. Bautista', '1992-08-18', 'Cabanatuan City, Nueva Ecija', '0917 121 3141', 'marco.bautista@example.com',
-   'single', 0, NULL, 'pending', 'pending', NULL,
+   'single', 0, NULL, 'pending', 'pending',
    'Camille Joyce R. Garcia', '1995-03-27', 'Dingalan, Aurora', '0918 222 1112', 'camille.garcia@example.com',
-   'single', 1, NULL, 'pending', 'pending', NULL,
+   'single', 1, NULL, 'pending', 'pending',
    '2026-12-19', 1, '2026-07-10', 1, '2026-08-05',
    '2026-09-20', '2026-09-27', '2026-10-04', 'Rev. Fr. Jose M. Villanueva');
 

@@ -7,8 +7,7 @@
  *          record. Inserts the shared row into certificate_requests
  *          (status 'pending') plus details into
  *          first_communion_certificate_requests.
- * Note:    valid_id_path stays NULL — no online ID upload; identity is
- *          verified in person at pickup.
+ * Note:    No online ID upload — identity is verified in person at pickup.
  * =====================================================================
  */
 
@@ -69,8 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO certificate_requests
                     (tracking_number, sacrament_type, requester_name, requester_relationship,
                      requester_relationship_other, requester_email, requester_contact_number,
-                     purpose, purpose_other, num_copies, notes, valid_id_path, status)
-                 VALUES (?, 'first_communion', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending')"
+                     purpose, purpose_other, num_copies, notes, status)
+                 VALUES (?, 'first_communion', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
             );
             $stmt->execute([
                 $trackingNumber, $requesterName, $requesterRelationship, $requesterRelOther,

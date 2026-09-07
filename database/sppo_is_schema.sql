@@ -29,6 +29,28 @@ CREATE TABLE users (
 -- 2. DIGITAL RECORD INDEXES (mirror the physical logbooks)
 -- =====================================================================
 
+-- Shared identity index: one row per person appearing in the record
+-- logbooks. The Person Mapper (admin/system/person-mapper.php) links
+-- record rows to persons through the nullable *_person_id bridge
+-- columns below (folded in from migrations/001).
+CREATE TABLE persons (
+  id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  first_name       VARCHAR(150) NOT NULL,
+  middle_name      VARCHAR(100) DEFAULT NULL,
+  last_name        VARCHAR(100) DEFAULT NULL,
+  suffix           VARCHAR(20) DEFAULT NULL,
+  maiden_name      VARCHAR(150) DEFAULT NULL,
+  sex              ENUM('male','female') DEFAULT NULL,
+  birth_date       DATE DEFAULT NULL,
+  birth_place      VARCHAR(150) DEFAULT NULL,
+  address          VARCHAR(255) DEFAULT NULL,
+  contact_number   VARCHAR(30) DEFAULT NULL,
+  email            VARCHAR(150) DEFAULT NULL,
+  baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') DEFAULT 'unbaptized',
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 -- --- Baptismal -------------------------------------------------------
 CREATE TABLE baptismal_records (
   id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -48,6 +70,7 @@ CREATE TABLE baptismal_records (
   line_no           VARCHAR(20),
   date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by        INT UNSIGNED,
+  person_id         INT UNSIGNED,        -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -77,6 +100,7 @@ CREATE TABLE confirmation_records (
   line_no             VARCHAR(20),
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
+  person_id           INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -97,6 +121,7 @@ CREATE TABLE first_communion_records (
   line_no               VARCHAR(20),
   date_encoded          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by            INT UNSIGNED,
+  person_id             INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -119,6 +144,8 @@ CREATE TABLE marriage_records (
   line_no             VARCHAR(20),
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
+  husband_person_id   INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
+  wife_person_id      INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -257,7 +284,6 @@ CREATE TABLE baptismal_applications (
   email                 VARCHAR(150) NOT NULL,
   preferred_date         DATE,
   notes                 TEXT,
-  parent_valid_id_path  VARCHAR(255), -- see includes/view-upload.php
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -283,7 +309,6 @@ CREATE TABLE confirmation_applications (
   preferred_batch       VARCHAR(50),
   sponsor_name          VARCHAR(150),
   age_eligibility_flag  TINYINT(1) NOT NULL DEFAULT 0,
-  valid_id_path         VARCHAR(255), -- see includes/view-upload.php
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -301,7 +326,6 @@ CREATE TABLE first_communion_applications (
   baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   preferred_batch       VARCHAR(50),
   age_eligibility_flag  TINYINT(1) NOT NULL DEFAULT 0,
-  valid_id_path         VARCHAR(255), -- see includes/view-upload.php
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -320,7 +344,6 @@ CREATE TABLE marriage_applications (
   groom_baptismal_record_id   INT UNSIGNED,
   groom_baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   groom_confirmation_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
-  groom_valid_id_path         VARCHAR(255), -- see includes/view-upload.php
 
   bride_full_name             VARCHAR(150) NOT NULL,
   bride_birthdate             DATE NOT NULL,
@@ -332,7 +355,6 @@ CREATE TABLE marriage_applications (
   bride_baptismal_record_id   INT UNSIGNED,
   bride_baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   bride_confirmation_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
-  bride_valid_id_path         VARCHAR(255), -- see includes/view-upload.php
 
   preferred_wedding_date      DATE NOT NULL,
   pre_cana_seminar_completed  TINYINT(1) NOT NULL DEFAULT 0,

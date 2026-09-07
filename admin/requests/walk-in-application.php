@@ -69,13 +69,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             // No ID upload (feature removed): identity verified in person.
 
             $stmt = $pdo->prepare(
-                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, mother_full_name, parent_guardian_name, contact_number, email, preferred_date, notes, parent_valid_id_path)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, mother_full_name, parent_guardian_name, contact_number, email, preferred_date, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childPlace,
                 trim($_POST['father_full_name'] ?? ''), trim($_POST['mother_full_name'] ?? ''),
-                $parentName, $contact, $email, $_POST['preferred_date'] ?: null, trim($_POST['notes'] ?? ''), null
+                $parentName, $contact, $email, $_POST['preferred_date'] ?: null, trim($_POST['notes'] ?? '')
             ]);
             $baptismalAppExtId = (int) $pdo->lastInsertId();
 
@@ -106,12 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             // Choose the correct table based on sacrament type
             $table = $sacramentType === 'confirmation' ? 'confirmation_applications' : 'first_communion_applications';
             $stmt = $pdo->prepare(
-                "INSERT INTO {$table} (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name, contact_number, email, baptized_here, preferred_batch, sponsor_name, valid_id_path)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO {$table} (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name, contact_number, email, baptized_here, preferred_batch, sponsor_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $appName, $birthdate, $parentName, $contact, $email,
-                isset($_POST['baptized_here']) ? 1 : 0, trim($_POST['preferred_batch'] ?? ''), trim($_POST['sponsor_name'] ?? ''), null
+                isset($_POST['baptized_here']) ? 1 : 0, trim($_POST['preferred_batch'] ?? ''), trim($_POST['sponsor_name'] ?? '')
             ]);
 
         } elseif ($sacramentType === 'marriage') {
@@ -137,14 +137,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             // are verified in person at the office counter.
 
             $stmt = $pdo->prepare(
-                "INSERT INTO marriage_applications (application_id, groom_full_name, groom_birthdate, groom_birthplace, groom_contact_number, groom_email, groom_marital_status, groom_valid_id_path,
-                 bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email, bride_marital_status, bride_valid_id_path, preferred_wedding_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO marriage_applications (application_id, groom_full_name, groom_birthdate, groom_birthplace, groom_contact_number, groom_email, groom_marital_status,
+                 bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email, bride_marital_status, preferred_wedding_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId,
-                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail, trim($_POST['groom_marital_status'] ?? 'single'), null,
-                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, trim($_POST['bride_marital_status'] ?? 'single'), null, $_POST['preferred_wedding_date'] ?: null
+                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail, trim($_POST['groom_marital_status'] ?? 'single'),
+                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, trim($_POST['bride_marital_status'] ?? 'single'), $_POST['preferred_wedding_date'] ?: null
             ]);
             $marriageAppExtId = (int) $pdo->lastInsertId();
 
