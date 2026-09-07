@@ -61,8 +61,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>You're notified</h3>
-            <p>Once it's ready, you'll get an email with your tracking number. You can also check your status any time with that number.</p>
+            <h3>Keep your tracking number</h3>
+            <p>When you submit, you'll receive a tracking number. Keep it safe — you can check your request's status any time with that number.</p>
         </div>
     </div>
 

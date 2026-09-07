@@ -63,16 +63,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($groomName === '')       $errors[] = "Groom's full name is required.";
     if ($groomBirthdate === '')  $errors[] = "Groom's birthdate is required.";
+    if (is_future_date($groomBirthdate)) $errors[] = "Groom's birthdate cannot be in the future.";
     if ($groomBirthplace === '') $errors[] = "Groom's birthplace is required.";
     if ($groomContact === '')    $errors[] = "Groom's contact number is required.";
+    if ($groomContact !== '' && !is_valid_phone_number($groomContact)) $errors[] = "Groom's contact number is not valid (at least 10 digits).";
     if ($groomEmail === '')      $errors[] = "Groom's email address is required.";
     if (!filter_var($groomEmail, FILTER_VALIDATE_EMAIL)) $errors[] = "Groom's email is not a valid address.";
     if ($groomMaritalStatus === '') $errors[] = "Groom's marital status is required.";
 
     if ($brideName === '')       $errors[] = "Bride's full name is required.";
     if ($brideBirthdate === '')  $errors[] = "Bride's birthdate is required.";
+    if (is_future_date($brideBirthdate)) $errors[] = "Bride's birthdate cannot be in the future.";
     if ($brideBirthplace === '') $errors[] = "Bride's birthplace is required.";
     if ($brideContact === '')    $errors[] = "Bride's contact number is required.";
+    if ($brideContact !== '' && !is_valid_phone_number($brideContact)) $errors[] = "Bride's contact number is not valid (at least 10 digits).";
     if ($brideEmail === '')      $errors[] = "Bride's email address is required.";
     if (!filter_var($brideEmail, FILTER_VALIDATE_EMAIL)) $errors[] = "Bride's email is not a valid address.";
     if ($brideMaritalStatus === '') $errors[] = "Bride's marital status is required.";

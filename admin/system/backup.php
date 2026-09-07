@@ -30,9 +30,18 @@ function export_database_sql(PDO $pdo, string $dbName): string
     $output = "-- SPPO-IS database export\n-- Generated " . date('Y-m-d H:i:s') . "\n\n";
     $output .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
 
+    // Tables from the original build that were removed from the design
+    // (Death/Burial) and have no UI. They still exist only in the
+    // pre-existing demo database; exclude them from exports so the dump
+    // matches the canonical schema exactly.
+    $excludeTables = ['death_burial_records', 'death_burial_certificate_requests'];
+
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
 
     foreach ($tables as $table) {
+        if (in_array($table, $excludeTables, true)) {
+            continue;
+        }
         $createRow = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch();
         $output .= "-- ----------------------------\n-- Table: {$table}\n-- ----------------------------\n";
         $output .= "DROP TABLE IF EXISTS `{$table}`;\n";

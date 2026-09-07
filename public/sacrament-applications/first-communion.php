@@ -41,8 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($applicantName === '')      $errors[] = "Applicant's full name is required.";
     if ($applicantBirthdate === '') $errors[] = "Applicant's birthdate is required.";
+    if (is_future_date($applicantBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
     if ($parentGuardian === '')     $errors[] = 'Parent/Guardian name is required.';
     if ($contactNumber === '')      $errors[] = 'Contact number is required.';
+    if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) $errors[] = 'Please enter a valid contact number (at least 10 digits).';
     if ($email === '')              $errors[] = 'Email address is required.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
 

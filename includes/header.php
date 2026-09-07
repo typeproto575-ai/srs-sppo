@@ -43,6 +43,7 @@ $basePath  = $basePath ?? base_path();
     <nav>
         <a href="<?= $basePath ?>/public/index.php">Home</a>
         <a href="<?= $basePath ?>/public/how-it-works.php">How It Works</a>
+        <a href="<?= $basePath ?>/public/requirements.php">Requirements</a>
         <a href="<?= $basePath ?>/public/certificate-request.php">Request a Certificate</a>
         <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a>
     </nav>

@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $purpose      = $_POST['purpose'] ?? '';
     $purposeOther = trim($_POST['purpose_other'] ?? '');
-    $numCopies    = max(1, (int) ($_POST['num_copies'] ?? 1));
+    $numCopies    = min(20, max(1, (int) ($_POST['num_copies'] ?? 1)));
     $notes        = trim($_POST['notes'] ?? '');
 
     if ($requesterName === '')         $errors[] = 'Requester name is required.';
@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($requesterEmail === '')        $errors[] = 'Email address is required.';
     if (!filter_var($requesterEmail, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
     if ($requesterContact === '')      $errors[] = 'Contact number is required.';
+    if ($requesterContact !== '' && !is_valid_phone_number($requesterContact)) $errors[] = 'Please enter a valid contact number (at least 10 digits).';
     if ($husbandName === '')           $errors[] = "Husband's full name is required.";
     if ($wifeMaidenName === '')        $errors[] = "Wife's maiden name is required.";
     if ($purpose === '')               $errors[] = 'Purpose is required.';

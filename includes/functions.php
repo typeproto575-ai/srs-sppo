@@ -22,10 +22,27 @@
 function generate_tracking_number(PDO $pdo, string $table = 'certificate_requests'): string
 {
     $year  = date('Y');
-    $stmt  = $pdo->query("SELECT COUNT(*) AS total FROM {$table} WHERE YEAR(date_submitted) = {$year}");
-    $count = (int) $stmt->fetch()['total'] + 1;
 
-    return sprintf('SPPO-%s-%06d', $year, $count);
+    // Derive the next number from the current MAX sequence instead of a
+    // COUNT, so deleting the newest request of a year never makes the next
+    // submission collide with a previously issued (now-deleted) number.
+    // The prefix is taken from the newest existing row so each table keeps
+    // its own style (certificates: SPPO-2026-000001, applications seeded
+    // as SPPO-APP-2026-000001).
+    $stmt = $pdo->prepare(
+        "SELECT tracking_number FROM {$table} WHERE tracking_number LIKE ? ORDER BY tracking_number DESC LIMIT 1"
+    );
+    $stmt->execute(['%-' . $year . '-%']);
+    $last = $stmt->fetchColumn();
+
+    $prefix = 'SPPO-' . $year . '-';
+    $next   = 1;
+    if ($last !== false && preg_match('/^(.*)-(\d{6})$/', (string) $last, $m)) {
+        $prefix = $m[1] . '-';
+        $next   = ((int) $m[2]) + 1;
+    }
+
+    return sprintf('%s%06d', $prefix, $next);
 }
 
 /**
@@ -73,6 +90,28 @@ function log_activity(PDO $pdo, ?int $userId, string $action, ?string $targetTab
          VALUES (?, ?, ?, ?, ?)"
     );
     $stmt->execute([$userId, $action, $targetTable, $targetId, $description]);
+}
+
+/**
+ * Light input validation helpers for public forms.
+ */
+
+/**
+ * Accept a contact number if it has 10-13 digits (allowing spaces,
+ * dashes, plus sign / leading country codes).
+ */
+function is_valid_phone_number(?string $value): bool
+{
+    $digits = preg_replace('/\D/', '', (string) $value);
+    return strlen($digits) >= 10 && strlen($digits) <= 13;
+}
+
+/**
+ * True when the given Y-m-d date is after today (rejects future dates).
+ */
+function is_future_date(?string $date): bool
+{
+    return $date !== null && $date !== '' && $date > date('Y-m-d');
 }
 
 /**

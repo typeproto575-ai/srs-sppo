@@ -63,7 +63,7 @@ require_once __DIR__ . '/../includes/header.php';
                     'title' => $e['title'] . ' (' . ucfirst($e['event_type']) . ')',
                     'start' => $e['event_date'] . ($e['start_time'] ? 'T' . $e['start_time'] : ''),
                 ];
-            }, $upcomingEvents)) ?>
+            }, $upcomingEvents), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
         });
         calendar.render();
     });
