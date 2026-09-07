@@ -834,13 +834,23 @@ html, body {
   width: min(760px, 94vw);
   max-height: 88vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
   padding: 0;
   border: 1px solid #2a4a38;
   border-radius: 10px;
   background: #fdfcf8;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+/* Gate the flex layout behind [open]: with display:flex set unconditionally
+   the browser's dialog:not([open]){display:none} rule is overridden and the
+   dialog never hides after close() — the "can't close the popup" bug. */
+.encode-dialog:not([open]) { display: none; }
+.encode-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  z-index: 1000;
 }
 .encode-dialog::backdrop { background: rgba(20, 38, 29, 0.62); }
 .encode-dialog .dialog-head {
@@ -864,6 +874,7 @@ html, body {
 }
 .encode-dialog .dialog-close:hover { color: #ffffff; }
 .encode-dialog .dialog-body {
+  flex: 1 1 auto;
   padding: 1.1rem 1.25rem 1.35rem;
   overflow-y: auto;
   min-height: 0;
