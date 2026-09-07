@@ -94,7 +94,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     }
 }
 
+
+// --- Update an existing record (Edit button on a table row) -------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && csrf_verify()) {
+    require_role('secretary');
+
+    $editId           = (int) ($_POST['edit_id'] ?? 0);
+    $entryNo          = trim($_POST['entry_no'] ?? '');
+    $baptismDate      = $_POST['baptism_date'] ?? '';
+    $childName        = trim($_POST['child_full_name'] ?? '');
+    $birthDate        = $_POST['birth_date'] ?: null;
+    $legitimacy       = $_POST['legitimacy'] ?: null;
+    $fatherName       = trim($_POST['father_name'] ?? '');
+    $motherName       = trim($_POST['mother_name'] ?? '');
+    $parentsOrigin    = trim($_POST['parents_origin'] ?? '');
+    $parentsResidence = trim($_POST['parents_residence'] ?? '');
+    $ministerName     = trim($_POST['minister_name'] ?? '');
+    $remarks          = trim($_POST['remarks'] ?? '');
+    $bookNo           = trim($_POST['book_no'] ?? '');
+    $pageNo           = trim($_POST['page_no'] ?? '');
+    $lineNo           = trim($_POST['line_no'] ?? '');
+    $sponsorNames      = $_POST['sponsor_name'] ?? [];
+    $sponsorResidences = $_POST['sponsor_residence'] ?? [];
+
+    if ($baptismDate === '') $errors[] = 'Baptism date is required.';
+    if ($childName === '')   $errors[] = "Child's full name is required.";
+    if ($editId <= 0)        $errors[] = 'Invalid record selected for update.';
+
+    if (empty($errors)) {
+        try {
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare(
+                "UPDATE baptismal_records
+                    SET entry_no = ?, baptism_date = ?, child_full_name = ?, birth_date = ?,
+                        legitimacy = ?, father_name = ?, mother_name = ?, parents_origin = ?,
+                        parents_residence = ?, minister_name = ?, remarks = ?, book_no = ?,
+                        page_no = ?, line_no = ?
+                  WHERE id = ?"
+            );
+            $stmt->execute([
+                $entryNo, $baptismDate, $childName, $birthDate, $legitimacy, $fatherName,
+                $motherName, $parentsOrigin, $parentsResidence, $ministerName, $remarks,
+                $bookNo, $pageNo, $lineNo, $editId,
+            ]);
+
+            // Replace the sponsor set wholesale with what was submitted.
+            $pdo->prepare("DELETE FROM baptismal_sponsors WHERE baptismal_record_id = ?")->execute([$editId]);
+            $sponsorStmt = $pdo->prepare(
+                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence) VALUES (?, ?, ?)"
+            );
+            foreach ($sponsorNames as $i => $name) {
+                $name = trim($name);
+                if ($name === '') continue;
+                $sponsorStmt->execute([$editId, $name, trim($sponsorResidences[$i] ?? '')]);
+            }
+
+            log_activity($pdo, current_user()['id'], 'baptismal_record_updated', 'baptismal_records', $editId,
+                "Baptismal record updated for {$childName}");
+
+            $pdo->commit();
+            redirect_to('/admin/records/baptismal.php?updated=1');
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $errors[] = 'Something went wrong while updating this record. Please try again.';
+        }
+    }
+}
+
+// --- Delete a record (Delete button on a table row; linked refs unlink) --
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_record']) && csrf_verify()) {
+    require_role('secretary');
+
+    $delId = (int) ($_POST['delete_id'] ?? 0);
+    try {
+        $stmt = $pdo->prepare("SELECT child_full_name FROM baptismal_records WHERE id = ?");
+        $stmt->execute([$delId]);
+        $deletedName = (string) ($stmt->fetchColumn() ?: 'Unknown');
+
+        $stmt = $pdo->prepare("DELETE FROM baptismal_records WHERE id = ?");
+        $stmt->execute([$delId]);
+
+        log_activity($pdo, current_user()['id'], 'baptismal_record_deleted', 'baptismal_records', $delId,
+            "Baptismal record deleted ({$deletedName})");
+
+        redirect_to('/admin/records/baptismal.php?deleted=1');
+        exit;
+    } catch (Exception $e) {
+        $errors[] = 'Something went wrong while deleting this record. Please try again.';
+    }
+}
+
+// --- Edit mode: load the requested record into the encode form -----------
+$editRecord   = null;
+$editSponsors = [];
+if (isset($_GET['edit'])) {
+    $editId = (int) $_GET['edit'];
+    $stmt = $pdo->prepare("SELECT * FROM baptismal_records WHERE id = ?");
+    $stmt->execute([$editId]);
+    $editRecord = $stmt->fetch();
+    if (!$editRecord) {
+        redirect_to('/admin/records/baptismal.php');
+        exit;
+    }
+    $stmt = $pdo->prepare("SELECT sponsor_name, sponsor_residence FROM baptismal_sponsors WHERE baptismal_record_id = ? ORDER BY id");
+    $stmt->execute([(int) $editRecord['id']]);
+    $editSponsors = $stmt->fetchAll();
+}
+$isEdit = $editRecord !== null;
+
 if (isset($_GET['added'])) $success = 'Baptismal record saved.';
+if (isset($_GET['updated'])) $success = 'Baptismal record updated.';
+if (isset($_GET['deleted'])) $success = 'Baptismal record deleted.';
 
 // --- Search / list ------------------------------------------------------
 $q = trim($_GET['q'] ?? '');
@@ -179,9 +291,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </div>
 
                 <div class="record-action-buttons">
-                    <a href="#encode-entry" class="btn btn-success btn-small">Add</a>
-                    <a href="#record-table" class="btn btn-warning btn-small">Edit</a>
-                    <button type="button" class="btn btn-danger btn-small">Remove</button>
+                    <button type="button" class="btn btn-success btn-small" data-toggle-panel="#encode-panel" data-label-open="+ Add New Entry" data-label-close="Close Form">+ Add New Entry</button>
                     <button type="submit" class="btn btn-small">Search</button>
                 </div>
             </div>
@@ -209,39 +319,54 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($rec['father_name']) ?> &amp; <?= e($rec['mother_name']) ?></td>
                         <td><?= e($rec['minister_name']) ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
-                        <td><a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=baptismal&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a></td>
+                                                <td class="row-actions">
+                            <a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=baptismal&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a>
+                            <a href="?edit=<?= (int) $rec['id'] ?>#encode-panel" class="btn btn-warning btn-small">Edit</a>
+                            <form method="post" action="" class="inline-form" data-confirm="Delete this baptismal record permanently? Linked entries will be unlinked.">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="delete_record" value="1">
+                                <input type="hidden" name="delete_id" value="<?= (int) $rec['id'] ?>">
+                                <button type="submit" class="btn btn-danger btn-small">Delete</button>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
         <?php endif; ?>
 
-        <h2 id="encode-entry" style="margin-top:2.5rem;">Encode New Entry</h2>
-        <p class="field-hint">Use this to digitize an entry from the physical logbook. This does not replace the physical record.</p>
+        <div id="encode-panel" class="encode-panel" <?= $isEdit ? '' : 'hidden' ?>>
+        <h2 style="margin-top:2.5rem;"><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['child_full_name']) : 'Encode New Entry' ?></h2>
+        <?php if ($isEdit): ?>
+            <p class="field-hint"><a href="<?= $basePath ?>/admin/records/baptismal.php">Cancel edit - back to adding a new entry.</a></p>
+        <?php else: ?>
+            <p class="field-hint">Use this to digitize an entry from the physical logbook. This does not replace the physical record.</p>
+        <?php endif; ?>
         <form method="post" action="">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
+            <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">
-                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? '') ?>"></label>
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? '') ?>"></label>
+                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>"></label>
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? '') ?>"></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? '') ?>"></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? '') ?>"></label>
                 </div>
             </fieldset>
 
             <fieldset>
                 <legend>Child</legend>
-                <label>Full Name * <input type="text" name="child_full_name" value="<?= e($_POST['child_full_name'] ?? '') ?>" required></label>
+                <label>Full Name * <input type="text" name="child_full_name" value="<?= e($_POST['child_full_name'] ?? $editRecord['child_full_name'] ?? '') ?>" required></label>
                 <div class="inline-fields">
-                    <label>Birth Date <input type="date" name="birth_date" value="<?= e($_POST['birth_date'] ?? '') ?>"></label>
-                    <label>Baptism Date * <input type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? '') ?>" required></label>
+                    <label>Birth Date <input type="date" name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
+                    <label>Baptism Date * <input type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? $editRecord['baptism_date'] ?? '') ?>" required></label>
                 </div>
                 <label>Legitimacy (internal only — never shown on certificates or public output)
                     <select name="legitimacy">
-                        <option value="">-- Not specified --</option>
-                        <option value="legitimate">Legitimate</option>
-                        <option value="illegitimate">Illegitimate</option>
+                        <option value="" <?= ($_POST['legitimacy'] ?? $editRecord['legitimacy'] ?? '') === '' ? 'selected' : '' ?>>-- Not specified --</option>
+                        <option value="legitimate" <?= ($_POST['legitimacy'] ?? $editRecord['legitimacy'] ?? '') === 'legitimate' ? 'selected' : '' ?>>Legitimate</option>
+                        <option value="illegitimate" <?= ($_POST['legitimacy'] ?? $editRecord['legitimacy'] ?? '') === 'illegitimate' ? 'selected' : '' ?>>Illegitimate</option>
                     </select>
                 </label>
             </fieldset>
@@ -249,12 +374,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Parents</legend>
                 <div class="inline-fields">
-                    <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? '') ?>"></label>
+                    <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
+                    <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
-                    <label>Origin <input type="text" name="parents_origin" value="<?= e($_POST['parents_origin'] ?? '') ?>"></label>
-                    <label>Residence <input type="text" name="parents_residence" value="<?= e($_POST['parents_residence'] ?? '') ?>"></label>
+                    <label>Origin <input type="text" name="parents_origin" value="<?= e($_POST['parents_origin'] ?? $editRecord['parents_origin'] ?? '') ?>"></label>
+                    <label>Residence <input type="text" name="parents_residence" value="<?= e($_POST['parents_residence'] ?? $editRecord['parents_residence'] ?? '') ?>"></label>
                 </div>
             </fieldset>
 
@@ -262,19 +387,25 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Sponsors (Ninong/Ninang)</legend>
                 <?php for ($i = 0; $i < 6; $i++): ?>
                     <div class="inline-fields">
-                        <label>Sponsor Name <input type="text" name="sponsor_name[]"></label>
-                        <label>Residence <input type="text" name="sponsor_residence[]"></label>
+                        <label>Sponsor Name <input type="text" name="sponsor_name[]" value="<?= e($_POST['sponsor_name'][$i] ?? $editSponsors[$i]['sponsor_name'] ?? '') ?>"></label>
+                        <label>Residence <input type="text" name="sponsor_residence[]" value="<?= e($_POST['sponsor_residence'][$i] ?? $editSponsors[$i]['sponsor_residence'] ?? '') ?>"></label>
                     </div>
                 <?php endfor; ?>
             </fieldset>
 
             <fieldset>
                 <legend>Other</legend>
-                <label>Officiating Minister <input type="text" name="minister_name" value="<?= e($_POST['minister_name'] ?? '') ?>"></label>
-                <label>Remarks / Observanda <textarea name="remarks"><?= e($_POST['remarks'] ?? '') ?></textarea></label>
+                <label>Officiating Minister <input type="text" name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
+                <label>Remarks / Observanda <textarea name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 
-            <button type="submit" name="add_record" value="1" class="btn">Save Record</button>
+            <?php if ($isEdit): ?>
+                <button type="submit" name="update_record" value="1" class="btn btn-primary">Update Record</button>
+            <?php else: ?>
+                <button type="submit" name="add_record" value="1" class="btn">Save Record</button>
+            <?php endif; ?>
         </form>
+
+        </div>
 
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

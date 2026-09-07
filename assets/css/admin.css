@@ -869,3 +869,20 @@ html, body {
         text-align: center;
     }
 }
+
+/* =====================================================================
+   Records pages: page heading with Add toggle + per-row action buttons
+   ===================================================================== */
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.row-actions { white-space: nowrap; }
+.row-actions .btn { margin-right: 0.3rem; }
+.row-actions .inline-form { display: inline-block; margin: 0; }
+.encode-panel[hidden] { display: none; }

@@ -32,7 +32,7 @@ These are *deliberate removals/choices* — good defense talking points, not gap
 | Decision | Reason |
 |---|---|
 | **No priest system user / portal** | The parish priest is not a login user. Canonical clearance (banns, pre-Cana, interview) is recorded by the Secretary after confirming with the priest in person. Keeps the model to one trained operator. |
-| **No Death/Burial module** | Removed from the approved design. The schema keeps dormant tables "for future-proofing" only — no UI, forms, or reports reference them. |
+| **No Death/Burial module** | Removed from the approved design: no UI, forms, reports, or schema tables exist for it — a fresh install contains nothing for it. (The pre-existing demo database still has leftover death_burial_* tables from the original build.) |
 | **No online ID upload** | Identity is verified in person at pickup. Avoids collecting sensitive ID scans, simplifying **RA 10173 (Data Privacy Act)** compliance. |
 | **No payment/fees anywhere** | Fees are paid in person at pickup. No monetary fields or logic exist by design. |
 | **No parishioner accounts** | Tracking is via tracking number + email, not a login. Only the Secretary has an account. |
@@ -125,7 +125,7 @@ loaded, follow this order:
 The updated design (`PROJECT_CONTEXT.md`) removed the priest role and
 Death/Burial. The priest's canonical steps are recorded as data by the
 Secretary (banns, pre-Cana, interview) instead of a priest login. Death/Burial
-exists only as dormant schema tables for future-proofing, with no UI.
+has no module, no UI, and no tables in the canonical schema.
 
 **Q: Why no ID upload on the forms?**
 Data privacy (RA 10173). Identity is verified **in person** at pickup; the

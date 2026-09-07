@@ -28,4 +28,21 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
+
+    // ---- 3) Collapsible encode panels on the records pages ---------------
+    // A button marked data-toggle-panel="#id" shows/hides the target panel
+    // and swaps its own label between the open and closed states. Panels
+    // start hidden unless the page rendered them open (edit mode).
+    document.querySelectorAll('[data-toggle-panel]').forEach(function (btn) {
+        var target = document.querySelector(btn.getAttribute('data-toggle-panel'));
+        if (!target) return;
+        var openLabel = btn.getAttribute('data-label-open') || btn.textContent;
+        var closeLabel = btn.getAttribute('data-label-close') || 'Close Form';
+        function syncLabel() { btn.textContent = target.hidden ? openLabel : closeLabel; }
+        btn.addEventListener('click', function () {
+            target.hidden = !target.hidden;
+            syncLabel();
+        });
+        syncLabel();
+    });
 });
