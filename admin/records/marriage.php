@@ -220,13 +220,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
             <h1>Marriage Records</h1>
-            <button type="button" class="btn btn-success btn-small" data-toggle-panel="#encode-panel" data-label-open="+ Add New Entry" data-label-close="Close Form">+ Add New Entry</button>
+            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
         </div>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
-        <?php if (!empty($errors)): ?>
-            <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
-        <?php endif; ?>
 
         <form method="get" class="inline-fields filter-form">
             <label>Search by Husband or Wife's Name
@@ -260,7 +257,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
                         <td class="row-actions">
                             <a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=marriage&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a>
-                            <a href="?edit=<?= (int) $rec['id'] ?>#encode-panel" class="btn btn-warning btn-small">Edit</a>
+                            <a href="?edit=<?= (int) $rec['id'] ?>" class="btn btn-warning btn-small">Edit</a>
                             <form method="post" action="" class="inline-form" data-confirm="Delete this marriage record permanently? Linked entries will be unlinked.">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="delete_record" value="1">
@@ -274,10 +271,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         <?php endif; ?>
 
-        <div id="encode-panel" class="encode-panel" <?= $isEdit ? '' : 'hidden' ?>>
-        <h2 style="margin-top:2.5rem;"><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['husband_full_name']) . ' & ' . e($editRecord['wife_maiden_name']) : 'Encode New Entry' ?></h2>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
+            <div class="dialog-head">
+                <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['husband_full_name']) . ' & ' . e($editRecord['wife_maiden_name']) : 'Encode New Entry' ?></h2>
+                <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
+            </div>
         <?php if ($isEdit): ?>
             <p class="field-hint"><a href="<?= $basePath ?>/admin/records/marriage.php">Cancel edit - back to adding a new entry.</a></p>
+        <?php endif; ?>
+        <?php if (!empty($errors)): ?>
+            <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
         <form method="post" action="">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
@@ -336,7 +339,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php else: ?>
                 <button type="submit" name="add_record" value="1" class="btn">Save Record</button>
             <?php endif; ?>
+            <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
         </form>
-        </div>
+        </dialog>
 
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';
