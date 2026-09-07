@@ -21,8 +21,6 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Baptismal Records';
 $errors  = [];
 $success = null;
-$ministerFilter = trim($_GET['minister'] ?? '');
-$yearFilter = trim($_GET['year'] ?? '');
 
 // --- Handle new record submission (secretary/priest only encode from the physical logbook) ---
 // CSRF guard: reject any POST whose token is missing or stale (see
@@ -210,25 +208,28 @@ if (isset($_GET['deleted'])) $success = 'Baptismal record deleted.';
 
 // --- Search / list ------------------------------------------------------
 $q = trim($_GET['q'] ?? '');
-$ministerFilter = trim($_GET['minister'] ?? '');
-$yearFilter = trim($_GET['year'] ?? '');
+$dateFromRaw = trim($_GET['date_from'] ?? '');
+$dateToRaw   = trim($_GET['date_to'] ?? '');
+$dateFrom = ($dateFromRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFromRaw)) ? $dateFromRaw : '';
+$dateTo   = ($dateToRaw !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateToRaw)) ? $dateToRaw : '';
 
 $sql = 'SELECT * FROM baptismal_records WHERE 1=1';
 $params = [];
 
 if ($q !== '') {
-    $sql .= ' AND child_full_name LIKE ?';
-    $params[] = '%' . $q . '%';
+    $sql .= ' AND (child_full_name LIKE ? OR father_name LIKE ? OR mother_name LIKE ?)';
+    $like = '%' . $q . '%';
+    array_push($params, $like, $like, $like);
 }
 
-if ($ministerFilter !== '') {
-    $sql .= ' AND minister_name LIKE ?';
-    $params[] = '%' . $ministerFilter . '%';
+if ($dateFrom !== '') {
+    $sql .= ' AND baptism_date >= ?';
+    $params[] = $dateFrom;
 }
 
-if ($yearFilter !== '') {
-    $sql .= ' AND YEAR(baptism_date) = ?';
-    $params[] = $yearFilter;
+if ($dateTo !== '') {
+    $sql .= ' AND baptism_date <= ?';
+    $params[] = $dateTo;
 }
 
 $sql .= ' ORDER BY baptism_date DESC LIMIT 100';
@@ -236,62 +237,32 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $records = $stmt->fetchAll();
 
-$availableYears = $pdo->query("SELECT DISTINCT YEAR(baptism_date) AS yr FROM baptismal_records ORDER BY yr DESC")->fetchAll(PDO::FETCH_COLUMN);
-
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Baptismal Records</h1>
+        <div class="page-heading">
+            <h1>Baptismal Records</h1>
+            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
+        </div>
         <p class="field-hint">This is a digital index of the physical baptismal logbook, used for fast retrieval when matching certificate requests. The physical logbook remains the canonical record.</p>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <form method="get" class="record-toolbar">
-            <div class="record-filter-row">
-                <div class="filter-field">
-                    <label for="minister-filter">Minister</label>
-                    <select id="minister-filter" name="minister">
-                        <option value="">All ministers</option>
-                        <?php
-                            $ministerOptions = $pdo->query("SELECT DISTINCT minister_name FROM baptismal_records WHERE minister_name IS NOT NULL AND minister_name <> '' ORDER BY minister_name ASC")->fetchAll(PDO::FETCH_COLUMN);
-                            foreach ($ministerOptions as $ministerOption):
-                                $selected = $ministerFilter !== '' && $ministerFilter === $ministerOption ? ' selected' : '';
-                                echo '<option value="' . e($ministerOption) . '"' . $selected . '>' . e($ministerOption) . '</option>';
-                            endforeach;
-                        ?>
-                    </select>
-                </div>
-
-                <div class="filter-field">
-                    <label for="year-filter">Year</label>
-                    <select id="year-filter" name="year">
-                        <option value="">All years</option>
-                        <?php foreach ($availableYears as $year): ?>
-                            <option value="<?= e($year) ?>" <?= $yearFilter !== '' && $yearFilter === (string) $year ? 'selected' : '' ?>><?= e($year) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="toolbar-filter-actions">
-                    <button type="submit" class="btn btn-small">Apply Filter</button>
-                    <?php if ($q !== '' || $ministerFilter !== '' || $yearFilter !== ''): ?>
-                        <a href="<?= $basePath ?>/admin/records/baptismal.php" class="btn btn-secondary btn-small">Reset</a>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="record-actions-row">
-                <div class="search-field-wrap">
-                    <label for="search-q">Search by Child's Name</label>
-                    <input id="search-q" type="text" name="q" value="<?= e($q) ?>" placeholder="e.g. Maria Santos">
-                </div>
-
-                <div class="record-action-buttons">
-                    <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
-                    <button type="submit" class="btn btn-small">Search</button>
-                </div>
-            </div>
+        <form method="get" class="inline-fields filter-form">
+            <label>Search (child, father, or mother)
+                <input type="text" name="q" value="<?= e($q) ?>" placeholder="e.g. Maria Santos or De Guzman">
+            </label>
+            <label>Baptized From
+                <input type="date" name="date_from" value="<?= e($dateFrom) ?>">
+            </label>
+            <label>Baptized To
+                <input type="date" name="date_to" value="<?= e($dateTo) ?>">
+            </label>
+            <button type="submit" class="btn btn-small">Apply Filter</button>
+            <?php if ($q !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
+                <a href="<?= $basePath ?>/admin/records/baptismal.php" class="btn btn-secondary btn-small">Reset</a>
+            <?php endif; ?>
         </form>
 
         <?php if (empty($records)): ?>
@@ -337,6 +308,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['child_full_name']) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
+            <div class="dialog-body">
         <?php if ($isEdit): ?>
             <p class="field-hint"><a href="<?= $basePath ?>/admin/records/baptismal.php">Cancel edit - back to adding a new entry.</a></p>
         <?php else: ?>
@@ -409,6 +381,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php endif; ?>
             <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
         </form>
+        </div>
         </dialog>
 
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

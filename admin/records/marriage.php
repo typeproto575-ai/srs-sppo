@@ -276,6 +276,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['husband_full_name']) . ' & ' . e($editRecord['wife_maiden_name']) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
+            <div class="dialog-body">
         <?php if ($isEdit): ?>
             <p class="field-hint"><a href="<?= $basePath ?>/admin/records/marriage.php">Cancel edit - back to adding a new entry.</a></p>
         <?php endif; ?>
@@ -341,6 +342,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php endif; ?>
             <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
         </form>
+        </div>
         </dialog>
 
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';
