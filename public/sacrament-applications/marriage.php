@@ -273,8 +273,13 @@ require_once __DIR__ . '/../../includes/header.php';
                         </select>
                     </label>
                 </div>
-                <p class="field-hint">This is a preferred date only. The parish office will confirm availability against the calendar.</p>
+                                                                                <p class="field-hint">This is a preferred date only. The parish office will confirm availability against the calendar.</p>
+                <label>Marriage License Reference
+                    <input type="text" name="marriage_license_ref" value="<?= e($_POST['marriage_license_ref'] ?? '') ?>" placeholder="License number / date issued">
+                </label>
             </fieldset>
+
+
 
 
 

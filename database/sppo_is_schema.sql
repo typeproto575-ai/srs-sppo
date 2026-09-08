@@ -164,32 +164,18 @@ CREATE TABLE marriage_witnesses (
   FOREIGN KEY (marriage_record_id) REFERENCES marriage_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- --- Death / Burial (Liber Defunctorum) --------------------------------
+-- --- Death / Burial (simplified per scope: alive/deceased status only) ----
 CREATE TABLE death_burial_records (
   id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   entry_no          VARCHAR(20),
   deceased_full_name VARCHAR(150) NOT NULL,
   date_of_death     DATE,
-  date_of_burial    DATE,
   age_at_death      INT UNSIGNED,
-  civil_status      ENUM('single', 'married', 'widowed', 'separated') NULL,
-  spouse_name       VARCHAR(150),
-  father_name       VARCHAR(150),
-  mother_name       VARCHAR(150),
-  cause_of_death    VARCHAR(255),
-  place_of_burial   VARCHAR(255),
-  blessing_date     DATE,
-  blessing_time     TIME,
-  minister_name     VARCHAR(150),
+  is_deceased       TINYINT(1) NOT NULL DEFAULT 0,  -- 0=alive, 1=deceased
+  remarks           TEXT,
   book_no           VARCHAR(20),
   page_no           VARCHAR(20),
   line_no           VARCHAR(20),
-  contact_number    VARCHAR(30),
-  remarks           TEXT,
-  sacrament_baptism TINYINT(1) NOT NULL DEFAULT 0,
-  sacrament_confirmation TINYINT(1) NOT NULL DEFAULT 0,
-  sacrament_marriage TINYINT(1) NOT NULL DEFAULT 0,
-  sacrament_anointing TINYINT(1) NOT NULL DEFAULT 0,
   date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by        INT UNSIGNED,
   person_id         INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
@@ -350,16 +336,19 @@ CREATE TABLE baptismal_applications (
   book_no                VARCHAR(20),
   page_no                VARCHAR(20),
   line_no                VARCHAR(20),
-  certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
+    certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
+  baptism_date           DATE,                 -- per parish form (Date of Baptism)
   notes                 TEXT,
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Godparents table with type separation (godfather=ninong, godmother=ninang)
 CREATE TABLE baptismal_application_godparents (
   id                       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   baptismal_application_id INT UNSIGNED NOT NULL,
   godparent_name           VARCHAR(150) NOT NULL,
   godparent_residence      VARCHAR(150),
+  godparent_type           ENUM('godfather', 'godmother') NOT NULL DEFAULT 'godfather', -- Ninong (godfather) or Ninang (godmother)
   FOREIGN KEY (baptismal_application_id) REFERENCES baptismal_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -426,7 +415,8 @@ CREATE TABLE marriage_applications (
 
   preferred_wedding_date      DATE NOT NULL,
   preferred_wedding_time      TIME,
-  preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
+    preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
+  marriage_license_ref      VARCHAR(100),  -- Marriage license reference number (text field, not upload)
   pre_cana_seminar_completed  TINYINT(1) NOT NULL DEFAULT 0,
   pre_cana_completion_date    DATE,
   canonical_interview_completed TINYINT(1) NOT NULL DEFAULT 0,

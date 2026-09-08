@@ -43,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $contactNumber   = trim($_POST['contact_number'] ?? '');
     $email           = trim($_POST['email'] ?? '');
     $preferredDate   = $_POST['preferred_date'] ?: null;
+    $baptismDate     = $_POST['baptism_date'] ?: null;
     $delegatedMinister = trim($_POST['delegated_minister'] ?? '');
     $bookNo          = trim($_POST['book_no'] ?? '');
     $pageNo          = trim($_POST['page_no'] ?? '');
@@ -221,6 +222,9 @@ require_once __DIR__ . '/../../includes/header.php';
                 <legend>Scheduling</legend>
                 <label>Preferred Date (if any)
                     <input type="date" name="preferred_date" value="<?= e($_POST['preferred_date'] ?? '') ?>">
+                </label>
+                <label>Date of Baptism (if known)
+                    <input type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? '') ?>">
                 </label>
                 <label>Delegated Minister (if any)
                     <input type="text" name="delegated_minister" value="<?= e($_POST['delegated_minister'] ?? '') ?>">
