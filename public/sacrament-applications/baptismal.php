@@ -34,15 +34,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $childBirthdate  = $_POST['child_birthdate'] ?? '';
     $childBirthplace = trim($_POST['child_birthplace'] ?? '');
     $fatherName      = trim($_POST['father_full_name'] ?? '');
-    $motherName      = trim($_POST['mother_full_name'] ?? '');
+    $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
+    $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
+    $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
+    $parentsAddress  = trim($_POST['parents_address'] ?? '');
+    $parentsUnionType = trim($_POST['parents_union_type'] ?? 'legitimate');
     $parentGuardian  = trim($_POST['parent_guardian_name'] ?? '');
     $contactNumber   = trim($_POST['contact_number'] ?? '');
     $email           = trim($_POST['email'] ?? '');
     $preferredDate   = $_POST['preferred_date'] ?: null;
+    $delegatedMinister = trim($_POST['delegated_minister'] ?? '');
+    $bookNo          = trim($_POST['book_no'] ?? '');
+    $pageNo          = trim($_POST['page_no'] ?? '');
+    $lineNo          = trim($_POST['line_no'] ?? '');
+    $certificateDone = isset($_POST['certificate_done']) ? 1 : 0;
     $notes           = trim($_POST['notes'] ?? '');
 
-    $godparentNames      = $_POST['godparent_name'] ?? [];
-    $godparentResidences = $_POST['godparent_residence'] ?? [];
+    $godfatherNames      = $_POST['godfather_name'] ?? [];
+    $godfatherResidences = $_POST['godfather_residence'] ?? [];
+    $godmotherNames      = $_POST['godmother_name'] ?? [];
+    $godmotherResidences = $_POST['godmother_residence'] ?? [];
 
     if ($childName === '')       $errors[] = "Child's full name is required.";
     if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
@@ -71,14 +82,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare(
                 "INSERT INTO baptismal_applications
                     (application_id, child_full_name, child_birthdate, child_birthplace,
-                     father_full_name, mother_full_name, parent_guardian_name,
-                     contact_number, email, preferred_date, notes)
-                 VALUES                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     father_full_name, father_birthplace, mother_maiden_name, mother_birthplace,
+                     parents_address, parents_union_type, parent_guardian_name,
+                     contact_number, email, preferred_date,
+                     delegated_minister, book_no, page_no, line_no, certificate_done, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childBirthplace,
-                $fatherName, $motherName, $parentGuardian,
-                $contactNumber, $email, $preferredDate, $notes,
+                $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
+                $parentsAddress, $parentsUnionType, $parentGuardian,
+                $contactNumber, $email, $preferredDate,
+                $delegatedMinister, $bookNo, $pageNo, $lineNo, $certificateDone, $notes,
             ]);
             $baptismalApplicationId = (int) $pdo->lastInsertId();
 
@@ -86,10 +101,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO baptismal_application_godparents (baptismal_application_id, godparent_name, godparent_residence)
                  VALUES (?, ?, ?)"
             );
-            foreach ($godparentNames as $i => $name) {
+            foreach ($godfatherNames as $i => $name) {
                 $name = trim($name);
                 if ($name === '') continue;
-                $residence = trim($godparentResidences[$i] ?? '');
+                $residence = trim($godfatherResidences[$i] ?? '');
+                $godparentStmt->execute([$baptismalApplicationId, $name, $residence]);
+            }
+            foreach ($godmotherNames as $i => $name) {
+                $name = trim($name);
+                if ($name === '') continue;
+                $residence = trim($godmotherResidences[$i] ?? '');
                 $godparentStmt->execute([$baptismalApplicationId, $name, $residence]);
             }
 
@@ -140,7 +161,21 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Birthplace * <input type="text" name="child_birthplace" value="<?= e($_POST['child_birthplace'] ?? '') ?>" required></label>
                 <div class="inline-fields">
                     <label>Father's Full Name <input type="text" name="father_full_name" value="<?= e($_POST['father_full_name'] ?? '') ?>"></label>
-                    <label>Mother's Full Name <input type="text" name="mother_full_name" value="<?= e($_POST['mother_full_name'] ?? '') ?>"></label>
+                    <label>Father's Birthplace <input type="text" name="father_birthplace" value="<?= e($_POST['father_birthplace'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Mother's Maiden Name <input type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? '') ?>"></label>
+                    <label>Mother's Birthplace <input type="text" name="mother_birthplace" value="<?= e($_POST['mother_birthplace'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Parents' Address <input type="text" name="parents_address" value="<?= e($_POST['parents_address'] ?? '') ?>"></label>
+                    <label>Union Type
+                        <select name="parents_union_type">
+                            <option value="legitimate" <?= ($_POST['parents_union_type'] ?? 'legitimate') === 'legitimate' ? 'selected' : '' ?>>Legitimate</option>
+                            <option value="civil" <?= ($_POST['parents_union_type'] ?? '') === 'civil' ? 'selected' : '' ?>>Civil</option>
+                            <option value="natural" <?= ($_POST['parents_union_type'] ?? '') === 'natural' ? 'selected' : '' ?>>Natural</option>
+                        </select>
+                    </label>
                 </div>
             </fieldset>
 
@@ -153,15 +188,30 @@ require_once __DIR__ . '/../../includes/header.php';
             </fieldset>
 
             <fieldset>
-                <legend>Godparents (Ninong/Ninang)</legend>
-                <p class="field-hint">List as many as you have confirmed so far. You can leave rows blank and add more later at the parish office.</p>
-                <?php for ($i = 0; $i < 4; $i++): ?>
+                <legend>Godparents — Godfathers (Ninong)</legend>
+                <p class="field-hint">Up to 8 godfathers. Leave blank any you haven't confirmed.</p>
+                <?php for ($i = 0; $i < 8; $i++): ?>
                     <div class="inline-fields">
-                        <label>Godparent Name
-                            <input type="text" name="godparent_name[]" value="<?= e($_POST['godparent_name'][$i] ?? '') ?>">
+                        <label>Godfather Name
+                            <input type="text" name="godfather_name[]" value="<?= e($_POST['godfather_name'][$i] ?? '') ?>">
                         </label>
                         <label>Residence
-                            <input type="text" name="godparent_residence[]" value="<?= e($_POST['godparent_residence'][$i] ?? '') ?>">
+                            <input type="text" name="godfather_residence[]" value="<?= e($_POST['godfather_residence'][$i] ?? '') ?>">
+                        </label>
+                    </div>
+                <?php endfor; ?>
+            </fieldset>
+
+            <fieldset>
+                <legend>Godparents — Godmothers (Ninang)</legend>
+                <p class="field-hint">Up to 8 godmothers. Leave blank any you haven't confirmed.</p>
+                <?php for ($i = 0; $i < 8; $i++): ?>
+                    <div class="inline-fields">
+                        <label>Godmother Name
+                            <input type="text" name="godmother_name[]" value="<?= e($_POST['godmother_name'][$i] ?? '') ?>">
+                        </label>
+                        <label>Residence
+                            <input type="text" name="godmother_residence[]" value="<?= e($_POST['godmother_residence'][$i] ?? '') ?>">
                         </label>
                     </div>
                 <?php endfor; ?>
@@ -171,6 +221,18 @@ require_once __DIR__ . '/../../includes/header.php';
                 <legend>Scheduling</legend>
                 <label>Preferred Date (if any)
                     <input type="date" name="preferred_date" value="<?= e($_POST['preferred_date'] ?? '') ?>">
+                </label>
+                <label>Delegated Minister (if any)
+                    <input type="text" name="delegated_minister" value="<?= e($_POST['delegated_minister'] ?? '') ?>">
+                </label>
+                <div class="inline-fields">
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? '') ?>"></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? '') ?>"></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? '') ?>"></label>
+                </div>
+                <label class="checkbox-row">
+                    <input type="checkbox" name="certificate_done" value="1" <?= isset($_POST['certificate_done']) ? 'checked' : '' ?>>
+                    Certificate already done (mark if a certificate was previously issued)
                 </label>
                 <label>Additional Notes
                     <textarea name="notes"><?= e($_POST['notes'] ?? '') ?></textarea>

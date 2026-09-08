@@ -49,12 +49,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         try {
             $stmt = $pdo->prepare(
                 "INSERT INTO first_communion_records
-                    (entry_no, communion_date, communicant_full_name, father_name, mother_name,
+                    (entry_no, communion_date, communicant_full_name, domicile, father_name, mother_name,
                      minister_name, baptismal_record_id, remarks, book_no, page_no, line_no, encoded_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $entryNo, $communionDate, $communicantName, $fatherName, $motherName,
+                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherName,
                 $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 current_user()['id'],
             ]);
@@ -78,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $editId          = (int) ($_POST['edit_id'] ?? 0);
     $entryNo         = trim($_POST['entry_no'] ?? '');
     $communionDate   = $_POST['communion_date'] ?? '';
+    $domicile        = trim($_POST['domicile'] ?? '');
     $communicantName = trim($_POST['communicant_full_name'] ?? '');
     $fatherName      = trim($_POST['father_name'] ?? '');
     $motherName      = trim($_POST['mother_name'] ?? '');
@@ -97,13 +98,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
         try {
             $stmt = $pdo->prepare(
                 "UPDATE first_communion_records
-                    SET entry_no = ?, communion_date = ?, communicant_full_name = ?, father_name = ?,
+                    SET entry_no = ?, communion_date = ?, communicant_full_name = ?, domicile = ?, father_name = ?,
                         mother_name = ?, minister_name = ?, baptismal_record_id = ?, remarks = ?,
                         book_no = ?, page_no = ?, line_no = ?
                   WHERE id = ?"
             );
             $stmt->execute([
-                $entryNo, $communionDate, $communicantName, $fatherName, $motherName,
+                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherName,
                 $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 $editId,
             ]);
@@ -204,6 +205,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <tr>
                     <th>Communicant</th>
                     <th>Date</th>
+                    <th>Domicile</th>
                     <th>Baptismal Record (prerequisite)</th>
                     <th>Book/Page/Line</th>
                     <th>Certificate</th>
@@ -214,6 +216,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <tr>
                         <td><?= e($rec['communicant_full_name']) ?></td>
                         <td><?= e(date('M j, Y', strtotime($rec['communion_date']))) ?></td>
+                        <td><?= e($rec['domicile'] ?? '') ?></td>
                         <td><?= $rec['baptismal_name'] ? e($rec['baptismal_name']) . ' (#' . (int) $rec['baptismal_record_id'] . ')' : '<span class="flag-badge" title="No baptismal record linked yet">Not linked</span>' ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
                         <td class="row-actions">
@@ -261,6 +264,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Communicant</legend>
                 <label>Full Name * <input type="text" name="communicant_full_name" value="<?= e($_POST['communicant_full_name'] ?? $editRecord['communicant_full_name'] ?? '') ?>" required></label>
                 <label>Date of First Communion * <input type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
+                <label>Domicile / Address <input type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
                 <div class="inline-fields">
                     <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
                     <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>

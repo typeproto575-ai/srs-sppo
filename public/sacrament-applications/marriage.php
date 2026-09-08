@@ -55,6 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // --- Wedding -------------------------------------------------------------
     $preferredWeddingDate = $_POST['preferred_wedding_date'] ?? '';
+    $preferredWeddingTime = $_POST['preferred_wedding_time'] ?: null;
+    $preferredWeddingVenue = trim($_POST['preferred_wedding_venue'] ?? 'church');
     $notes                = trim($_POST['notes'] ?? '');
 
     // --- Principal sponsors (repeatable) ------------------------------------
@@ -82,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($brideMaritalStatus === '') $errors[] = "Bride's marital status is required.";
 
     if ($preferredWeddingDate === '') $errors[] = 'Preferred wedding date is required.';
+    if (!in_array($preferredWeddingVenue, ['church', 'barangay_chapel'], true)) $errors[] = 'Please select a valid wedding venue.';
 
     // Non-blocking check: is another event already scheduled that day?
     // This is informational only -- conflict resolution is manual (secretary/priest).
@@ -116,16 +119,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      groom_marital_status, groom_baptized_here, groom_baptismal_cert_status, groom_confirmation_cert_status,
                      bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email,
                      bride_marital_status, bride_baptized_here, bride_baptismal_cert_status, bride_confirmation_cert_status,
-                     preferred_wedding_date, pre_cana_seminar_completed, pre_cana_completion_date,
+                     preferred_wedding_date, preferred_wedding_time, preferred_wedding_venue,
+                     pre_cana_seminar_completed, pre_cana_completion_date,
                      canonical_interview_completed, canonical_interview_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId,
-                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail,                     $groomMaritalStatus, $groomBaptizedHere, $groomBaptismalCertStatus, $groomConfirmationCertStatus,
-                     $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail,
-                     $brideMaritalStatus, $brideBaptizedHere, $brideBaptismalCertStatus, $brideConfirmationCertStatus,                     $preferredWeddingDate, 0, NULL,
-                     0, NULL,
+                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail,
+                $groomMaritalStatus, $groomBaptizedHere, $groomBaptismalCertStatus, $groomConfirmationCertStatus,
+                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail,
+                $brideMaritalStatus, $brideBaptizedHere, $brideBaptismalCertStatus, $brideConfirmationCertStatus,
+                $preferredWeddingDate, $preferredWeddingTime, $preferredWeddingVenue,
+                0, NULL,
+                0, NULL,
             ]);
             $marriageApplicationId = (int) $pdo->lastInsertId();
 
@@ -255,6 +262,17 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Preferred Wedding Date *
                     <input type="date" name="preferred_wedding_date" value="<?= e($_POST['preferred_wedding_date'] ?? '') ?>" required>
                 </label>
+                <div class="inline-fields">
+                    <label>Preferred Time
+                        <input type="time" name="preferred_wedding_time" value="<?= e($_POST['preferred_wedding_time'] ?? '') ?>">
+                    </label>
+                    <label>Venue *
+                        <select name="preferred_wedding_venue" required>
+                            <option value="church" <?= ($_POST['preferred_wedding_venue'] ?? 'church') === 'church' ? 'selected' : '' ?>>Church</option>
+                            <option value="barangay_chapel" <?= ($_POST['preferred_wedding_venue'] ?? '') === 'barangay_chapel' ? 'selected' : '' ?>>Barangay Chapel</option>
+                        </select>
+                    </label>
+                </div>
                 <p class="field-hint">This is a preferred date only. The parish office will confirm availability against the calendar.</p>
             </fieldset>
 

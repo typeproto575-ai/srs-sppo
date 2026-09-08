@@ -56,11 +56,16 @@ CREATE TABLE baptismal_records (
   id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   entry_no          VARCHAR(20),
   baptism_date      DATE NOT NULL,
+  baptism_place     VARCHAR(150),          -- Locus Baptismi (per Baptismal Register)
   child_full_name   VARCHAR(150) NOT NULL,
   birth_date        DATE,
   legitimacy        ENUM('legitimate', 'illegitimate') NULL,  -- internal only, never exposed on outputs
+  union_type        ENUM('legitimate', 'civil', 'natural') NULL,  -- Legitimate=Church Marriage, Civil=Civil Marriage, Natural=Not Married
   father_name       VARCHAR(150),
+  father_birthplace VARCHAR(150),          -- Father's birthplace (per parish form)
   mother_name       VARCHAR(150),
+  mother_maiden_name VARCHAR(150),         -- Mother's maiden name (per parish form)
+  mother_birthplace VARCHAR(150),          -- Mother's birthplace (per parish form)
   parents_origin    VARCHAR(150),
   parents_residence VARCHAR(150),
   minister_name     VARCHAR(150),
@@ -78,7 +83,8 @@ CREATE TABLE baptismal_sponsors (
   id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   baptismal_record_id INT UNSIGNED NOT NULL,
   sponsor_name        VARCHAR(150) NOT NULL,
-  sponsor_residence    VARCHAR(150),
+  sponsor_residence   VARCHAR(150),
+  sponsor_type        ENUM('godfather', 'godmother') NOT NULL DEFAULT 'godfather',  -- Ninong (godfather) or Ninang (godmother)
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -111,6 +117,7 @@ CREATE TABLE first_communion_records (
   entry_no              VARCHAR(20),
   communion_date        DATE NOT NULL,
   communicant_full_name VARCHAR(150) NOT NULL,
+  domicile              VARCHAR(255),      -- address per Book of First Communicants
   father_name           VARCHAR(150),
   mother_name           VARCHAR(150),
   minister_name         VARCHAR(150),
@@ -155,6 +162,38 @@ CREATE TABLE marriage_witnesses (
   witness_name       VARCHAR(150) NOT NULL,
   witness_residence  VARCHAR(150),
   FOREIGN KEY (marriage_record_id) REFERENCES marriage_records(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- --- Death / Burial (Liber Defunctorum) --------------------------------
+CREATE TABLE death_burial_records (
+  id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entry_no          VARCHAR(20),
+  deceased_full_name VARCHAR(150) NOT NULL,
+  date_of_death     DATE,
+  date_of_burial    DATE,
+  age_at_death      INT UNSIGNED,
+  civil_status      ENUM('single', 'married', 'widowed', 'separated') NULL,
+  spouse_name       VARCHAR(150),
+  father_name       VARCHAR(150),
+  mother_name       VARCHAR(150),
+  cause_of_death    VARCHAR(255),
+  place_of_burial   VARCHAR(255),
+  blessing_date     DATE,
+  blessing_time     TIME,
+  minister_name     VARCHAR(150),
+  book_no           VARCHAR(20),
+  page_no           VARCHAR(20),
+  line_no           VARCHAR(20),
+  contact_number    VARCHAR(30),
+  remarks           TEXT,
+  sacrament_baptism TINYINT(1) NOT NULL DEFAULT 0,
+  sacrament_confirmation TINYINT(1) NOT NULL DEFAULT 0,
+  sacrament_marriage TINYINT(1) NOT NULL DEFAULT 0,
+  sacrament_anointing TINYINT(1) NOT NULL DEFAULT 0,
+  date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  encoded_by        INT UNSIGNED,
+  person_id         INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 
@@ -209,6 +248,8 @@ CREATE TABLE confirmation_certificate_requests (
   father_full_name      VARCHAR(150) NOT NULL,
   mother_full_name      VARCHAR(150) NOT NULL,
   date_of_confirmation  DATE,
+  date_of_baptism       DATE,              -- per parish form: baptism provenance
+  place_of_baptism      VARCHAR(150),      -- per parish form
   officiating_minister  VARCHAR(150),
   sponsor_name          VARCHAR(150),
   book_no               VARCHAR(20),
@@ -236,16 +277,34 @@ CREATE TABLE first_communion_certificate_requests (
 ) ENGINE=InnoDB;
 
 CREATE TABLE marriage_certificate_requests (
-  id                   INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  request_id           INT UNSIGNED NOT NULL UNIQUE,
-  husband_full_name    VARCHAR(150) NOT NULL,
-  wife_maiden_name     VARCHAR(150) NOT NULL,
-  date_of_marriage     DATE,
-  officiating_minister VARCHAR(150),
-  book_no              VARCHAR(20),
-  page_no              VARCHAR(20),
-  line_no              VARCHAR(20),
-  matched_record_id    INT UNSIGNED,
+  id                              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id                      INT UNSIGNED NOT NULL UNIQUE,
+
+  -- Party A (per parish "Notification of Marriage" form)
+  party_a_full_name               VARCHAR(150) NOT NULL,
+  party_a_father_name             VARCHAR(150),
+  party_a_mother_name             VARCHAR(150),
+  party_a_baptized_in_church_of   VARCHAR(150),
+  party_a_date_of_baptism         DATE,
+  party_a_book_no                 VARCHAR(20),
+  party_a_page_no                 VARCHAR(20),
+  party_a_line_no                 VARCHAR(20),
+
+  -- Party B (per parish "Notification of Marriage" form)
+  party_b_full_name               VARCHAR(150) NOT NULL,
+  party_b_father_name             VARCHAR(150),
+  party_b_mother_name             VARCHAR(150),
+  party_b_baptized_in_church_of   VARCHAR(150),
+  party_b_date_of_baptism         DATE,
+  party_b_book_no                 VARCHAR(20),
+  party_b_page_no                 VARCHAR(20),
+  party_b_line_no                 VARCHAR(20),
+
+  -- Contracted Marriage detail
+  marriage_date                   DATE,
+  officiating_minister            VARCHAR(150),
+
+  matched_record_id               INT UNSIGNED,
   FOREIGN KEY (request_id) REFERENCES certificate_requests(id) ON DELETE CASCADE,
   FOREIGN KEY (matched_record_id) REFERENCES marriage_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -278,11 +337,20 @@ CREATE TABLE baptismal_applications (
   child_birthdate       DATE NOT NULL,
   child_birthplace      VARCHAR(150) NOT NULL,
   father_full_name      VARCHAR(150),
-  mother_full_name      VARCHAR(150),
+  father_birthplace     VARCHAR(150),          -- per parish form
+  mother_maiden_name    VARCHAR(150),          -- per parish form (maiden name)
+  mother_birthplace     VARCHAR(150),          -- per parish form
+  parents_address       VARCHAR(255),          -- per parish form
+  parents_union_type    ENUM('legitimate', 'civil', 'natural') DEFAULT 'legitimate', -- per parish form
   parent_guardian_name  VARCHAR(150) NOT NULL, -- whoever is submitting/vouching for the child
   contact_number        VARCHAR(30) NOT NULL,
   email                 VARCHAR(150) NOT NULL,
   preferred_date         DATE,
+  delegated_minister     VARCHAR(150),          -- per parish form
+  book_no                VARCHAR(20),
+  page_no                VARCHAR(20),
+  line_no                VARCHAR(20),
+  certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
   notes                 TEXT,
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -357,6 +425,8 @@ CREATE TABLE marriage_applications (
   bride_confirmation_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
 
   preferred_wedding_date      DATE NOT NULL,
+  preferred_wedding_time      TIME,
+  preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
   pre_cana_seminar_completed  TINYINT(1) NOT NULL DEFAULT 0,
   pre_cana_completion_date    DATE,
   canonical_interview_completed TINYINT(1) NOT NULL DEFAULT 0,

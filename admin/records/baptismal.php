@@ -33,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     $entryNo          = trim($_POST['entry_no'] ?? '');
     $baptismDate      = $_POST['baptism_date'] ?? '';
+    $baptismPlace     = trim($_POST['baptism_place'] ?? '');
     $childName        = trim($_POST['child_full_name'] ?? '');
     $birthDate        = $_POST['birth_date'] ?: null;
     $legitimacy       = $_POST['legitimacy'] ?: null;
@@ -46,8 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $pageNo           = trim($_POST['page_no'] ?? '');
     $lineNo           = trim($_POST['line_no'] ?? '');
 
-    $sponsorNames      = $_POST['sponsor_name'] ?? [];
-    $sponsorResidences = $_POST['sponsor_residence'] ?? [];
+    // Sponsors (Godfathers and Godmothers) - separate arrays for each type
+    $godfatherNames      = $_POST['godfather_name'] ?? [];
+    $godfatherResidences = $_POST['godfather_residence'] ?? [];
+    $godmotherNames      = $_POST['godmother_name'] ?? [];
+    $godmotherResidences = $_POST['godmother_residence'] ?? [];
+    
+    // Keep old field names for backward compatibility with database
+    $sponsorNames      = array_merge($godfatherNames, $godmotherNames);
+    $sponsorResidences = array_merge($godfatherResidences, $godmotherResidences);
 
     if ($baptismDate === '') $errors[] = 'Baptism date is required.';
     if ($childName === '')   $errors[] = "Child's full name is required.";
@@ -56,27 +64,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         try {
             $pdo->beginTransaction();
 
+            // Collect new parish form fields
+            $unionType       = $_POST['union_type'] ?: null;
+            $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
+            $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
+            $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
+
             $stmt = $pdo->prepare(
                 "INSERT INTO baptismal_records
-                    (entry_no, baptism_date, child_full_name, birth_date, legitimacy, father_name,
-                     mother_name, parents_origin, parents_residence, minister_name, remarks,
+                    (entry_no, baptism_date, baptism_place, child_full_name, birth_date, legitimacy, union_type,
+                     father_name, father_birthplace, mother_name, mother_maiden_name, mother_birthplace,
+                     parents_origin, parents_residence, minister_name, remarks,
                      book_no, page_no, line_no, encoded_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $entryNo, $baptismDate, $childName, $birthDate, $legitimacy, $fatherName,
-                $motherName, $parentsOrigin, $parentsResidence, $ministerName, $remarks,
+                $entryNo, $baptismDate, $baptismPlace, $childName, $birthDate, $legitimacy, $unionType,
+                $fatherName, $fatherBirthplace, $motherName, $motherMaidenName, $motherBirthplace,
+                $parentsOrigin, $parentsResidence, $ministerName, $remarks,
                 $bookNo, $pageNo, $lineNo, current_user()['id'],
             ]);
             $recordId = (int) $pdo->lastInsertId();
 
+            // Insert godfathers (Ninong)
             $sponsorStmt = $pdo->prepare(
-                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence) VALUES (?, ?, ?)"
+                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godfather')"
             );
-            foreach ($sponsorNames as $i => $name) {
+            foreach ($godfatherNames as $i => $name) {
                 $name = trim($name);
                 if ($name === '') continue;
-                $sponsorStmt->execute([$recordId, $name, trim($sponsorResidences[$i] ?? '')]);
+                $sponsorStmt->execute([$recordId, $name, trim($godfatherResidences[$i] ?? '')]);
+            }
+            
+            // Insert godmothers (Ninang)
+            $sponsorStmt2 = $pdo->prepare(
+                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godmother')"
+            );
+            foreach ($godmotherNames as $i => $name) {
+                $name = trim($name);
+                if ($name === '') continue;
+                $sponsorStmt2->execute([$recordId, $name, trim($godmotherResidences[$i] ?? '')]);
             }
 
             log_activity($pdo, current_user()['id'], 'baptismal_record_encoded', 'baptismal_records', $recordId,
@@ -100,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $editId           = (int) ($_POST['edit_id'] ?? 0);
     $entryNo          = trim($_POST['entry_no'] ?? '');
     $baptismDate      = $_POST['baptism_date'] ?? '';
+    $baptismPlace     = trim($_POST['baptism_place'] ?? '');
     $childName        = trim($_POST['child_full_name'] ?? '');
     $birthDate        = $_POST['birth_date'] ?: null;
     $legitimacy       = $_POST['legitimacy'] ?: null;
@@ -125,14 +153,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
             $stmt = $pdo->prepare(
                 "UPDATE baptismal_records
-                    SET entry_no = ?, baptism_date = ?, child_full_name = ?, birth_date = ?,
+                    SET entry_no = ?, baptism_date = ?, baptism_place = ?, child_full_name = ?, birth_date = ?,
                         legitimacy = ?, father_name = ?, mother_name = ?, parents_origin = ?,
                         parents_residence = ?, minister_name = ?, remarks = ?, book_no = ?,
                         page_no = ?, line_no = ?
                   WHERE id = ?"
             );
             $stmt->execute([
-                $entryNo, $baptismDate, $childName, $birthDate, $legitimacy, $fatherName,
+                $entryNo, $baptismDate, $baptismPlace, $childName, $birthDate, $legitimacy, $fatherName,
                 $motherName, $parentsOrigin, $parentsResidence, $ministerName, $remarks,
                 $bookNo, $pageNo, $lineNo, $editId,
             ]);
@@ -273,6 +301,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <tr>
                     <th>Child's Name</th>
                     <th>Baptism Date</th>
+                    <th>Place of Baptism</th>
                     <th>Parents</th>
                     <th>Minister</th>
                     <th>Book/Page/Line</th>
@@ -284,6 +313,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <tr>
                         <td><?= e($rec['child_full_name']) ?></td>
                         <td><?= e(date('M j, Y', strtotime($rec['baptism_date']))) ?></td>
+                        <td><?= e($rec['baptism_place'] ?? '') ?></td>
                         <td><?= e($rec['father_name']) ?> &amp; <?= e($rec['mother_name']) ?></td>
                         <td><?= e($rec['minister_name']) ?></td>
                         <td><?= e($rec['book_no']) ?> / <?= e($rec['page_no']) ?> / <?= e($rec['line_no']) ?></td>
@@ -336,6 +366,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div class="inline-fields">
                     <label>Birth Date <input type="date" name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
                     <label>Baptism Date * <input type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? $editRecord['baptism_date'] ?? '') ?>" required></label>
+                    <label>Place of Baptism <input type="text" name="baptism_place" value="<?= e($_POST['baptism_place'] ?? $editRecord['baptism_place'] ?? '') ?>"></label>
                 </div>
                 <label>Legitimacy (internal only — never shown on certificates or public output)
                     <select name="legitimacy">
@@ -350,20 +381,45 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Parents</legend>
                 <div class="inline-fields">
                     <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <label>Father's Birthplace <input type="text" name="father_birthplace" value="<?= e($_POST['father_birthplace'] ?? $editRecord['father_birthplace'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Mother's Maiden Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <label>Mother's Birthplace <input type="text" name="mother_birthplace" value="<?= e($_POST['mother_birthplace'] ?? $editRecord['mother_birthplace'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
                     <label>Origin <input type="text" name="parents_origin" value="<?= e($_POST['parents_origin'] ?? $editRecord['parents_origin'] ?? '') ?>"></label>
                     <label>Residence <input type="text" name="parents_residence" value="<?= e($_POST['parents_residence'] ?? $editRecord['parents_residence'] ?? '') ?>"></label>
                 </div>
+                <!-- Union type: Legitimate (married in church), Civil (married civilly), Natural (not married) -->
+                <label>Union Type
+                    <select name="union_type">
+                        <option value="" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === '' ? 'selected' : '' ?>>-- Not specified --</option>
+                        <option value="legitimate" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'legitimate' ? 'selected' : '' ?>>Legitimate (Church Marriage)</option>
+                        <option value="civil" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'civil' ? 'selected' : '' ?>>Civil (Civil Marriage)</option>
+                        <option value="natural" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'natural' ? 'selected' : '' ?>>Natural (Not Married)</option>
+                    </select>
+                </label>
             </fieldset>
 
+            <!-- Godfathers (Ninong) - up to 8 -->
             <fieldset>
-                <legend>Sponsors (Ninong/Ninang)</legend>
-                <?php for ($i = 0; $i < 6; $i++): ?>
+                <legend>Godfathers (Ninong) - Up to 8</legend>
+                <?php for ($i = 0; $i < 8; $i++): ?>
                     <div class="inline-fields">
-                        <label>Sponsor Name <input type="text" name="sponsor_name[]" value="<?= e($_POST['sponsor_name'][$i] ?? $editSponsors[$i]['sponsor_name'] ?? '') ?>"></label>
-                        <label>Residence <input type="text" name="sponsor_residence[]" value="<?= e($_POST['sponsor_residence'][$i] ?? $editSponsors[$i]['sponsor_residence'] ?? '') ?>"></label>
+                        <label>Godfather Name <input type="text" name="godfather_name[]" value="<?= e($_POST['godfather_name'][$i] ?? $editGodfathers[$i]['sponsor_name'] ?? '') ?>"></label>
+                        <label>Residence <input type="text" name="godfather_residence[]" value="<?= e($_POST['godfather_residence'][$i] ?? $editGodfathers[$i]['sponsor_residence'] ?? '') ?>"></label>
+                    </div>
+                <?php endfor; ?>
+            </fieldset>
+
+            <!-- Godmothers (Ninang) - up to 8 -->
+            <fieldset>
+                <legend>Godmothers (Ninang) - Up to 8</legend>
+                <?php for ($i = 0; $i < 8; $i++): ?>
+                    <div class="inline-fields">
+                        <label>Godmother Name <input type="text" name="godmother_name[]" value="<?= e($_POST['godmother_name'][$i] ?? $editGodmothers[$i]['sponsor_name'] ?? '') ?>"></label>
+                        <label>Residence <input type="text" name="godmother_residence[]" value="<?= e($_POST['godmother_residence'][$i] ?? $editGodmothers[$i]['sponsor_residence'] ?? '') ?>"></label>
                     </div>
                 <?php endfor; ?>
             </fieldset>

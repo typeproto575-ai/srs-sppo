@@ -38,6 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fatherName        = trim($_POST['father_full_name'] ?? '');
     $motherName        = trim($_POST['mother_full_name'] ?? '');
     $confirmationDate  = $_POST['date_of_confirmation'] ?: null;
+    $baptismDate       = $_POST['date_of_baptism'] ?: null;
+    $baptismPlace      = trim($_POST['place_of_baptism'] ?? '');
     $minister          = trim($_POST['officiating_minister'] ?? '');
     $sponsorName       = trim($_POST['sponsor_name'] ?? '');
     $bookNo            = trim($_POST['book_no'] ?? '');
@@ -82,11 +84,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare(
                 "INSERT INTO confirmation_certificate_requests
                     (request_id, confirmand_full_name, father_full_name, mother_full_name,
-                     date_of_confirmation, officiating_minister, sponsor_name, book_no, page_no, line_no)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     date_of_confirmation, date_of_baptism, place_of_baptism,
+                     officiating_minister, sponsor_name, book_no, page_no, line_no)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $requestId, $confirmandName, $fatherName, $motherName, $confirmationDate,
+                $baptismDate, $baptismPlace,
                 $minister, $sponsorName, $bookNo, $pageNo, $lineNo,
             ]);
 
@@ -174,6 +178,10 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Date of Confirmation (if known)
                     <input type="date" name="date_of_confirmation" value="<?= e($_POST['date_of_confirmation'] ?? '') ?>">
                 </label>
+                <div class="inline-fields">
+                    <label>Date of Baptism (if known) <input type="date" name="date_of_baptism" value="<?= e($_POST['date_of_baptism'] ?? '') ?>"></label>
+                    <label>Place of Baptism <input type="text" name="place_of_baptism" value="<?= e($_POST['place_of_baptism'] ?? '') ?>"></label>
+                </div>
                 <label>Officiating Minister (if known)
                     <input type="text" name="officiating_minister" value="<?= e($_POST['officiating_minister'] ?? '') ?>">
                 </label>

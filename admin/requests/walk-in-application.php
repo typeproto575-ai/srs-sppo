@@ -60,6 +60,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $childName = trim($_POST['child_full_name'] ?? '');
             $childBirthdate = $_POST['child_birthdate'] ?? null;
             $childPlace = trim($_POST['child_birthplace'] ?? '');
+            $fatherName = trim($_POST['father_full_name'] ?? '');
+            $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
+            $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
+            $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
+            $parentsAddress = trim($_POST['parents_address'] ?? '');
+            $parentsUnionType = trim($_POST['parents_union_type'] ?? 'legitimate');
             $parentName = trim($_POST['parent_guardian_name'] ?? '');
             $contact = trim($_POST['contact_number'] ?? '');
             $email = trim($_POST['email'] ?? '');
@@ -69,12 +75,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             // No ID upload (feature removed): identity verified in person.
 
             $stmt = $pdo->prepare(
-                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, mother_full_name, parent_guardian_name, contact_number, email, preferred_date, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, father_birthplace, mother_maiden_name, mother_birthplace, parents_address, parents_union_type, parent_guardian_name, contact_number, email, preferred_date, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childPlace,
-                trim($_POST['father_full_name'] ?? ''), trim($_POST['mother_full_name'] ?? ''),
+                $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
+                $parentsAddress, $parentsUnionType,
                 $parentName, $contact, $email, $_POST['preferred_date'] ?: null, trim($_POST['notes'] ?? '')
             ]);
             $baptismalAppExtId = (int) $pdo->lastInsertId();

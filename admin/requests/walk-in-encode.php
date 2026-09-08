@@ -70,11 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     trim($_POST['book_no'] ?? ''), trim($_POST['page_no'] ?? ''), trim($_POST['line_no'] ?? '')];
     } elseif ($sacramentType === 'confirmation') {
         $extTable = 'confirmation_certificate_requests';
-        $extCols  = ['confirmand_full_name','father_full_name','mother_full_name','date_of_confirmation','officiating_minister','sponsor_name','book_no','page_no','line_no'];
+        $extCols  = ['confirmand_full_name','father_full_name','mother_full_name','date_of_confirmation','date_of_baptism','place_of_baptism','officiating_minister','sponsor_name','book_no','page_no','line_no'];
         $confirmandName = trim($_POST['confirmand_full_name'] ?? '');
         if ($confirmandName === '') $errors[] = "Confirmand's full name is required.";
         $extVals = [$confirmandName, trim($_POST['father_full_name'] ?? ''), trim($_POST['mother_full_name'] ?? ''),
-                    $_POST['date_of_confirmation'] ?: null, trim($_POST['officiating_minister'] ?? ''), trim($_POST['sponsor_name'] ?? ''),
+                    $_POST['date_of_confirmation'] ?: null, $_POST['date_of_baptism'] ?: null, trim($_POST['place_of_baptism'] ?? ''),
+                    trim($_POST['officiating_minister'] ?? ''), trim($_POST['sponsor_name'] ?? ''),
                     trim($_POST['book_no'] ?? ''), trim($_POST['page_no'] ?? ''), trim($_POST['line_no'] ?? '')];
     } elseif ($sacramentType === 'first_communion') {
         $extTable = 'first_communion_certificate_requests';
@@ -86,13 +87,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     trim($_POST['book_no'] ?? ''), trim($_POST['page_no'] ?? ''), trim($_POST['line_no'] ?? '')];
     } elseif ($sacramentType === 'marriage') {
         $extTable = 'marriage_certificate_requests';
-        $extCols  = ['husband_full_name','wife_maiden_name','date_of_marriage','officiating_minister','book_no','page_no','line_no'];
-        $husbandName = trim($_POST['husband_full_name'] ?? '');
-        $wifeName    = trim($_POST['wife_maiden_name'] ?? '');
-        if ($husbandName === '') $errors[] = "Husband's full name is required.";
-        if ($wifeName === '')    $errors[] = "Wife's maiden name is required.";
-        $extVals = [$husbandName, $wifeName, $_POST['date_of_marriage'] ?: null, trim($_POST['officiating_minister'] ?? ''),
-                    trim($_POST['book_no'] ?? ''), trim($_POST['page_no'] ?? ''), trim($_POST['line_no'] ?? '')];
+        $extCols  = ['party_a_full_name','party_a_father_name','party_a_mother_name','party_a_baptized_in_church_of','party_a_date_of_baptism','party_a_book_no','party_a_page_no','party_a_line_no','party_b_full_name','party_b_father_name','party_b_mother_name','party_b_baptized_in_church_of','party_b_date_of_baptism','party_b_book_no','party_b_page_no','party_b_line_no','marriage_date','officiating_minister'];
+        $husbandName = trim($_POST['party_a_full_name'] ?? '');
+        $wifeName    = trim($_POST['party_b_full_name'] ?? '');
+        if ($husbandName === '') $errors[] = "Party A's full name is required.";
+        if ($wifeName === '')    $errors[] = "Party B's full name is required.";
+        $extVals = [$husbandName, trim($_POST['party_a_father_name'] ?? ''), trim($_POST['party_a_mother_name'] ?? ''),
+                    trim($_POST['party_a_baptized_in_church_of'] ?? ''), $_POST['party_a_date_of_baptism'] ?: null,
+                    trim($_POST['party_a_book_no'] ?? ''), trim($_POST['party_a_page_no'] ?? ''), trim($_POST['party_a_line_no'] ?? ''),
+                    $wifeName, trim($_POST['party_b_father_name'] ?? ''), trim($_POST['party_b_mother_name'] ?? ''),
+                    trim($_POST['party_b_baptized_in_church_of'] ?? ''), $_POST['party_b_date_of_baptism'] ?: null,
+                    trim($_POST['party_b_book_no'] ?? ''), trim($_POST['party_b_page_no'] ?? ''), trim($_POST['party_b_line_no'] ?? ''),
+                    $_POST['marriage_date'] ?: null, trim($_POST['officiating_minister'] ?? '')];
     }
 
     if (empty($errors)) {
@@ -207,6 +213,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <label>Father's Full Name <input type="text" name="father_full_name"></label>
                     <label>Mother's Full Name <input type="text" name="mother_full_name"></label>
                     <label>Date of Confirmation <input type="date" name="date_of_confirmation"></label>
+                    <div class="inline-fields">
+                        <label>Date of Baptism <input type="date" name="date_of_baptism"></label>
+                        <label>Place of Baptism <input type="text" name="place_of_baptism"></label>
+                    </div>
                     <label>Officiating Minister <input type="text" name="officiating_minister"></label>
                     <label>Sponsor <input type="text" name="sponsor_name"></label>
                     <div class="inline-fields">
@@ -235,16 +245,43 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <div id="section-marriage" class="sacrament-section" style="display:none;">
                 <fieldset>
-                    <legend>Marriage Record Details</legend>
-                    <label>Husband's Full Name * <input type="text" name="husband_full_name"></label>
-                    <label>Wife's Maiden Name * <input type="text" name="wife_maiden_name"></label>
-                    <label>Date of Marriage <input type="date" name="date_of_marriage"></label>
-                    <label>Officiating Minister <input type="text" name="officiating_minister"></label>
+                    <legend>Party A (e.g., Groom)</legend>
+                    <label>Full Name * <input type="text" name="party_a_full_name"></label>
                     <div class="inline-fields">
-                        <label>Book No. <input type="text" name="book_no"></label>
-                        <label>Page <input type="text" name="page_no"></label>
-                        <label>Line <input type="text" name="line_no"></label>
+                        <label>Father's Name <input type="text" name="party_a_father_name"></label>
+                        <label>Mother's Name <input type="text" name="party_a_mother_name"></label>
                     </div>
+                    <div class="inline-fields">
+                        <label>Baptized in Church of <input type="text" name="party_a_baptized_in_church_of"></label>
+                        <label>Date of Baptism <input type="date" name="party_a_date_of_baptism"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Book No. <input type="text" name="party_a_book_no"></label>
+                        <label>Page <input type="text" name="party_a_page_no"></label>
+                        <label>Line <input type="text" name="party_a_line_no"></label>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>Party B (e.g., Bride)</legend>
+                    <label>Full Name * <input type="text" name="party_b_full_name"></label>
+                    <div class="inline-fields">
+                        <label>Father's Name <input type="text" name="party_b_father_name"></label>
+                        <label>Mother's Name <input type="text" name="party_b_mother_name"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Baptized in Church of <input type="text" name="party_b_baptized_in_church_of"></label>
+                        <label>Date of Baptism <input type="date" name="party_b_date_of_baptism"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Book No. <input type="text" name="party_b_book_no"></label>
+                        <label>Page <input type="text" name="party_b_page_no"></label>
+                        <label>Line <input type="text" name="party_b_line_no"></label>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>Contracted Marriage Detail</legend>
+                    <label>Date of Marriage <input type="date" name="marriage_date"></label>
+                    <label>Officiating Minister <input type="text" name="officiating_minister"></label>
                 </fieldset>
             </div>
 

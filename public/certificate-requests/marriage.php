@@ -33,13 +33,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $requesterEmail         = trim($_POST['requester_email'] ?? '');
     $requesterContact       = trim($_POST['requester_contact_number'] ?? '');
 
-    $husbandName    = trim($_POST['husband_full_name'] ?? '');
-    $wifeMaidenName = trim($_POST['wife_maiden_name'] ?? '');
-    $marriageDate   = $_POST['date_of_marriage'] ?: null;
+    $husbandName    = trim($_POST['party_a_full_name'] ?? '');
+    $husbandFather  = trim($_POST['party_a_father_name'] ?? '');
+    $husbandMother  = trim($_POST['party_a_mother_name'] ?? '');
+    $husbandBaptizedIn = trim($_POST['party_a_baptized_in_church_of'] ?? '');
+    $husbandBaptismDate = $_POST['party_a_date_of_baptism'] ?: null;
+    $husbandBookNo  = trim($_POST['party_a_book_no'] ?? '');
+    $husbandPageNo  = trim($_POST['party_a_page_no'] ?? '');
+    $husbandLineNo  = trim($_POST['party_a_line_no'] ?? '');
+
+    $wifeMaidenName = trim($_POST['party_b_full_name'] ?? '');
+    $wifeFather     = trim($_POST['party_b_father_name'] ?? '');
+    $wifeMother     = trim($_POST['party_b_mother_name'] ?? '');
+    $wifeBaptizedIn = trim($_POST['party_b_baptized_in_church_of'] ?? '');
+    $wifeBaptismDate = $_POST['party_b_date_of_baptism'] ?: null;
+    $wifeBookNo     = trim($_POST['party_b_book_no'] ?? '');
+    $wifePageNo     = trim($_POST['party_b_page_no'] ?? '');
+    $wifeLineNo     = trim($_POST['party_b_line_no'] ?? '');
+
+    $marriageDate   = $_POST['marriage_date'] ?: null;
     $minister       = trim($_POST['officiating_minister'] ?? '');
-    $bookNo         = trim($_POST['book_no'] ?? '');
-    $pageNo         = trim($_POST['page_no'] ?? '');
-    $lineNo         = trim($_POST['line_no'] ?? '');
 
     $purpose      = $_POST['purpose'] ?? '';
     $purposeOther = trim($_POST['purpose_other'] ?? '');
@@ -52,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!filter_var($requesterEmail, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
     if ($requesterContact === '')      $errors[] = 'Contact number is required.';
     if ($requesterContact !== '' && !is_valid_phone_number($requesterContact)) $errors[] = 'Please enter a valid contact number (at least 10 digits).';
-    if ($husbandName === '')           $errors[] = "Husband's full name is required.";
-    if ($wifeMaidenName === '')        $errors[] = "Wife's maiden name is required.";
+    if ($husbandName === '')           $errors[] = "Party A's full name is required.";
+    if ($wifeMaidenName === '')        $errors[] = "Party B's full name is required.";
     if ($purpose === '')               $errors[] = 'Purpose is required.';
 
     if (empty($errors)) {
@@ -77,13 +90,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare(
                 "INSERT INTO marriage_certificate_requests
-                    (request_id, husband_full_name, wife_maiden_name, date_of_marriage,
-                     officiating_minister, book_no, page_no, line_no)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                    (request_id,
+                     party_a_full_name, party_a_father_name, party_a_mother_name,
+                     party_a_baptized_in_church_of, party_a_date_of_baptism,
+                     party_a_book_no, party_a_page_no, party_a_line_no,
+                     party_b_full_name, party_b_father_name, party_b_mother_name,
+                     party_b_baptized_in_church_of, party_b_date_of_baptism,
+                     party_b_book_no, party_b_page_no, party_b_line_no,
+                     marriage_date, officiating_minister)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $requestId, $husbandName, $wifeMaidenName, $marriageDate,
-                $minister, $bookNo, $pageNo, $lineNo,
+                $requestId,
+                $husbandName, $husbandFather, $husbandMother, $husbandBaptizedIn, $husbandBaptismDate,
+                $husbandBookNo, $husbandPageNo, $husbandLineNo,
+                $wifeMaidenName, $wifeFather, $wifeMother, $wifeBaptizedIn, $wifeBaptismDate,
+                $wifeBookNo, $wifePageNo, $wifeLineNo,
+                $marriageDate, $minister,
             ]);
 
             log_activity($pdo, null, 'certificate_request_submitted', 'certificate_requests', $requestId,
@@ -156,26 +179,55 @@ require_once __DIR__ . '/../../includes/header.php';
             </fieldset>
 
             <fieldset>
-                <legend>Marriage Record Details</legend>
+                <legend>Party A (e.g., Groom)</legend>
 
-                <label>Husband's Full Name *
-                    <input type="text" name="husband_full_name" value="<?= e($_POST['husband_full_name'] ?? '') ?>" required>
+                <label>Full Name *
+                    <input type="text" name="party_a_full_name" value="<?= e($_POST['party_a_full_name'] ?? '') ?>" required>
                 </label>
-                <label>Wife's Maiden Name *
-                    <input type="text" name="wife_maiden_name" value="<?= e($_POST['wife_maiden_name'] ?? '') ?>" required>
+                <div class="inline-fields">
+                    <label>Father's Name <input type="text" name="party_a_father_name" value="<?= e($_POST['party_a_father_name'] ?? '') ?>"></label>
+                    <label>Mother's Name <input type="text" name="party_a_mother_name" value="<?= e($_POST['party_a_mother_name'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Baptized in Church of <input type="text" name="party_a_baptized_in_church_of" value="<?= e($_POST['party_a_baptized_in_church_of'] ?? '') ?>"></label>
+                    <label>Date of Baptism <input type="date" name="party_a_date_of_baptism" value="<?= e($_POST['party_a_date_of_baptism'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Book No. <input type="text" name="party_a_book_no" value="<?= e($_POST['party_a_book_no'] ?? '') ?>"></label>
+                    <label>Page <input type="text" name="party_a_page_no" value="<?= e($_POST['party_a_page_no'] ?? '') ?>"></label>
+                    <label>Line <input type="text" name="party_a_line_no" value="<?= e($_POST['party_a_line_no'] ?? '') ?>"></label>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Party B (e.g., Bride)</legend>
+
+                <label>Full Name *
+                    <input type="text" name="party_b_full_name" value="<?= e($_POST['party_b_full_name'] ?? '') ?>" required>
                 </label>
+                <div class="inline-fields">
+                    <label>Father's Name <input type="text" name="party_b_father_name" value="<?= e($_POST['party_b_father_name'] ?? '') ?>"></label>
+                    <label>Mother's Name <input type="text" name="party_b_mother_name" value="<?= e($_POST['party_b_mother_name'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Baptized in Church of <input type="text" name="party_b_baptized_in_church_of" value="<?= e($_POST['party_b_baptized_in_church_of'] ?? '') ?>"></label>
+                    <label>Date of Baptism <input type="date" name="party_b_date_of_baptism" value="<?= e($_POST['party_b_date_of_baptism'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label>Book No. <input type="text" name="party_b_book_no" value="<?= e($_POST['party_b_book_no'] ?? '') ?>"></label>
+                    <label>Page <input type="text" name="party_b_page_no" value="<?= e($_POST['party_b_page_no'] ?? '') ?>"></label>
+                    <label>Line <input type="text" name="party_b_line_no" value="<?= e($_POST['party_b_line_no'] ?? '') ?>"></label>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Contracted Marriage Detail</legend>
                 <label>Date of Marriage (if known)
-                    <input type="date" name="date_of_marriage" value="<?= e($_POST['date_of_marriage'] ?? '') ?>">
+                    <input type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? '') ?>">
                 </label>
                 <label>Officiating Minister (if known)
                     <input type="text" name="officiating_minister" value="<?= e($_POST['officiating_minister'] ?? '') ?>">
                 </label>
-
-                <div class="inline-fields">
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? '') ?>"></label>
-                </div>
             </fieldset>
 
             <fieldset>
