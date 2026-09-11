@@ -1,6 +1,7 @@
-# Belt-and-suspenders: even though this directory should never be requested
-# directly (files are served only through includes/view-upload.php after a
-# role check), block direct access at the web-server level too.
+# Belt-and-suspenders: this directory holds no web-served content — the
+# online ID-upload feature was removed from the design (identity is verified
+# in person at pickup). Block direct access at the web-server level, and
+# storage/index.php returns 403 as a second guard in case .htaccess is ignored.
 
 # Apache 2.4+
 <IfModule mod_authz_core.c>

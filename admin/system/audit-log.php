@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS AUDIT LOG VIEWER (admin, secretary-only)
+ * SRS-SPPO AUDIT LOG VIEWER (admin, secretary-only)
  * =====================================================================
  * Purpose: Read-only trail of who did what (login, record encodes,
  *          status changes, backups) with filters by user, action, and

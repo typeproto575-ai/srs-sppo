@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS FIRST COMMUNION CERTIFICATE REQUEST (public form)
+ * SRS-SPPO FIRST COMMUNION CERTIFICATE REQUEST (public form)
  * =====================================================================
  * Purpose: Request a copy of a First Communion certificate already on
  *          record. Inserts the shared row into certificate_requests
@@ -14,6 +14,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
+require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 
 // Subfolder-safe URL prefix (kept for links/redirects on this page).
 $basePath = $basePath ?? base_path();
@@ -34,9 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $requesterEmail         = trim($_POST['requester_email'] ?? '');
     $requesterContact       = trim($_POST['requester_contact_number'] ?? '');
 
-    $communicantName    = trim($_POST['communicant_full_name'] ?? '');
+    $communicantName      = trim($_POST['communicant_full_name'] ?? '');
     $fatherName           = trim($_POST['father_full_name'] ?? '');
-    $motherName           = trim($_POST['mother_full_name'] ?? '');
+    $motherMaidenName     = trim($_POST['mother_maiden_name'] ?? '');
     $firstCommunionDate   = $_POST['date_of_first_communion'] ?: null;
     $minister             = trim($_POST['officiating_minister'] ?? '');
     $bookNo               = trim($_POST['book_no'] ?? '');
@@ -56,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($requesterContact !== '' && !is_valid_phone_number($requesterContact)) $errors[] = 'Please enter a valid contact number (at least 10 digits).';
     if ($communicantName === '')       $errors[] = "Communicant's full name is required.";
     if ($fatherName === '')            $errors[] = "Father's full name is required.";
-    if ($motherName === '')            $errors[] = "Mother's full name is required.";
+        if ($motherMaidenName === '')      $errors[] = "Mother's maiden name is required.";
     if ($purpose === '')               $errors[] = 'Purpose is required.';
 
     if (empty($errors)) {
@@ -80,12 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare(
                 "INSERT INTO first_communion_certificate_requests
-                    (request_id, communicant_full_name, father_full_name, mother_full_name,
+                    (request_id, communicant_full_name, father_full_name, mother_maiden_name,
                      date_of_first_communion, officiating_minister, book_no, page_no, line_no)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $requestId, $communicantName, $fatherName, $motherName, $firstCommunionDate,
+                $requestId, $communicantName, $fatherName, $motherMaidenName, $firstCommunionDate,
                 $minister, $bookNo, $pageNo, $lineNo,
             ]);
 
@@ -94,7 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // TODO: send confirmation email to $requesterEmail with $trackingNumber
+            if (mail_request_received($requesterEmail, $trackingNumber, 'First Communion Certificate Request')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'certificate_requests', $requestId, "Confirmation email sent to {$requesterEmail}");
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -110,11 +113,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <h1>First Communion Certificate Request</h1>
 
     <?php if ($trackingNumber): ?>
-        <div class="alert alert-success">
-            <p>Your request has been submitted. Your tracking number is:</p>
-            <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
-        </div>
+            <?php $successHeading = 'Your request has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
     <?php else: ?>
 
         <?php if (!empty($errors)): ?>
@@ -148,11 +147,11 @@ require_once __DIR__ . '/../../includes/header.php';
                 </label>
 
                 <label>Email Address *
-                    <input type="email" name="requester_email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
+                    <input type="email" name="requester_email" autocomplete="email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
                 </label>
 
                 <label>Contact Number *
-                    <input type="text" name="requester_contact_number" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
+                    <input type="text" name="requester_contact_number" autocomplete="tel" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
                 </label>
 
 
@@ -167,8 +166,8 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Father's Full Name *
                     <input type="text" name="father_full_name" value="<?= e($_POST['father_full_name'] ?? '') ?>" required>
                 </label>
-                <label>Mother's Full Name *
-                    <input type="text" name="mother_full_name" value="<?= e($_POST['mother_full_name'] ?? '') ?>" required>
+                <label>Mother's Maiden Name *
+                    <input type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? '') ?>" required>
                 </label>
                 <label>Date of First Communion (if known)
                     <input type="date" name="date_of_first_communion" value="<?= e($_POST['date_of_first_communion'] ?? '') ?>">

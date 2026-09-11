@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS "HOW IT WORKS" (public explainer page)
+ * SRS-SPPO "HOW IT WORKS" (public explainer page)
  * =====================================================================
  * Purpose: Walks visitors through the parish's request workflow in
  *          five ledger-style steps, then offers two path cards that

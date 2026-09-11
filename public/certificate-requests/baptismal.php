@@ -1,25 +1,82 @@
 <?php
 /**
- * =====================================================================
- * SPPO-IS BAPTISMAL CERTIFICATE REQUEST (public form)
- * =====================================================================
- * Purpose: Request a copy of a Baptismal certificate already on record.
- *          Inserts the shared row into certificate_requests (status
- *          'pending') plus details into baptismal_certificate_requests.
- * Note:    No online ID upload — identity is verified in person at pickup.
- * =====================================================================
+ * ============================================================================
+ * SRS-SPPO — SCHEDULE AND RECORD SYSTEM OF ST. PATRICK'S PARISH OFFICE
+ * ============================================================================
+ *
+ * FILE: public/certificate-requests/baptismal.php
+ *
+ * PURPOSE:
+ *   Public-facing form where a parishioner requests a copy of a Baptismal
+ *   certificate for someone already baptized at this parish.
+ *
+ * HOW IT WORKS:
+ *   1. Visitor fills in requester info + child/baptism details.
+ *   2. On POST, every required field is validated (empty checks, email format,
+ *      phone format, date-not-in-future).
+ *   3. A unique tracking number (e.g. SPPO-2026-000123) is generated.
+ *   4. Two rows are inserted inside a DB transaction:
+ *        a. certificate_requests          — shared table (who, why, copies).
+ *        b. baptismal_certificate_requests — sacrament-specific details.
+ *   5. An audit log entry is written (as "null" user since the submitter is
+ *      not logged in — the parish staff user who processes it will be logged
+ *      when the request is approved/processed).
+ *   6. Success page shows the tracking number. A confirmation email is sent
+ *      via includes/mail.php (disabled by default in config/mail.php — a safe
+ *      no-op until EMAIL_ENABLED is turned on and a relay configured).
+ *
+ * SECURITY NOTES:
+ *   - CSRF token required on POST (csrf_verify() + csrf_field() in the form).
+ *   - All output is escaped with e() (htmlspecialchars) to prevent XSS.
+ *   - The form uses prepared statements throughout — no raw SQL injection risk.
+ *   - No online ID upload — identity is verified in person at pickup.
+ *
+ * DATABASE TABLES TOUCHED:
+ *   - certificate_requests (shared request metadata)
+ *   - baptismal_certificate_requests (baptism-specific details)
+ *   - audit_logs (activity trail)
+ *
+ * RELATED FILES:
+ *   - public/certificate-request.php       (router/selector page)
+ *   - public/track-request.php             (status lookup by tracking number)
+ *   - admin/requests/queue.php             (secretary processes the request)
+ *   - admin/certificates/generate.php      (generates the actual certificate)
+ *   - includes/functions.php               (generate_tracking_number, log_activity, e, etc.)
+ *
+ * @package     SRS-SPPO
+ * @subpackage  Public — Certificate Requests
+ * @filesource  public/certificate-requests/baptismal.php
  */
 
+/**
+ * Load dependencies.
+ *
+ * config/database.php    — creates the $pdo PDO connection (MySQL/MariaDB).
+ * includes/functions.php — helper functions: e(), generate_tracking_number(),
+ *                          log_activity(), base_path(), csrf_verify(), csrf_field(),
+ *                          is_valid_phone_number(), is_future_date().
+ * includes/auth.php      — starts a session (needed for CSRF token storage).
+ *                          This page does NOT require login; it just needs a
+ *                          session for the CSRF mechanism to work.
+ */
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
+require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 
-// Subfolder-safe URL prefix (kept for links/redirects on this page).
+/**
+ * $basePath — subfolder-safe URL prefix (e.g. '/srs-sppo').
+ * Used in the success message link to track-request.php.
+ * Defaults to base_path() from functions.php if not already set.
+ */
 $basePath = $basePath ?? base_path();
 
-$pageTitle = 'Baptismal Certificate Request';
-$errors    = [];
-$trackingNumber = null;
+/**
+ * Page metadata and state variables.
+ */
+$pageTitle       = 'Baptismal Certificate Request';
+$errors          = [];   // validation error messages (filled on POST)
+$trackingNumber  = null; // set on successful submission, shown on success page
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF: reject submissions without a matching session token.
@@ -100,7 +157,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // TODO: send confirmation email to $requesterEmail with $trackingNumber
+            if (mail_request_received($requesterEmail, $trackingNumber, 'Baptismal Certificate Request')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'certificate_requests', $requestId, "Confirmation email sent to {$requesterEmail}");
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -116,11 +175,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <h1>Baptismal Certificate Request</h1>
 
     <?php if ($trackingNumber): ?>
-        <div class="alert alert-success">
-            <p>Your request has been submitted. Your tracking number is:</p>
-            <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
-        </div>
+            <?php $successHeading = 'Your request has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
     <?php else: ?>
 
         <?php if (!empty($errors)): ?>
@@ -154,11 +209,11 @@ require_once __DIR__ . '/../../includes/header.php';
                 </label>
 
                 <label>Email Address *
-                    <input type="email" name="requester_email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
+                    <input type="email" name="requester_email" autocomplete="email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
                 </label>
 
                 <label>Contact Number *
-                    <input type="text" name="requester_contact_number" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
+                    <input type="text" name="requester_contact_number" autocomplete="tel" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
                 </label>
 
 

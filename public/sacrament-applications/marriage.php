@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS MARRIAGE SACRAMENT APPLICATION (public form)
+ * SRS-SPPO MARRIAGE SACRAMENT APPLICATION (public form)
  * =====================================================================
  * Purpose: Apply to be MARRIED at the parish. Inserts the shared row
  *          into sacrament_applications plus groom/bride details into
@@ -17,6 +17,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
+require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 
 // Subfolder-safe URL prefix for links on this page.
 $basePath = $basePath ?? base_path();
@@ -38,9 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $groomContact    = trim($_POST['groom_contact_number'] ?? '');
     $groomEmail      = trim($_POST['groom_email'] ?? '');
     $groomMaritalStatus = $_POST['groom_marital_status'] ?? '';
-    $groomBaptizedHere  = isset($_POST['groom_baptized_here']) ? 1 : 0;
-    $groomBaptismalCertStatus    = $_POST['groom_baptismal_cert_status'] ?? 'pending';
-    $groomConfirmationCertStatus = $_POST['groom_confirmation_cert_status'] ?? 'pending';
+    // Canonical baptism and confirmation clearance is recorded by the
+    // secretary after parish verification, never by the applicant.
+    $groomBaptizedHere  = 0;
+    $groomBaptismalCertStatus    = 'pending';
+    $groomConfirmationCertStatus = 'pending';
 
     // --- Bride --------------------------------------------------------------
     $brideName       = trim($_POST['bride_full_name'] ?? '');
@@ -49,14 +52,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $brideContact    = trim($_POST['bride_contact_number'] ?? '');
     $brideEmail      = trim($_POST['bride_email'] ?? '');
     $brideMaritalStatus = $_POST['bride_marital_status'] ?? '';
-    $brideBaptizedHere  = isset($_POST['bride_baptized_here']) ? 1 : 0;
-    $brideBaptismalCertStatus    = $_POST['bride_baptismal_cert_status'] ?? 'pending';
-    $brideConfirmationCertStatus = $_POST['bride_confirmation_cert_status'] ?? 'pending';
+    $brideBaptizedHere  = 0;
+    $brideBaptismalCertStatus    = 'pending';
+    $brideConfirmationCertStatus = 'pending';
 
     // --- Wedding -------------------------------------------------------------
     $preferredWeddingDate = $_POST['preferred_wedding_date'] ?? '';
     $preferredWeddingTime = $_POST['preferred_wedding_time'] ?: null;
     $preferredWeddingVenue = trim($_POST['preferred_wedding_venue'] ?? 'church');
+    $marriageLicenseRef = trim($_POST['marriage_license_ref'] ?? '');
+    $marriageLicenseRef = ($marriageLicenseRef === '' ? null : $marriageLicenseRef);
     $notes                = trim($_POST['notes'] ?? '');
 
     // --- Principal sponsors (repeatable) ------------------------------------
@@ -119,10 +124,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      groom_marital_status, groom_baptized_here, groom_baptismal_cert_status, groom_confirmation_cert_status,
                      bride_full_name, bride_birthdate, bride_birthplace, bride_contact_number, bride_email,
                      bride_marital_status, bride_baptized_here, bride_baptismal_cert_status, bride_confirmation_cert_status,
-                     preferred_wedding_date, preferred_wedding_time, preferred_wedding_venue,
+                     preferred_wedding_date, preferred_wedding_time, preferred_wedding_venue, marriage_license_ref,
                      pre_cana_seminar_completed, pre_cana_completion_date,
                      canonical_interview_completed, canonical_interview_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId,
@@ -130,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $groomMaritalStatus, $groomBaptizedHere, $groomBaptismalCertStatus, $groomConfirmationCertStatus,
                 $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail,
                 $brideMaritalStatus, $brideBaptizedHere, $brideBaptismalCertStatus, $brideConfirmationCertStatus,
-                $preferredWeddingDate, $preferredWeddingTime, $preferredWeddingVenue,
+                $preferredWeddingDate, $preferredWeddingTime, $preferredWeddingVenue, $marriageLicenseRef,
                 0, NULL,
                 0, NULL,
             ]);
@@ -152,7 +157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // TODO: send confirmation email to $groomEmail and $brideEmail with $trackingNumber
+            if (mail_request_received($groomEmail, $trackingNumber, 'Marriage Application')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$groomEmail}");
+            }
+            if (mail_request_received($brideEmail, $trackingNumber, 'Marriage Application')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$brideEmail}");
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -168,11 +178,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <h1>Marriage Application</h1>
 
     <?php if ($trackingNumber): ?>
-        <div class="alert alert-success">
-            <p>Your application has been submitted. Your tracking number is:</p>
-            <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
-        </div>
+            <?php $successHeading = 'Your application has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
         <?php if ($dateConflictWarning): ?>
             <div class="alert alert-warning"><p><?= e($dateConflictWarning) ?></p></div>
         <?php endif; ?>
@@ -186,7 +192,7 @@ require_once __DIR__ . '/../../includes/header.php';
             </div>
         <?php endif; ?>
 
-        <p>Marriage applications involve additional canonical requirements — a pastoral interview, a pre-Cana seminar, and the reading of banns on three separate dates. The Priest gives final approval. This form starts the process; the parish office will follow up on scheduling each requirement.</p>
+        <p>Marriage applications involve additional canonical requirements — a pastoral interview, a pre-Cana seminar, and the reading of banns on three separate dates. The parish office records each clearance with the priest outside this system and gives final approval. This form starts the process; the office will follow up on scheduling each requirement.</p>
 
         <form method="post" action="">
             <fieldset>
@@ -194,8 +200,8 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Full Name * <input type="text" name="groom_full_name" value="<?= e($_POST['groom_full_name'] ?? '') ?>" required></label>
                 <label>Birthdate * <input type="date" name="groom_birthdate" value="<?= e($_POST['groom_birthdate'] ?? '') ?>" required></label>
                 <label>Birthplace * <input type="text" name="groom_birthplace" value="<?= e($_POST['groom_birthplace'] ?? '') ?>" required></label>
-                <label>Contact Number * <input type="text" name="groom_contact_number" value="<?= e($_POST['groom_contact_number'] ?? '') ?>" required></label>
-                <label>Email Address * <input type="email" name="groom_email" value="<?= e($_POST['groom_email'] ?? '') ?>" required></label>
+                <label>Contact Number * <input type="text" name="groom_contact_number" autocomplete="tel" value="<?= e($_POST['groom_contact_number'] ?? '') ?>" required></label>
+                <label>Email Address * <input type="email" name="groom_email" autocomplete="email" value="<?= e($_POST['groom_email'] ?? '') ?>" required></label>
                 <label>Marital Status *
                     <select name="groom_marital_status" required>
                         <option value="">-- Select --</option>
@@ -204,23 +210,6 @@ require_once __DIR__ . '/../../includes/header.php';
                         <option value="annulled">Annulled</option>
                     </select>
                 </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="groom_baptized_here" value="1" <?= !empty($_POST['groom_baptized_here']) ? 'checked' : '' ?>>
-                    Baptized at this parish
-                </label>
-                <label>Baptismal Certificate
-                    <select name="groom_baptismal_cert_status">
-                        <option value="pending">Not yet submitted</option>
-                        <option value="submitted">Already submitted</option>
-                    </select>
-                </label>
-                <label>Confirmation Certificate
-                    <select name="groom_confirmation_cert_status">
-                        <option value="pending">Not yet submitted</option>
-                        <option value="submitted">Already submitted</option>
-                    </select>
-                </label>
-
             </fieldset>
 
             <fieldset>
@@ -228,8 +217,8 @@ require_once __DIR__ . '/../../includes/header.php';
                 <label>Full Name * <input type="text" name="bride_full_name" value="<?= e($_POST['bride_full_name'] ?? '') ?>" required></label>
                 <label>Birthdate * <input type="date" name="bride_birthdate" value="<?= e($_POST['bride_birthdate'] ?? '') ?>" required></label>
                 <label>Birthplace * <input type="text" name="bride_birthplace" value="<?= e($_POST['bride_birthplace'] ?? '') ?>" required></label>
-                <label>Contact Number * <input type="text" name="bride_contact_number" value="<?= e($_POST['bride_contact_number'] ?? '') ?>" required></label>
-                <label>Email Address * <input type="email" name="bride_email" value="<?= e($_POST['bride_email'] ?? '') ?>" required></label>
+                <label>Contact Number * <input type="text" name="bride_contact_number" autocomplete="tel" value="<?= e($_POST['bride_contact_number'] ?? '') ?>" required></label>
+                <label>Email Address * <input type="email" name="bride_email" autocomplete="email" value="<?= e($_POST['bride_email'] ?? '') ?>" required></label>
                 <label>Marital Status *
                     <select name="bride_marital_status" required>
                         <option value="">-- Select --</option>
@@ -238,23 +227,6 @@ require_once __DIR__ . '/../../includes/header.php';
                         <option value="annulled">Annulled</option>
                     </select>
                 </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="bride_baptized_here" value="1" <?= !empty($_POST['bride_baptized_here']) ? 'checked' : '' ?>>
-                    Baptized at this parish
-                </label>
-                <label>Baptismal Certificate
-                    <select name="bride_baptismal_cert_status">
-                        <option value="pending">Not yet submitted</option>
-                        <option value="submitted">Already submitted</option>
-                    </select>
-                </label>
-                <label>Confirmation Certificate
-                    <select name="bride_confirmation_cert_status">
-                        <option value="pending">Not yet submitted</option>
-                        <option value="submitted">Already submitted</option>
-                    </select>
-                </label>
-
             </fieldset>
 
             <fieldset>
@@ -274,7 +246,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     </label>
                 </div>
                                                                                 <p class="field-hint">This is a preferred date only. The parish office will confirm availability against the calendar.</p>
-                <label>Marriage License Reference
+                <label>Marriage License Reference (number / date issued, if already obtained)
                     <input type="text" name="marriage_license_ref" value="<?= e($_POST['marriage_license_ref'] ?? '') ?>" placeholder="License number / date issued">
                 </label>
             </fieldset>

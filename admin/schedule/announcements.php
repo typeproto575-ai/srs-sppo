@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS ANNOUNCEMENTS MANAGER (admin)
+ * SRS-SPPO ANNOUNCEMENTS MANAGER (admin)
  * =====================================================================
  * Purpose: Create/edit/delete the announcements shown on the public
  *          home page (add / edit / delete handlers below, newest
@@ -76,10 +76,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_announcement']
     exit;
 }
 
+// --- Edit (?edit=ID opens the shared dialog pre-filled) -------------------------
+$editAnnouncement = null;
+if (isset($_GET['edit'])) {
+    $stmt = $pdo->prepare("SELECT * FROM announcements WHERE id = ?");
+    $stmt->execute([(int) $_GET['edit']]);
+    $editAnnouncement = $stmt->fetch();
+    if (!$editAnnouncement) {
+        redirect_to('/admin/schedule/announcements.php');
+        exit;
+    }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_announcement']) && csrf_verify()) {
+    require_role('secretary');
+
+    $editId      = (int) ($_POST['edit_id'] ?? 0);
+    $title      = trim($_POST['title'] ?? '');
+    $content    = trim($_POST['content'] ?? '');
+    $eventDate  = $_POST['event_date'] ?: null;
+    $isPublished = isset($_POST['is_published']) ? 1 : 0;
+
+    if ($title === '')   $errors[] = 'Title is required.';
+    if ($content === '') $errors[] = 'Content is required.';
+
+    if ($editId && empty($errors)) {
+        $stmt = $pdo->prepare(
+            "UPDATE announcements SET title = ?, content = ?, event_date = ?, is_published = ? WHERE id = ?"
+        );
+        $stmt->execute([$title, $content, $eventDate, $isPublished, $editId]);
+        log_activity($pdo, current_user()['id'], 'announcement_updated', 'announcements', $editId, "Updated: {$title}");
+        redirect_to('/admin/schedule/announcements.php?updated=1');
+        exit;
+    }
+    // Validation failed: stay on the record being edited so errors show in the dialog.
+    $editStmt = $pdo->prepare("SELECT * FROM announcements WHERE id = ?");
+    $editStmt->execute([$editId]);
+    $editAnnouncement = $editStmt->fetch() ?: null;
+}
+
+
 if (isset($_GET['added'])) $success = 'Announcement posted.';
+if (isset($_GET['updated'])) $success = 'Announcement updated.';
+if (isset($_GET['deleted'])) $success = 'Announcement deleted.';
 
 $stmt = $pdo->query("SELECT * FROM announcements ORDER BY created_at DESC");
 $announcements = $stmt->fetchAll();
+
+// Expired = published with an event date already in the past; the secretary
+// unpublishes it manually, so the list shows the state with a badge.
+$today = date('Y-m-d');
+foreach ($announcements as &$annRow) {
+    $annRow['is_expired'] = (bool) ($annRow['event_date'] && $annRow['event_date'] < $today);
+}
+unset($annRow);
+$isEdit = $editAnnouncement !== null;
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
@@ -91,6 +141,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
+        <?php if ($isSecretary): ?>
+        <div class="accounts-toolbar">
+            <button type="button" class="btn" data-open-dialog="#announcement-dialog">+ Post Announcement</button>
+        </div>
+        <?php endif; ?>
         <?php if (empty($announcements)): ?>
             <p>No announcements yet.</p>
         <?php else: ?>
@@ -101,16 +156,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <tr>
                         <td><?= e($a['title']) ?><br><small><?= e(mb_strimwidth($a['content'], 0, 80, '…')) ?></small></td>
                         <td><?= $a['event_date'] ? e(date('M j, Y', strtotime($a['event_date']))) : '—' ?></td>
-                        <td><?= $a['is_published'] ? '<span class="status-badge status-approved">Published</span>' : '<span class="status-badge status-pending">Draft</span>' ?></td>
+                        <td><?= $a['is_published'] ? '<span class="status-badge status-approved">Published</span>' : '<span class="status-badge status-pending">Draft</span>' ?><?= ($a['is_expired'] ?? false) ? ' <span class="status-badge status-rejected">Expired</span>' : '' ?></td>
                         <td><?= e(date('M j, Y', strtotime($a['created_at']))) ?></td>
-                        <td>
+                        <td class="row-actions">
                             <?php if ($isSecretary): ?>
+                            <a class="btn btn-small" href="<?= $basePath ?>/admin/schedule/announcements.php?edit=<?= (int) $a['id'] ?>">Edit</a>
                             <form method="post" style="display:inline;">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
                                 <button type="submit" name="toggle_publish" value="1" class="btn btn-secondary btn-small"><?= $a['is_published'] ? 'Unpublish' : 'Publish' ?></button>
                             </form>
-                            <form method="post" style="display:inline;" onsubmit="return confirm('Delete this announcement?');">
+                            <form method="post" style="display:inline;" data-confirm="Delete this announcement?">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
                                 <button type="submit" name="delete_announcement" value="1" class="btn btn-secondary btn-small">Delete</button>
@@ -123,21 +179,30 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         <?php endif; ?>
 
+        <!-- Add/Edit announcement dialog (same records encode-dialog style) -->
         <?php if ($isSecretary): ?>
-        <h2 style="margin-top:2.5rem;">Post New Announcement</h2>
-        <form method="post" action="">
-            <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
-            <fieldset>
-                <legend>New Announcement</legend>
-                <label>Title * <input type="text" name="title" required></label>
-                <label>Content * <textarea name="content" required></textarea></label>
-                <label>Related Event Date (optional) <input type="date" name="event_date"></label>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="is_published" value="1" checked>
-                    Publish immediately (visible on the public landing page)
-                </label>
-            </fieldset>
-            <button type="submit" name="add_announcement" value="1" class="btn">Post Announcement</button>
-        </form>
+        <dialog id="announcement-dialog" class="encode-dialog"<?= $isEdit ? ' data-autoshow' : '' ?>>
+            <div class="dialog-head">
+                <h2><?= $isEdit ? 'Edit announcement — ' . e($editAnnouncement['title']) : 'Post new announcement' ?></h2>
+                <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <form method="post" action="">
+                    <?= csrf_field() ?>
+                    <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editAnnouncement['id'] ?>"><?php endif; ?>
+                    <label>Title * <input type="text" name="title" value="<?= e($_POST['title'] ?? ($editAnnouncement['title'] ?? '')) ?>" required></label>
+                    <label>Content * <textarea name="content" required><?= e($_POST['content'] ?? ($editAnnouncement['content'] ?? '')) ?></textarea></label>
+                    <label>Related Event Date (optional) <input type="date" name="event_date" value="<?= e($_POST['event_date'] ?? ($editAnnouncement['event_date'] ?? '')) ?>"></label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="is_published" value="1" <?= (($_SERVER['REQUEST_METHOD'] === 'POST' ? isset($_POST['is_published']) : (bool) ($editAnnouncement['is_published'] ?? true))) ? 'checked' : '' ?>>
+                        Publish immediately (visible on the public landing page)
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit" name="<?= $isEdit ? 'update_announcement' : 'add_announcement' ?>" value="1" class="btn"><?= $isEdit ? 'Save changes' : 'Post Announcement' ?></button>
+                        <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

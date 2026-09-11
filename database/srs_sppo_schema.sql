@@ -1,13 +1,13 @@
 -- =====================================================================
--- SPPO-IS: Schedule and Record System of Saint Patrick's Parish Office
+-- SRS-SPPO: Schedule and Record System of Saint Patrick's Parish Office
 -- Database Schema (MySQL / MariaDB, for XAMPP)
 -- No monetary/fee fields anywhere by design.
 -- =====================================================================
 
-CREATE DATABASE IF NOT EXISTS sppo_is_db
+CREATE DATABASE IF NOT EXISTS srs_sppo_db
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE sppo_is_db;
+USE srs_sppo_db;
 
 -- =====================================================================
 -- 1. USERS (Secretary and Priest accounts)
@@ -69,6 +69,7 @@ CREATE TABLE baptismal_records (
   parents_origin    VARCHAR(150),
   parents_residence VARCHAR(150),
   minister_name     VARCHAR(150),
+  proxy_name        VARCHAR(150) DEFAULT NULL,  -- for cases where a proxy stands in for an absent godparent
   remarks           TEXT,
   book_no           VARCHAR(20),
   page_no           VARCHAR(20),
@@ -96,7 +97,7 @@ CREATE TABLE confirmation_records (
   confirmand_full_name VARCHAR(150) NOT NULL,
   birthdate           DATE,
   father_name         VARCHAR(150),
-  mother_name         VARCHAR(150),
+  mother_maiden_name  VARCHAR(150),          -- renamed from mother_name for consistency with baptismal_records
   sponsor_name        VARCHAR(150),
   minister_name       VARCHAR(150),
   baptismal_record_id INT UNSIGNED,          -- prerequisite link
@@ -119,7 +120,7 @@ CREATE TABLE first_communion_records (
   communicant_full_name VARCHAR(150) NOT NULL,
   domicile              VARCHAR(255),      -- address per Book of First Communicants
   father_name           VARCHAR(150),
-  mother_name           VARCHAR(150),
+  mother_maiden_name    VARCHAR(150),        -- renamed from mother_name for consistency with baptismal_records
   minister_name         VARCHAR(150),
   baptismal_record_id   INT UNSIGNED,        -- prerequisite link
   remarks               TEXT,
@@ -165,21 +166,20 @@ CREATE TABLE marriage_witnesses (
 ) ENGINE=InnoDB;
 
 -- --- Death / Burial (simplified per scope: alive/deceased status only) ----
+-- 7-column status table: name + date of death + alive/deceased flag, plus the
+-- nullable person_id bridge linking the deceased to a shared identity row.
+-- The full Liber Defunctorum register fields are documented in the paper
+-- but intentionally NOT implemented (dropped from the live DB 2026-09-10).
 CREATE TABLE death_burial_records (
-  id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  entry_no          VARCHAR(20),
+  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   deceased_full_name VARCHAR(150) NOT NULL,
-  date_of_death     DATE,
-  age_at_death      INT UNSIGNED,
-  is_deceased       TINYINT(1) NOT NULL DEFAULT 0,  -- 0=alive, 1=deceased
-  remarks           TEXT,
-  book_no           VARCHAR(20),
-  page_no           VARCHAR(20),
-  line_no           VARCHAR(20),
-  date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  encoded_by        INT UNSIGNED,
-  person_id         INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
+  date_of_death      DATE,
+  is_deceased        TINYINT(1) NOT NULL DEFAULT 0,  -- 0=alive, 1=deceased
+  date_encoded       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  encoded_by         INT UNSIGNED,
+  person_id          INT UNSIGNED,
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 
@@ -200,7 +200,6 @@ CREATE TABLE certificate_requests (
   purpose_other               VARCHAR(150),
   num_copies                  TINYINT UNSIGNED NOT NULL DEFAULT 1,
   notes                       TEXT,
-  valid_id_path                VARCHAR(255), -- kept nullable; identity verified in person at pickup per design doc
   status                      ENUM('pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected') NOT NULL DEFAULT 'pending',
   date_submitted               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed               DATETIME,
@@ -298,8 +297,8 @@ CREATE TABLE marriage_certificate_requests (
 
 -- =====================================================================
 -- 4. SACRAMENT APPLICATIONS (shared table + one extension per type)
---    Baptism, Confirmation, First Communion, Marriage -- no Death/Burial
---    applications (no one applies in advance to be buried).
+--    Baptism and Marriage have forms; Confirmation and First Communion are
+--    status flags on records (legacy extension tables kept for old data).
 -- =====================================================================
 
 CREATE TABLE sacrament_applications (
@@ -336,7 +335,7 @@ CREATE TABLE baptismal_applications (
   book_no                VARCHAR(20),
   page_no                VARCHAR(20),
   line_no                VARCHAR(20),
-    certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
+  certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
   baptism_date           DATE,                 -- per parish form (Date of Baptism)
   notes                 TEXT,
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE
@@ -415,7 +414,8 @@ CREATE TABLE marriage_applications (
 
   preferred_wedding_date      DATE NOT NULL,
   preferred_wedding_time      TIME,
-    preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
+  preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
+  venue_chapel_name           VARCHAR(150) DEFAULT NULL,  -- chapel name when preferred_wedding_venue = 'barangay_chapel'
   marriage_license_ref      VARCHAR(100),  -- Marriage license reference number (text field, not upload)
   pre_cana_seminar_completed  TINYINT(1) NOT NULL DEFAULT 0,
   pre_cana_completion_date    DATE,
@@ -521,3 +521,22 @@ CREATE TABLE audit_logs (
 INSERT INTO sacrament_eligibility_settings (sacrament_type, min_age, max_age) VALUES
   ('first_communion', 7, 12),
   ('confirmation', 12, 18);
+
+-- =====================================================================
+-- 8. SITE SETTINGS (secretary-editable public page content)
+-- Key/value store backing Admin > Website > Public Page Content. Seeds
+-- mirror the values previously hardcoded on public/index.php.
+-- =====================================================================
+CREATE TABLE site_settings (
+  setting_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  setting_key   VARCHAR(64)  NOT NULL UNIQUE,
+  setting_value TEXT         NOT NULL,
+  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by    INT UNSIGNED NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO site_settings (setting_key, setting_value) VALUES
+('hero_eyebrow_text', 'Parish Office Online'),
+('hero_subtitle_text', 'Dingalan, Aurora - the parish''s sacrament records and certificates, kept faithfully for generations, now easier to reach.'),
+('office_hours_text', CONCAT('Tuesday - Friday: 8:00 AM - 5:00 PM', CHAR(10), 'Saturday: 8:00 AM - 12:00 NN', CHAR(10), 'Sunday & Monday: Closed')),
+('office_location_text', CONCAT('St. Patrick''s Parish Office', CHAR(10), 'Dingalan, Aurora, Philippines'));

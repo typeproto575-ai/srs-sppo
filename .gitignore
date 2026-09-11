@@ -6,6 +6,12 @@
 # Tool artifacts
 .freebuff/
 
+# Dev/debug scripts (kept locally; never deployed via git archive)
+/devtools/
+
+# Database dumps (machine-local safety backups)
+/database/backups/
+
 # OS junk
 Thumbs.db
 .DS_Store

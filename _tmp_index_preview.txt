@@ -1,0 +1,125 @@
+<?php
+/**
+ * =====================================================================
+ * SRS-SPPO PUBLIC HOME PAGE
+ * =====================================================================
+ * Purpose: Landing page for parishioners visiting the site.
+ *          Shows announcements, upcoming events, and key actions.
+ *
+ * Features:
+ *   - Latest published announcements (newest first, max 5) as cards
+ *   - Upcoming schedule events with FullCalendar view
+ *   - Fallback list if calendar library fails to load
+ *   - Call-to-action links in the hero + static office-hours card
+ *
+ * Access: Public (no login required)
+ * =====================================================================
+ */
+
+// Include required files: database connection and helper functions
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/functions.php';
+
+// Subfolder-safe URL prefix for the CTA links below.
+$basePath = $basePath ?? base_path();
+// Load secretary-editable public page content (site_settings table from migration 007).
+$settings = [];
+try {
+    $tableExists = (bool) $pdo->query(
+        "SELECT 1 FROM information_schema.tables " .
+        "WHERE table_schema = DATABASE() AND table_name = 'site_settings'"
+    )->fetch();
+    if ($tableExists) {
+        foreach ($pdo->query("SELECT setting_key, setting_value FROM site_settings ORDER BY setting_id")->fetchAll() as $row) {
+            $settings[$row['setting_key']] = $row['setting_value'];
+        }
+    }
+} catch (\Throwable $e) {
+    $settings = [];
+}
+
+$defaultSettings = [
+    'hero_heading_text'    => 'Welcome to St. Patrick\'s Parish Office',
+    'hero_eyebrow_text'    => 'Parish Office Online',
+    'hero_subtitle_text'   => 'Dingalan, Aurora - the parish\'s sacrament records and certificates, kept faithfully for generations, now easier to reach.',
+    'office_hours_text'    => "Tuesday - Friday: 8:00 AM - 5:00 PM\nSaturday: 8:00 AM - 12:00 NN\nSunday & Monday: Closed",
+    'office_location_text' => "St. Patrick's Parish Office\nDingalan, Aurora, Philippines",
+];
+foreach ($defaultSettings as $key => $value) {
+    if (!isset($settings[$key])) {
+        $settings[$key] = $value;
+    }
+}
+
+
+$pageTitle = 'Home';
+
+// Convert PHP parse-time constants (timezone rows, after-today flag) into
+// per-event metadata that the FullCalendar plugin reads.
+//
+// - Color is driven by schedule_events.event_type + the map below. Events
+//   whose type the map does not recognize fall back to a neutral grey so the
+//   calendar stays readable even for unexpected types.
+//
+// - Events are large enough to read because:
+//   * dayMaxEventRows + eventDisplay: 'block' let each event grow to its full
+//     content instead of clipping to "+N more".
+//   * displayEventTime: true shows the time in 12-hour format.
+//   * fixedWeekCount: false drops the empty trailing week.
+//   * text overflow / truncation is disabled so long titles wrap normally.
+$typeColorMap = [
+    'mass'       => '#2a7fe0',   // weekdays / holy days reference blue
+    'wedding'    => '#d14b8b',   // celebrations - warm pink
+    'confirmation' => '#8a5fc9',
+    'baptism'    => '#2a9d8f',   // baptism color - teal
+    'feast'      => '#e8a049',   // feast days - warm gold
+    'activity'   => '#7c6bc0',   // other parish activities - soft violet
+    'lecture'    => '#37a694',
+];
+function schedule_event_color($type, $map) {
+    return isset($map[$type]) ? $map[$type] : '#7a8797';
+}
+
+// Upcoming schedule events (today forward, capped at 10)
+$upcomingEvents = $pdo->query(
+    "SELECT * FROM schedule_events WHERE event_date >= CURDATE() ORDER BY event_date ASC LIMIT 10"
+)->fetchAll();
+$upcomingEvents = $pdo->query(
+    "SELECT * FROM schedule_events WHERE event_date >= CURDATE() ORDER BY event_date ASC LIMIT 10"
+)->fetchAll();
+
+// Include the shared public header (nav, page title, etc.)
+require_once __DIR__ . '/../includes/header.php';
+?>
+
+<section class="hero">
+    <p class="hero-eyebrow"><?= e($settings['hero_eyebrow_text']) ?></p>
+    <h1><?= e($settings['hero_heading_text']) ?></h1>
+    <p class="hero-sub"><?= e($settings['hero_subtitle_text']) ?></p>
+    <!-- Primary calls to action live in the hero so visitors see them first -->
+    <div class="hero-actions">
+        <a href="<?= $basePath ?>/public/certificate-request.php" class="btn">Request a Certificate</a>
+        <a href="<?= $basePath ?>/public/how-it-works.php" class="btn btn-secondary">See How It Works</a>
+    </div>
+</section>
+
+<section class="office-hours">
+    <h2>Visit or Contact the Office</h2>
+    <div class="office-hours-grid">
+        <div class="office-card">
+            <h3>Office Hours</h3>
+            <!-- Confirm/edit these with the parish before going live -->
+            <ul class="office-hours-list">
+                <?php foreach (explode("\n", $settings['office_hours_text']) as $line): ?>
+                    <li><?= e($line) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+        <div class="office-card">
+            <h3>Location</h3>
+            <p><?= nl2br(e($settings['office_location_text'])) ?></p>
+            <p class="field-hint">Certificates and claim slips are released in person at the counter — bring a valid ID.</p>
+        </div>
+    </div>
+</section>
+

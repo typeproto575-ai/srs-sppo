@@ -1,7 +1,7 @@
 <?php
 /**
  * ================================================================
- * SPPO-IS DATABASE BACKUP / EXPORT (admin, secretary-only)
+ * SRS-SPPO DATABASE BACKUP / EXPORT (admin, secretary-only)
  * ================================================================
  * 
  * PURPOSE: Generates a portable .sql dump of every table (structure + data)
@@ -47,7 +47,7 @@ $pageTitle = 'Database Backup / Export';
 function export_database_sql(PDO $pdo): string
 {
     // Header comment with timestamp
-    $output = "-- SPPO-IS database export\n-- Generated " . date('Y-m-d H:i:s') . "\n\n";
+    $output = "-- SRS-SPPO database export\n-- Generated " . date('Y-m-d H:i:s') . "\n\n";
     $output .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
 
     // Get all table names in the database
@@ -88,10 +88,13 @@ function export_database_sql(PDO $pdo): string
 }
 
 // ================================================================
-// HANDLE DOWNLOAD REQUEST
+// HANDLE DOWNLOAD REQUEST (POST + CSRF only)
 // ================================================================
-// When user clicks "Download Full Backup", generate and serve the SQL file
-if (isset($_GET['download']) && $_GET['download'] === '1') {
+// SECURITY: Uses POST instead of GET to prevent:
+// - CSRF attacks (attacker can't forge a POST with CSRF token via link/image)
+// - Accidental triggers (crawlers, prefetch, browser preloading)
+// - Cached/leaked URLs in browser history or server logs
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download']) && csrf_verify()) {
     // Generate the SQL dump
     $sql = export_database_sql($pdo);
 
@@ -100,7 +103,7 @@ if (isset($_GET['download']) && $_GET['download'] === '1') {
 
     // Set headers for file download
     header('Content-Type: application/sql');
-    header('Content-Disposition: attachment; filename="sppo-is-backup-' . date('Y-m-d_His') . '.sql"');
+    header('Content-Disposition: attachment; filename="srs-sppo-backup-' . date('Y-m-d_His') . '.sql"');
     header('Content-Length: ' . strlen($sql));
     
     // Output the SQL and stop execution
@@ -125,6 +128,7 @@ $extraHead = '';
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
         <h1>Database Backup / Export</h1>
         <p class="field-hint">Downloads a full .sql dump (structure + data) of the database. Store this somewhere safe outside the server — this is your disaster-recovery copy alongside the physical logbooks.</p>
+        <p class="field-hint"><strong>Security notice:</strong> The exported file contains all sacramental records and hashed account credentials. Store it encrypted and offline — never on shared drives or sent via email.</p>
 
         <table class="admin-table" style="max-width:500px;">
             <thead><tr><th>Table</th><th>Rows</th></tr></thead>
@@ -135,9 +139,10 @@ $extraHead = '';
             </tbody>
         </table>
 
-        <p style="margin-top:1.5rem;">
-            <a href="?download=1" class="btn">Download Full Backup (.sql)</a>
-        </p>
+        <form method="post" style="margin-top:1.5rem;">
+            <?= csrf_field() ?>
+            <button type="submit" name="download" value="1" class="btn">Download Full Backup (.sql)</button>
+        </form>
         <p class="field-hint">This may take a moment for large tables. The download starts automatically once ready.</p>
 <?php // Include the admin footer (closing tags) ?>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?> 

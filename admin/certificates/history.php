@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS PRINT / PICKUP HISTORY (admin)
+ * SRS-SPPO PRINT / PICKUP HISTORY (admin)
  * =====================================================================
  * Purpose: Records when certificates were printed and RELEASED, and to
  *          whom - the pickup log. "Mark released" captures the pickup
@@ -29,19 +29,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_released']) && csrf_verify()) {
     require_role('secretary');
     $logId = (int) ($_POST['log_id'] ?? 0);
-    $requestId = (int) ($_POST['request_id'] ?? 0);
-
     if ($logId) {
-        $stmt = $pdo->prepare("UPDATE certificate_generation_log SET print_status = 'released', pickup_date = NOW() WHERE id = ?");
+        $stmt = $pdo->prepare('SELECT certificate_request_id FROM certificate_generation_log WHERE id = ?');
         $stmt->execute([$logId]);
+        $requestId = (int) ($stmt->fetchColumn() ?: 0);
 
         if ($requestId) {
-            $stmt2 = $pdo->prepare("UPDATE certificate_requests SET status = 'released' WHERE id = ?");
-            $stmt2->execute([$requestId]);
-        }
+            $stmt = $pdo->prepare("UPDATE certificate_generation_log SET print_status = 'released', pickup_date = NOW() WHERE id = ?");
+            $stmt->execute([$logId]);
+            $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'released' WHERE id = ?");
+            $stmt->execute([$requestId]);
 
-        log_activity($pdo, current_user()['id'], 'certificate_released', 'certificate_generation_log', $logId, 'Certificate marked released at pickup');
-        $notice = 'Marked as released.';
+            log_activity($pdo, current_user()['id'], 'certificate_released', 'certificate_generation_log', $logId, 'Certificate marked released at pickup');
+            $notice = 'Marked as released.';
+        }
     }
 }
 
@@ -96,7 +97,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <form method="post">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="log_id" value="<?= (int) $log['id'] ?>">
-                                <input type="hidden" name="request_id" value="<?= (int) $log['certificate_request_id'] ?>">
                                 <button type="submit" name="mark_released" value="1" class="btn btn-small">Mark Released</button>
                             </form>
                             <?php endif; ?>

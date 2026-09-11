@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS MARRIAGE RECORDS (admin register)
+ * SRS-SPPO MARRIAGE RECORDS (admin register)
  * =====================================================================
  * Purpose: Digital mirror of the physical marriage register: encode
  *          entries from the logbook, list/search, and serve as the
@@ -54,6 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         try {
             $pdo->beginTransaction();
 
+            // Make room for a mid-register insert when requested.
+            $shifted = 0;
+            if ($entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
+                $shifted = register_shift_entry_numbers($pdo, 'marriage_records', $entryNo);
+            }
+
             $stmt = $pdo->prepare(
                 "INSERT INTO marriage_records
                     (entry_no, marriage_date, husband_full_name, wife_maiden_name, husband_birthdate,
@@ -78,10 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             }
 
             log_activity($pdo, current_user()['id'], 'marriage_record_encoded', 'marriage_records', $recordId,
-                "Marriage record encoded for {$husbandName} & {$wifeMaidenName}");
+                "Marriage record encoded for {$husbandName} & {$wifeMaidenName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
             $pdo->commit();
-            redirect_to('/admin/records/marriage.php?added=1');
+            redirect_to('/admin/records/marriage.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -199,20 +205,32 @@ if (isset($_GET['edit'])) {
 }
 $isEdit = $editRecord !== null;
 
-if (isset($_GET['added'])) $success = 'Marriage record saved.';
+// Suggested next logbook numbers for the encode dialog (create mode only).
+$suggest = $isEdit
+    ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
+    : register_next_logbook_numbers($pdo, 'marriage_records');
+
+if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
 if (isset($_GET['updated'])) $success = 'Marriage record updated.';
 if (isset($_GET['deleted'])) $success = 'Marriage record deleted.';
 
-$q = trim($_GET['q'] ?? '');
-if ($q !== '') {
-    $stmt = $pdo->prepare(
-        "SELECT * FROM marriage_records WHERE husband_full_name LIKE ? OR wife_maiden_name LIKE ?
-         ORDER BY marriage_date DESC LIMIT 100"
-    );
-    $stmt->execute(['%' . $q . '%', '%' . $q . '%']);
-} else {
-    $stmt = $pdo->query("SELECT * FROM marriage_records ORDER BY marriage_date DESC LIMIT 100");
-}
+// --- Filter / paginate (shared component) --------------------------------
+$rfConfig = [
+    'date_column'    => 'marriage_date',
+    'search_columns' => ['husband_full_name', 'wife_maiden_name', 'entry_no', 'officiating_minister'],
+];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM marriage_records WHERE 1=1 {$rf['where']}");
+$stmt->execute($rf['params']);
+$rfTotal = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare(
+    "SELECT * FROM marriage_records WHERE 1=1 {$rf['where']}
+     ORDER BY marriage_date DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
+);
+$stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
@@ -225,16 +243,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>Search by Husband or Wife's Name
-                <input type="text" name="q" value="<?= e($q) ?>">
-            </label>
-            <button type="submit" class="btn btn-small">Search</button>
-            <?php if ($q !== ''): ?><a href="<?= $basePath ?>/admin/records/marriage.php" class="btn btn-secondary btn-small">Clear</a><?php endif; ?>
-        </form>
+        <?php rf_render_bar($basePath . '/admin/records/marriage.php', $rfConfig, $rf); ?>
 
         <?php if (empty($records)): ?>
-            <p>No marriage records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
+            <p>No marriage records found<?= $rf['q'] !== '' ? ' for "' . e($rf['q']) . '"' : '' ?>.</p>
         <?php else: ?>
         <table class="admin-table">
             <thead>
@@ -270,6 +282,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </tbody>
         </table>
         <?php endif; ?>
+        <?php rf_render_pagination($basePath . '/admin/records/marriage.php', $rfTotal, $rf); ?>
 
         <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
@@ -289,11 +302,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">
-                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>"></label>
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? '') ?>"></label>
+                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? $suggest['entry_no']) ?>"></label>
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? $suggest['book_no']) ?>"></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? $suggest['page_no']) ?>"></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? $suggest['line_no']) ?>"></label>
                 </div>
+                <?php if (!$isEdit): ?>
+                <label>If the Entry No. already exists
+                    <select name="entry_conflict">
+                        <option value="shift" selected>Shift later entries to make room</option>
+                        <option value="keep">Save as entered (duplicate allowed)</option>
+                    </select>
+                </label>
+                <p class="field-hint">Suggestions are pre-filled from the last entry — edit them freely. "Shift" bumps every later entry with the same numbering up by one, for inserting into the middle of the register.</p>
+                <?php endif; ?>
             </fieldset>
 
             <fieldset>

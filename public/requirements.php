@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * =====================================================================
- * SPPO-IS SACRAMENT REQUIREMENTS PAGE
+ * SRS-SPPO SACRAMENT REQUIREMENTS PAGE
  * =====================================================================
  * Purpose: Public-facing page listing the documentary requirements
  *          parishioners must prepare for each sacrament or certificate

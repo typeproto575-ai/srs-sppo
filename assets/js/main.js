@@ -1,11 +1,14 @@
 /* =====================================================================
-   SPPO-IS — SITE-WIDE FRONT-END HELPERS (vanilla JS, no frameworks)
+   SRS-SPPO — SITE-WIDE FRONT-END HELPERS (vanilla JS, no frameworks)
    =====================================================================
    Purpose: Small progressive enhancements loaded last on every page
    (via includes/footer.php / admin-footer.php):
      1. Auto-dismiss flash messages marked with [data-auto-dismiss].
      2. Confirmation prompts for destructive submits marked with
         [data-confirm="message"] on the <form>.
+      3. Modal encode dialogs ([data-open-dialog], [data-autoshow]).
+      4. Record-list filter panel sync + click-outside close.
+      5. Admin sidebar dropdown open/closed memory (localStorage).
    Every enhancement is opt-in via HTML attributes, so pages without
    the attributes are unaffected.
    ===================================================================== */
@@ -50,4 +53,65 @@ document.addEventListener('DOMContentLoaded', function () {
             if (ev.target === dlg) dlg.close(); // click landed on the backdrop
         });
     });
+
+    // ---- 4) Record list filter panel (records pages) ---------------------
+    // The From/To year inputs only work while "Custom range" is selected;
+    // they are disabled and greyed out for every other choice.
+    document.querySelectorAll('.filter-panel').forEach(function (panel) {
+        var radios = panel.querySelectorAll('input[name="range"]');
+        var customBox = panel.querySelector('.filter-custom-dates');
+        if (!radios.length || !customBox) return;
+        var custom = customBox.querySelectorAll('input');
+        var sync = function () {
+            var checked = panel.querySelector('input[name="range"]:checked');
+            var on = checked !== null && checked.value === 'custom';
+            customBox.classList.toggle('is-off', !on);
+            custom.forEach(function (el) { el.disabled = !on; });
+        };
+        radios.forEach(function (r) { r.addEventListener('change', sync); });
+        sync();
+    });
+    // Clicking anywhere outside an open filter panel closes it.
+    document.querySelectorAll('details.filter-popup').forEach(function (popup) {
+        document.addEventListener('click', function (ev) {
+            if (popup.open && !popup.contains(ev.target)) popup.open = false;
+        });
+    });
+    // ---- 5) Admin sidebar dropdown memory ----------------------------------
+    // Each sidebar nav group is a <details data-sidebar-group="..."> sharing
+    // name="admin-sidebar" (native exclusive-accordion in modern browsers).
+    // The server pre-opens the group holding the current page (see
+    // includes/admin-header.php $groupIsOpen); a saved manual choice below
+    // overrides that default so collapsed/expanded state survives navigation.
+    (function () {
+        var KEY = 'sppo-sidebar-open';
+        var groups = Array.prototype.slice.call(
+            document.querySelectorAll('details.sidebar-group[data-sidebar-group]')
+        );
+        if (!groups.length) return; // not an admin page — nothing to remember
+        var read = function () {
+            try { return JSON.parse(window.localStorage.getItem(KEY)) || {}; }
+            catch (err) { return {}; }
+        };
+        var write = function (state) {
+            try { window.localStorage.setItem(KEY, JSON.stringify(state)); }
+            catch (err) { /* storage unavailable (private mode) — stay server-driven */ }
+        };
+        var saved = read();
+        if (Object.keys(saved).length > 0) {
+            groups.forEach(function (g) {
+                var name = g.getAttribute('data-sidebar-group');
+                if (saved[name] === true) { g.open = true; }
+                else if (saved[name] === false) { g.open = false; }
+            });
+        }
+        groups.forEach(function (g) {
+            g.addEventListener('toggle', function () {
+                var state = read();
+                state[g.getAttribute('data-sidebar-group')] = g.open;
+                write(state);
+            });
+        });
+    })();
+
 });

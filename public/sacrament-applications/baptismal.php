@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS BAPTISMAL SACRAMENT APPLICATION (public form)
+ * SRS-SPPO BAPTISMAL SACRAMENT APPLICATION (public form)
  * =====================================================================
  * Purpose: Online application to HAVE A CHILD BAPTIZED at the parish.
  *          Inserts a shared row into sacrament_applications plus the
@@ -16,6 +16,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
+require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 
 // Subfolder-safe URL prefix for links inside the success message.
 $basePath = $basePath ?? base_path();
@@ -85,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (application_id, child_full_name, child_birthdate, child_birthplace,
                      father_full_name, father_birthplace, mother_maiden_name, mother_birthplace,
                      parents_address, parents_union_type, parent_guardian_name,
-                     contact_number, email, preferred_date,
+                     contact_number, email, preferred_date, baptism_date,
                      delegated_minister, book_no, page_no, line_no, certificate_done, notes)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
@@ -93,26 +94,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $applicationId, $childName, $childBirthdate, $childBirthplace,
                 $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
                 $parentsAddress, $parentsUnionType, $parentGuardian,
-                $contactNumber, $email, $preferredDate,
+                $contactNumber, $email, $preferredDate, $baptismDate,
                 $delegatedMinister, $bookNo, $pageNo, $lineNo, $certificateDone, $notes,
             ]);
             $baptismalApplicationId = (int) $pdo->lastInsertId();
 
             $godparentStmt = $pdo->prepare(
-                "INSERT INTO baptismal_application_godparents (baptismal_application_id, godparent_name, godparent_residence)
-                 VALUES (?, ?, ?)"
+                "INSERT INTO baptismal_application_godparents (baptismal_application_id, godparent_name, godparent_residence, godparent_type)
+                 VALUES (?, ?, ?, ?)"
             );
-            foreach ($godfatherNames as $i => $name) {
+            foreach ($godfatherNames as $i => $name) { $gtype = 'godfather';
                 $name = trim($name);
                 if ($name === '') continue;
                 $residence = trim($godfatherResidences[$i] ?? '');
-                $godparentStmt->execute([$baptismalApplicationId, $name, $residence]);
+                $godparentStmt->execute([$baptismalApplicationId, $name, $residence, $gtype]);
             }
-            foreach ($godmotherNames as $i => $name) {
+            foreach ($godmotherNames as $i => $name) { $gtype = 'godmother';
                 $name = trim($name);
                 if ($name === '') continue;
                 $residence = trim($godmotherResidences[$i] ?? '');
-                $godparentStmt->execute([$baptismalApplicationId, $name, $residence]);
+                $godparentStmt->execute([$baptismalApplicationId, $name, $residence, $gtype]);
             }
 
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId,
@@ -120,7 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // TODO: send confirmation email to $email with $trackingNumber
+            if (mail_request_received($email, $trackingNumber, 'Baptismal Application')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -137,11 +140,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <p>Use this form to apply to have an infant or child baptized at this parish. There is no age-eligibility check for Baptism — the parish office will follow up directly with any scheduling requirements.</p>
 
     <?php if ($trackingNumber): ?>
-        <div class="alert alert-success">
-            <p>Your application has been submitted. Your tracking number is:</p>
-            <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
-        </div>
+            <?php $successHeading = 'Your application has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
     <?php else: ?>
 
         <?php if (!empty($errors)): ?>
@@ -183,8 +182,8 @@ require_once __DIR__ . '/../../includes/header.php';
             <fieldset>
                 <legend>Parent/Guardian Submitting This Application</legend>
                 <label>Full Name * <input type="text" name="parent_guardian_name" value="<?= e($_POST['parent_guardian_name'] ?? '') ?>" required></label>
-                <label>Contact Number * <input type="text" name="contact_number" value="<?= e($_POST['contact_number'] ?? '') ?>" required></label>
-                <label>Email Address * <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required></label>
+                <label>Contact Number * <input type="text" name="contact_number" autocomplete="tel" value="<?= e($_POST['contact_number'] ?? '') ?>" required></label>
+                <label>Email Address * <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required></label>
 
             </fieldset>
 

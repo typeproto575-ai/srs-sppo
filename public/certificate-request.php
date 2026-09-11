@@ -1,13 +1,14 @@
-<?php
+﻿<?php
 /**
  * =====================================================================
- * SPPO-IS REQUEST SELECTOR (public hub page)
+ * SRS-SPPO REQUEST SELECTOR (public hub page)
  * =====================================================================
- * Purpose: Static landing page that routes visitors to the right form:
+ * Purpose: Landing page that routes visitors to the right form:
  *            1. Certificate requests  — proof of an already-recorded
  *               sacrament (Baptismal, Confirmation, First Communion,
  *               Marriage).
- *            2. Sacrament applications — enrolling to RECEIVE a sacrament.
+ *            2. Sacrament applications — enrolling to RECEIVE a sacrament
+ *               (Baptism and Marriage only).
  *          Pure navigation; no database access needed beyond the header.
  * =====================================================================
  */
@@ -29,25 +30,42 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="option-group">
         <h2>1. Request a Certificate</h2>
         <p>Get proof of a sacrament that already took place.</p>
-        <ul class="option-list">
-            <li><a href="<?= $basePath ?>/public/certificate-requests/baptismal.php">Baptismal Certificate</a></li>
-            <li><a href="<?= $basePath ?>/public/certificate-requests/confirmation.php">Confirmation Certificate</a></li>
-            <li><a href="<?= $basePath ?>/public/certificate-requests/first-communion.php">First Communion Certificate</a></li>
-            <li><a href="<?= $basePath ?>/public/certificate-requests/marriage.php">Marriage Certificate</a></li>
-        </ul>
+        <div class="hub-cards">
+            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/baptismal.php">
+                <h3>Baptismal Certificate</h3>
+                <p>Proof of baptism recorded in the parish register.</p>
+            </a>
+            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/confirmation.php">
+                <h3>Confirmation Certificate</h3>
+                <p>Proof of the sacrament of Confirmation.</p>
+            </a>
+            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/first-communion.php">
+                <h3>First Communion Certificate</h3>
+                <p>Proof of receiving First Communion.</p>
+            </a>
+            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/marriage.php">
+                <h3>Marriage Certificate</h3>
+                <p>Proof of marriage recorded at this parish.</p>
+            </a>
+        </div>
     </div>
 
     <!-- Option 2: applications to receive a sacrament -->
     <div class="option-group">
         <h2>2. Apply for a Sacrament</h2>
         <p>Enroll or apply to receive a sacrament at this parish.</p>
-        <ul class="option-list">
-            <li><a href="<?= $basePath ?>/public/sacrament-applications/baptismal.php">Baptismal Application</a></li>
-            <li><a href="<?= $basePath ?>/public/sacrament-applications/confirmation.php">Confirmation Application</a></li>
-            <li><a href="<?= $basePath ?>/public/sacrament-applications/first-communion.php">First Communion Application</a></li>
-            <li><a href="<?= $basePath ?>/public/sacrament-applications/marriage.php">Marriage Application</a></li>
-        </ul>
+        <div class="hub-cards hub-cards-applications">
+            <a class="hub-card hub-card-application" href="<?= $basePath ?>/public/sacrament-applications/baptismal.php">
+                <h3>Baptismal Application</h3>
+                <p>Apply to have an infant or child baptized here.</p>
+            </a>
+            <a class="hub-card hub-card-application" href="<?= $basePath ?>/public/sacrament-applications/marriage.php">
+                <h3>Marriage Application</h3>
+                <p>Start the marriage process — interview, banns, and pre-Cana are arranged with the office.</p>
+            </a>
+        </div>
     </div>
+    <p class="field-hint">Confirmation and First Communion have no application forms by design - they are recorded as received/not-received status flags on your parish record. Enrolment is arranged directly at the parish office.</p>
 </section>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

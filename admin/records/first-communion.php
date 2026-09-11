@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS FIRST COMMUNION RECORDS (admin register)
+ * SRS-SPPO FIRST COMMUNION RECORDS (admin register)
  * =====================================================================
  * Purpose: Digital mirror of the physical First Communion register:
  *          encode entries from the logbook, list/search, and serve as
@@ -31,10 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     $entryNo         = trim($_POST['entry_no'] ?? '');
     $communionDate   = $_POST['communion_date'] ?? '';
-    $communicantName = trim($_POST['communicant_full_name'] ?? '');
-    $fatherName      = trim($_POST['father_name'] ?? '');
-    $motherName      = trim($_POST['mother_name'] ?? '');
-    $ministerName    = trim($_POST['minister_name'] ?? '');
+    $communicantName   = trim($_POST['communicant_full_name'] ?? '');
+    $domicile          = trim($_POST['domicile'] ?? '');
+    $fatherName        = trim($_POST['father_name'] ?? '');
+    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
+    $ministerName      = trim($_POST['minister_name'] ?? '');
     $baptismalRecordIdRaw = trim($_POST['baptismal_record_id'] ?? '');
     $baptismalRecordId = $baptismalRecordIdRaw === '' ? null : (int) $baptismalRecordIdRaw;
     $remarks         = trim($_POST['remarks'] ?? '');
@@ -47,25 +48,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if (empty($errors)) {
         try {
+            $pdo->beginTransaction();
+
+            // Make room for a mid-register insert when requested.
+            $shifted = 0;
+            if ($entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
+                $shifted = register_shift_entry_numbers($pdo, 'first_communion_records', $entryNo);
+            }
+
             $stmt = $pdo->prepare(
                 "INSERT INTO first_communion_records
-                    (entry_no, communion_date, communicant_full_name, domicile, father_name, mother_name,
+                    (entry_no, communion_date, communicant_full_name, domicile, father_name, mother_maiden_name,
                      minister_name, baptismal_record_id, remarks, book_no, page_no, line_no, encoded_by)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherName,
+                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherMaidenName,
                 $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 current_user()['id'],
             ]);
             $recordId = (int) $pdo->lastInsertId();
 
             log_activity($pdo, current_user()['id'], 'first_communion_record_encoded', 'first_communion_records', $recordId,
-                "First Communion record encoded for {$communicantName}");
+                "First Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
-            redirect_to('/admin/records/first-communion.php?added=1');
+            $pdo->commit();
+            redirect_to('/admin/records/first-communion.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
             exit;
         } catch (Exception $e) {
+            $pdo->rollBack();
             $errors[] = 'Something went wrong while saving this record. Please try again.';
         }
     }
@@ -77,12 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     $editId          = (int) ($_POST['edit_id'] ?? 0);
     $entryNo         = trim($_POST['entry_no'] ?? '');
-    $communionDate   = $_POST['communion_date'] ?? '';
-    $domicile        = trim($_POST['domicile'] ?? '');
-    $communicantName = trim($_POST['communicant_full_name'] ?? '');
-    $fatherName      = trim($_POST['father_name'] ?? '');
-    $motherName      = trim($_POST['mother_name'] ?? '');
-    $ministerName    = trim($_POST['minister_name'] ?? '');
+    $communionDate     = $_POST['communion_date'] ?? '';
+    $domicile          = trim($_POST['domicile'] ?? '');
+    $communicantName   = trim($_POST['communicant_full_name'] ?? '');
+    $fatherName        = trim($_POST['father_name'] ?? '');
+    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
+    $ministerName      = trim($_POST['minister_name'] ?? '');
     $baptismalRecordIdRaw = trim($_POST['baptismal_record_id'] ?? '');
     $baptismalRecordId = $baptismalRecordIdRaw === '' ? null : (int) $baptismalRecordIdRaw;
     $remarks         = trim($_POST['remarks'] ?? '');
@@ -99,12 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
             $stmt = $pdo->prepare(
                 "UPDATE first_communion_records
                     SET entry_no = ?, communion_date = ?, communicant_full_name = ?, domicile = ?, father_name = ?,
-                        mother_name = ?, minister_name = ?, baptismal_record_id = ?, remarks = ?,
+                        mother_maiden_name = ?, minister_name = ?, baptismal_record_id = ?, remarks = ?,
                         book_no = ?, page_no = ?, line_no = ?
                   WHERE id = ?"
             );
             $stmt->execute([
-                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherName,
+                $entryNo, $communionDate, $communicantName, $domicile, $fatherName, $motherMaidenName,
                 $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 $editId,
             ]);
@@ -157,25 +168,38 @@ if (isset($_GET['edit'])) {
 }
 $isEdit = $editRecord !== null;
 
-if (isset($_GET['added'])) $success = 'First Communion record saved.';
+// Suggested next logbook numbers for the encode dialog (create mode only).
+$suggest = $isEdit
+    ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
+    : register_next_logbook_numbers($pdo, 'first_communion_records');
+
+if (isset($_GET['added'])) $success = 'First Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
 if (isset($_GET['updated'])) $success = 'First Communion record updated.';
 if (isset($_GET['deleted'])) $success = 'First Communion record deleted.';
 
-$q = trim($_GET['q'] ?? '');
-if ($q !== '') {
-    $stmt = $pdo->prepare(
-        "SELECT fc.*, br.child_full_name AS baptismal_name FROM first_communion_records fc
-         LEFT JOIN baptismal_records br ON br.id = fc.baptismal_record_id
-         WHERE fc.communicant_full_name LIKE ? ORDER BY fc.communion_date DESC LIMIT 100"
-    );
-    $stmt->execute(['%' . $q . '%']);
-} else {
-    $stmt = $pdo->query(
-        "SELECT fc.*, br.child_full_name AS baptismal_name FROM first_communion_records fc
-         LEFT JOIN baptismal_records br ON br.id = fc.baptismal_record_id
-         ORDER BY fc.communion_date DESC LIMIT 100"
-    );
-}
+// --- Filter / paginate (shared component) --------------------------------
+$rfConfig = [
+    'date_column'    => 'fc.communion_date',
+    'search_columns' => ['fc.communicant_full_name', 'fc.father_name', 'fc.mother_maiden_name', 'fc.entry_no'],
+];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$stmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM first_communion_records fc
+     LEFT JOIN baptismal_records br ON br.id = fc.baptismal_record_id
+     WHERE 1=1 {$rf['where']}"
+);
+$stmt->execute($rf['params']);
+$rfTotal = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare(
+    "SELECT fc.*, br.child_full_name AS baptismal_name FROM first_communion_records fc
+     LEFT JOIN baptismal_records br ON br.id = fc.baptismal_record_id
+     WHERE 1=1 {$rf['where']}
+     ORDER BY fc.communion_date DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
+);
+$stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
@@ -189,23 +213,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>Search by Communicant's Name
-                <input type="text" name="q" value="<?= e($q) ?>">
-            </label>
-            <button type="submit" class="btn btn-small">Search</button>
-            <?php if ($q !== ''): ?><a href="<?= $basePath ?>/admin/records/first-communion.php" class="btn btn-secondary btn-small">Clear</a><?php endif; ?>
-        </form>
+        <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
 
         <?php if (empty($records)): ?>
-            <p>No First Communion records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
+            <p>No First Communion records found<?= $rf['q'] !== '' ? ' for "' . e($rf['q']) . '"' : '' ?>.</p>
         <?php else: ?>
         <table class="admin-table">
             <thead>
                 <tr>
                     <th>Communicant</th>
                     <th>Date</th>
-                    <th>Domicile</th>
+                    <th>Residence (Domicile)</th>
                     <th>Baptismal Record (prerequisite)</th>
                     <th>Book/Page/Line</th>
                     <th>Certificate</th>
@@ -234,6 +252,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </tbody>
         </table>
         <?php endif; ?>
+        <?php rf_render_pagination($basePath . '/admin/records/first-communion.php', $rfTotal, $rf); ?>
 
         <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
@@ -253,21 +272,30 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">
-                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>"></label>
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? '') ?>"></label>
+                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? $suggest['entry_no']) ?>"></label>
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? $suggest['book_no']) ?>"></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? $suggest['page_no']) ?>"></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? $suggest['line_no']) ?>"></label>
                 </div>
+                <?php if (!$isEdit): ?>
+                <label>If the Entry No. already exists
+                    <select name="entry_conflict">
+                        <option value="shift" selected>Shift later entries to make room</option>
+                        <option value="keep">Save as entered (duplicate allowed)</option>
+                    </select>
+                </label>
+                <p class="field-hint">Suggestions are pre-filled from the last entry — edit them freely. "Shift" bumps every later entry with the same numbering up by one, for inserting into the middle of the register.</p>
+                <?php endif; ?>
             </fieldset>
 
             <fieldset>
                 <legend>Communicant</legend>
                 <label>Full Name * <input type="text" name="communicant_full_name" value="<?= e($_POST['communicant_full_name'] ?? $editRecord['communicant_full_name'] ?? '') ?>" required></label>
                 <label>Date of First Communion * <input type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
-                <label>Domicile / Address <input type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
+                <label>Residence (Domicile) / Address <input type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
                 <div class="inline-fields">
                     <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <label>Mother's Maiden Name <input type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
                 </div>
             </fieldset>
 

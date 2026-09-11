@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS BOOKING CONFLICT REVIEW (admin)
+ * SRS-SPPO BOOKING CONFLICT REVIEW (admin)
  * =====================================================================
  * Purpose: Surfaces marriage applications whose preferred wedding date
  *          collides with an existing calendar event, so the secretary
@@ -32,12 +32,31 @@ $stmt = $pdo->query(
 );
 $applications = $stmt->fetchAll();
 
-foreach ($applications as &$app) {
-    $s = $pdo->prepare(
-        "SELECT title, event_type FROM schedule_events WHERE event_date = ? AND event_type IN ('wedding','mass')"
+$conflictsByDate = [];
+if (!empty($applications)) {
+    $dateSet = [];
+    foreach ($applications as $a) $dateSet[$a['preferred_wedding_date']] = true;
+    $dates = array_keys($dateSet);
+
+    $places = [];
+    foreach ($dates as $i) $places[] = '?';
+    $place = implode(',', $places);
+
+    $confStmt = $pdo->prepare(
+        "SELECT event_date, title, event_type FROM schedule_events
+         WHERE event_date IN ({$place}) AND event_type IN ('wedding','mass')
+         ORDER BY event_date, start_time"
     );
-    $s->execute([$app['preferred_wedding_date']]);
-    $app['conflicts'] = $s->fetchAll();
+    $confStmt->execute($dates);
+    foreach ($confStmt->fetchAll() as $c) {
+        $d = $c['event_date'];
+        $conflictsByDate[$d] = $conflictsByDate[$d] ?? [];
+        $conflictsByDate[$d][] = ['title' => $c['title'], 'event_type' => $c['event_type']];
+    }
+}
+
+foreach ($applications as &$app) {
+    $app['conflicts'] = $conflictsByDate[$app['preferred_wedding_date']] ?? [];
 }
 unset($app);
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS SACRAMENT APPLICATION TABS
+ * SRS-SPPO SACRAMENT APPLICATION TABS
  * =====================================================================
  * Purpose: Renders a tab-style navigation bar shown on every sacrament
  *          application page (Baptismal, Confirmation, First Communion,

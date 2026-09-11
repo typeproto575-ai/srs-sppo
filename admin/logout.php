@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS LOGOUT
+ * SRS-SPPO LOGOUT
  * =====================================================================
  * Purpose: End the staff member's session and return them to the
  *          login page. Safe to call even when no one is logged in.

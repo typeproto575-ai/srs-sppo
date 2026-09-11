@@ -14,7 +14,7 @@ history only.
   Mapper (admin/system/person-mapper.php).
 
 **Fresh installs do not need any of these.** The equivalent of migration 001
-is now part of the canonical schema (`database/sppo_is_schema.sql`), and the
+is now part of the canonical schema (`database/srs_sppo_schema.sql`), and the
 demo dataset (`database/seed_demo_data.sql`) populates `persons` for
 demonstration. Migrations 002 and 003 were one-time data operations against
 the pre-existing parish database and have already been applied there.

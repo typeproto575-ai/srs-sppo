@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS SHARED ADMIN/STAFF PAGE FOOTER
+ * SRS-SPPO SHARED ADMIN/STAFF PAGE FOOTER
  * =====================================================================
  * Purpose: Closes the admin layout HTML and renders the footer for
  *          all admin and priest pages.

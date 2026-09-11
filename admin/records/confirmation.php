@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS CONFIRMATION RECORDS (admin register)
+ * SRS-SPPO CONFIRMATION RECORDS (admin register)
  * =====================================================================
  * Purpose: Digital mirror of the physical confirmation register:
  *          encode entries from the logbook, list/search, and serve as
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $confirmandName    = trim($_POST['confirmand_full_name'] ?? '');
     $birthdate         = $_POST['birthdate'] ?: null;
     $fatherName        = trim($_POST['father_name'] ?? '');
-    $motherName        = trim($_POST['mother_name'] ?? '');
+    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
     $sponsorName       = trim($_POST['sponsor_name'] ?? '');
     $ministerName      = trim($_POST['minister_name'] ?? '');
     $baptismalRecordIdRaw = trim($_POST['baptismal_record_id'] ?? '');
@@ -49,25 +49,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if (empty($errors)) {
         try {
+            $pdo->beginTransaction();
+
+            // Make room for a mid-register insert when requested.
+            $shifted = 0;
+            if ($entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
+                $shifted = register_shift_entry_numbers($pdo, 'confirmation_records', $entryNo);
+            }
+
             $stmt = $pdo->prepare(
                 "INSERT INTO confirmation_records
-                    (entry_no, confirmation_date, confirmand_full_name, birthdate, father_name, mother_name,
+                    (entry_no, confirmation_date, confirmand_full_name, birthdate, father_name, mother_maiden_name,
                      sponsor_name, minister_name, baptismal_record_id, remarks, book_no, page_no, line_no, encoded_by)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $entryNo, $confirmationDate, $confirmandName, $birthdate, $fatherName, $motherName,
+                $entryNo, $confirmationDate, $confirmandName, $birthdate, $fatherName, $motherMaidenName,
                 $sponsorName, $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 current_user()['id'],
             ]);
             $recordId = (int) $pdo->lastInsertId();
 
             log_activity($pdo, current_user()['id'], 'confirmation_record_encoded', 'confirmation_records', $recordId,
-                "Confirmation record encoded for {$confirmandName}");
+                "Confirmation record encoded for {$confirmandName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
-            redirect_to('/admin/records/confirmation.php?added=1');
+            $pdo->commit();
+            redirect_to('/admin/records/confirmation.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
             exit;
         } catch (Exception $e) {
+            $pdo->rollBack();
             $errors[] = 'Something went wrong while saving this record. Please try again.';
         }
     }
@@ -160,25 +170,38 @@ if (isset($_GET['edit'])) {
 }
 $isEdit = $editRecord !== null;
 
-if (isset($_GET['added'])) $success = 'Confirmation record saved.';
+// Suggested next logbook numbers for the encode dialog (create mode only).
+$suggest = $isEdit
+    ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
+    : register_next_logbook_numbers($pdo, 'confirmation_records');
+
+if (isset($_GET['added'])) $success = 'Confirmation record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
 if (isset($_GET['updated'])) $success = 'Confirmation record updated.';
 if (isset($_GET['deleted'])) $success = 'Confirmation record deleted.';
 
-$q = trim($_GET['q'] ?? '');
-if ($q !== '') {
-    $stmt = $pdo->prepare(
-        "SELECT cr.*, br.child_full_name AS baptismal_name FROM confirmation_records cr
-         LEFT JOIN baptismal_records br ON br.id = cr.baptismal_record_id
-         WHERE cr.confirmand_full_name LIKE ? ORDER BY cr.confirmation_date DESC LIMIT 100"
-    );
-    $stmt->execute(['%' . $q . '%']);
-} else {
-    $stmt = $pdo->query(
-        "SELECT cr.*, br.child_full_name AS baptismal_name FROM confirmation_records cr
-         LEFT JOIN baptismal_records br ON br.id = cr.baptismal_record_id
-         ORDER BY cr.confirmation_date DESC LIMIT 100"
-    );
-}
+// --- Filter / paginate (shared component) --------------------------------
+$rfConfig = [
+    'date_column'    => 'cr.confirmation_date',
+    'search_columns' => ['cr.confirmand_full_name', 'cr.father_name', 'cr.mother_name', 'cr.sponsor_name', 'cr.entry_no'],
+];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$stmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM confirmation_records cr
+     LEFT JOIN baptismal_records br ON br.id = cr.baptismal_record_id
+     WHERE 1=1 {$rf['where']}"
+);
+$stmt->execute($rf['params']);
+$rfTotal = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare(
+    "SELECT cr.*, br.child_full_name AS baptismal_name FROM confirmation_records cr
+     LEFT JOIN baptismal_records br ON br.id = cr.baptismal_record_id
+     WHERE 1=1 {$rf['where']}
+     ORDER BY cr.confirmation_date DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
+);
+$stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
 $isSecretary = current_user()['role'] === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
@@ -191,16 +214,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>Search by Confirmand's Name
-                <input type="text" name="q" value="<?= e($q) ?>">
-            </label>
-            <button type="submit" class="btn btn-small">Search</button>
-            <?php if ($q !== ''): ?><a href="<?= $basePath ?>/admin/records/confirmation.php" class="btn btn-secondary btn-small">Clear</a><?php endif; ?>
-        </form>
+        <?php rf_render_bar($basePath . '/admin/records/confirmation.php', $rfConfig, $rf); ?>
 
         <?php if (empty($records)): ?>
-            <p>No confirmation records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
+            <p>No confirmation records found<?= $rf['q'] !== '' ? ' for "' . e($rf['q']) . '"' : '' ?>.</p>
         <?php else: ?>
         <table class="admin-table">
             <thead>
@@ -236,6 +253,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </tbody>
         </table>
         <?php endif; ?>
+        <?php rf_render_pagination($basePath . '/admin/records/confirmation.php', $rfTotal, $rf); ?>
 
         <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
@@ -255,11 +273,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">
-                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>"></label>
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? '') ?>"></label>
+                    <label>Entry No. <input type="text" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? $suggest['entry_no']) ?>"></label>
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? $suggest['book_no']) ?>"></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? $suggest['page_no']) ?>"></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? $suggest['line_no']) ?>"></label>
                 </div>
+                <?php if (!$isEdit): ?>
+                <label>If the Entry No. already exists
+                    <select name="entry_conflict">
+                        <option value="shift" selected>Shift later entries to make room</option>
+                        <option value="keep">Save as entered (duplicate allowed)</option>
+                    </select>
+                </label>
+                <p class="field-hint">Suggestions are pre-filled from the last entry — edit them freely. "Shift" bumps every later entry with the same numbering up by one, for inserting into the middle of the register.</p>
+                <?php endif; ?>
             </fieldset>
 
             <fieldset>
@@ -271,7 +298,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </div>
                 <div class="inline-fields">
                     <label>Father's Name <input type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Name <input type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <label>Mother's Maiden Name <input type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
                 </div>
                 <label>Sponsor <input type="text" name="sponsor_name" value="<?= e($_POST['sponsor_name'] ?? $editRecord['sponsor_name'] ?? '') ?>"></label>
             </fieldset>

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS MARRIAGE CERTIFICATE REQUEST (public form)
+ * SRS-SPPO MARRIAGE CERTIFICATE REQUEST (public form)
  * =====================================================================
  * Purpose: Request a copy of a Marriage certificate already on record.
  *          Inserts the shared row into certificate_requests (status
@@ -13,6 +13,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
+require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 
 // Subfolder-safe URL prefix (kept for links/redirects on this page).
 $basePath = $basePath ?? base_path();
@@ -114,7 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            // TODO: send confirmation email to $requesterEmail with $trackingNumber
+            if (mail_request_received($requesterEmail, $trackingNumber, 'Marriage Certificate Request')) {
+                log_activity($pdo, null, 'confirmation_email_sent', 'certificate_requests', $requestId, "Confirmation email sent to {$requesterEmail}");
+            }
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -130,11 +133,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <h1>Marriage Certificate Request</h1>
 
     <?php if ($trackingNumber): ?>
-        <div class="alert alert-success">
-            <p>Your request has been submitted. Your tracking number is:</p>
-            <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-            <p>Save this number and check <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a> for updates. Keep this tracking number - you can follow your request any time on the Track My Request page.</p>
-        </div>
+            <?php $successHeading = 'Your request has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
     <?php else: ?>
 
         <?php if (!empty($errors)): ?>
@@ -168,11 +167,11 @@ require_once __DIR__ . '/../../includes/header.php';
                 </label>
 
                 <label>Email Address *
-                    <input type="email" name="requester_email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
+                    <input type="email" name="requester_email" autocomplete="email" value="<?= e($_POST['requester_email'] ?? '') ?>" required>
                 </label>
 
                 <label>Contact Number *
-                    <input type="text" name="requester_contact_number" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
+                    <input type="text" name="requester_contact_number" autocomplete="tel" value="<?= e($_POST['requester_contact_number'] ?? '') ?>" required>
                 </label>
 
 

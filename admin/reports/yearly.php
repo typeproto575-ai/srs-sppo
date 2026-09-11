@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS YEARLY REPORT (admin)
+ * SRS-SPPO YEARLY REPORT (admin)
  * =====================================================================
  * Purpose: Year-at-a-glance totals per sacrament (records encoded) plus
  *          certificate/application volume — the annual statistical
@@ -51,9 +51,9 @@ $appRows = $stmt->fetchAll();
 // --- CSV export -------------------------------------------------------
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="sppo-is-yearly-report-' . $year . '.csv"');
+    header('Content-Disposition: attachment; filename="srs-sppo-yearly-report-' . $year . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ["SPPO-IS Yearly Report — {$year}"]);
+    fputcsv($out, ["SRS-SPPO Yearly Report — {$year}"]);
     fputcsv($out, []);
     fputcsv($out, ['Records Encoded', 'Count']);
     foreach ($recordCounts as $label => $count) fputcsv($out, [$label, $count]);

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS CERTIFICATE GENERATE / PREVIEW (admin)
+ * SRS-SPPO CERTIFICATE GENERATE / PREVIEW (admin)
  * =====================================================================
  * Purpose: Produces the printable certificate for an approved request.
  *          The request's details are cross-checked against the matching
@@ -21,11 +21,15 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Generate / Preview Certificate';
 $notice = null;
 
+// Maps each sacrament type to its extension table (for request details) and
+// the canonical records table (for the authoritative register entry).
+// Used for certificate preview and record matching.
 const CERT_EXT = [
     'baptismal'      => ['ext' => 'baptismal_certificate_requests',       'record' => 'baptismal_records'],
     'confirmation'   => ['ext' => 'confirmation_certificate_requests',    'record' => 'confirmation_records'],
     'first_communion'=> ['ext' => 'first_communion_certificate_requests', 'record' => 'first_communion_records'],
     'marriage'       => ['ext' => 'marriage_certificate_requests',        'record' => 'marriage_records'],
+    'death_burial'   => ['ext' => 'death_burial_certificate_requests',    'record' => 'death_burial_records'],
 ];
 
 // --- Match a request to a digital record index --------------------------
@@ -39,12 +43,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
     $recordId = (int) ($_POST['record_id'] ?? 0);
 
     if ($requestId && $recordId && isset(CERT_EXT[$sacramentType])) {
-        $extTable = CERT_EXT[$sacramentType]['ext'];
-        $stmt = $pdo->prepare("UPDATE {$extTable} SET matched_record_id = ? WHERE request_id = ?");
-        $stmt->execute([$recordId, $requestId]);
-        log_activity($pdo, current_user()['id'], 'certificate_request_matched', 'certificate_requests', $requestId,
-            "Matched to {$sacramentType} record #{$recordId}");
-        $notice = 'Request matched to record.';
+        $requestStmt = $pdo->prepare('SELECT sacrament_type, status FROM certificate_requests WHERE id = ?');
+        $requestStmt->execute([$requestId]);
+        $requestRow = $requestStmt->fetch();
+        $config = CERT_EXT[$sacramentType];
+
+        if (!$requestRow || $requestRow['sacrament_type'] !== $sacramentType) {
+            $notice = 'The request type does not match the selected sacrament.';
+        } elseif (!in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
+            $notice = 'Only approved requests can be matched to a certificate record.';
+        } else {
+            $recordStmt = $pdo->prepare("SELECT id FROM {$config['record']} WHERE id = ?");
+            $recordStmt->execute([$recordId]);
+            $recordExists = $recordStmt->fetchColumn();
+            $extStmt = $pdo->prepare("SELECT id FROM {$config['ext']} WHERE request_id = ?");
+            $extStmt->execute([$requestId]);
+            $extensionExists = $extStmt->fetchColumn();
+
+            if (!$recordExists || !$extensionExists) {
+                $notice = 'The selected record or request details could not be found.';
+            } else {
+                $stmt = $pdo->prepare("UPDATE {$config['ext']} SET matched_record_id = ? WHERE request_id = ?");
+                $stmt->execute([$recordId, $requestId]);
+
+                // Verify the UPDATE actually affected a row. If rowCount() is 0,
+                // the extension row didn't exist (orphaned request — original
+                // submission didn't save correctly) and we must NOT show a false success.
+                if ($stmt->rowCount() === 0) {
+                    $notice = 'Could not match — no request record found. This usually means the original submission didn\'t save correctly; check with technical support.';
+                    log_activity($pdo, current_user()['id'], 'certificate_request_match_failed', 'certificate_requests', $requestId,
+                        "Failed match attempt for {$sacramentType} record #{$recordId}");
+                } else {
+                    log_activity($pdo, current_user()['id'], 'certificate_request_matched', 'certificate_requests', $requestId,
+                        "Matched to {$sacramentType} record #{$recordId}");
+                    $notice = 'Request matched to record.';
+                }
+            }
+        }
     }
 }
 
@@ -52,12 +87,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && csrf_verify()) {
     $requestId = (int) ($_POST['request_id'] ?? 0);
     if ($requestId) {
-        $stmt = $pdo->prepare(
-            "INSERT INTO certificate_generation_log (certificate_request_id, generated_by, print_status) VALUES (?, ?, 'generated')"
-        );
-        $stmt->execute([$requestId, current_user()['id']]);
-        log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed');
-        $notice = 'Logged as generated. Remember to print and have it signed before pickup.';
+                $stmt = $pdo->prepare('SELECT status FROM certificate_requests WHERE id = ?');
+        $stmt->execute([$requestId]);
+        $requestRow = $stmt->fetch();
+        if (!$requestRow || !in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
+            $notice = 'Only approved requests can be logged as generated.';
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO certificate_generation_log (certificate_request_id, generated_by, print_status) VALUES (?, ?, 'generated')"
+            );
+            $stmt->execute([$requestId, current_user()['id']]);
+            log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed');
+            $notice = 'Logged as generated. Remember to print and have it signed before pickup.';
+        }
     }
 }
 

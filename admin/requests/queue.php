@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS CERTIFICATE REQUESTS QUEUE (admin)
+ * SRS-SPPO CERTIFICATE REQUESTS QUEUE (admin)
  * =====================================================================
  * Purpose: The secretary's worklist of certificate requests from the
  *          public forms. Lists pending/all requests with requester and
@@ -13,6 +13,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/mail.php'; // status notification email
 require_role('secretary');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
@@ -26,7 +27,8 @@ const CERT_EXT = [
     'baptismal'        => ['table' => 'baptismal_certificate_requests',        'name_col' => 'child_full_name'],
     'confirmation'      => ['table' => 'confirmation_certificate_requests',     'name_col' => 'confirmand_full_name'],
     'first_communion'   => ['table' => 'first_communion_certificate_requests',  'name_col' => 'communicant_full_name'],
-    'marriage'          => ['table' => 'marriage_certificate_requests',         'name_col' => 'husband_full_name'],
+    'marriage'          => ['table' => 'marriage_certificate_requests',         'name_col' => 'party_a_full_name'],
+    'death_burial'      => ['table' => 'death_burial_certificate_requests',     'name_col' => 'deceased_full_name'],
 ];
 
 $statusOptions = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
@@ -49,6 +51,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
 
         log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId,
             "Status changed to {$newStatus}");
+
+        // Notify the requester (email) when their certificate is ready for
+        // pickup, or when it has been released at the counter. Safe no-op and
+        // logged when mail is enabled; never blocks the status change.
+        if ($newStatus === 'ready_for_pickup' || $newStatus === 'released') {
+            $mailStmt = $pdo->prepare('SELECT requester_email, tracking_number, sacrament_type FROM certificate_requests WHERE id = ?');
+            $mailStmt->execute([$requestId]);
+            $mailRow = $mailStmt->fetch();
+            $mailTo = trim((string) ($mailRow['requester_email'] ?? ''));
+            if ($mailTo !== '') {
+                $kind = ucwords(str_replace('_', ' ', (string) ($mailRow['sacrament_type'] ?? ''))) . ' Certificate';
+                if (mail_status_update($mailTo, (string) $mailRow['tracking_number'], humanize_label($newStatus), $kind)) {
+                    log_activity($pdo, current_user()['id'], 'status_email_sent', 'certificate_requests', $requestId,
+                        "Status email sent to {$mailTo}");
+                }
+            }
+        }
     }
     redirect_to('/admin/requests/queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
     exit;
@@ -128,7 +147,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th>Purpose</th>
                     <th>Submitted</th>
                     <th>Status</th>
-                    <th>ID</th>
                     <th>Update</th>
                 </tr>
             </thead>
@@ -142,7 +160,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></td>
                         <td><?= e(date('M j, Y', strtotime($req['date_submitted']))) ?></td>
                         <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></td>
-                        <td><span class="field-hint" style="margin:0;">Verified at pickup</span></td>
                         <td>
                             <form method="post" class="inline-fields">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->

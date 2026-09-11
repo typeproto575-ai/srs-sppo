@@ -1,7 +1,7 @@
 <?php
 /**
  * ================================================================
- * SPPO-IS DEATH / BURIAL STATUS (admin)
+ * SRS-SPPO DEATH / BURIAL STATUS (admin)
  * ================================================================
  * PURPOSE: Simplified alive/deceased status flag on parishioner records.
  *          Per design decisions, Death/Burial is NOT a full certificate-
@@ -30,9 +30,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && csrf_verify()) {
     $recordId = (int) ($_POST['record_id'] ?? 0);
-    $isDeceased = isset($_POST['is_deceased']) ? 1 : 0;
-    $dateOfDeath = $_POST['date_of_death'] ?: null;
+    // The toggle form posts is_deceased=1 (Deceased) or is_deceased=0 (Alive).
+    // A bare isset() check is wrong here — it always treats the value as
+    // present, so the "Mark Alive" action could never be recorded.
+    $isDeceased = ($_POST['is_deceased'] ?? '') === '1' ? 1 : 0;
+    $dateOfDeath = trim($_POST['date_of_death'] ?? '');
+    $dateOfDeath = $dateOfDeath !== '' ? $dateOfDeath : null;
     if ($recordId) {
+        // The toggle form does not carry a date; preserve the existing date
+        // when marking a record Deceased without supplying one.
+        if ($isDeceased === 1 && $dateOfDeath === null) {
+            $stmt = $pdo->prepare('SELECT date_of_death FROM death_burial_records WHERE id = ?');
+            $stmt->execute([$recordId]);
+            $row = $stmt->fetch();
+            if ($row) $dateOfDeath = $row['date_of_death'];
+        }
         $stmt = $pdo->prepare("UPDATE death_burial_records SET is_deceased = ?, date_of_death = ? WHERE id = ?");
         $stmt->execute([$isDeceased, $dateOfDeath, $recordId]);
         log_activity($pdo, current_user()['id'], 'death_status_updated', 'death_burial_records', $recordId, 'Status updated');
@@ -67,7 +79,6 @@ $records = $stmt->fetchAll();
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
         <div class="panel-card">
-            <p><a href="<?= base_path() ?>/admin/dashboard.php">&larr; Back to Dashboard</a></p>
             <h1>Death / Burial Status</h1>
             <p class="field-hint">Simplified alive/deceased status tracking per scope decisions. Full Liber Defunctorum register fields are documented in the paper but not implemented.</p>
 

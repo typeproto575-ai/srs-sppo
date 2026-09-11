@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS MARRIAGE APPLICATION DETAIL (admin)
+ * SRS-SPPO MARRIAGE APPLICATION DETAIL (admin)
  * =====================================================================
  * Purpose: Drill-down view for ONE marriage sacrament application:
  *          groom/bride details, documents checklist, status updates,
@@ -88,17 +88,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     } elseif (isset($_POST['decision'])) {
         $decision = $_POST['decision'];
         if (in_array($decision, ['approved', 'rejected'], true)) {
-            $stmt = $pdo->prepare(
-                "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
-            );
-            $stmt->execute([$decision, current_user()['id'], $applicationId]);
-            log_activity($pdo, current_user()['id'], 'marriage_application_' . $decision, 'sacrament_applications', $applicationId,
-                "Marriage application {$decision} by secretary");
-            $notice = 'Application marked as ' . $decision . '.';
-            // Reload
-            $stmt = $pdo->prepare("SELECT sa.*, ma.* FROM sacrament_applications sa JOIN marriage_applications ma ON ma.application_id = sa.id WHERE sa.id = ?");
-            $stmt->execute([$applicationId]);
-            $app = $stmt->fetch();
+            $approvableStatuses = ['submitted', 'documents_pending', 'ready_for_approval'];
+            if (!in_array($app['status'], $approvableStatuses, true)) {
+                $errors[] = 'This application is not in an approvable workflow state.';
+            }
+
+            if ($decision === 'approved') {
+                $missingClearance = [];
+                if (!(int) $app['pre_cana_seminar_completed']) $missingClearance[] = 'pre-Cana seminar';
+                if (!(int) $app['canonical_interview_completed']) $missingClearance[] = 'canonical interview';
+                if (empty($app['banns_date_1']) || empty($app['banns_date_2']) || empty($app['banns_date_3'])) {
+                    $missingClearance[] = 'three banns dates';
+                }
+                foreach (['groom_baptismal_cert_status' => 'groom baptismal certificate',
+                          'bride_baptismal_cert_status' => 'bride baptismal certificate',
+                          'groom_confirmation_cert_status' => 'groom confirmation certificate',
+                          'bride_confirmation_cert_status' => 'bride confirmation certificate'] as $column => $label) {
+                    if ($app[$column] !== 'submitted') $missingClearance[] = $label;
+                }
+                if ($missingClearance) {
+                    $errors[] = 'Cannot approve until these requirements are complete: ' . implode(', ', $missingClearance) . '.';
+                }
+            }
+
+            if (empty($errors)) {
+                $stmt = $pdo->prepare(
+                    "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
+                );
+                $stmt->execute([$decision, current_user()['id'], $applicationId]);
+                log_activity($pdo, current_user()['id'], 'marriage_application_' . $decision, 'sacrament_applications', $applicationId,
+                    "Marriage application {$decision} by secretary");
+                $notice = 'Application marked as ' . $decision . '.';
+                // Reload
+                $stmt = $pdo->prepare("SELECT sa.*, ma.* FROM sacrament_applications sa JOIN marriage_applications ma ON ma.application_id = sa.id WHERE sa.id = ?");
+                $stmt->execute([$applicationId]);
+                $app = $stmt->fetch();
+            }
         }
     }
 }

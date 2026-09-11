@@ -1,13 +1,15 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS SACRAMENT APPLICATIONS QUEUE (admin)
+ * SRS-SPPO SACRAMENT APPLICATIONS QUEUE (admin)
  * =====================================================================
  * Purpose: The secretary's worklist of sacrament applications (public
  *          walk-in and online submissions). Each row can be moved
- *          through the workflow statuses (submitted → documents →
- *          interview → banns → seminar → approval → scheduled →
- *          completed / rejected).
+ *          through its sacrament's workflow: Marriage alone uses the
+ *          full pipeline (submitted → documents → interview → banns →
+ *          seminar → approval → scheduled → completed / rejected);
+ *          Baptismal, Confirmation and First Communion skip the
+ *          interview and banns stages.
  * =====================================================================
  */
 
@@ -21,9 +23,22 @@ $basePath = $basePath ?? base_path();
 
 $pageTitle = 'Sacrament Applications Queue';
 
-$statusOptions = [
+// Every status that exists on sacrament_applications (used when no
+// sacrament filter is chosen).
+$allStatuses = [
     'submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress',
     'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected',
+];
+
+// Per-sacrament workflows: the status dropdown for each application only
+// offers the stages that actually apply to its sacrament. Marriage alone
+// uses the interview + banns (Tawag sa Kasal) stages; Baptismal,
+// Confirmation and First Communion go through their seminar then approval.
+$statusFlow = [
+    'baptismal'       => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'confirmation'    => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'first_communion' => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'marriage'        => $allStatuses,
 ];
 
 function humanize_label(string $s): string
@@ -41,7 +56,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
     $applicationId = (int) ($_POST['application_id'] ?? 0);
     $newStatus     = $_POST['new_status'] ?? '';
 
-    if ($applicationId && in_array($newStatus, $statusOptions, true)) {
+    // Validate the requested status against the workflow of THIS
+    // application's sacrament type (never another type's stages).
+    $allowedStatus = false;
+    if ($applicationId > 0) {
+        $typeStmt = $pdo->prepare('SELECT sacrament_type FROM sacrament_applications WHERE id = ?');
+        $typeStmt->execute([$applicationId]);
+        $appType = (string) $typeStmt->fetchColumn();
+        $allowedStatus = in_array($newStatus, $statusFlow[$appType] ?? [], true);
+    }
+
+    if ($applicationId && $allowedStatus) {
         $stmt = $pdo->prepare(
             "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
         );
@@ -61,7 +86,7 @@ $sacramentTypes  = ['baptismal', 'confirmation', 'first_communion', 'marriage'];
 
 $where  = [];
 $params = [];
-if ($filterStatus !== '' && in_array($filterStatus, $statusOptions, true)) {
+if ($filterStatus !== '' && in_array($filterStatus, $allStatuses, true)) {
     $where[] = 'status = ?';
     $params[] = $filterStatus;
 }
@@ -133,11 +158,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Sacrament Applications Queue</h1>
 
+        <?php
+        // Status filter choices: when a sacrament is selected, only that
+        // sacrament's workflow stages are offered (plus the currently
+        // selected status so an existing filter never silently vanishes).
+        $statusChoices = ($filterSacrament !== '' && isset($statusFlow[$filterSacrament]))
+            ? $statusFlow[$filterSacrament]
+            : $allStatuses;
+        if ($filterStatus !== '' && !in_array($filterStatus, $statusChoices, true)) {
+            $statusChoices[] = $filterStatus;
+        }
+        ?>
         <form method="get" class="inline-fields filter-form">
             <label>Status
                 <select name="status" onchange="this.form.submit()">
                     <option value="">All</option>
-                    <?php foreach ($statusOptions as $s): ?>
+                    <?php foreach ($statusChoices as $s): ?>
                         <option value="<?= e($s) ?>" <?= $filterStatus === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -183,8 +219,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php endif; ?>
                         </td>
                         <td>
-                            <?php if ($app['sacrament_type'] === 'marriage'): ?>
-                                <a href="<?= $basePath ?>/admin/requests/marriage-detail.php?id=<?= (int) $app['id'] ?>" class="btn btn-secondary btn-small">Detail</a>
+                            
+                            <?php
+                            $detailPages = [
+                                'baptismal'       => '/admin/requests/baptismal-detail.php',
+                                'confirmation'    => '/admin/requests/confirmation-detail.php',
+                                'first_communion' => '/admin/requests/first-communion-detail.php',
+                                'marriage'        => '/admin/requests/marriage-detail.php',
+                            ];
+                            if (isset($detailPages[$app['sacrament_type']])): ?>
+                                <a href="<?= $basePath ?><?= $detailPages[$app['sacrament_type']] ?>?id=<?= (int) $app['id'] ?>" class="btn btn-secondary btn-small">Detail</a>
                             <?php endif; ?>
                         </td>
                         <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td>
@@ -193,7 +237,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <select name="new_status">
-                                    <?php foreach ($statusOptions as $s): ?>
+                                    <?php
+                                    // Only this sacrament's stages are offered; the current
+                                    // status is always kept as a choice (legacy rows may hold
+                                    // a stage outside the modern workflow).
+                                    $rowStatuses = $statusFlow[$app['sacrament_type']] ?? $allStatuses;
+                                    if (!in_array($app['status'], $rowStatuses, true)) {
+                                        $rowStatuses[] = $app['status'];
+                                    }
+                                    ?>
+                                    <?php foreach ($rowStatuses as $s): ?>
                                         <option value="<?= e($s) ?>" <?= $app['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
                                     <?php endforeach; ?>
                                 </select>

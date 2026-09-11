@@ -1,4 +1,4 @@
-# SPPO-IS — Demo & Defense Guide
+# SRS-SPPO — Demo & Defense Guide
 
 A short, practical guide for demonstrating the **Schedule and Record System of
 St. Patrick's Parish Office** and for answering common questions during the
@@ -9,7 +9,7 @@ project root; read it for the full rationale behind every decision below.
 
 ## 1. What the system is
 
-SPPO-IS is a plain-PHP (no framework) parish office tool for one user: the
+SRS-SPPO is a plain-PHP (no framework) parish office tool for one user: the
 **Parish Secretary**. It digitises the church's sacramental records (Baptism,
 Confirmation, First Communion, Marriage) and runs the office workflow around
 them:
@@ -32,7 +32,7 @@ These are *deliberate removals/choices* — good defense talking points, not gap
 | Decision | Reason |
 |---|---|
 | **No priest system user / portal** | The parish priest is not a login user. Canonical clearance (banns, pre-Cana, interview) is recorded by the Secretary after confirming with the priest in person. Keeps the model to one trained operator. |
-| **No Death/Burial module** | Removed from the approved design: no UI, forms, reports, or schema tables exist for it — a fresh install contains nothing for it. (The pre-existing demo database still has leftover death_burial_* tables from the original build.) |
+| **Death/Burial = status flag only** | Kept as a simplified alive/deceased status page for the secretary (admin/records/death-burial.php). No certificate issuance, no public form, and none of the full Liber Defunctorum register fields (cause of death, burial place, spouse, etc.) - an intentional, documented scope limitation. |
 | **No online ID upload** | Identity is verified in person at pickup. Avoids collecting sensitive ID scans, simplifying **RA 10173 (Data Privacy Act)** compliance. |
 | **No payment/fees anywhere** | Fees are paid in person at pickup. No monetary fields or logic exist by design. |
 | **No parishioner accounts** | Tracking is via tracking number + email, not a login. Only the Secretary has an account. |
@@ -57,7 +57,7 @@ admin/                      Secretary only
   schedule/                 calendar, booking conflicts, announcements
   reports/                  monthly / yearly summaries
   system/                   backup/export, accounts, audit log
-database/sppo_is_schema.sql full schema
+database/srs_sppo_schema.sql full schema
 database/seed_demo_data.sql demo dataset (see below)
 assets/css + assets/js      plain CSS/JS, responsive to device size
 ```
@@ -65,9 +65,9 @@ assets/css + assets/js      plain CSS/JS, responsive to device size
 ## 4. Fresh demo setup (5 minutes)
 
 1. Start Apache + MySQL in XAMPP.
-2. Import `database/sppo_is_schema.sql` (creates `sppo_is_db`).
+2. Import `database/srs_sppo_schema.sql` (creates `srs_sppo_db`).
 3. Import `database/seed_demo_data.sql` (idempotent demo dataset).
-4. Open `http://localhost/sppo-is/admin/login.php`.
+4. Open `http://localhost/srs-sppo/admin/login.php`.
 5. Log in with **`secretary` / `SPPOsecretary2026`** (change it afterwards).
 
 ## 5. Demo walkthrough (≈7 minutes)
@@ -76,7 +76,7 @@ A single narrative walkthrough that touches every major feature. With seed data
 loaded, follow this order:
 
 **A. Public side (no login) — 1 min**
-1. Open `http://localhost/sppo-is/public/index.php`. Point out the responsive
+1. Open `http://localhost/srs-sppo/public/index.php`. Point out the responsive
    header, the calendar, and the announcements.
 2. Open any certificate form (e.g. Baptismal) and the **Track My Request**
    page — show the truthful copy ("keep this tracking number…").
@@ -169,7 +169,7 @@ submission is never silently blocked.
 
 ## 8. Pre-defense checklist
 
-- [ ] Import schema + seed into a fresh `sppo_is_db`.
+- [ ] Import schema + seed into a fresh `srs_sppo_db`.
 - [ ] Log in as `secretary` / `SPPOsecretary2026`.
 - [ ] Run the sections A–G of the walkthrough above.
 - [ ] Check the app on a phone / responsive DevTools mode (dashboard, tables
@@ -178,6 +178,6 @@ submission is never silently blocked.
       then the seed).
 - [ ] Keep project backup zipped off-machine before the defense.
 
-> **One-screen summary:** SPPO-IS = public request intake + secretary records &
+> **One-screen summary:** SRS-SPPO = public request intake + secretary records &
 > queue management + certificate generation + tracking + reports, on a plain
 > PHP/MySQL stack, responsive, secure, and audit-logged.

@@ -1,5 +1,5 @@
 /* =====================================================================
-   SPPO-IS — MAIN STYLESHEET (public pages)
+   SRS-SPPO — MAIN STYLESHEET (public pages)
    =====================================================================
    Sections: design tokens (CSS variables), base/reset, header + nav,
    hero, announcements, calendar preview, forms, alerts, buttons,
@@ -7,7 +7,7 @@
    ===================================================================== */
 
 /* =====================================================================
-   SPPO-IS — Design tokens
+   SRS-SPPO — Design tokens
    Grounded in the parish's own materials: the cream certificate stock,
    the deep green of the St. Patrick shamrock crest, and the ruled rows
    of the physical baptismal register.
@@ -45,7 +45,7 @@ h1, h2, h3 { font-family: var(--font-display); color: var(--color-ledger-dark); 
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 2rem;
+    padding: 0.6rem 1.5rem;
     background: var(--color-parish-green);
     color: #fff;
 }
@@ -56,12 +56,18 @@ h1, h2, h3 { font-family: var(--font-display); color: var(--color-ledger-dark); 
 
 .site-main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
 
+/* Slim footer: ~2/3 of its former height (was 1rem top/bottom padding). The
+   footer <p> carries the browser default margins, so both the padding and
+   the paragraph margin are trimmed to keep proportions. */
 .site-footer {
     text-align: center;
-    padding: 1.5rem;
+    padding: 0.3rem 1rem;
     color: #6b6355;
     font-size: 0.85rem;
     border-top: 1px solid var(--color-rule);
+}
+.site-footer p {
+    margin: 0.35rem 0;
 }
 
 fieldset { border: 1px solid var(--color-rule); border-radius: 6px; margin-bottom: 1.5rem; padding: 1rem; background: #fff; }
@@ -230,8 +236,11 @@ input:focus, select:focus, textarea:focus {
 
 html, body {
     /* Kill stray horizontal scrollbars caused by tracking numbers, long
-       names, and field-grid overflow on narrow screens. */
-    overflow-x: hidden;
+       names, and field-grid overflow on narrow screens. clip (not hidden):
+       hidden on html/body silently disables position: sticky for every
+       descendant (it becomes the sticky's scroll container) — clip keeps
+       sticky working. Do not switch this back. */
+    overflow-x: clip;
 }
 
 /* Intermediate widths: never let .inline-fields rows squeeze below
@@ -305,4 +314,403 @@ html, body {
         width: 100%;
         margin: 0.5rem 0;
     }
+}
+/* =====================================================================
+   Public logo image + inline SVG nav icons
+   ===================================================================== */
+
+/* Parish logo next to the parish name in the public header */
+.brand-logo-public {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.40);
+    vertical-align: middle;
+    margin-right: 0.5rem;
+    flex: none;
+}
+.site-brand {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Public nav icons (small inline SVGs) */
+.site-header nav a {
+    display: inline-flex;
+    align-items: center;
+}
+.site-header nav .ic { margin-right: 4px; }
+
+@media (max-width: 720px) {
+    .site-header nav a { white-space: nowrap; }
+}
+
+/* --- Submission success panel (shared partial after any public form) --- */
+.submission-success {
+    background: #f3faf3;
+    border: 1px solid #bfe0c4;
+    border-radius: 8px;
+    padding: 1.5rem 1.75rem;
+    margin: 0 0 2rem;
+}
+.submission-success .submission-eyebrow {
+    font-weight: 700;
+    color: #1f6b34;
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+}
+.submission-success .submission-number-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: #fff;
+    border: 1px dashed #9fcea6;
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1rem;
+}
+.submission-success .submission-tracking {
+    font-family: var(--font-mono, monospace);
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+    font-weight: 700;
+    margin: 0;
+    flex: 1 1 auto;
+}
+.submission-success .submission-next-steps h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+}
+.submission-success .submission-next-steps ol {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+.submission-success .submission-next-steps li {
+    margin-bottom: 0.35rem;
+}
+
+/* Print: confirmation page only - hide site chrome and non-confirmation content */
+@media print {
+    .site-header, .site-footer, .request-form form, .request-form h1,
+    .submission-success button, footer, nav {
+        display: none !important;
+    }
+    .submission-success {
+        border: none;
+        background: none;
+    }
+}
+
+/* --- Track My Request status timeline --- */
+.status-timeline {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 0;
+    margin: 0.75rem 0 0.5rem;
+}
+.status-timeline li {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 110px;
+}
+.status-timeline li:not(:last-child)::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 2px;
+    background: #d8d2c6;
+    margin: 0 0.5rem;
+}
+.status-timeline li.done:not(:last-child)::after { background: #2f8a47; }
+.status-timeline .timeline-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #b8b0a2;
+    background: #fff;
+    flex: 0 0 auto;
+}
+.status-timeline li.done .timeline-dot { border-color: #2f8a47; background: #2f8a47; }
+.status-timeline li.current .timeline-dot { border-color: #2f8a47; background: #fff; box-shadow: 0 0 0 3px rgba(47,138,71,0.25); }
+.status-timeline .timeline-label {
+    font-size: 0.82rem;
+    margin-left: 0.4rem;
+    color: #6b6355;
+    white-space: nowrap;
+}
+.status-timeline li.current .timeline-label { color: #1f3d2b; font-weight: 700; }
+.status-timeline li.done .timeline-label { color: #2f6b40; }
+
+/* --- Landing page: hero actions + office hours --- */
+.hero-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; margin-top: 1.25rem; }
+.hero .hero-sub { max-width: 640px; margin: 0.75rem auto 0; font-size: 1.02rem; }
+.office-hours { margin: 0 auto 2.5rem; max-width: 900px; }
+.office-hours h2 { text-align: center; margin-bottom: 1rem; }
+.office-hours-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.office-card { background: #fff; border: 1px solid var(--color-rule, #e4ded2); border-radius: 8px; padding: 1.1rem 1.25rem; }
+.office-card h3 { margin: 0 0 0.5rem; font-size: 1.02rem; }
+.office-card ul { margin: 0; padding-left: 1.1rem; }
+.office-card li { margin-bottom: 0.3rem; }
+
+/* --- Announcements as cards + empty states --- */
+.announcement-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; max-width: 900px; margin: 0 auto; }
+.announcement-card { background: #fff; border: 1px solid var(--color-rule, #e4ded2); border-radius: 8px; padding: 1rem 1.2rem; }
+.announcement-card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
+.announcement-card .event-date { display: inline-block; font-size: 0.78rem; font-weight: 600; color: #2f6b40; background: #eef6ee; border-radius: 999px; padding: 0.15rem 0.6rem; margin-bottom: 0.5rem; }
+.announcement-card p { margin: 0; font-size: 0.92rem; color: #57503f; }
+.empty-state { background: #faf8f3; border: 1px dashed var(--color-rule, #e4ded2); border-radius: 8px; padding: 1.4rem 1.2rem; text-align: center; color: #6b6355; max-width: 900px; margin: 0 auto; }
+
+/* --- Requests hub cards --- */
+.hub-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; margin: 0.75rem 0 1.5rem; }
+.hub-card { display: block; background: #fff; border: 1px solid var(--color-rule, #e4ded2); border-left: 4px solid #2f6b40; border-radius: 8px; padding: 1rem 1.1rem; text-decoration: none; color: inherit; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.hub-card:hover, .hub-card:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(31,61,43,0.14); }
+.hub-card h3 { margin: 0 0 0.3rem; font-size: 1rem; color: #1f3d2b; }
+.hub-card p { margin: 0; font-size: 0.88rem; color: #6b6355; }
+.hub-card-application { border-left-color: #8a6d2f; }
+
+/* --- Mobile navigation (hamburger) --- */
+.nav-toggle { display: none; }
+@media (max-width: 720px) {
+    .site-header { flex-wrap: wrap; }
+    .nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-left: auto;
+        background: none;
+        border: 1px solid var(--color-rule, #e4ded2);
+        border-radius: 6px;
+        padding: 0.4rem 0.6rem;
+        font: inherit;
+        cursor: pointer;
+    }
+    .site-header nav {
+        display: none;
+        flex-basis: 100%;
+        flex-direction: column;
+        gap: 0;
+        border-top: 1px solid var(--color-rule, #e4ded2);
+        margin-top: 0.5rem;
+    }
+    .site-header nav.open { display: flex; }
+    .site-header nav a { padding: 0.7rem 0.2rem; border-bottom: 1px solid var(--color-rule, #e4ded2); }
+}
+
+/* --- Parish calendar: readable, fully-visible events --- */
+.calendar-shell {
+    background: #fff;
+    border: 1px solid var(--color-rule, #e4ded2);
+    border-radius: 8px;
+    padding: 1rem;
+    max-width: 100%;
+}
+/* FullCalendar overrides: let event titles wrap fully instead of clipping */
+.calendar-shell .fc-daygrid-event {
+    white-space: normal;
+    font-size: 0.78rem;
+    line-height: 1.25;
+}
+.calendar-shell .fc-event-title {
+    white-space: normal;
+    overflow: visible;
+}
+.calendar-shell .fc-daygrid-event-harness {
+    overflow: visible;
+}
+.calendar-shell .fc-event, .calendar-shell .fc-event .fc-sticky {
+    color: #fff;
+}
+
+/* --- Calendar legend (color-coded event types) --- */
+.calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    justify-content: center;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0;
+}
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    color: #57503f;
+}
+.legend-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex: 0 0 auto;
+}
+
+/* --- Hero section --- */
+.hero-eyebrow {
+    margin: 0 0 0.25rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #2f6b40;
+}
+.hero-sub {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    color: #57503f;
+    max-width: 600px;
+}
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+}
+
+/* --- Office hours section --- */
+.office-hours {
+    margin-top: 1.5rem;
+}
+.office-hours-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    max-width: 900px;
+    margin: 0.75rem auto 0;
+}
+.office-card {
+    background: #fff;
+    border: 1px solid var(--color-rule, #e4ded2);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+}
+.office-card h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+    color: #1f3d2b;
+}
+.office-hours-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.92rem;
+    color: #57503f;
+}
+.office-hours-list li {
+    padding: 0.2rem 0;
+    border-bottom: 1px solid #f0ece3;
+}
+.office-hours-list li:last-child { border-bottom: none; }
+
+/* --- Events heading --- */
+.events-heading {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    color: #1f3d2b;
+}
+
+/* --- Upcoming events list (landing page) --- */
+.event-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+    max-width: 900px;
+}
+.event-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: #fff;
+    border: 1px solid var(--color-rule, #e4ded2);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+.event-card .event-date {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    background: #eef6ee;
+    color: #2f6b40;
+    font-weight: 700;
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+.event-card .event-details { flex: 1 1 auto; }
+.event-card .event-details strong { display: block; font-size: 0.95rem; color: #1f3d2b; }
+.event-card .event-details p { margin: 0.15rem 0 0; font-size: 0.82rem; color: #6b6355; }
+.event-badge {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    background: #eee9dd;
+    color: #57503f;
+}
+.event-badge-mass { background: #eef3f9; color: #2c5d8f; }
+.event-badge-wedding { background: #f9eef0; color: #8a6d2f; }
+.event-badge-activity { background: #f3eef9; color: #5b3d94; }
+
+/* --- Header alignment fix: nav SVG icons have viewBox but no intrinsic
+       size, so cap them explicitly (they were rendering ~300px wide). --- */
+.site-header {
+    align-items: center;
+}
+.site-header nav {
+    align-items: center;
+}
+.site-header nav .ic {
+    width: 15px;
+    height: 15px;
+    flex: none;
+    margin-right: 5px;
+    stroke-width: 2;
+}
+.nav-toggle .ic,
+.nav-toggle {
+    vertical-align: middle;
+}
+/* Brand row: keep the logo + name on one aligned baseline */
+.site-brand {
+    line-height: 1.2;
+}
+.brand-logo-public {
+    display: block;
+}
+/* Mobile: hamburger row stays on one line, panel below when open */
+@media (max-width: 720px) {
+    .site-header nav .ic { width: 14px; height: 14px; }
+}
+
+/* --- Landing hero: centered + eyebrow (was unstyled, sat left by default) --- */
+.hero {
+    text-align: center;
+    padding: 3.5rem 1rem 2.75rem;
+    max-width: 760px;
+    margin: 0 auto;
+}
+.hero .hero-eyebrow {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.8rem;
+    color: var(--color-brass, #8a6d2f);
+    display: block;
+    margin-bottom: 0.9rem;
+}
+.hero h1 {
+    font-size: clamp(1.9rem, 4vw, 2.7rem);
+    line-height: 1.15;
+    margin: 0 auto 0.4rem;
+}
+@media (max-width: 560px) {
+    .hero { padding: 2.25rem 0.9rem 2rem; }
 }

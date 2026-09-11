@@ -1,9 +1,9 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS ENTRY POINT (project root)
+ * SRS-SPPO ENTRY POINT (project root)
  * =====================================================================
- * Purpose: Visiting the project root (e.g. http://localhost/sppo-is/)
+ * Purpose: Visiting the project root (e.g. http://localhost/srs-sppo/)
  *          forwards to the public home page instead of showing an
  *          Apache directory listing or a 403.
  * =====================================================================

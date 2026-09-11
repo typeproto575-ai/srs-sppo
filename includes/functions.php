@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS SHARED HELPER FUNCTIONS
+ * SRS-SPPO SHARED HELPER FUNCTIONS
  * =====================================================================
  * Purpose: One place for small utilities used across the whole system:
  *   - generate_tracking_number() : unique request tracking codes
@@ -43,6 +43,70 @@ function generate_tracking_number(PDO $pdo, string $table = 'certificate_request
     }
 
     return sprintf('%s%06d', $prefix, $next);
+}
+
+/**
+ * True when an exception is a MySQL duplicate-key error (driver code 1062).
+ * That is the signal that a generated tracking number lost a race with a
+ * concurrent submission, so the insert should be retried with a fresh number.
+ */
+function is_duplicate_key_error(Exception $e): bool
+{
+    if (!($e instanceof PDOException)) {
+        return false;
+    }
+    // MariaDB/MySQL reports duplicate-key violations with driver code 1062
+    // in the message text (e.g. "SQLSTATE[23000]: ... 1062 Duplicate entry...").
+    return strpos($e->getMessage(), '1062') !== false;
+}
+
+/**
+ * Run a full insert wrapped in ONE transaction, retrying the whole body
+ * when a duplicate-key error is raised (typically a tracking-number race).
+ *
+ * The body closure must NOT call beginTransaction/commit/rollBack itself:
+ * this helper owns the transaction so a failed attempt can be rolled back
+ * cleanly and the body re-run with a freshly generated number.
+ *
+ * @param PDO      $pdo         Database connection
+ * @param callable $body        Closure performing the inserts (returns the
+ *                              tracking number, or any value, on success)
+ * @param int      $maxAttempts Total attempts including the first (default 5)
+ * @return mixed                Whatever the body returned on success
+ * @throws Exception            The last error if all attempts collided, or
+ *                              any non-duplicate error on the first attempt
+ */
+function retry_on_duplicate(PDO $pdo, callable $body, int $maxAttempts = 5): mixed
+{
+    $lastError = null;
+
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        try {
+            $pdo->beginTransaction();
+            $result = $body();
+            $pdo->commit();
+            return $result;
+        } catch (Exception $e) {
+            // The failed statement leaves the transaction open — close it
+            // before retrying (ignore the case where nothing was started).
+            try {
+                $pdo->rollBack();
+            } catch (Exception $rollbackError) {
+                // no active transaction; nothing to roll back
+            }
+
+            if (!is_duplicate_key_error($e)) {
+                throw $e; // not a tracking-number collision — surface it
+            }
+
+            // Collision on the unique tracking_number — loop again with a
+            // freshly generated number.
+            $lastError = $e;
+        }
+    }
+
+    // Every attempt collided — surface the final duplicate-key error.
+    throw $lastError ?? new Exception('Duplicate tracking number retries exhausted.');
 }
 
 /**
@@ -91,36 +155,106 @@ function log_activity(PDO $pdo, ?int $userId, string $action, ?string $targetTab
     );
     $stmt->execute([$userId, $action, $targetTable, $targetId, $description]);
 }
-
 /**
- * Light input validation helpers for public forms.
+ * Record a failed login/tracking attempt for rate limiting.
+ * Uses the audit_logs table (action = 'rate_limit_attempt') so no new table is needed.
  */
-
-/**
- * Accept a contact number if it has 10-13 digits (allowing spaces,
- * dashes, plus sign / leading country codes).
- */
-function is_valid_phone_number(?string $value): bool
+function record_attempt(PDO $pdo, string $identifier): void
 {
-    $digits = preg_replace('/\D/', '', (string) $value);
-    return strlen($digits) >= 10 && strlen($digits) <= 13;
+    $stmt = $pdo->prepare(
+        "INSERT INTO audit_logs (user_id, action, target_table, target_id, description)
+         VALUES (NULL, 'rate_limit_attempt', 'login_attempts', NULL, ?)"
+    );
+    $stmt->execute([$identifier]);
 }
 
 /**
- * True when the given Y-m-d date is after today (rejects future dates).
+ * Check whether an identifier has too many recent failed attempts.
+ *
+ * @param PDO    $pdo           Database connection
+ * @param string $identifier    Username (login) or tracking+email (track-request) or IP
+ * @param int    $maxAttempts   Maximum allowed attempts within the window
+ * @param int    $windowMinutes Time window in minutes
+ * @return bool True if the identifier is rate-limited (too many attempts)
  */
-function is_future_date(?string $date): bool
+function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, int $windowMinutes = 15): bool
 {
-    return $date !== null && $date !== '' && $date > date('Y-m-d');
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) c FROM audit_logs
+         WHERE action = 'rate_limit_attempt'
+           AND description = ?
+           AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)"
+    );
+    $stmt->execute([$identifier, $windowMinutes]);
+    return ((int) $stmt->fetch()['c']) >= $maxAttempts;
 }
+
+/**
+ * Validation helpers for public forms.
+ */
+
+
 
 /**
  * Basic HTML-escaping shorthand for output.
+ *
+ * Purpose: Converts special characters to HTML entities to prevent
+ *          Cross-Site Scripting (XSS) attacks when displaying user-supplied
+ *          data in HTML templates.
+ *
+ * What it escapes:
+ *   &  → &amp;   (ampersand)
+ *   "  → &quot;  (double quote)
+ *   '  → &#039;  (single quote, ENT_QUOTES mode)
+ *   <  → &lt;    (less than)
+ *   >  → &gt;    (greater than)
+ *
+ * Why ENT_QUOTES: Both single and double quotes are escaped, which is
+ * important because attribute values can be quoted with either type.
+ *
+ * UTF-8: Ensures multi-byte characters (e.g. accented letters, emojis)
+ * are handled correctly and not corrupted.
+ *
+ * Null handling: If $value is NULL, it returns an empty string instead of
+ * "NULL" or causing a notice, so templates can safely call e($var) without
+ * checking for null first.
+ *
+ * Usage (in every HTML template throughout the app):
+ *   <input value="<?= e($userName) ?>">
+ *   <p><?= e($userComment) ?></p>
+ *   <td><?= e($record['child_full_name']) ?></td>
+ *
+ * IMPORTANT: Never use this for SQL (use prepared statements instead).
+ * This is ONLY for HTML output escaping.
+ *
+ * @param string|null $value  The string to escape (NULL allowed, returns '')
+ * @return string             The HTML-escaped string
  */
 function e(?string $value): string
 {
+    // htmlspecialchars handles the 5 special characters (&, ", ', <, >).
+    // ENT_QUOTES tells it to escape both single AND double quotes.
+    // 'UTF-8' ensures proper handling of multi-byte / Unicode characters.
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
+
+/**
+ * Return the project's base URL path, used for all internal links and asset URLs.
+ *
+ * Purpose: Ensures that every link, CSS file, JS file, and form action URL
+ * works correctly whether the application is installed at the web root (/)
+ * or in a subfolder (e.g. /srs-sppo).
+ *
+ * How it works:
+ *   - Returns '/srs-sppo' as a hardcoded constant.
+ *   - Every page that needs a URL uses this function (or the $basePath variable
+ * base_path() is defined below (auto-detecting version).
+ * It returns the URL path prefix for the project root, e.g. "/srs-sppo".
+ *
+ * Usage in templates:
+ *   <a href="<?= base_path() ?>/public/index.php">Home</a>
+ *   <link rel="stylesheet" href="<?= base_path() ?>/assets/css/style.css">
+ */
 
 /**
  * NOTE: The valid-ID upload feature was REMOVED per the updated design doc
@@ -131,12 +265,12 @@ function e(?string $value): string
  */
 
 /**
- * Return the URL path prefix for the project root, e.g. "/sppo-is".
+ * Return the URL path prefix for the project root, e.g. "/srs-sppo".
  *
  * Derived once per request by comparing the project directory (parent of
  * /includes) against the web server's DOCUMENT_ROOT. This keeps every link
  * and redirect working whether the app lives at the domain root or in a
- * subfolder (the typical XAMPP setup: http://localhost/sppo-is/).
+ * subfolder (the typical XAMPP setup: http://localhost/srs-sppo/).
  */
 function base_path(): string
 {
@@ -259,4 +393,155 @@ function csrf_verify(?string $token = null): bool
     return is_string($token)
         && $token !== ''
         && hash_equals($_SESSION['csrf_token'] ?? '', $token);
+}
+
+/* =====================================================================
+ * LOGBOOK NUMBERING HELPERS (records pages)
+ * =====================================================================
+ * The physical registers number entries sequentially, and the digital
+ * index mirrors that habit:
+ *   - register_next_logbook_numbers() suggests the next Entry No. (plus
+ *     the last Book/Page/Line) so the encode dialog opens pre-filled;
+ *   - register_shift_entry_numbers() makes room for an entry inserted in
+ *     the middle of a sequence by bumping every later entry with the same
+ *     prefix up by one — it MUST run inside the caller's transaction so
+ *     the shift lands together with the new row.
+ */
+
+/**
+ * Split an entry number into prefix + trailing number, e.g.
+ * "B-2015-011" -> prefix "B-2015-0", number 11, pad 3. Plain numbers keep
+ * an empty prefix. Returns null when there is no trailing number.
+ */
+function register_parse_entry_no(string $entryNo): ?array
+{
+    $entryNo = trim($entryNo);
+    if ($entryNo === '' || !preg_match('/^(.*?)(\d+)$/', $entryNo, $m)) return null;
+    return ['prefix' => $m[1], 'number' => (int) $m[2], 'pad' => strlen($m[2])];
+}
+
+/** Rebuild an entry number with the same prefix and zero-padding. */
+function register_build_entry_no(array $parts, int $number): string
+{
+    return $parts['prefix'] . str_pad((string) $number, $parts['pad'], '0', STR_PAD_LEFT);
+}
+
+/**
+ * Suggest the next logbook numbers from the most recently encoded row:
+ * Entry No. = last + 1 (same prefix and zero-padding), Book/Page copied
+ * as-is, Line + 1 when the last line is purely numeric. Every field stays
+ * editable in the dialog — these are only suggestions.
+ *
+ * @param string $table Register table name — page-authored, never user input.
+ */
+function register_next_logbook_numbers(PDO $pdo, string $table): array
+{
+    $row = $pdo->query("SELECT entry_no, book_no, page_no, line_no FROM {$table} ORDER BY id DESC LIMIT 1")->fetch();
+    if (!$row) return ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => ''];
+
+    $entryNo = '';
+    $parts = register_parse_entry_no((string) ($row['entry_no'] ?? ''));
+    if ($parts) $entryNo = register_build_entry_no($parts, $parts['number'] + 1);
+
+    $lineNo = (string) ($row['line_no'] ?? '');
+    if ($lineNo !== '' && ctype_digit($lineNo)) $lineNo = (string) ((int) $lineNo + 1);
+
+    return [
+        'entry_no' => $entryNo,
+        'book_no'  => (string) ($row['book_no'] ?? ''),
+        'page_no'  => (string) ($row['page_no'] ?? ''),
+        'line_no'  => $lineNo,
+    ];
+}
+
+/**
+ * Make room for $entryNo: every row in $table whose entry number shares the
+ * same prefix and whose number is >= $entryNo's gets bumped up by one, so
+ * the new entry can take its number. Rows with a different numbering
+ * format are left untouched. Returns how many rows were renumbered.
+ *
+ * @param string $table Register table name — page-authored, never user input.
+ */
+function register_shift_entry_numbers(PDO $pdo, string $table, string $entryNo): int
+{
+    $incoming = register_parse_entry_no($entryNo);
+    if (!$incoming) return 0;
+
+    $stmt = $pdo->prepare("SELECT id, entry_no FROM {$table} WHERE entry_no LIKE ?");
+    $stmt->execute([$incoming['prefix'] . '%']);
+    $upd = $pdo->prepare("UPDATE {$table} SET entry_no = ? WHERE id = ?");
+
+    $shifted = 0;
+    foreach ($stmt->fetchAll() as $row) {
+        $parts = register_parse_entry_no((string) $row['entry_no']);
+        if (!$parts || $parts['prefix'] !== $incoming['prefix'] || $parts['number'] < $incoming['number']) continue;
+        $upd->execute([register_build_entry_no($parts, $parts['number'] + 1), (int) $row['id']]);
+        $shifted++;
+    }
+    return $shifted;
+}
+
+// ---------------------------------------------------------------------
+// VALIDATION HELPERS
+// ---------------------------------------------------------------------
+
+/**
+ * Validate a Philippine phone number format.
+ * Accepts formats: 09XXXXXXXXX, +639XXXXXXXXX, 09XX-XXX-XXXX
+ * Returns true if the number matches a valid pattern.
+ */
+function is_valid_phone_number(string $phone): bool
+{
+    // Remove all non-digit characters except leading +
+    $phone = preg_replace('/[^\d+]/', '', $phone);
+    
+    // Check patterns: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX (13 digits with +)
+    if (preg_match('/^09\d{9}$/', $phone)) {
+        return true;
+    }
+    if (preg_match('/^\+639\d{9}$/', $phone)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check if a date string is in the future (after today).
+ * Used to validate preferred dates for sacraments.
+ * Returns true if the date is today or in the future.
+ */
+function is_future_date(string $date): bool
+{
+    try {
+        $inputDate = new DateTime($date);
+        $today = new DateTime('today');
+        return $inputDate >= $today;
+    } catch (Exception $e) {
+        return false; // invalid date format
+    }
+}
+
+/**
+ * Read all secretary-editable site content settings (Admin > Website >
+ * Public Page Content) in one query, merged over sane defaults. Falls back
+ * to the defaults when the table does not exist yet (pre-migration DB), so
+ * public pages never break.
+ *
+ * @param PDO   $pdo      Database connection
+ * @param array $defaults key => default value map
+ * @return array key => resolved value (never empty string when default exists)
+ */
+function site_settings_all(PDO $pdo, array $defaults): array
+{
+    try {
+        $rows = $pdo->query('SELECT setting_key, setting_value FROM site_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
+    } catch (Throwable $e) {
+        $rows = []; // table not migrated yet
+    }
+    $out = [];
+    foreach ($defaults as $key => $default) {
+        $value = isset($rows[$key]) ? trim((string) $rows[$key]) : '';
+        $out[$key] = ($value === '') ? $default : $value;
+    }
+    return $out;
 }

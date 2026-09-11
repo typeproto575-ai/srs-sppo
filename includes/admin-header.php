@@ -42,6 +42,8 @@ $isActive = function (string $navPath) use ($currentUri): string {
     <!-- Responsive viewport: without this, phones render the admin shell scaled-down -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitle) ?> | SPPO-IS</title>
+    <!-- Parish logo as the browser favicon (tab icon) -->
+    <link rel="icon" type="image/png" href="<?= $basePath ?>/assets/images/logo-circle.png">
     <?php
         $styleVersion = file_exists(__DIR__ . '/../assets/css/style.css') ? filemtime(__DIR__ . '/../assets/css/style.css') : time();
         $adminStyleVersion = file_exists(__DIR__ . '/../assets/css/admin.css') ? filemtime(__DIR__ . '/../assets/css/admin.css') : time();
@@ -56,7 +58,7 @@ $isActive = function (string $navPath) use ($currentUri): string {
 <header class="site-master-header">
     <!-- Brand link: keep the dashboard page connected while matching the earlier parish-workspace layout -->
     <a href="<?= $basePath ?>/admin/dashboard.php" class="header-brand-wrap" aria-label="Go to dashboard">
-        <span class="brand-mark" aria-hidden="true">S</span>
+        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="brand-logo" aria-hidden="true">
         <span class="header-home-brand">Schedule and Record System</span>
     </a>
     <div class="master-profile">
@@ -77,9 +79,10 @@ $isActive = function (string $navPath) use ($currentUri): string {
 <div class="admin-layout">
     <!-- Left sidebar navigation -->
     <nav class="admin-sidebar" aria-label="Admin navigation">
+        <div class="sidebar-scroll">
         <!-- Requests section -->
-        <div class="sidebar-group">
-            <p class="sidebar-group-title">Requests</p>
+        <details class="sidebar-group">
+            <summary class="sidebar-group-title">Requests</summary>
             <ul class="sidebar-menu">
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?>>Certificate Requests</a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?>>Sacrament Applications</a></li>
@@ -89,11 +92,11 @@ $isActive = function (string $navPath) use ($currentUri): string {
                     <li><a href="<?= $basePath ?>/admin/requests/walk-in-application.php"<?= $isActive('/admin/requests/walk-in-application.php') ?>>Walk-in Application</a></li>
                 <?php endif; ?>
             </ul>
-        </div>
+        </details>
 
         <!-- Records section -->
-        <div class="sidebar-group">
-            <p class="sidebar-group-title">Records</p>
+        <details class="sidebar-group">
+            <summary class="sidebar-group-title">Records</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/records/baptismal.php"<?= $isActive('/admin/records/baptismal.php') ?>>Baptismal</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?>>Confirmation</a></li>
@@ -101,26 +104,48 @@ $isActive = function (string $navPath) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?>>Marriage</a></li>
                 <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Mapper</a></li>
             </ul>
-        </div>
+        </details>
 
         <!-- Certificate generation section -->
-        <div class="sidebar-group">
-            <p class="sidebar-group-title">Certificates</p>
+        <details class="sidebar-group">
+            <summary class="sidebar-group-title">Certificates</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/certificates/generate.php"<?= $isActive('/admin/certificates/generate.php') ?>>Generate / Preview</a></li>
                 <li><a href="<?= $basePath ?>/admin/certificates/history.php"<?= $isActive('/admin/certificates/history.php') ?>>Print / Pickup History</a></li>
             </ul>
-        </div>
+        </details>
 
         <!-- Schedule section -->
-        <div class="sidebar-group">
-            <p class="sidebar-group-title">Schedule</p>
+        <details class="sidebar-group">
+            <summary class="sidebar-group-title">Schedule</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/schedule/calendar.php"<?= $isActive('/admin/schedule/calendar.php') ?>>Calendar</a></li>
                 <li><a href="<?= $basePath ?>/admin/schedule/booking-conflicts.php"<?= $isActive('/admin/schedule/booking-conflicts.php') ?>>Booking Conflicts</a></li>
                 <li><a href="<?= $basePath ?>/admin/schedule/announcements.php"<?= $isActive('/admin/schedule/announcements.php') ?>>Announcements</a></li>
             </ul>
+        </details>
+
+        <!-- Website section -->
+        <details class="sidebar-group">
+            <summary class="sidebar-group-title">Public Website</summary>
+            <ul class="sidebar-menu sidebar-submenu">
+                <li><a href="<?= $basePath ?>/admin/system/site-settings.php"<?= $isActive('/admin/system/site-settings.php') ?>>Public Page Content</a></li>
+            </ul>
+        </details>
         </div>
     </nav>
+
+    <script>
+    // Sidebar accordion: only one group open at a time
+    document.querySelectorAll('.sidebar-group').forEach(function(group) {
+        group.addEventListener('toggle', function() {
+            if (this.open) {
+                document.querySelectorAll('.sidebar-group').forEach(function(other) {
+                    if (other !== group) other.open = false;
+                });
+            }
+        });
+    });
+    </script>
 
     <main class="admin-content">

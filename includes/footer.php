@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS SHARED PUBLIC PAGE FOOTER
+ * SRS-SPPO SHARED PUBLIC PAGE FOOTER
  * =====================================================================
  * Purpose: Closes the public layout: ends <main>, renders the parish
  *          footer line, and loads the site-wide JavaScript last so the

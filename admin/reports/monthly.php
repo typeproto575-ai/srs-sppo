@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS MONTHLY REPORT (admin)
+ * SRS-SPPO MONTHLY REPORT (admin)
  * =====================================================================
  * Purpose: Per-month totals — records encoded per sacrament, certificate
  *          requests in/out, and applications received — for the monthly
@@ -63,6 +63,25 @@ function humanize_label(string $s): string
 
 $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
                7=>'July',8=>'August',9=>'September',10=>'October',11=>'November',12=>'December'];
+
+// --- CSV export (same handler pattern as admin/reports/yearly.php) --------
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="srs-sppo-monthly-report-' . $year . '-' . (int) $month . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ["SRS-SPPO Monthly Report - " . $monthNames[$month] . " - " . $year]);
+    fputcsv($out, []);
+    fputcsv($out, ['Records Encoded', 'Count']);
+    foreach ($recordCounts as $label => $count) fputcsv($out, [$label, $count]);
+    fputcsv($out, []);
+    fputcsv($out, ['Certificate Requests', 'Status', 'Count']);
+    foreach ($certRows as $row) fputcsv($out, [$row['sacrament_type'], $row['status'], $row['c']]);
+    fputcsv($out, []);
+    fputcsv($out, ['Sacrament Applications', 'Count']);
+    foreach ($appRows as $row) fputcsv($out, [$row['sacrament_type'], $row['c']]);
+    fclose($out);
+    exit;
+}
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -78,6 +97,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </label>
             <label>Year <input type="number" name="year" value="<?= (int) $year ?>" min="2000" max="2100"></label>
             <button type="submit" class="btn btn-small">View</button>
+            <a href="?year=<?= (int) $year ?>&month=<?= (int) $month ?>&export=csv" class="btn btn-secondary btn-small">Export CSV</a>
         </form>
 
         <h2><?= e($monthNames[$month]) ?> <?= (int) $year ?></h2>

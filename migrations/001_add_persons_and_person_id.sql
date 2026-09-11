@@ -33,7 +33,8 @@ ALTER TABLE IF EXISTS marriage_records
   ADD COLUMN IF NOT EXISTS husband_person_id INT UNSIGNED NULL,
   ADD COLUMN IF NOT EXISTS wife_person_id INT UNSIGNED NULL;
 
--- Optionally add to death / others if present
+-- Death / burial identity bridge. The register remains intentionally slim,
+-- but its deceased person can still be linked to the shared identity table.
 ALTER TABLE IF EXISTS death_burial_records
   ADD COLUMN IF NOT EXISTS person_id INT UNSIGNED NULL;
 

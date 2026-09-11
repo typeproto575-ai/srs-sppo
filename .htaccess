@@ -1,0 +1,50 @@
+# SPPO-IS root protection
+# 1. Deny direct web access to dotfiles/dot-directories (.git/, .env, .htaccess)
+# 2. Block temp/debug scripts left in the project root
+#
+# Dev/debug tooling lives in /devtools/ (denied + gitignored). The name-pattern
+# rules below are defense-in-depth: even if a script matching one of these
+# stems is ever re-created anywhere under the web root, Apache refuses it.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt)$">
+        Require all denied
+    </FilesMatch>
+    # Dev/debug script stems (check_*, list_*, create_*, audit_*, fix*)
+    <FilesMatch "^(check_|list_|create_|audit_|fix\d*)[^/]*\.(php|py|ps1|bat|txt)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 fallback
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^\.">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt)$">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "^(check_|list_|create_|audit_|fix\d*)[^/]*\.(php|py|ps1|bat|txt)$">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Block .git directory and all contents
+RedirectMatch 403 (^|/)\.git(/|$)
+
+# Redirect any direct request to the devtools folder to 403 as well
+RedirectMatch 403 ^/devtools(/|$)
+
+# Block temp/debug scripts in project root
+RedirectMatch 403 ^/(temp_|fix_|scan_|_tmp_).*\.(php|ps1|py|vbs)$
+RedirectMatch 403 ^/scripts/document_project\.php$
+
+# Disable directory listings
+Options -Indexes

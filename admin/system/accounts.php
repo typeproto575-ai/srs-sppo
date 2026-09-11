@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS ACCOUNT MANAGEMENT (admin, secretary-only)
+ * SRS-SPPO ACCOUNT MANAGEMENT (admin, secretary-only)
  * =====================================================================
  * Purpose: Create/edit/deactivate secretary accounts (full name, username,
  *          email, active flag). Only the secretary role exists in the current
@@ -17,7 +17,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_role('secretary');
 
 // Derive the subfolder-safe URL prefix AFTER the helpers are loaded.
-// (Was previously hardcoded to '/sppo-is' — breaks if the folder moves.)
+// (Was previously hardcoded to '/srs-sppo' — breaks if the folder moves.)
 $basePath = $basePath ?? base_path();
 
 $pageTitle = 'Account Management';
@@ -39,6 +39,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $action = $_POST['action'] ?? 'create';
+    $currentUserId = (int) current_user()['id'];
+
+    // Helper: true when deactivating or deleting $userId would leave the
+    // parish office without a single active staff account.
+    $isLastActive = function (int $userId) use ($pdo): bool {
+        $check = $pdo->prepare('SELECT COUNT(*) c FROM users WHERE is_active = 1 AND id != ?');
+        $check->execute([$userId]);
+        return (int) $check->fetch()['c'] === 0;
+    };
+
+    if ($action === 'toggle' || $action === 'delete') {
+        // Quick single-card actions from the account cards.
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        $stmt = $pdo->prepare('SELECT id, full_name, is_active FROM users WHERE id = ?');
+        $stmt->execute([$id]);
+        $target = $stmt->fetch();
+
+        if (!$target) {
+            $message = 'That account no longer exists.';
+            $messageType = 'error';
+        } elseif ($id === $currentUserId) {
+            $message = 'You cannot delete or deactivate your own account while signed in.';
+            $messageType = 'error';
+        } elseif ((int) $target['is_active'] === 1 && $isLastActive($id)) {
+            $message = 'Cannot remove this account — it is the last active staff account. Create or activate another first.';
+            $messageType = 'error';
+        } elseif ($action === 'toggle') {
+            $newState = ((int) $target['is_active'] === 1) ? 0 : 1;
+            $pdo->prepare('UPDATE users SET is_active = ? WHERE id = ?')->execute([$newState, $id]);
+            log_activity($pdo, $currentUserId, 'account_status_changed', 'users', $id,
+                ((int) $newState === 1) ? 'Account activated' : 'Account deactivated');
+            $message = 'Account ' . ((int) $newState === 1 ? 'activated' : 'deactivated') . ' successfully.';
+        } else {
+            try {
+                $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
+                log_activity($pdo, $currentUserId, 'account_deleted', 'users', $id,
+                    'Deleted account: ' . $target['full_name']);
+                $message = 'Account deleted successfully.';
+            } catch (PDOException $ex) {
+                $message = 'Could not delete this account (it is still referenced by system history). Deactivate it instead.';
+                $messageType = 'error';
+            }
+        }
+    } elseif ($action === 'bulk') {
+        // Bulk bar: apply one action to every selected card. Your own
+        // account and the last-active-staff rule are protected per account,
+        // and skipped rows are reported so nothing happens silently.
+        $bulkAction = $_POST['bulk_action'] ?? '';
+        $ids = array_values(array_unique(array_diff(
+            array_map('intval', (array) ($_POST['bulk_ids'] ?? [])),
+            [$currentUserId]
+        )));
+
+        if (!in_array($bulkAction, ['activate', 'deactivate', 'delete'], true) || empty($ids)) {
+            $message = 'Select at least one account first (your own account is always excluded).';
+            $messageType = 'error';
+        } else {
+            $done = 0;
+            $skipped = 0;
+            foreach ($ids as $uid) {
+                $stmt = $pdo->prepare('SELECT id, is_active FROM users WHERE id = ?');
+                $stmt->execute([$uid]);
+                $target = $stmt->fetch();
+                if (!$target) { $skipped++; continue; }
+
+                if ($bulkAction === 'activate') {
+                    if ((int) $target['is_active'] === 1) { $skipped++; continue; }
+                    $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = ?')->execute([$uid]);
+                } elseif ($bulkAction === 'deactivate') {
+                    if ((int) $target['is_active'] === 0 || $isLastActive($uid)) { $skipped++; continue; }
+                    $pdo->prepare('UPDATE users SET is_active = 0 WHERE id = ?')->execute([$uid]);
+                } else {
+                    if ((int) $target['is_active'] === 1 && $isLastActive($uid)) { $skipped++; continue; }
+                    try {
+                        $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$uid]);
+                    } catch (PDOException $ex) { $skipped++; continue; }
+                }
+                log_activity($pdo, $currentUserId, 'account_bulk_' . $bulkAction, 'users', $uid,
+                    'Bulk ' . $bulkAction . ' applied');
+                $done++;
+            }
+            $message = 'Bulk ' . $bulkAction . ': ' . $done . ' account(s) updated'
+                . ($skipped > 0 ? ', ' . $skipped . ' skipped (protected or already in that state).' : '.');
+        }
+    } else {
+    // ---- Create / edit (the account dialog form) ------------------------
     $id = isset($_POST['id']) ? (int) $_POST['id'] : null;
     $fullName = trim($_POST['full_name'] ?? '');
     $username = trim($_POST['username'] ?? '');
@@ -71,6 +157,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $message = 'That email address is already in use.';
                 $messageType = 'error';
             } else {
+                if ($isActive === 0 && $action === 'edit' && $id) {
+                    // Prevent deactivating the last active admin account.
+                    $lastActiveCheck = $pdo->prepare('SELECT COUNT(*) c FROM users WHERE is_active = 1 AND id != ?');
+                    $lastActiveCheck->execute([$id]);
+                    if ((int) $lastActiveCheck->fetch()['c'] === 0) {
+                        $message = 'Cannot deactivate this account — it is the last active staff account. Create or activate another first.';
+                        $messageType = 'error';
+                    }
+                }
+                if ($messageType !== 'error') {
                 if ($action === 'edit' && $id) {
                     if ($password !== '') {
                         $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -92,15 +188,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                         $message = 'Account created successfully.';
                     }
                 }
-            }
+                }
         }
+    }
+    }
     }
 
     if ($messageType === 'success' && empty($message)) {
         $message = 'Account saved.';
     }
 
-    if ($messageType === 'success') {
+    // Create/edit redirect back with a clean form state; card actions
+    // (toggle/delete/bulk) simply re-render with their result message.
+    if ($messageType === 'success' && in_array($action, ['create', 'edit'], true)) {
         redirect_to('/admin/system/accounts.php?saved=1');
     }
 }
@@ -111,6 +211,18 @@ if (isset($_GET['saved']) && !isset($_GET['edit'])) {
 }
 
 $users = $pdo->query('SELECT id, full_name, username, email, role, is_active, created_at FROM users ORDER BY role, full_name')->fetchAll();
+
+// The add/edit dialog reopens automatically when editing via ?edit=ID or
+// when a dialog submission failed validation (so entered values survive).
+$dialogAutoshow = $editingUser !== null
+    || ($_SERVER['REQUEST_METHOD'] === 'POST' && $messageType === 'error'
+        && in_array(($_POST['action'] ?? ''), ['create', 'edit'], true));
+
+// Checked state of the "Active account" checkbox inside the dialog:
+// a POST re-render honors the submitted value, otherwise the stored/default.
+$activeChecked = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? isset($_POST['is_active'])
+    : (($editingUser['is_active'] ?? 1) == 1);
 
 $extraHead = '';
 ?>
@@ -127,74 +239,132 @@ $extraHead = '';
             <p class="alert <?= $messageType === 'error' ? 'alert-error' : 'alert-success' ?>"><?= e($message) ?></p>
         <?php endif; ?>
 
-        <section class="panel-card account-manager-card">
-            <h2><?= $editingUser ? 'Edit account' : 'Add new account' ?></h2>
-            <form method="post" class="account-form">
-                <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
-                <input type="hidden" name="action" value="<?= $editingUser ? 'edit' : 'create' ?>">
-                <?php if ($editingUser): ?><input type="hidden" name="id" value="<?= (int) $editingUser['id'] ?>"><?php endif; ?>
-                <label>
-                    Full name
-                    <input type="text" name="full_name" value="<?= e($editingUser['full_name'] ?? '') ?>" required>
-                </label>
-                <label>
-                    Username
-                    <input type="text" name="username" value="<?= e($editingUser['username'] ?? '') ?>" required>
-                </label>
-                <label>
-                    Email
-                    <input type="email" name="email" value="<?= e($editingUser['email'] ?? '') ?>" required>
-                </label>
-                <label>
-                    Role
-                    <!-- Only the secretary role is available: the priest role was
-                         removed from the design and from the users.role ENUM. -->
-                    <select name="role">
-                        <option value="secretary" <?= (($editingUser['role'] ?? 'secretary') === 'secretary') ? 'selected' : '' ?>>Secretary</option>
-                    </select>
-                </label>
-                <label class="checkbox-row">
-                    <input type="checkbox" name="is_active" value="1" <?= (($editingUser['is_active'] ?? 1) == 1) ? 'checked' : '' ?>>
-                    Active account
-                </label>
-                <label>
-                    Password
-                    <input type="password" name="password" minlength="8" placeholder="<?= $editingUser ? 'Leave blank to keep current password' : 'Enter a password (min. 8 characters)' ?>">
-                </label>
-                <div class="form-actions">
-                    <button type="submit" class="btn">Save account</button>
-                    <?php if ($editingUser): ?><a href="<?= $basePath ?>/admin/system/accounts.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+        <div class="accounts-toolbar">
+            <button type="button" class="btn" data-open-dialog="#account-dialog">+ Add Account</button>
+        </div>
+
+        <!-- Bulk actions: the checkboxes on the cards feed this form via form="bulk-form" -->
+        <form method="post" id="bulk-form" class="bulk-bar">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="bulk">
+            <span class="bulk-count" id="bulk-count">0 selected</span>
+            <button type="submit" name="bulk_action" value="activate" class="btn btn-small btn-secondary">Activate selected</button>
+            <button type="submit" name="bulk_action" value="deactivate" class="btn btn-small btn-secondary">Deactivate selected</button>
+            <button type="submit" name="bulk_action" value="delete" class="btn btn-small btn-danger">Delete selected</button>
+        </form>
+
+        <section class="accounts-grid">
+            <?php foreach ($users as $user): ?>
+                <?php $isSelf = ((int) $user['id'] === (int) current_user()['id']); ?>
+                <div class="panel-card account-card<?= $user['is_active'] ? '' : ' account-inactive' ?>">
+                    <div class="account-head">
+                        <span class="account-avatar"><?= e(mb_strtoupper(mb_substr($user['full_name'], 0, 1))) ?></span>
+                        <div class="account-id">
+                            <h3><?= e($user['full_name']) ?><?= $isSelf ? ' <span class="you-badge">you</span>' : '' ?></h3>
+                            <p class="account-username">@<?= e($user['username']) ?></p>
+                        </div>
+                        <span class="status-badge <?= $user['is_active'] ? 'status-approved' : 'status-rejected' ?>"><?= $user['is_active'] ? 'Active' : 'Inactive' ?></span>
+                    </div>
+                    <p class="account-email"><?= e($user['email']) ?></p>
+                    <p class="account-meta">Secretary &middot; added <?= e(date('M j, Y', strtotime($user['created_at']))) ?></p>
+                    <div class="account-actions">
+                        <?php if (!$isSelf): ?>
+                            <label class="account-select"><input type="checkbox" name="bulk_ids[]" value="<?= (int) $user['id'] ?>" form="bulk-form"> Select</label>
+                        <?php endif; ?>
+                        <a href="<?= $basePath ?>/admin/system/accounts.php?edit=<?= (int) $user['id'] ?>" class="btn btn-small">Edit</a>
+                        <?php if (!$isSelf): ?>
+                            <form method="post" class="inline-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="toggle">
+                                <input type="hidden" name="id" value="<?= (int) $user['id'] ?>">
+                                <button type="submit" class="btn btn-small <?= $user['is_active'] ? 'btn-warning' : 'btn-success' ?>"><?= $user['is_active'] ? 'Deactivate' : 'Activate' ?></button>
+                            </form>
+                            <form method="post" class="inline-form" data-confirm="Delete this account permanently? This cannot be undone.">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= (int) $user['id'] ?>">
+                                <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
                 </div>
-            </form>
+            <?php endforeach; ?>
         </section>
 
-        <section class="panel-card">
-            <h2>Existing accounts</h2>
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($users as $user): ?>
-                        <tr>
-                            <td><?= e($user['full_name']) ?></td>
-                            <td><?= e($user['username']) ?></td>
-                            <td><?= e($user['email']) ?></td>
-                            <td><?= e(ucfirst($user['role'])) ?></td>
-                            <td><span class="status-badge <?= $user['is_active'] ? 'status-approved' : 'status-rejected' ?>"><?= $user['is_active'] ? 'Active' : 'Inactive' ?></span></td>
-                            <td><?= e(date('M j, Y', strtotime($user['created_at']))) ?></td>
-                            <td><a href="<?= $basePath ?>/admin/system/accounts.php?edit=<?= (int) $user['id'] ?>" class="btn btn-small">Edit</a></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </section>
+        <!-- Add / Edit account dialog: opened by "+ Add Account" or ?edit=ID.
+             Reopens automatically (data-autoshow) when a submission fails
+             validation so the entered values are not lost. -->
+        <dialog id="account-dialog" class="encode-dialog"<?= $dialogAutoshow ? ' data-autoshow' : '' ?>>
+            <div class="dialog-head">
+                <h2><?= $editingUser ? 'Edit account — ' . e($editingUser['full_name']) : 'Add new account' ?></h2>
+                <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <?php if ($dialogAutoshow && $messageType === 'error' && $message): ?>
+                    <p class="alert alert-error"><?= e($message) ?></p>
+                <?php endif; ?>
+                <form method="post" class="account-form">
+                    <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                    <input type="hidden" name="action" value="<?= $editingUser ? 'edit' : 'create' ?>">
+                    <?php if ($editingUser): ?><input type="hidden" name="id" value="<?= (int) $editingUser['id'] ?>"><?php endif; ?>
+                    <label>
+                        Full name
+                        <input type="text" name="full_name" value="<?= e($_POST['full_name'] ?? $editingUser['full_name'] ?? '') ?>" required>
+                    </label>
+                    <label>
+                        Username
+                        <input type="text" name="username" value="<?= e($_POST['username'] ?? $editingUser['username'] ?? '') ?>" required>
+                    </label>
+                    <label>
+                        Email
+                        <input type="email" name="email" value="<?= e($_POST['email'] ?? $editingUser['email'] ?? '') ?>" required>
+                    </label>
+                    <label>
+                        Role
+                        <!-- Only the secretary role is available: the priest role was
+                             removed from the design and from the users.role ENUM. -->
+                        <select name="role">
+                            <option value="secretary" <?= (($editingUser['role'] ?? 'secretary') === 'secretary') ? 'selected' : '' ?>>Secretary</option>
+                        </select>
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" name="is_active" value="1" <?= $activeChecked ? 'checked' : '' ?>>
+                        Active account
+                    </label>
+                    <label>
+                        Password
+                        <input type="password" name="password" minlength="8" placeholder="<?= $editingUser ? 'Leave blank to keep current password' : 'Enter a password (min. 8 characters)' ?>">
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit" class="btn">Save account</button>
+                        <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+
+        <script>
+        // Account cards: live selection counter + guarded bulk delete.
+        (function () {
+            var boxes = document.querySelectorAll('input[name="bulk_ids[]"]');
+            var count = document.getElementById('bulk-count');
+            var form = document.getElementById('bulk-form');
+            function refresh() {
+                var n = 0;
+                boxes.forEach(function (b) { if (b.checked) n++; });
+                if (count) count.textContent = n + ' selected';
+                if (form) form.classList.toggle('bulk-active', n > 0);
+            }
+            boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+            refresh();
+            if (form) {
+                form.addEventListener('submit', function (ev) {
+                    var btn = document.activeElement;
+                    if (btn && btn.value === 'delete' && !window.confirm('Delete ALL selected accounts permanently? This cannot be undone.')) {
+                        ev.preventDefault();
+                    }
+                });
+            }
+        })();
+        </script>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SPPO-IS TRACK MY REQUEST (public status lookup)
+ * SRS-SPPO TRACK MY REQUEST (public status lookup)
  * =====================================================================
  * Purpose: Lets a requester check progress WITHOUT an account. They
  *          enter their tracking number plus the email used at
@@ -44,62 +44,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
         } else {
-            // 1. Look in certificate_requests first -- email lives directly on the shared table.
-            $stmt = $pdo->prepare(
-                "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
-                 FROM certificate_requests WHERE tracking_number = ?"
-            );
-            $stmt->execute([$trackingNumber]);
-            $row = $stmt->fetch();
-
-            if ($row) {
-                // Case-insensitive email match protects against trivial snooping.
-                if (strcasecmp(trim($row['requester_email']), $email) === 0) {
-                    $result = ['kind' => 'certificate', 'row' => $row];
-                } else {
-                    $error = 'We found that tracking number, but the email address does not match our records.';
-                }
+            // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
+            // Keyed on tracking+email to prevent enumeration attacks.
+            $rateKey = $trackingNumber . '|' . $email;
+            if (too_many_attempts($pdo, $rateKey, 8, 15)) {
+                $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
+                log_activity($pdo, null, 'track_rate_limited', null, null, "Rate limited: {$trackingNumber}");
             } else {
-                // 2. Look in sacrament_applications -- email lives in the sacrament-specific extension table.
+                // 1. Look in certificate_requests first -- email lives directly on the shared table.
                 $stmt = $pdo->prepare(
-                    "SELECT id, tracking_number, sacrament_type, status, date_submitted
-                     FROM sacrament_applications WHERE tracking_number = ?"
+                    "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
+                     FROM certificate_requests WHERE tracking_number = ?"
                 );
                 $stmt->execute([$trackingNumber]);
-                $appRow = $stmt->fetch();
+                $row = $stmt->fetch();
 
-                if ($appRow) {
-                    // Each sacrament stores its contact email(s) in its own table.
-                    $matchedEmail = false;
-
-                    if ($appRow['sacrament_type'] === 'confirmation') {
-                        $s = $pdo->prepare("SELECT email FROM confirmation_applications WHERE application_id = ?");
-                        $s->execute([$appRow['id']]);
-                        $e2 = $s->fetch();
-                        $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
-                    } elseif ($appRow['sacrament_type'] === 'first_communion') {
-                        $s = $pdo->prepare("SELECT email FROM first_communion_applications WHERE application_id = ?");
-                        $s->execute([$appRow['id']]);
-                        $e2 = $s->fetch();
-                        $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
-                    } elseif ($appRow['sacrament_type'] === 'marriage') {
-                        // Marriage has two possible contact emails (couple).
-                        $s = $pdo->prepare("SELECT groom_email, bride_email FROM marriage_applications WHERE application_id = ?");
-                        $s->execute([$appRow['id']]);
-                        $e2 = $s->fetch();
-                        $matchedEmail = $e2 && (
-                            strcasecmp(trim($e2['groom_email']), $email) === 0 ||
-                            strcasecmp(trim($e2['bride_email']), $email) === 0
-                        );
-                    }
-
-                    if ($matchedEmail) {
-                        $result = ['kind' => 'application', 'row' => $appRow];
+                if ($row) {
+                    // Case-insensitive email match protects against trivial snooping.
+                    if (strcasecmp(trim($row['requester_email']), $email) === 0) {
+                        $result = ['kind' => 'certificate', 'row' => $row];
                     } else {
+                        // Record failed attempt (wrong email for this tracking number).
+                        record_attempt($pdo, $rateKey);
                         $error = 'We found that tracking number, but the email address does not match our records.';
                     }
                 } else {
-                    $error = 'No request found with that tracking number. Please double-check and try again.';
+                    // 2. Look in sacrament_applications -- email lives in the sacrament-specific extension table.
+                    $stmt = $pdo->prepare(
+                        "SELECT id, tracking_number, sacrament_type, status, date_submitted
+                         FROM sacrament_applications WHERE tracking_number = ?"
+                    );
+                    $stmt->execute([$trackingNumber]);
+                    $appRow = $stmt->fetch();
+
+                    if ($appRow) {
+                        $matchedEmail = false;
+
+                        if ($appRow['sacrament_type'] === 'confirmation') {
+                            $s = $pdo->prepare("SELECT email FROM confirmation_applications WHERE application_id = ?");
+                            $s->execute([$appRow['id']]);
+                            $e2 = $s->fetch();
+                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
+                        } elseif ($appRow['sacrament_type'] === 'first_communion') {
+                            $s = $pdo->prepare("SELECT email FROM first_communion_applications WHERE application_id = ?");
+                            $s->execute([$appRow['id']]);
+                            $e2 = $s->fetch();
+                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
+                        } elseif ($appRow['sacrament_type'] === 'marriage') {
+                            // Marriage has two possible contact emails (couple).
+                            $s = $pdo->prepare("SELECT groom_email, bride_email FROM marriage_applications WHERE application_id = ?");
+                            $s->execute([$appRow['id']]);
+                            $e2 = $s->fetch();
+                            $matchedEmail = $e2 && (
+                                strcasecmp(trim($e2['groom_email']), $email) === 0 ||
+                                strcasecmp(trim($e2['bride_email']), $email) === 0
+                            );
+                        } elseif ($appRow['sacrament_type'] === 'baptismal') {
+                            $s = $pdo->prepare("SELECT email FROM baptismal_applications WHERE application_id = ?");
+                            $s->execute([$appRow['id']]);
+                            $e2 = $s->fetch();
+                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
+                        }
+
+                        if ($matchedEmail) {
+                            $result = ['kind' => 'application', 'row' => $appRow];
+                        } else {
+                            // Record failed attempt (no matching email in extension table).
+                            record_attempt($pdo, $rateKey);
+                            $error = 'We found that tracking number, but the email address does not match our records.';
+                        }
+                    } else {
+                        // Record failed attempt (tracking number not found at all).
+                        record_attempt($pdo, $rateKey);
+                        $error = 'No request found with that tracking number. Please double-check and try again.';
+                    }
                 }
             }
         }
@@ -117,13 +135,56 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="alert alert-error"><p><?= e($error) ?></p></div>
     <?php endif; ?>
 
-    <?php if ($result): ?>
-        <div class="alert alert-success">
+        <?php if ($result): ?>
+        <?php
+        // --- User-friendly stage timeline ---------------------------------
+        // Certificates follow one linear pipeline. Applications have a longer
+        // workflow (documents / interview / banns / seminar) which we present
+        // as a single "In Process" stage - purely presentational, the
+        // underlying status values are unchanged.
+        $status = $result['row']['status'];
+        if ($result['kind'] === 'certificate') {
+            $stageLabels = ['Submitted', 'In Review', 'Approved', 'Ready for Pickup', 'Released'];
+            $stageIndex  = array_search($status, ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released'], true);
+        } else {
+            $stageLabels = ['Submitted', 'In Process', 'Approved', 'Completed'];
+            $stageMap = [
+                'submitted' => 0,
+                'documents_pending' => 1, 'interview_scheduled' => 1, 'banns_in_progress' => 1,
+                'seminar_pending' => 1, 'ready_for_approval' => 1,
+                'approved' => 2, 'scheduled' => 2,
+                'completed' => 3,
+            ];
+            $stageIndex = $stageMap[$status] ?? 0;
+        }
+        ?>
+        <div class="alert alert-success track-result">
             <p><strong>Tracking Number:</strong> <?= e($result['row']['tracking_number']) ?></p>
-            <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> — <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
-            <p><strong>Status:</strong> <?= e(humanize_status($result['row']['status'])) ?></p>
+            <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> - <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
             <p><strong>Date Submitted:</strong> <?= e(date('F j, Y', strtotime($result['row']['date_submitted']))) ?></p>
-            <p>If your status is "Ready for Pickup," please visit the parish office with a valid ID. Payment is made at pickup.</p>
+
+            <?php if ($status === 'rejected'): ?>
+                <div class="alert alert-warning">
+                    <p><strong>Status: Rejected.</strong> Please contact the parish office directly for details and next steps.</p>
+                </div>
+            <?php else: ?>
+                <ol class="status-timeline">
+                    <?php foreach ($stageLabels as $i => $label): ?>
+                        <li class="<?= $i < $stageIndex ? 'done' : ($i == $stageIndex ? 'current' : '') ?>">
+                            <span class="timeline-dot"></span>
+                            <span class="timeline-label"><?= e($label) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+                <p class="field-hint">
+                    <?php if ($status === 'ready_for_pickup'): ?>
+                        Your request is ready! Please visit the parish office with a valid ID. Payment is made at pickup.
+                    <?php else: ?>
+                        Current stage: <strong><?= e($stageLabels[$stageIndex] ?? humanize_status($status)) ?></strong>.
+                        Check back any time with this tracking number and your email.
+                    <?php endif; ?>
+                </p>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
