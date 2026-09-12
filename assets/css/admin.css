@@ -666,6 +666,22 @@ details.sidebar-group .sidebar-menu {
 .filter-form { align-items: flex-end; margin-bottom: 1.25rem; flex-wrap: wrap; }
 .filter-form label { margin-bottom: 0; min-width: 160px; }
 
+/* Reports view tabs (Monthly / Yearly switcher on admin/reports/index.php) */
+.report-view-tabs { display: inline-flex; gap: 0.5rem; margin-bottom: 1rem; }
+.report-view-tabs a {
+    display: inline-block;
+    padding: 0.45rem 1.1rem;
+    border: 1px solid rgba(31,61,43,0.25);
+    border-radius: 8px;
+    background: #f5f3ee;
+    color: #1f2f26;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+.report-view-tabs a:hover { background: #e7e2d5; }
+.report-view-tabs a.active { background: #2f5e3f; border-color: #2f5e3f; color: #fff; }
+
 .admin-table { width: 100%; border-collapse: collapse; background: #fff; }
 .admin-table th, .admin-table td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid #e4e4e4; font-size: 0.9rem; vertical-align: top; }
 .admin-table th { background: #f5f3ee; font-weight: 600; }

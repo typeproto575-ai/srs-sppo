@@ -30,9 +30,9 @@ if ($basePath !== '' && strncmp($currentUri, $basePath, strlen($basePath)) === 0
 // n.b. when the app sits at the document root ($basePath === '') the path is
 // already app-relative and is left untouched.
 
-// Returns ' class="active"' when $navPath is the page currently being viewed.
-$isActive = function (string $navPath) use ($currentUri): string {
-    return $currentUri === $navPath ? ' class="active"' : '';
+// Returns ' class="active"' when the current page is one of $navPaths.
+$isActive = function (string ...$navPaths) use ($currentUri): string {
+    return in_array($currentUri, $navPaths, true) ? ' class="active"' : '';
 };
 ?>
 <!DOCTYPE html>
@@ -64,8 +64,7 @@ $isActive = function (string $navPath) use ($currentUri): string {
     <div class="master-profile">
         <!-- Quick utility links in the top bar -->
         <nav class="master-utilities" aria-label="Admin utilities">
-            <a href="<?= $basePath ?>/admin/reports/monthly.php"<?= $isActive('/admin/reports/monthly.php') ?>>Monthly</a>
-            <a href="<?= $basePath ?>/admin/reports/yearly.php"<?= $isActive('/admin/reports/yearly.php') ?>>Yearly</a>
+            <a href="<?= $basePath ?>/admin/reports/index.php"<?= $isActive('/admin/reports/index.php', '/admin/reports/monthly.php', '/admin/reports/yearly.php') ?>>Reports</a>
             <?php if ($isSecretary): ?>
                 <!-- Secretary-only tools -->
                 <a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?>>Backup</a>
