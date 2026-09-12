@@ -516,6 +516,16 @@ details.sidebar-group .sidebar-menu {
 
 .login-page form input {
     margin-top: 0.35rem;
+    border-radius: 8px;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.95rem;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.login-page form input:focus {
+    outline: none;
+    border-color: #2f5e3f;
+    box-shadow: 0 0 0 3px rgba(47, 94, 63, 0.15);
 }
 
 .login-page .btn {
@@ -523,6 +533,17 @@ details.sidebar-group .sidebar-menu {
     margin-top: 0.5rem;
     padding: 0.7rem;
     font-size: 1rem;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.login-page .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(31, 61, 43, 0.25);
+}
+
+.login-page .btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(31, 61, 43, 0.2);
 }
 
 /* ---- Public page content editor (admin/system/site-settings.php) ---- */
@@ -700,6 +721,68 @@ details.sidebar-group .sidebar-menu {
     color: #1e2d25;
     font-family: var(--font-body, Arial, sans-serif);
     font-size: 0.95rem;
+}
+
+/* ---- Password field with show/peek toggle ------------------------------
+   Shared by the staff login (admin/login.php) and the account dialog
+   (admin/system/accounts.php). The eye button sits inside the input's
+   right edge; the input reserves padding there so text never slides
+   under the icon. Scoped input overrides win the specificity tie with
+   .account-form input[type="password"] because this block comes later. */
+.password-wrap {
+    position: relative;
+    display: block;
+    margin-top: 0.3rem;
+}
+
+.password-wrap input[type="password"],
+.password-wrap input[type="text"] {
+    margin-top: 0;
+    padding-right: 2.75rem;
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 0.4rem;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #6a7a6e;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.password-toggle:hover {
+    background: rgba(31, 61, 43, 0.08);
+    color: #2f5e3f;
+}
+
+.password-toggle:focus-visible {
+    outline: 2px solid #2f5e3f;
+    outline-offset: 1px;
+}
+
+/* Green tint while the password is visible — a glanceable cue that the
+   field is currently showing, not hidden. */
+.password-toggle.is-showing {
+    background: rgba(47, 94, 63, 0.12);
+    color: #2f5e3f;
+}
+
+/* Generic field helper text (account dialog; .settings-form has its own). */
+.account-form .field-hint {
+    display: block;
+    font-weight: 400;
+    font-size: 0.82rem;
+    color: #6a7a6e;
+    margin: 0.4rem 0 0;
 }
 
 .checkbox-row {

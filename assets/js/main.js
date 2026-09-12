@@ -88,4 +88,30 @@ document.addEventListener('DOMContentLoaded', function () {
         catch (err) { /* storage unavailable — nothing to clear */ }
     })();
 
+    // ---- 6) Password show/peek toggles --------------------------------------
+    // A button.password-toggle inside .password-wrap flips its sibling
+    // <input type="password"> between hidden and visible text. Both eye
+    // icons live in the markup; the "off" one starts hidden and swaps with
+    // the visible one on each press. Also mirrors the state to
+    // aria-pressed so screen readers announce Show/Hide correctly.
+    document.querySelectorAll('.password-toggle').forEach(function (btn) {
+        var wrap = btn.closest('.password-wrap');
+        var input = wrap ? wrap.querySelector('input[type="password"], input[type="text"]') : null;
+        if (!input) return; // malformed markup — leave it alone
+
+        btn.addEventListener('click', function () {
+            var showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            btn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+            btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+            btn.classList.toggle('is-showing', !showing);
+            var eyeOn = btn.querySelector('.eye-on');
+            var eyeOff = btn.querySelector('.eye-off');
+            if (eyeOn) eyeOn.hidden = !showing;
+            if (eyeOff) eyeOff.hidden = showing;
+            // Keep the caret where the user was typing.
+            input.focus({ preventScroll: true });
+        });
+    });
+
 });
