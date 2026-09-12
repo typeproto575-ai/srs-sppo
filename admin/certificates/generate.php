@@ -327,7 +327,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p style="margin-top:1.5rem;"><a href="<?= $basePath ?>/admin/certificates/generate.php">&larr; Back to list</a></p>
         <?php else: ?>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($requests)): ?>
             <p>No requests are currently approved or ready for pickup.</p>

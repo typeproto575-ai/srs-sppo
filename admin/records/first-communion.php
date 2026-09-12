@@ -213,7 +213,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
+                <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
+        <?php rf_render_pagination($basePath . '/admin/records/first-communion.php', $rfTotal, $rf); ?>
 
         <?php if (empty($records)): ?>
             <p>No First Communion records found<?= $rf['q'] !== '' ? ' for "' . e($rf['q']) . '"' : '' ?>.</p>

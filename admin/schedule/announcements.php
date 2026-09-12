@@ -151,7 +151,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if ($isSecretary): ?>
         <div class="accounts-toolbar">

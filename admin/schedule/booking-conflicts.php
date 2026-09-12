@@ -90,7 +90,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <h1>Booking Conflict Review</h1>
         <p class="field-hint">Compares each pending marriage application's preferred wedding date against the calendar. Nothing here is auto-resolved — the secretary or priest confirms manually and adjusts the calendar as needed.</p>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($applications)): ?>
             <p>No open marriage applications to review.</p>

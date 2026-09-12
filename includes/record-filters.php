@@ -174,24 +174,28 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
     <?php
 }
 
-/** "Showing X–Y of Z" + prev / numbered / next links. */
+/** "Showing X–Y of Z" + first / skip / prev / numbered / next / skip / last links. */
 function rf_render_pagination(string $selfUrl, int $total, array $rf): void
 {
     $pages = max(1, (int) ceil($total / $rf['per_page']));
-    $from = $total === 0 ? 0 : $rf['offset'] + 1;
-    $to = min($total, $rf['offset'] + $rf['per_page']);
+    $from  = $total === 0 ? 0 : $rf['offset'] + 1;
+    $to    = min($total, $rf['offset'] + $rf['per_page']);
+    $skip  = $rf['per_page'];          // N pages to skip with the Skip buttons
     ?>
         <div class="record-pagination">
             <span class="pagination-info">Showing <?= (int) $from ?>&ndash;<?= (int) $to ?> of <?= (int) $total ?> record<?= $total === 1 ? '' : 's' ?></span>
             <?php if ($pages > 1): ?>
                 <nav class="pagination-btns">
                     <?php if ($rf['page'] > 1): ?>
+                        <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, 1) ?>">&laquo; First</a>
+                        <?php $skipTo = max(1, $rf['page'] - $skip); ?>
+                        <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, $skipTo) ?>">&lsaquo; Skip</a>
                         <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, $rf['page'] - 1) ?>">&larr; Prev</a>
                     <?php endif; ?>
                     <?php
                     // A five-number window centred on the current page.
                     $start = max(1, $rf['page'] - 2);
-                    $end = min($pages, $start + 4);
+                    $end   = min($pages, $start + 4);
                     $start = max(1, $end - 4);
                     for ($p = $start; $p <= $end; $p++): ?>
                         <?php if ($p === $rf['page']): ?>
@@ -202,6 +206,9 @@ function rf_render_pagination(string $selfUrl, int $total, array $rf): void
                     <?php endfor; ?>
                     <?php if ($rf['page'] < $pages): ?>
                         <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, $rf['page'] + 1) ?>">Next &rarr;</a>
+                        <?php $skipTo = min($pages, $rf['page'] + $skip); ?>
+                        <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, $skipTo) ?>">Skip &rsaquo;</a>
+                        <a class="btn btn-secondary btn-small" href="<?= rf_page_url($selfUrl, $pages) ?>">Last &raquo;</a>
                     <?php endif; ?>
                 </nav>
             <?php endif; ?>

@@ -48,7 +48,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Audit Log</h1>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($logs)): ?>
             <p>No activity found for this filter.</p>

@@ -135,7 +135,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Certificate Requests Queue</h1>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <form method="get" class="inline-fields filter-form">
             <label>Status
                 <select name="status" onchange="this.form.submit()">

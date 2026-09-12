@@ -90,6 +90,7 @@ $records = $listStmt->fetchAll();
         <?php endif; ?>
 
 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+<?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($records)): ?>
             <p>No records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>

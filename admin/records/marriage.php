@@ -243,7 +243,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
-        <?php rf_render_bar($basePath . '/admin/records/marriage.php', $rfConfig, $rf); ?>
+                <?php rf_render_bar($basePath . '/admin/records/marriage.php', $rfConfig, $rf); ?>
+        <?php rf_render_pagination($basePath . '/admin/records/marriage.php', $rfTotal, $rf); ?>
 
         <?php if (empty($records)): ?>
             <p>No marriage records found<?= $rf['q'] !== '' ? ' for "' . e($rf['q']) . '"' : '' ?>.</p>

@@ -83,7 +83,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
 
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+                <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($logs)): ?>
             <p>No certificates have been generated yet.</p>
