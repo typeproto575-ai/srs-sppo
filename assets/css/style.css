@@ -464,6 +464,68 @@ html, body {
 .announcement-card p { margin: 0; font-size: 0.92rem; color: #57503f; }
 .empty-state { background: #faf8f3; border: 1px dashed var(--color-rule, #e4ded2); border-radius: 8px; padding: 1.4rem 1.2rem; text-align: center; color: #6b6355; max-width: 900px; margin: 0 auto; }
 
+/* --- Carousels (announcements + upcoming events on the landing page) --- */
+.carousel { position: relative; max-width: 680px; margin: 0 auto; }
+.carousel-viewport { overflow: hidden; border-radius: 8px; }
+.carousel-track {
+    display: flex;
+    width: 100%;
+    transition: transform 0.45s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+    .carousel-track { transition: none; }
+}
+/* Each slide fills the viewport width; slides must have NO horizontal
+   margins or the translateX(-index*100%) math drifts out of alignment. */
+.carousel-slide { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
+.carousel-slide.announcement-card { display: flex; flex-direction: column; justify-content: center; }
+.carousel-slide.event-card { box-shadow: 0 2px 8px rgba(31, 61, 43, 0.06); }
+
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid rgba(31, 61, 43, 0.18);
+    border-radius: 50%;
+    background: #ffffff;
+    color: #1f3d2b;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(31, 61, 43, 0.18);
+    transition: background 0.12s ease, transform 0.12s ease;
+    z-index: 2;
+}
+.carousel-btn:hover { background: #eef6ee; transform: translateY(-50%) scale(1.06); }
+.carousel-btn:focus-visible { outline: 2px solid #2f6b40; outline-offset: 2px; }
+.carousel-prev { left: 0.6rem; }
+.carousel-next { right: 0.6rem; }
+
+.carousel-dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.45rem;
+    margin-top: 0.65rem;
+}
+.carousel-dot {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #d8d2c4;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+.carousel-dot:hover { background: #b9b19e; }
+.carousel-dot.is-active { background: #2f6b40; transform: scale(1.25); }
+.carousel-dot:focus-visible { outline: 2px solid #2f6b40; outline-offset: 2px; }
+
 /* --- Requests hub cards --- */
 .hub-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; margin: 0.75rem 0 1.5rem; }
 .hub-card { display: block; background: #fff; border: 1px solid var(--color-rule, #e4ded2); border-left: 4px solid #2f6b40; border-radius: 8px; padding: 1rem 1.1rem; text-decoration: none; color: inherit; transition: transform 0.12s ease, box-shadow 0.12s ease; }
