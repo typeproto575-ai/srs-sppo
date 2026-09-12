@@ -67,15 +67,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 }
 
 if (isset($_GET['added'])) $success = 'Record saved.';
-// --- Search / list ---
-$q = trim($_GET['q'] ?? '');
-if ($q !== '') {
-    $stmt = $pdo->prepare("SELECT * FROM death_burial_records WHERE deceased_full_name LIKE ? ORDER BY date_of_death DESC LIMIT 100");
-    $stmt->execute(['%' . $q . '%']);
-} else {
-    $stmt = $pdo->query("SELECT * FROM death_burial_records ORDER BY date_of_death DESC LIMIT 100");
-}
-$records = $stmt->fetchAll();
+// --- Search / filter / pagination --
+$selfUrl = $basePath . '/admin/records/death-burial.php';
+$rfConfig = ['date_column' => 'date_of_death', 'search_columns' => ['deceased_full_name']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM death_burial_records {$rf['where']}");
+$countStmt->execute($rf['params']);
+$totalRows = (int) $countStmt->fetchColumn();
+$listStmt = $pdo->prepare("SELECT * FROM death_burial_records {$rf['where']} ORDER BY date_of_death DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$listStmt->execute($rf['params']);
+$records = $listStmt->fetchAll();
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
         <div class="panel-card">
@@ -87,13 +89,7 @@ $records = $stmt->fetchAll();
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>Search by Name
-                <input type="text" name="q" value="<?= e($q) ?>" placeholder="e.g. Juan Dela Cruz">
-            </label>
-            <button type="submit" class="btn btn-small">Search</button>
-            <?php if ($q !== ''): ?><a href="<?= base_path() ?>/admin/records/death-burial.php" class="btn btn-secondary btn-small">Clear</a><?php endif; ?>
-        </form>
+<?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <?php if (empty($records)): ?>
             <p>No records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
@@ -125,6 +121,7 @@ $records = $stmt->fetchAll();
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
         <h2 style="margin-top:2.5rem;">Add New Record</h2>

@@ -19,49 +19,36 @@ $basePath = $basePath ?? base_path();
 
 $pageTitle = 'Audit Log';
 
-// --- Filters -----------------------------------------------------------
-$filterUser   = trim($_GET['user'] ?? '');
-$filterAction = trim($_GET['action'] ?? '');
-$filterDate   = trim($_GET['date'] ?? '');
+// --- Search / filter / pagination ---
+$selfUrl = $basePath . '/admin/system/audit-log.php';
+$rfConfig = ['date_column' => 'al.created_at', 'search_columns' => ['al.action', 'al.description']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
 
-$where  = [];
-$params = [];
-if ($filterUser !== '') {
-    $where[] = 'u.full_name LIKE ?';
-    $params[] = '%' . $filterUser . '%';
-}
-if ($filterAction !== '') {
-    $where[] = 'al.action LIKE ?';
-    $params[] = '%' . $filterAction . '%';
-}
-if ($filterDate !== '') {
-    $where[] = 'DATE(al.created_at) = ?';
-    $params[] = $filterDate;
-}
-$whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+$countStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     {$rf['where']}"
+);
+$countStmt->execute($rf['params']);
+$totalRows = (int) $countStmt->fetchColumn();
 
 $stmt = $pdo->prepare(
     "SELECT al.*, u.full_name AS user_name
      FROM audit_logs al
      LEFT JOIN users u ON u.id = al.user_id
-     {$whereSql}
+     {$rf['where']}
      ORDER BY al.created_at DESC
-     LIMIT 200"
+     LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
 );
-$stmt->execute($params);
+$stmt->execute($rf['params']);
 $logs = $stmt->fetchAll();
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Audit Log</h1>
 
-        <form method="get" class="inline-fields filter-form">
-            <label>User <input type="text" name="user" value="<?= e($filterUser) ?>" placeholder="Full name"></label>
-            <label>Action <input type="text" name="action" value="<?= e($filterAction) ?>" placeholder="e.g. status_updated"></label>
-            <label>Date <input type="date" name="date" value="<?= e($filterDate) ?>"></label>
-            <button type="submit" class="btn btn-small">Filter</button>
-            <a href="<?= $basePath ?>/admin/system/audit-log.php" class="btn btn-secondary btn-small">Clear</a>
-        </form>
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <?php if (empty($logs)): ?>
             <p>No activity found for this filter.</p>
@@ -88,6 +75,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="field-hint">Showing the most recent 200 entries. Public-form submissions (with no logged-in user) show as "System / Public Form".</p>
+        <p class="field-hint">
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
+        Showing the most recent 200 entries. Public-form submissions (with no logged-in user) show as "System / Public Form".</p>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

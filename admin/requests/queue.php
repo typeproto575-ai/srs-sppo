@@ -89,8 +89,28 @@ if ($filterSacrament !== '' && array_key_exists($filterSacrament, CERT_EXT)) {
 }
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
-$stmt = $pdo->prepare("SELECT * FROM certificate_requests {$whereSql} ORDER BY date_submitted DESC");
-$stmt->execute($params);
+// --- Search / filter / pagination --
+$selfUrl = $basePath . '/admin/requests/queue.php';
+$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'requester_name', 'requester_email']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$combinedWhere = $rf['where'];
+if ($whereSql !== '') {
+    $combinedWhere = $combinedWhere === '' ? "WHERE $where[0]" : "$combinedWhere AND $where[0]";
+}
+// Handle multiple where clauses
+if (count($where) > 1) {
+    $extraStr = implode(' AND ', $where);
+    $combinedWhere = $rf['where'] === '' ? "WHERE $extraStr" : $rf['where'] . " AND $extraStr";
+}
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests $combinedWhere");
+$countStmt->execute(array_merge($rf['params'], $params));
+$totalRows = (int) $countStmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT * FROM certificate_requests $combinedWhere ORDER BY date_submitted DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute(array_merge($rf['params'], $params));
 $requests = $stmt->fetchAll();
 
 // Fetch the sacrament-specific "who this is about" name for each row.
@@ -115,6 +135,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Certificate Requests Queue</h1>
 
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <form method="get" class="inline-fields filter-form">
             <label>Status
                 <select name="status" onchange="this.form.submit()">
@@ -176,5 +197,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

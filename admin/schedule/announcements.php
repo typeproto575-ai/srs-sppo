@@ -119,7 +119,17 @@ if (isset($_GET['added'])) $success = 'Announcement posted.';
 if (isset($_GET['updated'])) $success = 'Announcement updated.';
 if (isset($_GET['deleted'])) $success = 'Announcement deleted.';
 
-$stmt = $pdo->query("SELECT * FROM announcements ORDER BY created_at DESC");
+$selfUrl = $basePath . '/admin/schedule/announcements.php';
+$rfConfig = ['date_column' => 'created_at', 'search_columns' => ['title', 'content']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM announcements {$rf['where']}");
+$countStmt->execute($rf['params']);
+$totalRows = (int) $countStmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT * FROM announcements {$rf['where']} ORDER BY created_at DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute($rf['params']);
 $announcements = $stmt->fetchAll();
 
 // Expired = published with an event date already in the past; the secretary
@@ -140,6 +150,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
+
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <?php if ($isSecretary): ?>
         <div class="accounts-toolbar">
@@ -177,6 +189,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
         <!-- Add/Edit announcement dialog (same records encode-dialog style) -->

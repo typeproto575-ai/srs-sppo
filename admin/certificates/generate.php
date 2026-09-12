@@ -104,9 +104,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && c
 }
 
 // --- List requests ready to generate (approved or ready_for_pickup) -----
-$stmt = $pdo->query(
-    "SELECT * FROM certificate_requests WHERE status IN ('approved','ready_for_pickup') ORDER BY date_submitted ASC"
-);
+$selfUrl = $basePath . '/admin/certificates/generate.php';
+$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type', 'requester_name']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$baseWhere = "WHERE status IN ('approved','ready_for_pickup')";
+$combinedWhere = $rf['where'] === '' ? $baseWhere : $baseWhere . ' AND ' . ltrim($rf['where'], 'WHERE ');
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests $combinedWhere");
+$countStmt->execute($rf['params']);
+$totalRows = (int) $countStmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT * FROM certificate_requests $combinedWhere ORDER BY date_submitted ASC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute($rf['params']);
 $requests = $stmt->fetchAll();
 
 foreach ($requests as &$req) {
@@ -316,6 +327,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p style="margin-top:1.5rem;"><a href="<?= $basePath ?>/admin/certificates/generate.php">&larr; Back to list</a></p>
         <?php else: ?>
 
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+
         <?php if (empty($requests)): ?>
             <p>No requests are currently approved or ready for pickup.</p>
         <?php else: ?>
@@ -343,6 +356,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
         <?php endif; ?>

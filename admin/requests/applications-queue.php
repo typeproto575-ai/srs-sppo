@@ -96,8 +96,23 @@ if ($filterSacrament !== '' && in_array($filterSacrament, $sacramentTypes, true)
 }
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
-$stmt = $pdo->prepare("SELECT * FROM sacrament_applications {$whereSql} ORDER BY date_submitted DESC");
-$stmt->execute($params);
+$selfUrl = $basePath . '/admin/requests/applications-queue.php';
+$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$combinedWhere = $rf['where'];
+if (!empty($where)) {
+    $extraStr = implode(' AND ', $where);
+    $combinedWhere = $combinedWhere === '' ? "WHERE $extraStr" : "$combinedWhere AND $extraStr";
+}
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications $combinedWhere");
+$countStmt->execute(array_merge($rf['params'], $params));
+$totalRows = (int) $countStmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT * FROM sacrament_applications $combinedWhere ORDER BY date_submitted DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute(array_merge($rf['params'], $params));
 $applications = $stmt->fetchAll();
 
 // Fetch sacrament-specific applicant name + flags for each row.
@@ -187,6 +202,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </select>
             </label>
         </form>
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <?php if (empty($applications)): ?>
             <p>No sacrament applications match this filter.</p>
@@ -257,6 +273,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="field-hint">Flagged rows (age outside configured range, prerequisite documents pending, etc.) are shown for review — they are never auto-rejected. <?php if ($filterSacrament === 'marriage' || $filterSacrament === ''): ?>Marriage applications use the <a href="<?= $basePath ?>/admin/requests/marriage-detail.php">Marriage Detail</a> page for clearance recording and approval.<?php endif; ?></p>
+        <p class="field-hint">
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
+        Flagged rows (age outside configured range, prerequisite documents pending, etc.) are shown for review — they are never auto-rejected. <?php if ($filterSacrament === 'marriage' || $filterSacrament === ''): ?>Marriage applications use the <a href="<?= $basePath ?>/admin/requests/marriage-detail.php">Marriage Detail</a> page for clearance recording and approval.<?php endif; ?></p>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

@@ -47,13 +47,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_released']) && c
 }
 
 // --- List the most recent generations (newest first, capped) --------------
-$stmt = $pdo->query(
+$selfUrl = $basePath . '/admin/certificates/history.php';
+$rfConfig = ['date_column' => 'gl.generated_at', 'search_columns' => ['cr.tracking_number', 'cr.sacrament_type', 'cr.requester_name']];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
+$countStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM certificate_generation_log gl
+     JOIN certificate_requests cr ON cr.id = gl.certificate_request_id
+     {$rf['where']}"
+);
+$countStmt->execute($rf['params']);
+$totalRows = (int) $countStmt->fetchColumn();
+
+$stmt = $pdo->prepare(
     "SELECT gl.*, cr.tracking_number, cr.sacrament_type, cr.requester_name
      FROM certificate_generation_log gl
      JOIN certificate_requests cr ON cr.id = gl.certificate_request_id
+     {$rf['where']}
      ORDER BY gl.generated_at DESC
-     LIMIT 200"
+     LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
 );
+$stmt->execute($rf['params']);
 $logs = $stmt->fetchAll();
 
 // Local helper: "ready_for_pickup" -> "Ready For Pickup"
@@ -67,6 +82,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <h1>Print / Pickup History</h1>
 
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
+
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <?php if (empty($logs)): ?>
             <p>No certificates have been generated yet.</p>
@@ -105,5 +122,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';
