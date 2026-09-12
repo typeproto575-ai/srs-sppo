@@ -34,6 +34,15 @@ if ($basePath !== '' && strncmp($currentUri, $basePath, strlen($basePath)) === 0
 $isActive = function (string ...$navPaths) use ($currentUri): string {
     return in_array($currentUri, $navPaths, true) ? ' class="active"' : '';
 };
+
+// Returns ' open' when the current page lives under one of $prefixes, so the
+// sidebar group holding the active page stays expanded after navigation.
+$groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
+    foreach ($prefixes as $prefix) {
+        if (strncmp($currentUri, $prefix, strlen($prefix)) === 0) return ' open';
+    }
+    return '';
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -80,7 +89,7 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
     <nav class="admin-sidebar" aria-label="Admin navigation">
         <div class="sidebar-scroll">
         <!-- Requests section -->
-        <details class="sidebar-group">
+        <details class="sidebar-group" data-sidebar-group="requests" name="admin-sidebar"<?= $groupIsOpen('/admin/requests/') ?>>
             <summary class="sidebar-group-title">Requests</summary>
             <ul class="sidebar-menu">
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?>>Certificate Requests</a></li>
@@ -94,7 +103,7 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
         </details>
 
         <!-- Records section -->
-        <details class="sidebar-group">
+        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/person-mapper.php') ?>>
             <summary class="sidebar-group-title">Records</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/records/baptismal.php"<?= $isActive('/admin/records/baptismal.php') ?>>Baptismal</a></li>
@@ -106,7 +115,7 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
         </details>
 
         <!-- Certificate generation section -->
-        <details class="sidebar-group">
+        <details class="sidebar-group" data-sidebar-group="certificates" name="admin-sidebar"<?= $groupIsOpen('/admin/certificates/') ?>>
             <summary class="sidebar-group-title">Certificates</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/certificates/generate.php"<?= $isActive('/admin/certificates/generate.php') ?>>Generate / Preview</a></li>
@@ -115,7 +124,7 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
         </details>
 
         <!-- Schedule section -->
-        <details class="sidebar-group">
+        <details class="sidebar-group" data-sidebar-group="schedule" name="admin-sidebar"<?= $groupIsOpen('/admin/schedule/') ?>>
             <summary class="sidebar-group-title">Schedule</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/schedule/calendar.php"<?= $isActive('/admin/schedule/calendar.php') ?>>Calendar</a></li>
@@ -125,7 +134,7 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
         </details>
 
         <!-- Website section -->
-        <details class="sidebar-group">
+        <details class="sidebar-group" data-sidebar-group="website" name="admin-sidebar"<?= $groupIsOpen('/admin/system/site-settings.php') ?>>
             <summary class="sidebar-group-title">Public Website</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/system/site-settings.php"<?= $isActive('/admin/system/site-settings.php') ?>>Public Page Content</a></li>
@@ -135,11 +144,13 @@ $isActive = function (string ...$navPaths) use ($currentUri): string {
     </nav>
 
     <script>
-    // Sidebar accordion: only one group open at a time
-    document.querySelectorAll('.sidebar-group').forEach(function(group) {
-        group.addEventListener('toggle', function() {
+    // Sidebar accordion: only one group open at a time.
+    // The server pre-opens the group holding the current page ($groupIsOpen),
+    // so after navigation the active section is already expanded.
+    document.querySelectorAll('.sidebar-group').forEach(function (group) {
+        group.addEventListener('toggle', function () {
             if (this.open) {
-                document.querySelectorAll('.sidebar-group').forEach(function(other) {
+                document.querySelectorAll('.sidebar-group').forEach(function (other) {
                     if (other !== group) other.open = false;
                 });
             }
