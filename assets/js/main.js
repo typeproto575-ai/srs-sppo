@@ -78,11 +78,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
     // ---- 5) Admin sidebar dropdown memory ----------------------------------
-    // Each sidebar nav group is a <details data-sidebar-group="..."> sharing
-    // name="admin-sidebar" (native exclusive-accordion in modern browsers).
+    // Each sidebar nav group is a <details data-sidebar-group="...">.
     // The server pre-opens the group holding the current page (see
-    // includes/admin-header.php $groupIsOpen); a saved manual choice below
-    // overrides that default so collapsed/expanded state survives navigation.
+    // includes/admin-header.php $groupIsOpen), and that always wins on page
+    // load so the open menu matches the page you are on (nothing stays
+    // stuck open after you go back to the dashboard).
+    // A saved manual choice is only reused when the current page does not
+    // belong to any group (dashboard) — then your last-opened group is
+    // restored instead of leaving everything closed.
     (function () {
         var KEY = 'sppo-sidebar-open';
         var groups = Array.prototype.slice.call(
@@ -97,12 +100,23 @@ document.addEventListener('DOMContentLoaded', function () {
             try { window.localStorage.setItem(KEY, JSON.stringify(state)); }
             catch (err) { /* storage unavailable (private mode) — stay server-driven */ }
         };
-        var saved = read();
-        if (Object.keys(saved).length > 0) {
+        // Server-driven pages: force exactly the matching group open (or all
+        // closed on the dashboard) and sync storage so stale values cannot
+        // leak in from an earlier page.
+        var serverOpen = groups.filter(function (g) { return g.open; });
+        if (serverOpen.length > 0) {
+            var state = {};
             groups.forEach(function (g) {
-                var name = g.getAttribute('data-sidebar-group');
-                if (saved[name] === true) { g.open = true; }
-                else if (saved[name] === false) { g.open = false; }
+                var shouldOpen = serverOpen.indexOf(g) !== -1;
+                g.open = shouldOpen;
+                state[g.getAttribute('data-sidebar-group')] = shouldOpen;
+            });
+            write(state);
+        } else {
+            // Dashboard (no group matches): restore the last-opened group.
+            var saved = read();
+            groups.forEach(function (g) {
+                if (saved[g.getAttribute('data-sidebar-group')] === true) { g.open = true; }
             });
         }
         groups.forEach(function (g) {

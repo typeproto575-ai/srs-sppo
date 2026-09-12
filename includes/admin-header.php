@@ -110,6 +110,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?>>Confirmation</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?>>First Communion</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?>>Marriage</a></li>
+                <li><a href="<?= $basePath ?>/admin/records/death-burial.php"<?= $isActive('/admin/records/death-burial.php') ?>>Death / Burial</a></li>
                 <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Mapper</a></li>
             </ul>
         </details>
