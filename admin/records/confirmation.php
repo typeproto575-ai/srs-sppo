@@ -184,6 +184,7 @@ $rfConfig = [
     'date_column'    => 'cr.confirmation_date',
     'search_columns' => ['cr.confirmand_full_name', 'cr.father_name', 'cr.mother_name', 'cr.sponsor_name', 'cr.entry_no'],
     'placeholder'    => 'Search confirmand, parents, sponsor, entry no.&hellip;',
+    'ranges'         => ['year', 'last_year', 'last5'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);

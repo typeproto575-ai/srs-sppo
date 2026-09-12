@@ -182,6 +182,7 @@ $rfConfig = [
     'date_column'    => 'fc.communion_date',
     'search_columns' => ['fc.communicant_full_name', 'fc.father_name', 'fc.mother_maiden_name', 'fc.entry_no'],
     'placeholder'    => 'Search communicant, parents, entry no.&hellip;',
+    'ranges'         => ['year', 'last_year', 'last5'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);

@@ -38,6 +38,46 @@ function rf_per_page_choices(): array
     return [5, 10, 25, 50];
 }
 
+/** SQL fragment for a preset (non-custom) date range, with the column injected. */
+function rf_range_sql(string $key, string $col): string
+{
+    switch ($key) {
+        case 'today':     return $col . ' = CURDATE()';
+        case '7':         return $col . ' >= CURDATE() - INTERVAL 7 DAY';
+        case 'week':      return $col . ' >= CURDATE() - INTERVAL 7 DAY';
+        case '30':        return $col . ' >= CURDATE() - INTERVAL 30 DAY';
+        case 'month':     return "YEAR($col) = YEAR(CURDATE()) AND MONTH($col) = MONTH(CURDATE())";
+        case '90':        return $col . ' >= CURDATE() - INTERVAL 3 MONTH';
+        case 'year':      return "YEAR($col) = YEAR(CURDATE())";
+        case 'last_year': return "YEAR($col) = YEAR(CURDATE()) - 1";
+        case 'last5':     return $col . ' >= CURDATE() - INTERVAL 5 YEAR';
+    }
+    return '';
+}
+
+/** Human-readable label for a preset date range key. */
+function rf_range_label(string $key): string
+{
+    $map = [
+        'today'     => 'Today',
+        '7'         => 'Last 7 days',
+        'week'      => 'Last 7 days',
+        '30'        => 'Last 30 days',
+        'month'     => 'This month',
+        '90'        => 'Last 3 months',
+        'year'      => 'This year',
+        'last_year' => 'Last year',
+        'last5'     => 'Last 5 years',
+    ];
+    return $map[$key] ?? 'Custom';
+}
+
+/** Default quick-range keys shown when a page does not define its own. */
+function rf_default_ranges(): array
+{
+    return ['7', '30', '90', 'year'];
+}
+
 /**
  * Read + sanitize every filter input and build the shared WHERE fragment.
  * A group only filters when its enable-checkbox was submitted with the
@@ -54,8 +94,10 @@ function rf_parse(array $config): array
         'page'     => max(1, (int) ($_GET['page'] ?? 1)),
     ];
 
-    // Only the fixed choices are accepted for quick ranges and page size.
-    if (!in_array($rf['range'], ['7', '30', '90', 'year', 'custom'], true)) $rf['range'] = '';
+    // Only the page's own quick ranges (plus custom) are accepted; any other
+    // value is ignored. Unknown range keys fall back to empty (no filter).
+    $allowedRanges = $config['ranges'] ?? rf_default_ranges();
+    if (!in_array($rf['range'], $allowedRanges, true) && $rf['range'] !== 'custom') $rf['range'] = '';
     if (!in_array($rf['per_page'], rf_per_page_choices(), true)) $rf['per_page'] = 10;
     $rf['offset'] = ($rf['page'] - 1) * $rf['per_page'];
 
@@ -82,13 +124,12 @@ function rf_parse(array $config): array
     // Date range (applies whenever one of the choices is selected;
     // "All dates" submits an empty value and clears the filter).
     if ($rf['range'] !== '') {
-        if ($rf['range'] === '7')    $clauses[] = $dateCol . ' >= CURDATE() - INTERVAL 7 DAY';
-        if ($rf['range'] === '30')   $clauses[] = $dateCol . ' >= CURDATE() - INTERVAL 30 DAY';
-        if ($rf['range'] === '90')   $clauses[] = $dateCol . ' >= CURDATE() - INTERVAL 3 MONTH';
-        if ($rf['range'] === 'year') $clauses[] = 'YEAR(' . $dateCol . ') = YEAR(CURDATE())';
         if ($rf['range'] === 'custom') {
             if ($rf['from'] !== '') { $clauses[] = 'YEAR(' . $dateCol . ') >= ?'; $params[] = (int) $rf['from']; }
             if ($rf['to'] !== '')   { $clauses[] = 'YEAR(' . $dateCol . ') <= ?'; $params[] = (int) $rf['to']; }
+        } else {
+            $rangeSql = rf_range_sql($rf['range'], $dateCol);
+            if ($rangeSql !== '') $clauses[] = $rangeSql;
         }
     }
 
@@ -145,10 +186,9 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                     <p class="filter-title">Date</p>
                     <div class="filter-body">
                         <label class="filter-option"><input type="radio" name="range" value="" <?= $rf['range'] === '' ? 'checked' : '' ?>> All dates</label>
-                        <label class="filter-option"><input type="radio" name="range" value="7" <?= $rf['range'] === '7' ? 'checked' : '' ?>> Last 7 days</label>
-                        <label class="filter-option"><input type="radio" name="range" value="30" <?= $rf['range'] === '30' ? 'checked' : '' ?>> Last 30 days</label>
-                        <label class="filter-option"><input type="radio" name="range" value="90" <?= $rf['range'] === '90' ? 'checked' : '' ?>> Last 3 months</label>
-                        <label class="filter-option"><input type="radio" name="range" value="year" <?= $rf['range'] === 'year' ? 'checked' : '' ?>> This year</label>
+                        <?php foreach (($config['ranges'] ?? rf_default_ranges()) as $rk): ?>
+                            <label class="filter-option"><input type="radio" name="range" value="<?= e($rk) ?>" <?= $rf['range'] === $rk ? 'checked' : '' ?>> <?= e(rf_range_label($rk)) ?></label>
+                        <?php endforeach; ?>
                         <label class="filter-option"><input type="radio" name="range" value="custom" <?= $rf['range'] === 'custom' ? 'checked' : '' ?>> Custom range</label>
                         <div class="filter-custom-dates">
                             <label>From <input type="number" name="date_from" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['from']) ?>"></label>
@@ -223,9 +263,8 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
         }
         $chips[] = ['label' => 'Search: "' . $rf['q'] . '"', 'url' => $selfUrl . ($p ? '?' . http_build_query($p) : '')];
     }
-    $rangeLabels = ['7' => 'Last 7 days', '30' => 'Last 30 days', '90' => 'Last 3 months', 'year' => 'This year'];
     if ($rf['range'] !== '') {
-        $rangeLabel = $rangeLabels[$rf['range']] ?? 'Custom';
+        $rangeLabel = rf_range_label($rf['range']);
         if ($rf['range'] === 'custom') {
             $rangeLabel = 'Years'
                 . ($rf['from'] !== '' ? ' ' . $rf['from'] : '')

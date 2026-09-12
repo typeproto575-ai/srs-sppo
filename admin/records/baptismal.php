@@ -272,6 +272,7 @@ $rfConfig = [
     'date_column'    => 'baptism_date',
     'search_columns' => ['child_full_name', 'father_name', 'mother_name', 'entry_no', 'minister_name'],
     'placeholder'    => 'Search child, father, mother, entry no., minister&hellip;',
+    'ranges'         => ['year', 'last_year', 'last5'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);

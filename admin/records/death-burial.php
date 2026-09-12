@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 if (isset($_GET['added'])) $success = 'Record saved.';
 // --- Search / filter / pagination --
 $selfUrl = $basePath . '/admin/records/death-burial.php';
-$rfConfig = ['date_column' => 'date_of_death', 'search_columns' => ['deceased_full_name'], 'placeholder' => 'Search deceased name&hellip;'];
+$rfConfig = ['date_column' => 'date_of_death', 'search_columns' => ['deceased_full_name'], 'placeholder' => 'Search deceased name&hellip;', 'ranges' => ['year', 'last_year', 'last5']];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM death_burial_records {$rf['where']}");

@@ -95,6 +95,7 @@ $rfConfig = [
     'date_column'    => 'date_submitted',
     'search_columns' => ['tracking_number', 'requester_name', 'requester_email'],
     'placeholder'    => 'Search tracking no., requester, email&hellip;',
+    'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [

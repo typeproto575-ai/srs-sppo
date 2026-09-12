@@ -219,6 +219,7 @@ $rfConfig = [
     'date_column'    => 'marriage_date',
     'search_columns' => ['husband_full_name', 'wife_maiden_name', 'entry_no', 'officiating_minister'],
     'placeholder'    => 'Search spouse names, entry no., minister&hellip;',
+    'ranges'         => ['year', 'last_year', 'last5'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);

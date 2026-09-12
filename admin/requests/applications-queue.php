@@ -101,6 +101,7 @@ $rfConfig = [
     'date_column'    => 'date_submitted',
     'search_columns' => ['tracking_number', 'sacrament_type'],
     'placeholder'    => 'Search tracking no. or sacrament&hellip;',
+    'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [

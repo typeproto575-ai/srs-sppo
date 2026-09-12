@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && c
 
 // --- List requests ready to generate (approved or ready_for_pickup) -----
 $selfUrl = $basePath . '/admin/certificates/generate.php';
-$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type', 'requester_name'], 'placeholder' => 'Search tracking no., sacrament, requester&hellip;'];
+$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type', 'requester_name'], 'placeholder' => 'Search tracking no., sacrament, requester&hellip;', 'ranges' => ['today', 'week', 'month', 'year']];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
