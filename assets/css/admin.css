@@ -340,18 +340,25 @@ details.sidebar-group .sidebar-menu {
 }
 
 .stat-card {
-    background: rgba(255,255,255,0.32);
+    background: #ffffff;
     border: 1px solid rgba(31,61,43,0.12);
+    border-left: 5px solid #2f5e3f;
     border-radius: 10px;
     padding: 1.15rem 1.3rem;
     min-height: 104px;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    box-shadow: 0 1px 4px rgba(31,61,43,0.08);
 }
 
+/* Stat card accents: amber = work waiting, blue = drafts/reviews, green = done. */
+.stat-card.stat-tone-amber { border-left-color: #c98a1b; }
+.stat-card.stat-tone-blue { border-left-color: #2c5d8f; }
+.stat-card.stat-tone-green { border-left-color: #2f7a44; }
+
 .stat-number {
-    font-size: 2.2rem;
+    font-size: 2.4rem;
     font-weight: 700;
     margin: 0;
     line-height: 1;
@@ -385,7 +392,7 @@ details.sidebar-group .sidebar-menu {
 }
 
 .registry-card {
-    background: rgba(239, 230, 210, 0.9);
+    background: #ffffff;
     border: 1px solid rgba(31,61,43,0.10);
     border-radius: 10px;
     min-height: 112px;
@@ -395,6 +402,18 @@ details.sidebar-group .sidebar-menu {
     justify-content: center;
     text-align: center;
     padding: 0.9rem 0.7rem;
+    box-shadow: 0 1px 4px rgba(31,61,43,0.08);
+}
+
+.registry-card .card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(47,94,63,0.10);
+    margin-bottom: 0.5rem;
 }
 
 .registry-card h3 {
@@ -418,10 +437,11 @@ details.sidebar-group .sidebar-menu {
 }
 
 .mini-panel {
-    background: rgba(255,255,255,0.18);
+    background: #ffffff;
     border: 1px solid rgba(31,61,43,0.12);
     border-radius: 10px;
     padding: 1rem 1.1rem 1.1rem;
+    box-shadow: 0 1px 4px rgba(31,61,43,0.08);
 }
 
 .mini-panel h3 {
@@ -450,15 +470,125 @@ details.sidebar-group .sidebar-menu {
     color: #1f3d2b;
     text-decoration: none;
     font-weight: 600;
+    transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.tool-list a:hover {
+    background: rgba(31,61,43,0.12);
+    transform: translateY(-1px);
 }
 
 .login-page {
-    max-width: 340px;
+    max-width: 380px;
     margin: 4rem auto;
-    padding: 2rem;
+    padding: 2.25rem 2rem;
     background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    border: 1px solid rgba(31,61,43,0.12);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(31,61,43,0.16);
+    border-top: 5px solid #2f5e3f;
+}
+
+.login-page h1 {
+    margin: 1rem 0 1.25rem;
+    font-size: 1.5rem;
+    color: #1f2f26;
+    text-align: center;
+}
+
+.login-logo {
+    display: block;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 4px 12px rgba(31,61,43,0.25);
+}
+
+.login-page form label {
+    display: block;
+    margin-bottom: 0.9rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #2b362f;
+}
+
+.login-page form input {
+    margin-top: 0.35rem;
+}
+
+.login-page .btn {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.7rem;
+    font-size: 1rem;
+}
+
+/* ---- Public page content editor (admin/system/site-settings.php) ---- */
+.settings-form fieldset {
+    background: #ffffff;
+    border: 1px solid rgba(31,61,43,0.12);
+    border-radius: 10px;
+    padding: 1.15rem 1.3rem 1.3rem;
+    margin: 0 0 1.1rem;
+    box-shadow: 0 1px 4px rgba(31,61,43,0.08);
+}
+
+.settings-form legend {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #1f3d2b;
+    padding: 0 0.5rem;
+}
+
+.settings-form label {
+    display: block;
+    margin-bottom: 0.95rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2b362f;
+}
+
+.settings-form .field-hint {
+    display: block;
+    font-weight: 400;
+    font-size: 0.82rem;
+    color: #6a7a6e;
+    margin: 0.2rem 0 0.35rem;
+}
+
+.settings-form textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+/* ---- Shared admin content card: wrap page sections in a white card ---- */
+.admin-card {
+    background: #ffffff;
+    border: 1px solid rgba(31,61,43,0.12);
+    border-radius: 10px;
+    padding: 1.15rem 1.3rem;
+    margin-bottom: 1.1rem;
+    box-shadow: 0 1px 4px rgba(31,61,43,0.08);
+}
+
+.admin-card > :first-child { margin-top: 0; }
+.admin-card > :last-child { margin-bottom: 0; }
+
+/* ---- Admin page heading rhythm ------------------------------------------ */
+.admin-content > h1:first-child {
+    margin: 0 0 0.35rem;
+    font-size: clamp(1.7rem, 2.5vw, 2.2rem);
+    color: #1f2f26;
+    letter-spacing: -0.01em;
+}
+
+.admin-content > h1:first-child + p {
+    margin-top: 0;
+    color: #4a433b;
 }
 
 /* =====================================================================

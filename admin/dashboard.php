@@ -100,23 +100,23 @@ if ((current_user()['username'] ?? null) === 'secretary') {
 
             <div class="stat-cards dashboard-metrics">
                 <!-- Each stat card is a clickable shortcut: clock icon -> certificate queue, inbox icon -> applications queue -->
-                <a class="stat-card" href="<?= $basePath ?>/admin/requests/queue.php?status=pending">
+                <a class="stat-card stat-tone-amber" href="<?= $basePath ?>/admin/requests/queue.php?status=pending">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
                     <p class="stat-number"><?= (int) $pendingCount ?></p>
                     <p class="stat-label">Pending Certificate Requests</p>
                 </a>
-                <a class="stat-card" href="<?= $basePath ?>/admin/requests/applications-queue.php?status=submitted">
+                <a class="stat-card stat-tone-amber" href="<?= $basePath ?>/admin/requests/applications-queue.php?status=submitted">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
                     <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
                     <p class="stat-label">New Sacrament Applications</p>
                 </a>
                 <!-- Needs-attention cards: claim-ready output and in-progress reviews -->
-                <a class="stat-card" href="<?= $basePath ?>/admin/requests/queue.php?status=ready_for_pickup">
+                <a class="stat-card stat-tone-blue" href="<?= $basePath ?>/admin/requests/queue.php?status=ready_for_pickup">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
                     <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
                     <p class="stat-label">Ready for Pickup</p>
                 </a>
-                <a class="stat-card" href="<?= $basePath ?>/admin/requests/applications-queue.php">
+                <a class="stat-card stat-tone-green" href="<?= $basePath ?>/admin/requests/applications-queue.php">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
                     <p class="stat-number"><?= (int) $underReviewCount ?></p>
                     <p class="stat-label">Applications In Progress</p>

@@ -105,7 +105,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <form method="post" class="settings-form">
             <?= csrf_field() ?>
 
-            <fieldset>
+            <fieldset class="admin-card">
                 <legend>Hero Section</legend>
                 <label>
                     <?= $fieldDefs['hero_heading_text']['label'] ?>
@@ -122,7 +122,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </label>
             </fieldset>
 
-            <fieldset>
+            <fieldset class="admin-card">
                 <legend>Office Information</legend>
                 <label>
                     <?= $fieldDefs['office_hours_text']['label'] ?>
@@ -138,6 +138,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <div class="form-actions">
                 <button type="submit" class="btn">Save Changes</button>
+                <a href="<?= $basePath ?>/" target="_blank" rel="noopener" class="btn btn-secondary">Preview Public Page</a>
                 <a href="<?= $basePath ?>/admin/dashboard.php" class="btn btn-secondary">Back to Dashboard</a>
             </div>
         </form>
