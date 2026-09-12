@@ -150,6 +150,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
         // Log the walk-in application encoding to the audit trail
         log_activity($pdo, current_user()['id'], 'walk_in_application_encoded', 'sacrament_applications', $applicationId, "Walk-in {$sacramentType} application encoded.");
+        notify($pdo, 'application_new', 'New walk-in application',
+            "Walk-in {$sacramentType} application ({$trackingNumber})",
+            '/admin/requests/applications-queue.php');
         return $trackingNumber;
         });
     } catch (Exception $e) {

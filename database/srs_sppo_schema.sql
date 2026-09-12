@@ -540,3 +540,22 @@ INSERT INTO site_settings (setting_key, setting_value) VALUES
 ('hero_subtitle_text', 'Dingalan, Aurora - the parish''s sacrament records and certificates, kept faithfully for generations, now easier to reach.'),
 ('office_hours_text', CONCAT('Tuesday - Friday: 8:00 AM - 5:00 PM', CHAR(10), 'Saturday: 8:00 AM - 12:00 NN', CHAR(10), 'Sunday & Monday: Closed')),
 ('office_location_text', CONCAT('St. Patrick''s Parish Office', CHAR(10), 'Dingalan, Aurora, Philippines'));
+
+-- =====================================================================
+-- ADMIN NOTIFICATIONS (global bell in the admin header)
+-- =====================================================================
+-- One shared stream for all staff: every row is visible to whoever is
+-- logged in, and a single is_read flag marks it handled. The link column
+-- stores an APP-RELATIVE path (e.g. /admin/requests/queue.php) — the API
+-- endpoint prepends base_path() so it works in subfolder installs too.
+CREATE TABLE notifications (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  type        ENUM('request_new', 'application_new', 'request_ready', 'event_reminder', 'conflict') NOT NULL,
+  title       VARCHAR(150) NOT NULL,
+  message     VARCHAR(255) NOT NULL,
+  link        VARCHAR(200) NOT NULL,
+  is_read     TINYINT(1) NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at     DATETIME NULL,
+  INDEX idx_notif_unread (is_read, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

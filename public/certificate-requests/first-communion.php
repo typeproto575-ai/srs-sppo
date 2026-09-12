@@ -93,6 +93,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, null, 'certificate_request_submitted', 'certificate_requests', $requestId,
                 "First Communion certificate request submitted by {$requesterName}");
 
+            notify($pdo, 'request_new', 'New certificate request',
+                "First Communion certificate request from {$requesterName} ({$trackingNumber})",
+                '/admin/requests/queue.php?status=pending');
+
             $pdo->commit();
 
             if (mail_request_received($requesterEmail, $trackingNumber, 'First Communion Certificate Request')) {

@@ -155,6 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, null, 'certificate_request_submitted', 'certificate_requests', $requestId,
                 "Baptismal certificate request submitted by {$requesterName}");
 
+            notify($pdo, 'request_new', 'New certificate request',
+                "Baptismal certificate request from {$requesterName} ({$trackingNumber})",
+                '/admin/requests/queue.php?status=pending');
+
             $pdo->commit();
 
             if (mail_request_received($requesterEmail, $trackingNumber, 'Baptismal Certificate Request')) {

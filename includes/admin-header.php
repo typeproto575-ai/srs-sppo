@@ -71,6 +71,24 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <span class="header-home-brand">Schedule and Record System</span>
     </a>
     <div class="master-profile">
+        <!-- Notification bell: global admin notifications (see admin/api/notifications.php) -->
+        <div class="notif-wrap" data-notif-wrap data-notif-api="<?= $basePath ?>/admin/api/notifications.php" data-csrf="<?= e(csrf_token()) ?>">
+            <button type="button" class="notif-bell" data-notif-bell aria-label="Notifications" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <span class="notif-badge" data-notif-badge hidden></span>
+            </button>
+            <div class="notif-panel" data-notif-panel hidden>
+                <div class="notif-panel-head">
+                    <span class="notif-panel-title">Notifications</span>
+                    <button type="button" class="notif-mark-all" data-notif-mark-all>Mark all read</button>
+                </div>
+                <ul class="notif-list" data-notif-list></ul>
+                <p class="notif-empty" data-notif-empty hidden>No new notifications.</p>
+            </div>
+        </div>
         <!-- Quick utility links in the top bar -->
         <nav class="master-utilities" aria-label="Admin utilities">
             <a href="<?= $basePath ?>/admin/reports/index.php"<?= $isActive('/admin/reports/index.php', '/admin/reports/monthly.php', '/admin/reports/yearly.php') ?>>Reports</a>

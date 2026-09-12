@@ -607,3 +607,43 @@ function security_headers(): void
 // Fire-and-forget: applied to every request that loads this file (which is
 // every page in the app), before any HTML output has been sent.
 security_headers();
+
+// ---------------------------------------------------------------------
+// ADMIN NOTIFICATIONS
+// ---------------------------------------------------------------------
+
+/**
+ * Record an admin notification (best-effort — NEVER throws).
+ *
+ * Appends a row to the shared `notifications` stream shown in the admin
+ * header bell. Deliberately swallows every failure (missing table, DB
+ * hiccup, transaction issues) and only writes to the error log: a broken
+ * notification must never break the request that triggered it — e.g. a
+ * parishioner's certificate submission must still go through.
+ *
+ * Call sites run inside transactions in some forms; the INSERT simply
+ * joins that transaction, so a later rollback also rolls the
+ * notification back (correct: no notification for a request that
+ * failed to save).
+ *
+ * @param PDO    $pdo     Database connection
+ * @param string $type    One of the notifications.type enum values
+ *                        (request_new, application_new, request_ready,
+ *                        event_reminder, conflict)
+ * @param string $title   Short heading shown in the bell dropdown
+ * @param string $message One-line detail (who/what/which tracking no.)
+ * @param string $link    APP-RELATIVE admin path the item opens
+ *                        (e.g. /admin/requests/queue.php) — the API
+ *                        endpoint prepends base_path().
+ */
+function notify(PDO $pdo, string $type, string $title, string $message, string $link): void
+{
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute([$type, $title, $message, $link]);
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO notify failed (' . $type . '): ' . $e->getMessage());
+    }
+}

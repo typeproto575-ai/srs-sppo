@@ -155,6 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId,
                 "Marriage application submitted for {$groomName} & {$brideName}");
 
+            notify($pdo, 'application_new', 'New sacrament application',
+                "Marriage application for {$groomName} & {$brideName} ({$trackingNumber})",
+                '/admin/requests/applications-queue.php');
+
             $pdo->commit();
 
             if (mail_request_received($groomEmail, $trackingNumber, 'Marriage Application')) {

@@ -103,6 +103,179 @@ body {
     margin-left: 0.25rem;
 }
 
+/* ---- Notification bell (dark header context) --------------------------- */
+.notif-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0.9rem;
+}
+
+.notif-bell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.notif-bell:hover,
+.notif-bell[aria-expanded="true"] {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.notif-bell:focus-visible {
+    outline: 2px solid #e7d7ab;
+    outline-offset: 1px;
+}
+
+/* Unread counter pinned to the bell's top-right corner. */
+.notif-badge {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.28rem;
+    border-radius: 999px;
+    background: #d64545;
+    color: #ffffff;
+    font-family: var(--font-body, Arial, sans-serif);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Dropdown panel — anchored to the bell, above the page content. */
+.notif-panel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: -0.5rem;
+    width: 340px;
+    max-width: calc(100vw - 2rem);
+    max-height: 26rem;
+    overflow-y: auto;
+    background: #ffffff;
+    color: #1f2f26;
+    border: 1px solid rgba(31, 61, 43, 0.2);
+    border-top: 3px solid #2f5e3f;
+    border-radius: 10px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+    z-index: 300;
+}
+
+.notif-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid #eee7d8;
+}
+
+.notif-panel-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #1f2f26;
+}
+
+.notif-mark-all {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #2f5e3f;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.notif-mark-all:hover { color: #1f3d2b; }
+
+.notif-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* Each item is a full-block link; type colors show as a left edge. */
+.notif-item {
+    display: block;
+    padding: 0.55rem 0.85rem;
+    border-bottom: 1px solid #f1ecdf;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+    color: #1f2f26;
+    transition: background 0.12s ease;
+}
+
+.notif-item:hover { background: #f7f5ee; }
+.notif-item:last-child { border-bottom: 0; }
+
+.notif-item.is-unread {
+    background: #f2f7f3;
+    border-left-color: #2f5e3f;
+}
+
+.notif-item.is-unread:hover { background: #e8f1ea; }
+
+/* Per-type accents on unread items. */
+.notif-item.is-unread.notif-type-request_new     { border-left-color: #2f5e3f; }
+.notif-item.is-unread.notif-type-application_new { border-left-color: #2b6cb0; }
+.notif-item.is-unread.notif-type-request_ready   { border-left-color: #b7791f; }
+.notif-item.is-unread.notif-type-event_reminder  { border-left-color: #6b46c1; }
+.notif-item.is-unread.notif-type-conflict        { border-left-color: #c0392b; }
+
+.notif-item-title {
+    display: block;
+    font-weight: 600;
+    font-size: 0.86rem;
+}
+
+.notif-item.is-unread .notif-item-title { font-weight: 700; }
+
+.notif-item-msg {
+    display: block;
+    font-size: 0.8rem;
+    color: #4a5a50;
+    margin-top: 0.1rem;
+}
+
+.notif-item-time {
+    display: block;
+    font-size: 0.7rem;
+    color: #8a978c;
+    margin-top: 0.2rem;
+}
+
+.notif-empty {
+    padding: 1.1rem 0.85rem;
+    margin: 0;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #6a7a6e;
+}
+
+/* On small screens the panel hugs the screen edge. */
+@media (max-width: 480px) {
+    .notif-panel {
+        right: -3.2rem;
+        width: 300px;
+    }
+}
+
 .admin-layout {
     display: flex;
     min-height: calc(100vh - 58px);

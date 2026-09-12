@@ -114,4 +114,136 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // ---- 7) Admin notification bell ----------------------------------------
+    // Global notifications stream (see admin/api/notifications.php):
+    //   - badge shows unread notifications + today/tomorrow events;
+    //   - the panel lists events first, then the 10 newest notifications;
+    //   - clicking an item marks it read and opens its link;
+    //   - re-polls every 60s, but only while the tab is visible.
+    (function () {
+        var wrap = document.querySelector('[data-notif-wrap]');
+        if (!wrap) return; // public pages have no bell
+
+        var api    = wrap.getAttribute('data-notif-api');
+        var csrf   = wrap.getAttribute('data-csrf') || '';
+        var bell   = wrap.querySelector('[data-notif-bell]');
+        var panel  = wrap.querySelector('[data-notif-panel]');
+        var badge  = wrap.querySelector('[data-notif-badge]');
+        var list   = wrap.querySelector('[data-notif-list]');
+        var empty  = wrap.querySelector('[data-notif-empty]');
+        var markAll = wrap.querySelector('[data-notif-mark-all]');
+        if (!bell || !panel || !badge || !list || !api) return;
+
+        // "3m ago"-style labels; falls back to the raw date for old items.
+        function timeAgo(iso) {
+            var then = new Date(iso).getTime();
+            if (isNaN(then)) return '';
+            var secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+            if (secs < 60) return 'just now';
+            if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+            if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+            if (secs < 7 * 86400) return Math.floor(secs / 86400) + 'd ago';
+            return new Date(iso).toLocaleDateString();
+        }
+
+        function render(data) {
+            var count = data.unread_count || 0;
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.hidden = count === 0;
+
+            var items = data.items || [];
+            list.innerHTML = '';
+            items.forEach(function (item) {
+                var li = document.createElement('li');
+                var a = document.createElement('a');
+                a.className = 'notif-item notif-type-' + item.type + (item.is_read ? '' : ' is-unread');
+                a.href = item.link;
+
+                var title = document.createElement('span');
+                title.className = 'notif-item-title';
+                title.textContent = item.title;
+
+                var msg = document.createElement('span');
+                msg.className = 'notif-item-msg';
+                msg.textContent = item.message;
+
+                var time = document.createElement('span');
+                time.className = 'notif-item-time';
+                time.textContent = timeAgo(item.created_at);
+
+                a.appendChild(title);
+                a.appendChild(msg);
+                a.appendChild(time);
+                li.appendChild(a);
+                list.appendChild(li);
+
+                // Mark read on navigation (never blocks the link itself).
+                if (item.kind === 'notif' && !item.is_read) {
+                    a.addEventListener('click', function () {
+                        markRead('mark_read', item.id);
+                    });
+                }
+            });
+
+            empty.hidden = items.length > 0;
+        }
+
+        function apply(data) {
+            if (!data || data.error) return;
+            render(data);
+        }
+
+        function fetchNotifications() {
+            // Skip polling in hidden tabs — the badge refreshes the moment
+            // the user returns anyway (visibilitychange below).
+            if (document.hidden) return;
+            fetch(api, { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(apply)
+                .catch(function () { /* offline or logged out — badge just stays stale */ });
+        }
+
+        function markRead(action, id) {
+            var body = new URLSearchParams({ action: action, csrf_token: csrf });
+            if (id) body.append('id', id);
+            fetch(api, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: body
+            })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(apply)
+                .catch(function () { /* non-fatal */ });
+        }
+
+        bell.addEventListener('click', function () {
+            var open = panel.hidden;
+            panel.hidden = !open;
+            bell.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) fetchNotifications();
+        });
+
+        // Click outside closes the panel (standard dropdown behaviour).
+        document.addEventListener('click', function (ev) {
+            if (!panel.hidden && !wrap.contains(ev.target)) {
+                panel.hidden = true;
+                bell.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        if (markAll) {
+            markAll.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                markRead('mark_all_read', null);
+            });
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden && !panel.hidden) fetchNotifications();
+        });
+
+        fetchNotifications();
+        window.setInterval(fetchNotifications, 60000);
+    })();
+
 });

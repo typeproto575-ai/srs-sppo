@@ -126,6 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             log_activity($pdo, current_user()['id'], 'walk_in_request_encoded', 'certificate_requests', $requestId,
                 "Walk-in {$sacramentType} certificate request encoded for {$requesterName}");
 
+            notify($pdo, 'request_new', 'New walk-in certificate request',
+                "Walk-in {$sacramentType} certificate request for {$requesterName} ({$trackingNumber})",
+                '/admin/requests/queue.php?status=pending');
+
             return $trackingNumber;
         });
         } catch (Exception $e) {

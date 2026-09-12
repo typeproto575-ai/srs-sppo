@@ -52,6 +52,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
         log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId,
             "Status changed to {$newStatus}");
 
+        // Admin bell: flag ready-for-pickup so the counter desk remembers
+        // to call the person in and have the copies signed and waiting.
+        if ($newStatus === 'ready_for_pickup') {
+            $nfStmt = $pdo->prepare('SELECT tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
+            $nfStmt->execute([$requestId]);
+            if ($nfRow = $nfStmt->fetch()) {
+                $nfKind = ucwords(str_replace('_', ' ', (string) $nfRow['sacrament_type'])) . ' Certificate';
+                notify($pdo, 'request_ready', 'Certificate ready for pickup',
+                    $nfKind . ' for ' . $nfRow['requester_name'] . ' (' . $nfRow['tracking_number'] . ')',
+                    '/admin/requests/queue.php?status=ready_for_pickup');
+            }
+        }
+
         // Notify the requester (email) when their certificate is ready for
         // pickup, or when it has been released at the counter. Safe no-op and
         // logged when mail is enabled; never blocks the status change.

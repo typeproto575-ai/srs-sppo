@@ -119,6 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId,
                 "Baptismal application submitted for {$childName}");
 
+            notify($pdo, 'application_new', 'New sacrament application',
+                "Baptismal application for {$childName} ({$trackingNumber})",
+                '/admin/requests/applications-queue.php');
+
             $pdo->commit();
 
             if (mail_request_received($email, $trackingNumber, 'Baptismal Application')) {
