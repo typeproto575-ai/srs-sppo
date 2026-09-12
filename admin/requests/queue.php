@@ -91,7 +91,30 @@ $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 // --- Search / filter / pagination --
 $selfUrl = $basePath . '/admin/requests/queue.php';
-$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'requester_name', 'requester_email']];
+$rfConfig = [
+    'date_column'    => 'date_submitted',
+    'search_columns' => ['tracking_number', 'requester_name', 'requester_email'],
+    'placeholder'    => 'Search tracking no., requester, email&hellip;',
+    'filters'        => [
+        'status'    => ['label' => 'Status',
+            'options' => [
+                'pending'         => 'Pending',
+                'under_review'    => 'Under review',
+                'approved'        => 'Approved',
+                'ready_for_pickup'=> 'Ready for pickup',
+                'released'        => 'Released',
+                'rejected'        => 'Rejected',
+            ]],
+        'sacrament' => ['label' => 'Sacrament',
+            'options' => [
+                'baptismal'      => 'Baptismal',
+                'confirmation'   => 'Confirmation',
+                'first_communion'=> 'First Communion',
+                'marriage'       => 'Marriage',
+                'death_burial'   => 'Death / Burial',
+            ]],
+    ],
+];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
@@ -137,24 +160,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
-        <form method="get" class="inline-fields filter-form">
-            <label>Status
-                <select name="status" onchange="this.form.submit()">
-                    <option value="">All</option>
-                    <?php foreach ($statusOptions as $s): ?>
-                        <option value="<?= e($s) ?>" <?= $filterStatus === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label>Sacrament
-                <select name="sacrament" onchange="this.form.submit()">
-                    <option value="">All</option>
-                    <?php foreach (array_keys(CERT_EXT) as $s): ?>
-                        <option value="<?= e($s) ?>" <?= $filterSacrament === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        </form>
 
         <?php if (empty($requests)): ?>
             <p>No certificate requests match this filter.</p>

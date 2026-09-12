@@ -97,7 +97,33 @@ if ($filterSacrament !== '' && in_array($filterSacrament, $sacramentTypes, true)
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 $selfUrl = $basePath . '/admin/requests/applications-queue.php';
-$rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type']];
+$rfConfig = [
+    'date_column'    => 'date_submitted',
+    'search_columns' => ['tracking_number', 'sacrament_type'],
+    'placeholder'    => 'Search tracking no. or sacrament&hellip;',
+    'filters'        => [
+        'status'    => ['label' => 'Status',
+            'options' => [
+                'submitted'          => 'Submitted',
+                'documents_pending' => 'Documents pending',
+                'interview_scheduled' => 'Interview scheduled',
+                'banns_in_progress'  => 'Banns in progress',
+                'seminar_pending'    => 'Seminar pending',
+                'ready_for_approval' => 'Ready for approval',
+                'approved'           => 'Approved',
+                'scheduled'          => 'Scheduled',
+                'completed'          => 'Completed',
+                'rejected'           => 'Rejected',
+            ]],
+        'sacrament' => ['label' => 'Sacrament',
+            'options' => [
+                'baptismal'      => 'Baptismal',
+                'confirmation'   => 'Confirmation',
+                'first_communion'=> 'First Communion',
+                'marriage'       => 'Marriage',
+            ]],
+    ],
+];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
@@ -173,35 +199,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Sacrament Applications Queue</h1>
 
-        <?php
-        // Status filter choices: when a sacrament is selected, only that
-        // sacrament's workflow stages are offered (plus the currently
-        // selected status so an existing filter never silently vanishes).
-        $statusChoices = ($filterSacrament !== '' && isset($statusFlow[$filterSacrament]))
-            ? $statusFlow[$filterSacrament]
-            : $allStatuses;
-        if ($filterStatus !== '' && !in_array($filterStatus, $statusChoices, true)) {
-            $statusChoices[] = $filterStatus;
-        }
-        ?>
-        <form method="get" class="inline-fields filter-form">
-            <label>Status
-                <select name="status" onchange="this.form.submit()">
-                    <option value="">All</option>
-                    <?php foreach ($statusChoices as $s): ?>
-                        <option value="<?= e($s) ?>" <?= $filterStatus === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label>Sacrament
-                <select name="sacrament" onchange="this.form.submit()">
-                    <option value="">All</option>
-                    <?php foreach ($sacramentTypes as $s): ?>
-                        <option value="<?= e($s) ?>" <?= $filterSacrament === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        </form>
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 

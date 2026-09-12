@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_released']) && c
 
 // --- List the most recent generations (newest first, capped) --------------
 $selfUrl = $basePath . '/admin/certificates/history.php';
-$rfConfig = ['date_column' => 'gl.generated_at', 'search_columns' => ['cr.tracking_number', 'cr.sacrament_type', 'cr.requester_name']];
+$rfConfig = ['date_column' => 'gl.generated_at', 'search_columns' => ['cr.tracking_number', 'cr.sacrament_type', 'cr.requester_name'], 'placeholder' => 'Search tracking no., sacrament, requester&hellip;'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 

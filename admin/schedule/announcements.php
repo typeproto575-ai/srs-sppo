@@ -120,7 +120,7 @@ if (isset($_GET['updated'])) $success = 'Announcement updated.';
 if (isset($_GET['deleted'])) $success = 'Announcement deleted.';
 
 $selfUrl = $basePath . '/admin/schedule/announcements.php';
-$rfConfig = ['date_column' => 'created_at', 'search_columns' => ['title', 'content']];
+$rfConfig = ['date_column' => 'created_at', 'search_columns' => ['title', 'content'], 'placeholder' => 'Search announcement title or content&hellip;'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 

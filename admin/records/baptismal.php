@@ -271,6 +271,7 @@ if (isset($_GET['deleted'])) $success = 'Baptismal record deleted.';
 $rfConfig = [
     'date_column'    => 'baptism_date',
     'search_columns' => ['child_full_name', 'father_name', 'mother_name', 'entry_no', 'minister_name'],
+    'placeholder'    => 'Search child, father, mother, entry no., minister&hellip;',
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);

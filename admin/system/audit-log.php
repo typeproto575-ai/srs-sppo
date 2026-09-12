@@ -21,7 +21,7 @@ $pageTitle = 'Audit Log';
 
 // --- Search / filter / pagination ---
 $selfUrl = $basePath . '/admin/system/audit-log.php';
-$rfConfig = ['date_column' => 'al.created_at', 'search_columns' => ['al.action', 'al.description']];
+$rfConfig = ['date_column' => 'al.created_at', 'search_columns' => ['al.action', 'al.description'], 'placeholder' => 'Search action or description&hellip;'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 

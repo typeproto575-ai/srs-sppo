@@ -80,7 +80,7 @@ function humanize_label(string $s): string
 }
 // --- Search / filter / pagination ---
 $selfUrl = $basePath . '/admin/schedule/booking-conflicts.php';
-$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name']];
+$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name'], 'placeholder' => 'Search tracking no., groom, bride&hellip;'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 

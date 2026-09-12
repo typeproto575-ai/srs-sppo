@@ -110,10 +110,12 @@ function rf_page_url(string $selfUrl, int $page): string
 function rf_render_bar(string $selfUrl, array $config, array $rf): void
 {
     $dOn = $rf['range'] !== '';
+    $placeholder = $config['placeholder'] ?? 'Search name, entry no., minister&hellip;';
+    $extraFilters = $config['filters'] ?? [];
     ?>
         <div class="record-filter-bar">
             <!-- Standalone search: always visible; runs on Enter or the button.
-                 Hidden inputs keep the active date filter when searching. -->
+                 Hidden inputs keep the active date + extra filters when searching. -->
             <form method="get" action="<?= e($selfUrl) ?>" class="search-form">
                 <?php if ($dOn): ?>
                     <input type="hidden" name="range" value="<?= e($rf['range']) ?>">
@@ -122,7 +124,10 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                         <input type="hidden" name="date_to" value="<?= e($rf['to']) ?>">
                     <?php endif; ?>
                 <?php endif; ?>
-                <input type="search" name="q" value="<?= e($rf['q']) ?>" placeholder="Search name, entry no., minister&hellip;">
+                <?php foreach ($extraFilters as $fKey => $fDef): ?>
+                    <?php if (trim($_GET[$fKey] ?? '') !== ''): ?><input type="hidden" name="<?= e($fKey) ?>" value="<?= e($_GET[$fKey]) ?>"><?php endif; ?>
+                <?php endforeach; ?>
+                <input type="search" name="q" value="<?= e($rf['q']) ?>" placeholder="<?= e($placeholder) ?>">
                 <button type="submit" class="btn btn-small">Search</button>
                 <?php if ($rf['q'] !== ''): $clearGet = array_diff_key($_GET, ['q' => 1, 'page' => 1]); ?>
                     <a href="<?= e($selfUrl . ($clearGet ? '?' . http_build_query($clearGet) : '')) ?>" class="btn btn-secondary btn-small">Clear</a>
@@ -150,6 +155,15 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                             <label>To <input type="number" name="date_to" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['to']) ?>"></label>
                         </div>
                     </div>
+                    <?php foreach ($extraFilters as $fKey => $fDef): ?>
+                        <p class="filter-title"><?= e($fDef['label'] ?? ucwords(str_replace('_', ' ', $fKey))) ?></p>
+                        <div class="filter-body">
+                            <label class="filter-option"><input type="radio" name="<?= e($fKey) ?>" value="" <?= (trim($_GET[$fKey] ?? '') === '') ? 'checked' : '' ?>> All</label>
+                            <?php foreach (($fDef['options'] ?? []) as $optVal => $optLabel): ?>
+                                <label class="filter-option"><input type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (trim($_GET[$fKey] ?? '') === (string) $optVal) ? 'checked' : '' ?>> <?= e($optLabel) ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endforeach; ?>
                     <div class="filter-panel-actions">
                         <button type="submit" class="btn btn-small">Apply Filters</button>
                     </div>
@@ -162,6 +176,9 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                 <?php if ($rf['q'] !== ''): ?><input type="hidden" name="q" value="<?= e($rf['q']) ?>"><?php endif; ?>
                 <?php if ($dOn): ?><input type="hidden" name="range" value="<?= e($rf['range']) ?>"><?php endif; ?>
                 <?php if ($dOn && $rf['range'] === 'custom'): ?><input type="hidden" name="date_from" value="<?= e($rf['from']) ?>"><input type="hidden" name="date_to" value="<?= e($rf['to']) ?>"><?php endif; ?>
+                <?php foreach ($extraFilters as $fKey => $fDef): ?>
+                    <?php if (trim($_GET[$fKey] ?? '') !== ''): ?><input type="hidden" name="<?= e($fKey) ?>" value="<?= e($_GET[$fKey]) ?>"><?php endif; ?>
+                <?php endforeach; ?>
                 <label>Show
                     <select name="per_page" onchange="this.form.submit()">
                         <?php foreach (rf_per_page_choices() as $c): ?>
