@@ -163,7 +163,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <span class="event-date"><?= e(date('M j', strtotime($ev['event_date']))) ?></span>
                             <div class="event-details">
                                 <strong><?= e($ev['title']) ?></strong>
-                                <?php if ($ev['start_time']): ?><p><?= e(date('D, M j â€” g:i A', strtotime($ev['event_date'] . ' ' . $ev['start_time']))) ?></p><?php endif; ?>
+                                <?php if ($ev['start_time']): ?><p><?= e(date('D, M j g:i A', strtotime($ev['event_date'] . ' ' . $ev['start_time']))) ?></p><?php endif; ?>
                             </div>
                             <span class="event-badge" style="background:<?= e($evColor) ?>20; color:<?= e($evColor) ?>"><?= e(ucfirst($ev['event_type'])) ?></span>
                         </div>
