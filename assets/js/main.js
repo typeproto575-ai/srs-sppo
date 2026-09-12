@@ -77,55 +77,15 @@ document.addEventListener('DOMContentLoaded', function () {
             if (popup.open && !popup.contains(ev.target)) popup.open = false;
         });
     });
-    // ---- 5) Admin sidebar dropdown memory ----------------------------------
-    // Each sidebar nav group is a <details data-sidebar-group="...">.
-    // The server pre-opens the group holding the current page (see
-    // includes/admin-header.php $groupIsOpen), and that always wins on page
-    // load so the open menu matches the page you are on (nothing stays
-    // stuck open after you go back to the dashboard).
-    // A saved manual choice is only reused when the current page does not
-    // belong to any group (dashboard) — then your last-opened group is
-    // restored instead of leaving everything closed.
+    // ---- 5) Admin sidebar dropdowns ----------------------------------------
+    // No persistence: every page load is server-driven (see $groupIsOpen in
+    // includes/admin-header.php). Refreshing therefore always resets the
+    // menus — dashboard loads with all groups closed, inner pages load with
+    // only their own group open. Any stale saved state from the old
+    // memory feature is cleared once so it can never stick a group open.
     (function () {
-        var KEY = 'sppo-sidebar-open';
-        var groups = Array.prototype.slice.call(
-            document.querySelectorAll('details.sidebar-group[data-sidebar-group]')
-        );
-        if (!groups.length) return; // not an admin page — nothing to remember
-        var read = function () {
-            try { return JSON.parse(window.localStorage.getItem(KEY)) || {}; }
-            catch (err) { return {}; }
-        };
-        var write = function (state) {
-            try { window.localStorage.setItem(KEY, JSON.stringify(state)); }
-            catch (err) { /* storage unavailable (private mode) — stay server-driven */ }
-        };
-        // Server-driven pages: force exactly the matching group open (or all
-        // closed on the dashboard) and sync storage so stale values cannot
-        // leak in from an earlier page.
-        var serverOpen = groups.filter(function (g) { return g.open; });
-        if (serverOpen.length > 0) {
-            var state = {};
-            groups.forEach(function (g) {
-                var shouldOpen = serverOpen.indexOf(g) !== -1;
-                g.open = shouldOpen;
-                state[g.getAttribute('data-sidebar-group')] = shouldOpen;
-            });
-            write(state);
-        } else {
-            // Dashboard (no group matches): restore the last-opened group.
-            var saved = read();
-            groups.forEach(function (g) {
-                if (saved[g.getAttribute('data-sidebar-group')] === true) { g.open = true; }
-            });
-        }
-        groups.forEach(function (g) {
-            g.addEventListener('toggle', function () {
-                var state = read();
-                state[g.getAttribute('data-sidebar-group')] = g.open;
-                write(state);
-            });
-        });
+        try { window.localStorage.removeItem('sppo-sidebar-open'); }
+        catch (err) { /* storage unavailable — nothing to clear */ }
     })();
 
 });
