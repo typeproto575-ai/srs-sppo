@@ -170,7 +170,96 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                     </select>
                 </label>
             </form>
+
+            <?php
+            // Clear-all link: drop every filter param and return to the plain
+            // page. Rendered only when a search, date, extra, or custom
+            // per-page choice is active.
+            $chipActive = $rf['q'] !== '' || $rf['range'] !== '' || $rf['per_page'] !== 10;
+            foreach (($config['filters'] ?? []) as $fKey => $fDef) {
+                if (trim($_GET[$fKey] ?? '') !== '') { $chipActive = true; break; }
+            }
+            if ($chipActive):
+            ?>
+                <a href="<?= e($selfUrl) ?>" class="btn btn-secondary btn-small" title="Remove all filters">Clear All</a>
+            <?php endif; ?>
         </div>
+
+    <?php
+    // ---- Active filter chips -----------------------------------------------
+    // Removable chips below the bar showing each active filter (search term,
+    // date range, extra page filters). Each chip links back to the same page
+    // with only that one filter removed, so users drop one filter at a time.
+    $chips = [];
+    $baseParams = [];
+    if ($rf['per_page'] !== 10) $baseParams['per_page'] = $rf['per_page'];
+    if ($rf['q'] !== '') {
+        $p = $baseParams;
+        if ($rf['range'] !== '') $p['range'] = $rf['range'];
+        if ($rf['range'] === 'custom') {
+            if ($rf['from'] !== '') $p['date_from'] = $rf['from'];
+            if ($rf['to'] !== '') $p['date_to'] = $rf['to'];
+        }
+        foreach (($config['filters'] ?? []) as $fKey => $fDef) {
+            $v = trim($_GET[$fKey] ?? '');
+            if ($v !== '') $p[$fKey] = $v;
+        }
+        $chips[] = ['label' => 'Search: "' . $rf['q'] . '"', 'url' => $selfUrl . ($p ? '?' . http_build_query($p) : '')];
+    }
+    $rangeLabels = ['7' => 'Last 7 days', '30' => 'Last 30 days', '90' => 'Last 3 months', 'year' => 'This year'];
+    if ($rf['range'] !== '') {
+        $rangeLabel = $rangeLabels[$rf['range']] ?? 'Custom';
+        if ($rf['range'] === 'custom') {
+            $rangeLabel = 'Years'
+                . ($rf['from'] !== '' ? ' ' . $rf['from'] : '')
+                . '–'
+                . ($rf['to'] !== '' ? $rf['to'] : '');
+        }
+        $p = $baseParams;
+        if ($rf['q'] !== '') $p['q'] = $rf['q'];
+        foreach (($config['filters'] ?? []) as $fKey => $fDef) {
+            $v = trim($_GET[$fKey] ?? '');
+            if ($v !== '') $p[$fKey] = $v;
+        }
+        $chips[] = ['label' => 'Date: ' . $rangeLabel, 'url' => $selfUrl . ($p ? '?' . http_build_query($p) : '')];
+    }
+
+    // Extra page-declared filters (e.g. status, sacrament on the queues):
+    // each active one gets its own chip whose URL keeps everything else.
+    foreach (($config['filters'] ?? []) as $fKey => $fDef) {
+        $extraVal = trim($_GET[$fKey] ?? '');
+        if ($extraVal === '') continue;
+        $extraLabel = $extraVal;
+        foreach (($fDef['options'] ?? []) as $optVal => $optLabel) {
+            if ((string) $optVal === $extraVal) { $extraLabel = $optLabel; break; }
+        }
+        if ($extraLabel === $extraVal) $extraLabel = ucwords(str_replace('_', ' ', $extraVal));
+        $p = $baseParams;
+        if ($rf['q'] !== '') $p['q'] = $rf['q'];
+        if ($rf['range'] !== '') $p['range'] = $rf['range'];
+        if ($rf['range'] === 'custom') {
+            if ($rf['from'] !== '') $p['date_from'] = $rf['from'];
+            if ($rf['to'] !== '') $p['date_to'] = $rf['to'];
+        }
+        foreach (($config['filters'] ?? []) as $otherKey => $otherDef) {
+            if ($otherKey === $fKey) continue;
+            $ov = trim($_GET[$otherKey] ?? '');
+            if ($ov !== '') $p[$otherKey] = $ov;
+        }
+        $chips[] = ['label' => ($fDef['label'] ?? ucwords($fKey)) . ': ' . $extraLabel, 'url' => $selfUrl . ($p ? '?' . http_build_query($p) : '')];
+    }
+
+    // (per-page is a display choice, not a filter — no chip for it.)
+    if ($chips):
+    ?>
+        <div class="active-filter-chips">
+            <?php foreach ($chips as $chip): ?>
+                <a href="<?= e($chip['url']) ?>" class="filter-chip" title="Remove this filter"><?= e($chip['label']) ?> &times;</a>
+            <?php endforeach; ?>
+        </div>
+    <?php
+    endif;
+    ?>
     <?php
 }
 

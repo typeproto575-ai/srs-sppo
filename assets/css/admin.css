@@ -1179,6 +1179,25 @@ html, body {
 }
 .master-utilities a .ic { margin-right: 4px; }
 
+/* Active filter chips: removable pills below the filter bar, one per
+   active filter (search / date / page-declared extras). The green pill
+   links back with only that filter removed; Clear All sits in the bar. */
+.active-filter-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0 0 1rem; }
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    background: #2f5e3f;
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.12s ease;
+}
+.filter-chip:hover { background: #24492f; color: #ffffff; }
+
 /* --- Clickable stat cards (anchors) --- */
 .stat-card {
     text-decoration: none;
