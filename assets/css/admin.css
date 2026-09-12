@@ -1258,40 +1258,99 @@ html, body {
 .bulk-bar:not(.bulk-active) .btn { opacity: 0.55; }
 
 /* ---- Record list filter popup + pagination (records pages) ---- */
-.record-filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin: 0 0 0.9rem; }
-.search-form { display: flex; align-items: center; gap: 0.4rem; flex: 1 1 240px; min-width: 220px; }
-.search-form input[type="search"] { flex: 1; margin: 0; min-width: 0; }
+.record-filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+    padding: 0.65rem 0.8rem;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(31, 61, 43, 0.14);
+    border-radius: 10px;
+}
+.search-form { display: flex; align-items: center; gap: 0.45rem; flex: 1 1 240px; min-width: 220px; }
+.search-form input[type="search"] {
+    flex: 1; margin: 0; min-width: 0;
+    border: 1px solid rgba(31, 61, 43, 0.24);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.search-form input[type="search"]:focus {
+    outline: none;
+    border-color: #2f5e3f;
+    box-shadow: 0 0 0 3px rgba(47, 94, 63, 0.15);
+}
 .filter-popup { position: relative; }
-.filter-popup > summary { list-style: none; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 0.4rem; background: #f5f3ee; border: 1px solid rgba(31,61,43,0.18); border-radius: 8px; padding: 0.45rem 0.9rem; font-size: 0.88rem; font-weight: 600; color: #1f2f26; }
+.filter-popup > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: #ffffff;
+    border: 1px solid rgba(31,61,43,0.24);
+    border-radius: 8px; padding: 0.5rem 0.9rem;
+    font-size: 0.88rem; font-weight: 600; color: #1f2f26;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.filter-popup > summary:hover { background: #f2f0e8; border-color: rgba(31,61,43,0.32); }
 .filter-popup > summary::-webkit-details-marker { display: none; }
 .filter-popup > summary::after { content: '\25BE'; font-size: 0.7rem; transition: transform 0.15s; }
-.filter-popup[open] > summary { background: #e7e2d5; }
+.filter-popup[open] > summary { background: #e7e2d5; border-color: rgba(31,61,43,0.32); }
 .filter-popup[open] > summary::after { transform: rotate(180deg); }
 /* When open, the panel drops as a full-width card on its own row, so it can
    never be clipped, painted behind the table, or cut off by the viewport. */
 .filter-popup[open] { flex: 1 1 100%; }
 .filter-count { background: #2f5e3f; color: #ffffff; border-radius: 999px; font-size: 0.7rem; padding: 0.05rem 0.45rem; }
-.filter-panel { margin-top: 0.55rem; background: #ffffff; border: 1px solid rgba(31,61,43,0.2); border-radius: 10px; box-shadow: 0 10px 26px rgba(0,0,0,0.14); padding: 0.9rem 1rem 1rem; }
+.filter-panel {
+    margin-top: 0.6rem; background: #ffffff;
+    border: 1px solid rgba(31,61,43,0.2);
+    border-top: 3px solid #2f5e3f;
+    border-radius: 10px;
+    box-shadow: 0 14px 32px rgba(31,61,43,0.16);
+    padding: 1rem 1.05rem 1.05rem;
+}
 .filter-group { padding: 0.4rem 0 0.8rem; border-bottom: 1px solid #eee7d8; }
 .filter-group:last-of-type { border-bottom: 0; }
-.filter-title { margin: 0 0 0.55rem; font-weight: 700; font-size: 0.92rem; color: #1f2f26; }
+.filter-title {
+    margin: 0 0 0.55rem;
+    display: flex; align-items: center; gap: 0.45rem;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: 0.78rem; font-weight: 700; color: #2f5e3f;
+}
+.filter-title::before { content: ''; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: #2f5e3f; flex: none; }
 .filter-body { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.1rem; }
-.filter-option { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; cursor: pointer; }
+.filter-option {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.88rem; cursor: pointer;
+    padding: 0.25rem 0.65rem; border-radius: 999px;
+    border: 1px solid rgba(31,61,43,0.16);
+    background: #faf8f3;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.filter-option:hover { background: #f0eee5; border-color: rgba(31,61,43,0.3); }
+.filter-option:has(input:checked) { background: #e3f0e6; border-color: #2f5e3f; font-weight: 600; }
+.filter-option input { accent-color: #2f5e3f; margin: 0; }
 .filter-custom-dates { display: inline-flex; align-items: center; gap: 0.5rem; transition: opacity 0.15s; }
 .filter-custom-dates label { font-size: 0.8rem; color: #6a7a6e; display: inline-flex; align-items: center; gap: 0.3rem; }
-.filter-custom-dates input { padding: 0.3rem 0.45rem; width: 5.2rem; }
+.filter-custom-dates input { padding: 0.3rem 0.45rem; width: 5.2rem; border-radius: 6px; border: 1px solid rgba(31,61,43,0.2); }
+.filter-custom-dates input:focus { outline: none; border-color: #2f5e3f; }
 .filter-custom-dates.is-off { opacity: 0.45; }
 .filter-custom-dates input:disabled { background: #eceae4; }
-.filter-panel-actions { display: flex; gap: 0.5rem; padding-top: 0.8rem; }
+.filter-panel-actions { display: flex; gap: 0.5rem; padding-top: 0.9rem; border-top: 1px solid #eee7d8; }
 .per-page-form label { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #1f2f26; }
-.per-page-form select { width: auto; margin: 0; }
+.per-page-form select { width: auto; margin: 0; border-radius: 6px; border: 1px solid rgba(31,61,43,0.2); }
 .record-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem; margin: 0.8rem 0 0; }
 .pagination-info { font-size: 0.85rem; color: #6a7a6e; }
 .pagination-btns { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
-.pagination-link, .pagination-current { min-width: 2rem; text-align: center; padding: 0.35rem 0.55rem; border-radius: 6px; font-size: 0.85rem; text-decoration: none; }
+.pagination-link, .pagination-current {
+    min-width: 2rem; text-align: center; padding: 0.38rem 0.58rem;
+    border-radius: 7px; font-size: 0.85rem; text-decoration: none;
+    transition: background 0.12s ease, transform 0.12s ease;
+}
 .pagination-link { background: #f5f3ee; border: 1px solid rgba(31,61,43,0.15); color: #1f2f26; }
-.pagination-link:hover { background: #e7e2d5; }
-.pagination-current { background: #2f5e3f; color: #ffffff; font-weight: 700; }
+.pagination-link:hover { background: #e7e2d5; transform: translateY(-1px); }
+.pagination-current { background: #2f5e3f; color: #ffffff; font-weight: 700; box-shadow: 0 2px 6px rgba(31,61,43,0.3); }
 /* ---- Parish calendar page (admin/schedule/calendar.php) ---- */
 .cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.8rem; font-size: 0.85rem; color: #1f2f26; }
 .cal-legend > span { display: inline-flex; align-items: center; gap: 0.35rem; }
