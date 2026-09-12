@@ -27,6 +27,30 @@ function require_login(): void
         redirect_to('/admin/login.php');
     }
 
+    // ---- Idle timeout (30 minutes of inactivity ends the session) -----------
+    // A logged-in-but-unattended workstation is a real risk in a parish
+    // office, so any 30-minute gap between requests forces a fresh login.
+    // Uses its own timestamp (last_activity), separate from last_active_check
+    // below, which only throttles the periodic DB re-verification.
+    $idleLimit  = 30 * 60; // seconds
+    $now        = time();
+    $lastActive = $_SESSION['last_activity'] ?? null;
+
+    if ($lastActive !== null && ($now - $lastActive) > $idleLimit) {
+        // Expire the session exactly like the deactivation path below.
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', $now - 42000,
+                $params['path'], $params['domain'],
+                $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+        redirect_to('/admin/login.php?timeout=1');
+    }
+    $_SESSION['last_activity'] = $now;
+
     // ---- Session validity check (throttled) --------------------------------
     // Re-verify the account is still active in the DB, but only once per
     // $checkInterval seconds to avoid a query on every single page load.

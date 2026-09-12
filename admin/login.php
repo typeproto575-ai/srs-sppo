@@ -29,6 +29,11 @@ if (isset($_GET['deactivated']) && $_GET['deactivated'] === '1') {
     $error = 'Your account has been deactivated. Please contact the parish office.';
 }
 
+// Show a message when the session ended via the 30-minute idle timeout.
+if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
+    $error = 'You were logged out after 30 minutes of inactivity. Please sign in again.';
+}
+
 // ---- Handle the login form submission --------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Reject cross-site forgeries: the form must carry our session's token.
@@ -39,9 +44,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
-        // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
-        // Keyed on username to prevent brute-force on a specific account.
-        if (too_many_attempts($pdo, $username, 8, 15)) {
+        // ---- Rate limiting: two independent checks ---------------------------
+        //   1. Per-username (8 in 15 min): stops brute-force on one account.
+        //   2. Per-IP (20 in 15 min): stops attackers rotating through many
+        //      usernames from the same machine. Higher cap so a shared office
+        //      computer with several staff accounts isn't locked out.
+        $userKey = 'user:' . $username;
+        $ipKey   = 'ip:' . client_ip();
+        if (too_many_attempts($pdo, $userKey, 8, 15) || too_many_attempts($pdo, $ipKey, 20, 15)) {
             $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
             log_activity($pdo, null, 'login_rate_limited', null, null, "Rate limited: {$username}");
         } else {
@@ -63,13 +73,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $user['full_name'],
                     'role'      => $user['role'],
                 ];
+                $_SESSION['last_activity'] = time(); // start the idle window
                 log_activity($pdo, $user['id'], 'login'); // audit trail
 
                 redirect_to('/admin/dashboard.php'); // 302 + exit
             }
 
-            // Record failed attempt for rate limiting (before generic error message).
-            record_attempt($pdo, $username);
+            // Record failed attempt for rate limiting (before generic error
+            // message) — both dimensions so username-rotation is also caught.
+            record_attempt($pdo, $userKey);
+            record_attempt($pdo, $ipKey);
 
             // Generic message: don't reveal whether the username exists.
             $error = 'Invalid username or password.';

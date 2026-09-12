@@ -545,3 +545,65 @@ function site_settings_all(PDO $pdo, array $defaults): array
     }
     return $out;
 }
+
+// ---------------------------------------------------------------------
+// SECURITY HELPERS
+// ---------------------------------------------------------------------
+
+/**
+ * Best-effort client IP for rate limiting and audit context.
+ * Deliberately ignores X-Forwarded-For and similar headers — those are
+ * trivially spoofable by the client. REMOTE_ADDR is what the web server
+ * actually saw, which is the only trustworthy value here.
+ */
+function client_ip(): string
+{
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+/**
+ * Validate password strength for staff accounts.
+ * Returns NULL when the password is acceptable, otherwise a human-readable
+ * reason it was rejected (shown in the accounts dialog).
+ *
+ * Policy: at least 12 characters with an uppercase letter, a lowercase
+ * letter, and a digit. Symbol use is encouraged but not required.
+ */
+function validate_password_strength(string $password): ?string
+{
+    if (strlen($password) < 12) {
+        return 'Passwords must be at least 12 characters long.';
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        return 'Passwords must include at least one uppercase letter.';
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        return 'Passwords must include at least one lowercase letter.';
+    }
+    if (!preg_match('/\d/', $password)) {
+        return 'Passwords must include at least one number.';
+    }
+    return null;
+}
+
+/**
+ * Send conservative security headers before any page output.
+ * Called once at include time (bottom of functions.php) so every page —
+ * public and admin — gets them without per-page edits. Intentionally NOT
+ * setting Content-Security-Policy here: FullCalendar and inline scripts
+ * would need a carefully allowlisted policy; the three headers below are
+ * zero-risk and cover framing, MIME sniffing, and referrer leakage.
+ */
+function security_headers(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+}
+
+// Fire-and-forget: applied to every request that loads this file (which is
+// every page in the app), before any HTML output has been sent.
+security_headers();

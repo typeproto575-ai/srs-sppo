@@ -135,11 +135,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
     // Role is validated strictly: the schema is ENUM('secretary') and the
     // priest role no longer exists in the design, so anything else is junk.
-    // When a new or replacement password is supplied it must be at least
-    // 8 characters (matches the minlength hint on the form itself).
-    $passwordTooShort = $password !== '' && strlen($password) < 8;
-    if ($passwordTooShort) {
-        $message = 'Passwords must be at least 8 characters long.';
+    // When a new or replacement password is supplied it must pass the staff
+    // password policy (12+ chars, upper + lower + digit — see
+    // validate_password_strength() in functions.php; matches the minlength
+    // hint on the form itself).
+    $passwordIssue = $password !== '' ? validate_password_strength($password) : null;
+    if ($passwordIssue !== null) {
+        $message = $passwordIssue;
         $messageType = 'error';
     } elseif ($fullName === '' || $username === '' || $email === '' || $role !== 'secretary') {
         $message = 'Please complete all required fields.';
@@ -333,7 +335,7 @@ $extraHead = '';
                     </label>
                     <label>
                         Password
-                        <input type="password" name="password" minlength="8" placeholder="<?= $editingUser ? 'Leave blank to keep current password' : 'Enter a password (min. 8 characters)' ?>">
+                        <input type="password" name="password" minlength="12" placeholder="<?= $editingUser ? 'Leave blank to keep current password' : 'Enter a password (min. 12 chars, mixed case + number)' ?>">
                     </label>
                     <div class="form-actions">
                         <button type="submit" class="btn">Save account</button>
