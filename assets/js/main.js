@@ -250,9 +250,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // Dependency-free slider: flex track + translateX, arrows, dot nav,
     // touch swipe, optional autoplay that pauses on hover/focus and honors
     // the user's reduced-motion preference. Opt-in via [data-carousel].
-    document.querySelectorAll('[data-carousel]').forEach(function (root) {
+        document.querySelectorAll('[data-carousel]').forEach(function (root) {
         var track = root.querySelector('.carousel-track');
-        var slides = track ? track.querySelectorAll('.carousel-slide') : [];
+        var slides = track ? track.querySelectorAll('.slide') : [];
         var prevBtn = root.querySelector('[data-carousel-prev]');
         var nextBtn = root.querySelector('[data-carousel-next]');
         var dotsWrap = root.querySelector('[data-carousel-dots]');
@@ -268,31 +268,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var index = 0;
         var timer = null;
-        var autoplayMs = parseInt(root.getAttribute('data-autoplay') || '0', 10);
+        var dots = []; // one dot per slide
+        var autoplayMs = 7000; // enough time to read the stacked cards
         var reducedMotion = window.matchMedia
             && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var autoplay = autoplayMs > 0 && !reducedMotion;
 
-        // One dot per slide.
-        var dots = [];
-        if (dotsWrap) {
-            slides.forEach(function (_, i) {
-                var dot = document.createElement('button');
-                dot.type = 'button';
-                dot.className = 'carousel-dot' + (i === 0 ? ' is-active' : '');
-                dot.setAttribute('aria-label', 'Go to slide ' + (i + 1) + ' of ' + slides.length);
-                dot.addEventListener('click', function () { goTo(i); });
-                dotsWrap.appendChild(dot);
-                dots.push(dot);
+        // Move the track horizontally by whole slides and sync the dots.
+        function applyPosition() {
+            track.style.transform = 'translateX(-' + (index * 100) + '%)';
+            dots.forEach(function (dot, i) {
+                dot.classList.toggle('is-active', i === index);
             });
         }
 
-        function goTo(i) {
-            index = (i + slides.length) % slides.length;
-            // The track is viewport-width wide and each slide fills it, so
-            // translating by -index * 100% lines up slide `index` exactly.
-            track.style.transform = 'translateX(-' + (index * 100) + '%)';
-            dots.forEach(function (d, j) { d.classList.toggle('is-active', j === index); });
+        function goTo(n) {
+            // Circular wrap: next from the last goes to the first, and vice versa.
+            index = (n + slides.length) % slides.length;
+            applyPosition();
             restartAutoplay();
         }
 
@@ -305,8 +298,26 @@ document.addEventListener('DOMContentLoaded', function () {
             if (autoplay) timer = setInterval(function () { goTo(index + 1); }, autoplayMs);
         }
 
+        // Build one dot per slide; clicking jumps straight to that slide.
+        if (dotsWrap) {
+            for (var i = 0; i < slides.length; i++) {
+                var dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = 'carousel-dot' + (i === 0 ? ' is-active' : '');
+                dot.setAttribute('aria-label', 'Show batch ' + (i + 1) + ' of ' + slides.length);
+                dot.addEventListener('click', (function (n) {
+                    return function () { goTo(n); };
+                })(i));
+                dotsWrap.appendChild(dot);
+                dots.push(dot);
+            }
+        }
+
         if (prevBtn) prevBtn.addEventListener('click', function () { goTo(index - 1); });
         if (nextBtn) nextBtn.addEventListener('click', function () { goTo(index + 1); });
+
+        applyPosition();
+        restartAutoplay();
 
         // Pause while the visitor is reading (hover) or navigating by keyboard.
         root.addEventListener('mouseenter', stopAutoplay);
@@ -327,8 +338,6 @@ document.addEventListener('DOMContentLoaded', function () {
             touchStartX = null;
             restartAutoplay();
         }, { passive: true });
-
-        restartAutoplay();
     });
 
 });

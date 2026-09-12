@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * SRS-SPPO PUBLIC HOME PAGE
  * Landing page: announcements, color-coded calendar, upcoming events.
@@ -76,21 +76,32 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if (empty($announcements)): ?>
         <div class="empty-state"><p>No announcements at this time.</p></div>
     <?php else: ?>
-        <div class="carousel" data-carousel data-autoplay="6000" aria-roledescription="carousel" aria-label="Announcements">
+        <div class="carousel" data-carousel aria-roledescription="carousel" aria-label="Announcements">
             <div class="carousel-viewport">
                 <div class="carousel-track">
-                <?php foreach ($announcements as $a): ?>
-                    <article class="carousel-slide announcement-card">
-                        <h3><?= e($a['title']) ?></h3>
-                        <?php if ($a['event_date']): ?><span class="event-date"><?= e(date('M j, Y', strtotime($a['event_date']))) ?></span><?php endif; ?>
-                        <p><?= e($a['content']) ?></p>
+                <?php
+                                        $batches = array_chunk($announcements, 2);
+                    foreach ($batches as $batch) {
+                ?>
+                    <article class="slide announcement-slide">
+                        <?php foreach ($batch as $a): ?>
+                            <div class="card">
+                                <h3><?= e($a['title']) ?></h3>
+                                <?php if ($a['event_date']): ?><span class="event-date"><?= e(date('M j, Y', strtotime($a['event_date']))) ?></span><?php endif; ?>
+                                <p><?= e($a['content']) ?></p>
+                            </div>
+                        <?php endforeach; ?>
                     </article>
-                <?php endforeach; ?>
+                <?php
+                    }
+                ?>
                 </div>
             </div>
-            <button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous announcement">&#8249;</button>
-            <button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next announcement">&#8250;</button>
-            <div class="carousel-dots" data-carousel-dots></div>
+            <div class="carousel-controls">
+                <button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous announcement">&#8249;</button>
+                <div class="carousel-dots" data-carousel-dots></div>
+                <button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next announcement">&#8250;</button>
+            </div>
         </div>
     <?php endif; ?>
 </section>
@@ -138,27 +149,39 @@ require_once __DIR__ . '/../includes/header.php';
 
     <?php if (!empty($upcomingEvents)): ?>
     <h3 class="events-heading">Upcoming Events</h3>
-    <div class="carousel" data-carousel data-autoplay="6000" aria-roledescription="carousel" aria-label="Upcoming events">
+    <div class="carousel" data-carousel aria-roledescription="carousel" aria-label="Upcoming events">
         <div class="carousel-viewport">
             <div class="carousel-track">
-            <?php foreach ($upcomingEvents as $ev): ?>
-                <?php $evColor = $typeColorMap[$ev['event_type']] ?? '#7a8797'; ?>
-                <div class="carousel-slide event-card">
-                    <span class="event-date"><?= e(date('M j', strtotime($ev['event_date']))) ?></span>
-                    <div class="event-details">
-                        <strong><?= e($ev['title']) ?></strong>
-                        <?php if ($ev['start_time']): ?><p><?= e(date('l, F j, Y — g:i A', strtotime($ev['event_date'] . ' ' . $ev['start_time']))) ?></p><?php endif; ?>
-                    </div>
-                    <span class="event-badge" style="background:<?= e($evColor) ?>20; color:<?= e($evColor) ?>"><?= e(ucfirst($ev['event_type'])) ?></span>
-                </div>
-            <?php endforeach; ?>
+            <?php
+                $batches = array_chunk($upcomingEvents, 2);
+                foreach ($batches as $batch) {
+            ?>
+                <article class="slide event-slide">
+                    <?php foreach ($batch as $ev): ?>
+                        <?php $evColor = $typeColorMap[$ev['event_type']] ?? '#7a8797'; ?>
+                        <div class="card">
+                            <span class="event-date"><?= e(date('M j', strtotime($ev['event_date']))) ?></span>
+                            <div class="event-details">
+                                <strong><?= e($ev['title']) ?></strong>
+                                <?php if ($ev['start_time']): ?><p><?= e(date('D, M j â€” g:i A', strtotime($ev['event_date'] . ' ' . $ev['start_time']))) ?></p><?php endif; ?>
+                            </div>
+                            <span class="event-badge" style="background:<?= e($evColor) ?>20; color:<?= e($evColor) ?>"><?= e(ucfirst($ev['event_type'])) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </article>
+            <?php
+                }
+            ?>
             </div>
         </div>
-        <button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous event">&#8249;</button>
-        <button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next event">&#8250;</button>
-        <div class="carousel-dots" data-carousel-dots></div>
+        <div class="carousel-controls">
+            <button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous event">&#8249;</button>
+            <div class="carousel-dots" data-carousel-dots></div>
+            <button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next event">&#8250;</button>
+        </div>
     </div>
     <?php endif; ?>
 </section>
 
 <?php require_once __DIR__ . '/../includes/footer.php';
+
