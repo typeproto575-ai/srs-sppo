@@ -146,11 +146,59 @@ if ($search !== '') {
     )->fetchAll();
 }
 
+// Section tabs: only one registry is worked on at a time (the old version
+// rendered up to 6 x 200 forms on one page, which was overwhelming).
+$activeSection = $_GET['section'] ?? '';
+if (!array_key_exists($activeSection, $mappings)) {
+    $activeSection = null; // fall back to the first section with rows below
+}
+
 $unmatched = [];
 foreach ($mappings as $section => $mapping) {
     $sql = "SELECT id, {$mapping['name']} AS display_name FROM {$mapping['table']}
-            WHERE {$mapping['column']} IS NULL OR {$mapping['column']} = 0 ORDER BY id DESC LIMIT 200";
+            WHERE {$mapping['column']} IS NULL OR {$mapping['column']} = 0 ORDER BY id DESC LIMIT 50";
     $unmatched[$section] = $pdo->query($sql)->fetchAll();
+    if ($activeSection === null && $unmatched[$section]) {
+        $activeSection = $section; // default: first register that has unlinked rows
+    }
+}
+if ($activeSection === null) $activeSection = array_key_first($mappings);
+
+// All persons (small parish-scale table) for one-click name suggestions.
+$allPersons = $pdo->query(
+    'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
+     FROM persons ORDER BY last_name, first_name LIMIT 2000'
+)->fetchAll();
+
+/**
+ * Top name-based candidates for a record's display name. Exact normalized
+ * matches first, then closest levenshtein matches — displayed as one-click
+ * "Assign" buttons. Never auto-assigned; the secretary confirms each one.
+ */
+function mapper_suggestions(string $displayName, array $allPersons, int $max = 3): array
+{
+    $needle = mapper_normalize($displayName);
+    if ($needle === '') return [];
+    $scored = [];
+    foreach ($allPersons as $p) {
+        $text = mapper_normalize(implode(' ', array_filter([
+            $p['first_name'], $p['middle_name'], $p['last_name'], $p['maiden_name'],
+        ])));
+        if ($text === '') continue;
+        $dist = levenshtein($needle, $text);
+        if ($dist === 0 || $dist <= max(2, (int) floor(strlen($needle) * 0.25))) {
+            $scored[] = ['p' => $p, 'dist' => $dist];
+        }
+    }
+    usort($scored, static fn (array $a, array $b): int => $a['dist'] <=> $b['dist']);
+    return array_slice($scored, 0, $max);
+}
+
+function mapper_person_label(array $p): string
+{
+    $label = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'], $p['last_name'], $p['suffix']])));
+    if (!empty($p['maiden_name'])) $label .= ' (maiden: ' . $p['maiden_name'] . ')';
+    return $label;
 }
 
 $pageTitle = 'Person Mapper';
@@ -162,7 +210,36 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 
-        <p class="field-hint">Map legacy record name fields to `persons` entries. Create a new person if no match exists.</p>
+        <!-- Plain-language explainer: what mapping is and why it matters -->
+        <div class="panel-card">
+            <h2>What this page is for</h2>
+            <p class="field-hint">
+                Each registry row (baptismal, confirmation, first communion, marriage, death) can be
+                <strong>linked to a person</strong>. The link lets the system recognise that the child
+                baptised in one register and the adult confirmed in another are the <em>same person</em>.
+                Nothing is linked automatically — you confirm every assignment below.
+            </p>
+            <p class="field-hint">
+                <strong>How to use it:</strong> pick a register tab, search for the person (or scan the
+                one-click suggestions under each row), then <em>Assign</em>. If the person isn't in the
+                list yet, use <em>Create &amp; Assign</em> with the full name as written in the register.
+            </p>
+        </div>
+
+        <!-- Section tabs with unlinked-row counts -->
+        <nav class="mapper-tabs">
+            <?php foreach ($mappings as $section => $mapping): ?>
+                <a class="mapper-tab<?= $section === $activeSection ? ' is-active' : '' ?>"
+                   href="?section=<?= e($section) ?><?= $search !== '' ? '&q=' . urlencode($search) : '' ?>">
+                    <?= e(ucwords(str_replace('_', ' ', $section))) ?>
+                    <span class="mapper-tab-count"><?= count($unmatched[$section]) ?> unlinked</span>
+                </a>
+            <?php endforeach; ?>
+        </nav>
+
+        <?php if ($search !== ''): ?>
+            <p class="field-hint">Person search active — the "choose person" lists below only show matches for &ldquo;<?= e($search) ?>&rdquo;.</p>
+        <?php endif; ?>
 
         <form method="get" class="inline-fields" style="margin:1rem 0;">
             <label>Find a person
@@ -171,50 +248,66 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <button class="btn btn-small" type="submit">Search</button>
         </form>
 
-        <?php foreach ($unmatched as $section => $rows): ?>
-            <section style="margin-top:1.25rem;">
-                <h2><?= e(ucwords(str_replace(['_','marriage'],' ', $section))) ?></h2>
-                <?php if (empty($rows)): ?>
-                    <p>No unmatched rows.</p>
-                <?php else: ?>
-                    <?php foreach ($rows as $r): ?>
-                        <div class="panel-card" style="margin-bottom:0.5rem; display:flex; align-items:center; justify-content:space-between;">
-                            <div style="flex:1;">
-                                <strong>#<?= (int)$r['id'] ?></strong>
-                                <div><?= e($r['display_name'] ?: '—') ?></div>
-                            </div>
-                            <div class="mapper-actions">
-                                <!-- Assign existing person form -->
-                                <form method="post" style="display:inline-block; margin-right:0.5rem;">
+        <?php $rows = $unmatched[$activeSection] ?? []; ?>
+        <?php if (empty($rows)): ?>
+            <p>No unlinked rows in this register. 🎉</p>
+        <?php else: ?>
+            <p class="field-hint">Showing the newest <?= count($rows) ?> unlinked row<?= count($rows) === 1 ? '' : 's' ?> (older ones appear as these are cleared).</p>
+            <?php foreach ($rows as $r): ?>
+                <?php $suggestions = mapper_suggestions((string) $r['display_name'], $allPersons); ?>
+                <div class="panel-card" style="margin-bottom:0.5rem;">
+                    <div>
+                        <strong>#<?= (int)$r['id'] ?></strong>
+                        <div><?= e($r['display_name'] ?: '—') ?></div>
+                    </div>
+
+                    <?php if ($suggestions): ?>
+                        <!-- One-click candidates: each button assigns that person to this row -->
+                        <div class="mapper-suggestions">
+                            <span class="field-hint">Suggested:</span>
+                            <?php foreach ($suggestions as $s): ?>
+                                <form method="post" class="mapper-suggestion">
                                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                     <input type="hidden" name="action" value="assign">
-                                    <input type="hidden" name="section" value="<?= e($section) ?>">
+                                    <input type="hidden" name="section" value="<?= e($activeSection) ?>">
                                     <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
-                                    <select name="person_id" required>
-                                        <option value="">— choose person —</option>
-                                        <?php foreach ($persons as $p): ?>
-                                            <?php $personLabel = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'], $p['last_name'], $p['suffix']]))); ?>
-                                            <?php if ($p['maiden_name']): ?><?php $personLabel .= ' (maiden: ' . $p['maiden_name'] . ')'; ?><?php endif; ?>
-                                            <option value="<?= (int)$p['id'] ?>"><?= e($personLabel) ?> (id:<?= (int)$p['id'] ?>)</option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <button class="btn btn-small" type="submit">Assign</button>
+                                    <input type="hidden" name="person_id" value="<?= (int)$s['p']['id'] ?>">
+                                    <button class="btn btn-secondary btn-small" type="submit" title="Match distance: <?= (int)$s['dist'] ?>">
+                                        <?= e(mapper_person_label($s['p'])) ?>
+                                    </button>
                                 </form>
-
-                                <!-- Create new person + assign form -->
-                                <form method="post" style="display:inline-block;">
-                                    <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
-                                    <input type="hidden" name="action" value="create_and_assign">
-                                    <input type="hidden" name="section" value="<?= e($section) ?>">
-                                    <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
-                                    <input type="text" name="new_person_name" placeholder="New person full name" required>
-                                    <button class="btn btn-secondary btn-small" type="submit">Create & Assign</button>
-                                </form>
-                            </div>
+                            <?php endforeach; ?>
                         </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </section>
-        <?php endforeach; ?>
+                    <?php endif; ?>
+
+                    <div class="mapper-actions">
+                        <!-- Assign existing person form -->
+                        <form method="post" style="display:inline-block; margin-right:0.5rem;">
+                            <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                            <input type="hidden" name="action" value="assign">
+                            <input type="hidden" name="section" value="<?= e($activeSection) ?>">
+                            <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
+                            <select name="person_id" required>
+                                <option value="">— choose person —</option>
+                                <?php foreach ($persons as $p): ?>
+                                    <option value="<?= (int)$p['id'] ?>"><?= e(mapper_person_label($p)) ?> (id:<?= (int)$p['id'] ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button class="btn btn-small" type="submit">Assign</button>
+                        </form>
+
+                        <!-- Create new person + assign form -->
+                        <form method="post" style="display:inline-block;">
+                            <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                            <input type="hidden" name="action" value="create_and_assign">
+                            <input type="hidden" name="section" value="<?= e($activeSection) ?>">
+                            <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
+                            <input type="text" name="new_person_name" placeholder="New person full name" required>
+                            <button class="btn btn-secondary btn-small" type="submit">Create &amp; Assign</button>
+                        </form>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
 
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

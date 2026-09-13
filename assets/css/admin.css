@@ -119,6 +119,26 @@ body {
 }
 .logout-form .logout-link-btn:hover { color: #fff; }
 
+/* Person mapper: one register tab at a time + one-click suggestion buttons. */
+.mapper-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
+.mapper-tab {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #d9d2c0;
+    border-radius: 999px;
+    background: #fff;
+    color: #1f3d2b;
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+.mapper-tab:hover { border-color: #2f6b40; }
+.mapper-tab.is-active { background: #2f6b40; border-color: #2f6b40; color: #fff; }
+.mapper-tab-count { font-size: 0.72rem; opacity: 0.75; }
+.mapper-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.4rem 0 0.6rem; }
+.mapper-suggestion { display: inline-flex; margin: 0; }
+
 /* ---- Notification bell (dark header context) --------------------------- */
 .notif-wrap {
     position: relative;
