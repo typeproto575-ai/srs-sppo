@@ -524,6 +524,28 @@ html, body {
     border: none;
 }
 
+/* Card content inside carousel slides — replaces the old
+   .announcement-card / .event-card scoping after the PHP markup
+   switched to a shared .card element. */
+.slide .card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; color: #1f3d2b; }
+.slide .card .event-date {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #2f6b40;
+    background: #eef6ee;
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    margin-bottom: 0.5rem;
+}
+.slide .card p { margin: 0; font-size: 0.92rem; color: #57503f; }
+
+/* Event cards: centered details, colored type badge */
+.slide .card .event-details { text-align: center; }
+.slide .card .event-details strong { display: block; font-size: 0.95rem; color: #1f3d2b; }
+.slide .card .event-details p { margin: 0.15rem 0 0; font-size: 0.82rem; color: #6b6355; }
+.slide .card .event-badge { margin-top: 0.4rem; }
+
 /* Controls bar: prev + dots + next, centered below the viewport. */
 .carousel-controls {
     display: flex;
