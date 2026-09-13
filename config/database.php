@@ -7,7 +7,7 @@
  * FILE: config/database.php
  * ROLE: Shared PDO database connection for the entire application.
  *
- * Every page (public, admin, and priest) includes this file to get access
+ * Every page (public and admin) includes this file to get access
  * to the $pdo variable, which is used for ALL database queries in the system.
  *
  * Technology used: Plain PHP + PDO (PHP Data Objects) + MySQL/MariaDB.

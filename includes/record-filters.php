@@ -22,9 +22,12 @@
  *      Column names come from the page (never user input), so they may
  *      safely include table aliases like 'fc.communion_date'.
  *   2) require_once this file, then: $rf = rf_parse($rfConfig);
- *   3) Build COUNT + list queries with "{$rf['where']}" (empty when no
- *      filter is active) and $rf['params']; append
- *      "LIMIT {$rf['per_page']} OFFSET {$rf['offset']}".
+ *   3) Call rf_parse() BEFORE building the SQL, then combine the fragment:
+ *      $rf['where'] is '' when no filter is active, otherwise it already
+ *      begins with ' AND ' — append it directly to a base WHERE clause
+ *      (never prepend another ' AND ' and never ltrim it, which strips
+ *      characters and corrupts the fragment). Execute with $rf['params'];
+ *      append "LIMIT {$rf['per_page']} OFFSET {$rf['offset']}".
  *   4) In the HTML: rf_render_bar($selfUrl, $rfConfig, $rf); before the
  *      table, rf_render_pagination($selfUrl, $totalRows, $rf); after it.
  * =====================================================================

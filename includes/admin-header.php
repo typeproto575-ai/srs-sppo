@@ -4,7 +4,7 @@
  * SPPO-IS SHARED ADMIN/STAFF PAGE HEADER
  * =====================================================================
  * Purpose: Renders the top navigation bar, sidebar menu, and opening
- *          HTML tags for all admin and priest pages.
+ *          HTML tags for all admin (secretary) pages.
  *
  * Expects these optional variables (set before including):
  *   - $pageTitle  : Page title shown in the browser tab

@@ -3,9 +3,9 @@
  * =====================================================================
  * SRS-SPPO ADMIN/STAFF LOGIN
  * =====================================================================
- * Purpose: Authenticate a parish staff member (secretary or priest —
- *          priest role is retired; only secretaries remain active) and
- *          start their session.
+ * Purpose: Authenticate a parish staff member (secretary role only — the
+ *          retired priest login has been removed; see PROJECT_CONTEXT.md)
+ *          and start their session.
  *
  * Security features:
  *   - CSRF token check on the POST (csrf_verify from functions.php)

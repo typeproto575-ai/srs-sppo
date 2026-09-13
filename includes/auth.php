@@ -3,8 +3,7 @@
  * Session guard. Include at the top of any /admin page.
  * Usage:
  *   require_once __DIR__ . '/../includes/auth.php';
- *   require_role('secretary');            // secretary-only page
- *   require_role('secretary'); // secretary is the only staff role
+ *   require_role('secretary');            // the only staff role in the system
  */
 
 // Make sure helper functions (secure_session_start, redirect_to, e, ...)

@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS srs_sppo_db
 USE srs_sppo_db;
 
 -- =====================================================================
--- 1. USERS (Secretary and Priest accounts)
+-- 1. USERS (staff accounts — secretary role only; the priest is not a system user)
 -- =====================================================================
 
 CREATE TABLE users (

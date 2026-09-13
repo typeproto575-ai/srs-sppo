@@ -22,9 +22,19 @@ $pageTitle = 'Booking Conflict Review';
 // Marriage is currently the only sacrament with a preferred date field on
 // its application. Compare each pending/in-progress marriage application's
 // preferred_wedding_date against schedule_events for the same date.
+
+// --- Search / filter / pagination (must run BEFORE the queries below) ---
+// rf_parse() returns ' AND ...' when filters are active and '' otherwise,
+// so the fragment is appended as-is to the base WHERE (an ltrim "prefix
+// strip" here previously produced "AND AND (...)" → SQL 1064).
+$selfUrl = $basePath . '/admin/schedule/booking-conflicts.php';
+$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name'], 'placeholder' => 'Search tracking no., groom, bride&hellip;'];
+require_once __DIR__ . '/../../includes/record-filters.php';
+$rf = rf_parse($rfConfig);
+
 // Main query with filter pattern
 $baseWhere = "WHERE sa.status NOT IN ('completed', 'rejected')";
-$combinedWhere = $rf['where'] === '' ? $baseWhere : $baseWhere . ' AND ' . ltrim($rf['where'], 'WHERE ');
+$combinedWhere = $baseWhere . $rf['where'];
 
 $countStmt = $pdo->prepare(
     "SELECT COUNT(*) FROM sacrament_applications sa
@@ -78,17 +88,15 @@ function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
 }
-// --- Search / filter / pagination ---
-$selfUrl = $basePath . '/admin/schedule/booking-conflicts.php';
-$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name'], 'placeholder' => 'Search tracking no., groom, bride&hellip;'];
-require_once __DIR__ . '/../../includes/record-filters.php';
-$rf = rf_parse($rfConfig);
+// Search/filter/pagination setup moved above the queries (rf_parse must run
+// before the COUNT/list SQL is assembled). $selfUrl / $rfConfig / $rf are
+// already defined.
 
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Booking Conflict Review</h1>
-        <p class="field-hint">Compares each pending marriage application's preferred wedding date against the calendar. Nothing here is auto-resolved — the secretary or priest confirms manually and adjusts the calendar as needed.</p>
+        <p class="field-hint">Compares each pending marriage application's preferred wedding date against the calendar. Nothing here is auto-resolved — the secretary confirms manually and adjusts the calendar as needed.</p>
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>

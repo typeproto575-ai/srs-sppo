@@ -22,14 +22,14 @@ $pageTitle = 'Baptismal Records';
 $errors  = [];
 $success = null;
 
-// --- Handle new record submission (secretary/priest only encode from the physical logbook) ---
+// --- Handle new record submission (secretary encodes from the physical logbook) ---
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     $errors[] = 'Security token expired or invalid — please reload the page and submit again.';
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf_verify()) {
-    require_role('secretary'); // encoding records is a secretary task; priest is read-only here
+    require_role('secretary'); // encoding records is a secretary-only task (no priest login exists)
 
     $entryNo          = trim($_POST['entry_no'] ?? '');
     $baptismDate      = $_POST['baptism_date'] ?? '';
