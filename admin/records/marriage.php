@@ -21,6 +21,34 @@ $pageTitle = 'Marriage Records';
 $errors  = [];
 $success = null;
 
+// --- Pre-fill from an approved sacrament application (optional) -----------
+// Opened from a marriage application detail page via ?from_application=N:
+// couple data becomes the form defaults. GET-only seeding; a POST always
+// keeps what the secretary typed. NOTE: the register stores the wife's
+// MAIDEN name — the pre-fill uses the application's bride name as-is and
+// the secretary must verify/correct it before saving.
+$fromApplicationId = 0;
+if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $s = $pdo->prepare(
+        "SELECT sa.*, ma.* FROM sacrament_applications sa
+         JOIN marriage_applications ma ON ma.application_id = sa.id
+         WHERE sa.id = ? AND sa.sacrament_type = 'marriage'"
+    );
+    $s->execute([(int) $_GET['from_application']]);
+    if ($app = $s->fetch()) {
+        $fromApplicationId = (int) $app['id'];
+        $_POST['husband_full_name']   = (string) ($app['groom_full_name'] ?? '');
+        $_POST['husband_birthdate']   = (string) ($app['groom_birthdate'] ?? '');
+        $_POST['husband_birthplace']  = (string) ($app['groom_birthplace'] ?? '');
+        $_POST['wife_maiden_name']    = (string) ($app['bride_full_name'] ?? '');
+        $_POST['wife_birthdate']      = (string) ($app['bride_birthdate'] ?? '');
+        $_POST['wife_birthplace']     = (string) ($app['bride_birthplace'] ?? '');
+        $_POST['marriage_date']       = (string) ($app['preferred_wedding_date'] ?? '');
+        $_POST['officiating_minister'] = (string) ($app['assigned_priest_name'] ?? '');
+        $_POST['remarks']             = 'Encoded from application ' . $app['tracking_number'];
+    }
+}
+
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -87,7 +115,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "Marriage record encoded for {$husbandName} & {$wifeMaidenName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
             $pdo->commit();
-            redirect_to('/admin/records/marriage.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
+
+            // If this entry was encoded from an approved marriage application,
+            // close the loop: mark the application completed and audit the link.
+            $appDone = '';
+            if (!empty($_POST['from_application'])) {
+                $u = $pdo->prepare(
+                    "UPDATE sacrament_applications
+                        SET status = 'completed', date_processed = NOW(), processed_by = ?
+                      WHERE id = ? AND sacrament_type = 'marriage' AND status IN ('approved','scheduled')"
+                );
+                $u->execute([current_user()['id'], (int) $_POST['from_application']]);
+                if ($u->rowCount()) {
+                    log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $_POST['from_application'],
+                        "Marriage encoded into register (record #{$recordId}); application completed");
+                    $appDone = '&app_completed=1';
+                }
+            }
+
+            redirect_to('/admin/records/marriage.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -210,7 +256,7 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'marriage_records');
 
-if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked marriage application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Marriage record updated.';
 if (isset($_GET['deleted'])) $success = 'Marriage record deleted.';
 
@@ -287,7 +333,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php endif; ?>
         <?php rf_render_pagination($basePath . '/admin/records/marriage.php', $rfTotal, $rf); ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['husband_full_name']) . ' & ' . e($editRecord['wife_maiden_name']) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -302,6 +348,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <form method="post" action="">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
+            <?php if ($fromApplicationId): ?>
+                <input type="hidden" name="from_application" value="<?= (int) $fromApplicationId ?>">
+                <p class="field-hint">Pre-filled from marriage application #<?= (int) $fromApplicationId ?> — verify the wife's MAIDEN name, add the logbook numbers, and save. Saving marks that application completed.</p>
+            <?php endif; ?>
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">

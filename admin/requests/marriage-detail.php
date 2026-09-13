@@ -228,4 +228,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php else: ?>
         <p class="field-hint">This application is currently <?= e(humanize_label($app['status'])) ?>. Only applications with status "Submitted", "Documents Pending", or "Ready for Approval" can be approved/rejected from here.</p>
         <?php endif; ?>
-    <?php require_once __DIR__ . '/../../includes/admin-footer.php';
+<!-- After the wedding happens: encode it into the register (pre-filled
+     from this application; saving also marks the application completed). -->
+<?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
+<p style="margin-top:0.75rem;">
+    <a class="btn btn-small" href="<?= $basePath ?>/admin/records/marriage.php?from_application=<?= (int) $app['id'] ?>">
+        Encode into marriage register (pre-filled)
+    </a>
+    <span class="field-hint">Opens the encode form with the couple's data; saving completes the application. Verify the wife's maiden name.</span>
+</p>
+<?php endif; ?>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

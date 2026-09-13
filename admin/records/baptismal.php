@@ -22,6 +22,47 @@ $pageTitle = 'Baptismal Records';
 $errors  = [];
 $success = null;
 
+// --- Pre-fill from an approved sacrament application (optional) -----------
+// Opened from a baptismal application detail page via ?from_application=N:
+// the application data becomes the form defaults so the secretary does not
+// re-type what the family already provided. GET-only seeding; a POST
+// (submit / validation retry) always keeps what the secretary typed.
+$fromApplicationId = 0;
+if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $s = $pdo->prepare(
+        "SELECT sa.*, ba.* FROM sacrament_applications sa
+         JOIN baptismal_applications ba ON ba.application_id = sa.id
+         WHERE sa.id = ? AND sa.sacrament_type = 'baptismal'"
+    );
+    $s->execute([(int) $_GET['from_application']]);
+    if ($app = $s->fetch()) {
+        $fromApplicationId = (int) $app['id'];
+        $_POST['child_full_name'] = (string) $app['child_full_name'];
+        $_POST['birth_date']      = (string) ($app['child_birth_date'] ?? '');
+        $_POST['baptism_place']   = (string) ($app['child_birthplace'] ?? '');
+        $_POST['father_name']     = (string) ($app['father_full_name'] ?? '');
+        $_POST['mother_name']     = (string) ($app['mother_guardian_name'] ?? '');
+        $_POST['remarks']         = 'Encoded from application ' . $app['tracking_number'];
+        // Godparents from the application, split by type for the form arrays.
+        $g = $pdo->prepare("SELECT godparent_name, godparent_residence, godparent_type
+                            FROM baptismal_application_godparents
+                            WHERE baptismal_application_id = ? ORDER BY godparent_type, id");
+        $g->execute([$fromApplicationId]);
+        $gf = $gm = [];
+        foreach ($g->fetchAll() as $gp) {
+            if ($gp['godparent_type'] === 'godmother') { $gm[] = $gp; }
+            else { $gf[] = $gp; }
+        }
+        $fill = function (array $rows) {
+            $n = $r = [];
+            foreach ($rows as $row) { $n[] = $row['godparent_name']; $r[] = $row['godparent_residence']; }
+            return [$n, $r];
+        };
+        if ($gf) { [$_POST['godfather_name'], $_POST['godfather_residence']] = $fill($gf); }
+        if ($gm) { [$_POST['godmother_name'], $_POST['godmother_residence']] = $fill($gm); }
+    }
+}
+
 // --- Handle new record submission (secretary encodes from the physical logbook) ---
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
@@ -116,7 +157,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "Baptismal record encoded for {$childName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
             $pdo->commit();
-            redirect_to('/admin/records/baptismal.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
+
+            // If this entry was encoded from an approved baptismal application,
+            // close the loop: mark the application completed and audit the link.
+            $appDone = '';
+            if (!empty($_POST['from_application'])) {
+                $u = $pdo->prepare(
+                    "UPDATE sacrament_applications
+                        SET status = 'completed', date_processed = NOW(), processed_by = ?
+                      WHERE id = ? AND sacrament_type = 'baptismal' AND status IN ('approved','scheduled')"
+                );
+                $u->execute([current_user()['id'], (int) $_POST['from_application']]);
+                if ($u->rowCount()) {
+                    log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $_POST['from_application'],
+                        "Baptism encoded into register (record #{$recordId}); application completed");
+                    $appDone = '&app_completed=1';
+                }
+            }
+
+            redirect_to('/admin/records/baptismal.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -263,7 +322,7 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'baptismal_records');
 
-if (isset($_GET['added'])) $success = 'Baptismal record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['added'])) $success = 'Baptismal record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked baptismal application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Baptismal record updated.';
 if (isset($_GET['deleted'])) $success = 'Baptismal record deleted.';
 
@@ -344,7 +403,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php endif; ?>
         <?php rf_render_pagination($basePath . '/admin/records/baptismal.php', $rfTotal, $rf); ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['child_full_name']) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -361,6 +420,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <form method="post" action="">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
+            <?php if ($fromApplicationId): ?>
+                <input type="hidden" name="from_application" value="<?= (int) $fromApplicationId ?>">
+                <p class="field-hint">Pre-filled from baptismal application #<?= (int) $fromApplicationId ?> — review, add the logbook numbers, and save. Saving marks that application completed.</p>
+            <?php endif; ?>
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">

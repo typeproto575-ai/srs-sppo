@@ -276,6 +276,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                         <?= e(mapper_person_label($s['p'])) ?>
                                     </button>
                                 </form>
+                                <a href="person-profile.php?id=<?= (int)$s['p']['id'] ?>" class="mapper-profile-link" title="View person profile (all linked records)">&#10697;</a>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>

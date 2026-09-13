@@ -121,4 +121,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 </select>
 <button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
 </form>
+<!-- After the sacrament happens: encode it into the register (pre-filled
+     from this application; saving also marks the application completed). -->
+<?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
+<p style="margin-top:0.75rem;">
+    <a class="btn btn-small" href="<?= $basePath ?>/admin/records/baptismal.php?from_application=<?= (int) $app['id'] ?>">
+        Encode into baptismal register (pre-filled)
+    </a>
+    <span class="field-hint">Opens the encode form with this application's data; saving completes the application.</span>
+</p>
+<?php endif; ?>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
