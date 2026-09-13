@@ -23,13 +23,15 @@ $notice = null;
 
 // Maps each sacrament type to its extension table (for request details) and
 // the canonical records table (for the authoritative register entry).
-// Used for certificate preview and record matching.
+// Used for certificate preview and record matching. The *_name columns let us
+// auto-suggest and validate record matches without hardcoding 4 queries.
+// (death_burial is intentionally absent: certificate_requests.sacrament_type
+// is an ENUM without death_burial, so no such request can exist.)
 const CERT_EXT = [
-    'baptismal'      => ['ext' => 'baptismal_certificate_requests',       'record' => 'baptismal_records'],
-    'confirmation'   => ['ext' => 'confirmation_certificate_requests',    'record' => 'confirmation_records'],
-    'first_communion'=> ['ext' => 'first_communion_certificate_requests', 'record' => 'first_communion_records'],
-    'marriage'       => ['ext' => 'marriage_certificate_requests',        'record' => 'marriage_records'],
-    'death_burial'   => ['ext' => 'death_burial_certificate_requests',    'record' => 'death_burial_records'],
+    'baptismal'      => ['ext' => 'baptismal_certificate_requests',       'record' => 'baptismal_records',        'ext_name' => 'child_full_name',      'record_name' => 'child_full_name'],
+    'confirmation'   => ['ext' => 'confirmation_certificate_requests',    'record' => 'confirmation_records',     'ext_name' => 'confirmand_full_name',  'record_name' => 'confirmand_full_name'],
+    'first_communion'=> ['ext' => 'first_communion_certificate_requests', 'record' => 'first_communion_records',  'ext_name' => 'communicant_full_name', 'record_name' => 'communicant_full_name'],
+    'marriage'       => ['ext' => 'marriage_certificate_requests',        'record' => 'marriage_records',         'ext_name' => 'party_a_full_name',     'record_name' => 'husband_full_name'],
 ];
 
 // --- Match a request to a digital record index --------------------------
@@ -53,16 +55,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
         } elseif (!in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
             $notice = 'Only approved requests can be matched to a certificate record.';
         } else {
-            $recordStmt = $pdo->prepare("SELECT id FROM {$config['record']} WHERE id = ?");
+            $recordStmt = $pdo->prepare("SELECT * FROM {$config['record']} WHERE id = ?");
             $recordStmt->execute([$recordId]);
-            $recordExists = $recordStmt->fetchColumn();
-            $extStmt = $pdo->prepare("SELECT id FROM {$config['ext']} WHERE request_id = ?");
+            $recordRow = $recordStmt->fetch();
+            $extStmt = $pdo->prepare("SELECT * FROM {$config['ext']} WHERE request_id = ?");
             $extStmt->execute([$requestId]);
-            $extensionExists = $extStmt->fetchColumn();
+            $extRow = $extStmt->fetch();
 
-            if (!$recordExists || !$extensionExists) {
+            if (!$recordRow || !$extRow) {
                 $notice = 'The selected record or request details could not be found.';
             } else {
+                // Optional sanity check: the requester's stated subject name vs the
+                // register record's primary name. Only warns — never blocks — because
+                // the secretary may know the record is correct despite a typo.
+                // Case-insensitive compare via the engine's ucwords() helper.
+                $subjectName = trim((string) ($extRow[$config['ext_name']] ?? ''));
+                $recordName  = trim((string) ($recordRow[$config['record_name']] ?? ''));
+                $nameMismatch = ($subjectName !== '' && $recordName !== ''
+                    && strcmp(ucwords($subjectName), ucwords($recordName)) !== 0);
+
                 $stmt = $pdo->prepare("UPDATE {$config['ext']} SET matched_record_id = ? WHERE request_id = ?");
                 $stmt->execute([$recordId, $requestId]);
 
@@ -74,9 +85,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
                     log_activity($pdo, current_user()['id'], 'certificate_request_match_failed', 'certificate_requests', $requestId,
                         "Failed match attempt for {$sacramentType} record #{$recordId}");
                 } else {
+                    // Reverse link: let the register record know which approved
+                    // certificate request cited it. Guarded (record tables may
+                    // not yet have the column on a pre-migration install).
+                    try {
+                        $rlink = $pdo->prepare("UPDATE {$config['record']} SET certificate_request_id = ? WHERE id = ?");
+                        $rlink->execute([$requestId, $recordId]);
+                    } catch (\Throwable $e) {
+                        // Reverse link is best-effort; forward match already done.
+                    }
+
                     log_activity($pdo, current_user()['id'], 'certificate_request_matched', 'certificate_requests', $requestId,
-                        "Matched to {$sacramentType} record #{$recordId}");
-                    $notice = 'Request matched to record.';
+                        "Matched to {$sacramentType} record #{$recordId}" . ($nameMismatch ? " (name mismatch: '{$subjectName}' vs '{$recordName}')" : ''));
+                    $notice = $nameMismatch
+                        ? "Request matched to record #{$recordId}, but the subject name DOES NOT match — request says '{$subjectName}', record says '{$recordName}'. Please confirm before printing."
+                        : 'Request matched to record.';
                 }
             }
         }
@@ -84,10 +107,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
 }
 
 // --- Log a generated certificate ----------------------------------------
+// Per the workflow, "generate" = digital draft created on approval. After the
+// secretary generates it, the request is considered physically ready to be
+// printed/signed at the counter, so we flip the status to ready_for_pickup
+// (unless it's already there) and raise the admin bell. "Print" stays a
+// separate, in-person step — never merged with this.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && csrf_verify()) {
     $requestId = (int) ($_POST['request_id'] ?? 0);
     if ($requestId) {
-                $stmt = $pdo->prepare('SELECT status FROM certificate_requests WHERE id = ?');
+                $stmt = $pdo->prepare('SELECT status, tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
         $stmt->execute([$requestId]);
         $requestRow = $stmt->fetch();
         if (!$requestRow || !in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
@@ -97,8 +125,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && c
                 "INSERT INTO certificate_generation_log (certificate_request_id, generated_by, print_status) VALUES (?, ?, 'generated')"
             );
             $stmt->execute([$requestId, current_user()['id']]);
-            log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed');
-            $notice = 'Logged as generated. Remember to print and have it signed before pickup.';
+
+            // The certificate draft now exists — make the request ready for pickup
+            // (the "ready" stage where the counter confirms ID and prints/signs).
+            if ($requestRow['status'] !== 'ready_for_pickup') {
+                $up = $pdo->prepare('UPDATE certificate_requests SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?');
+                $up->execute(['ready_for_pickup', current_user()['id'], $requestId]);
+            }
+            $kind = ucwords(str_replace('_', ' ', (string) ($requestRow['sacrament_type'] ?? ''))) . ' Certificate';
+            notify($pdo, 'request_ready', 'Certificate ready for pickup',
+                $kind . ' for ' . $requestRow['requester_name'] . ' (' . $requestRow['tracking_number'] . ')',
+                '/admin/requests/queue.php?status=ready_for_pickup');
+
+            log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed; marked ready for pickup');
+            $notice = 'Logged as generated and marked ready for pickup. Remember to print and have it signed before pickup.';
         }
     }
 }
@@ -182,6 +222,32 @@ if (!empty($_GET['preview'])) {
         }
 
         $previewData = ['request' => $reqRow, 'ext' => $extRow, 'record' => $recordRow];
+
+        // ---- Auto-suggest record matches ------------------------------------
+        // When a request has no matched record yet, pre-fetch candidate records
+        // whose primary name loosely matches the request's stated subject name,
+        // so the secretary can pick one instead of typing a record ID.
+        $suggestedRecords = [];
+        $suggestNoResults = false;
+        if ($extRow && !$recordRow && isset(CERT_EXT[$previewSacrament])) {
+            $sc = CERT_EXT[$previewSacrament];
+            $kw = trim((string) ($extRow[$sc['ext_name']] ?? ''));
+            if ($kw !== '') {
+                $like = '%' . $kw . '%';
+                $sq = $pdo->prepare(
+                    "SELECT id, {$sc['record_name']} AS subject_name,
+                            book_no, page_no, line_no, date_encoded
+                     FROM {$sc['record']}
+                     WHERE {$sc['record_name']} LIKE ?
+                     ORDER BY id ASC LIMIT 5"
+                );
+                $sq->execute([$like]);
+                $suggestedRecords = $sq->fetchAll();
+                $suggestNoResults = count($suggestedRecords) === 0;
+            } else {
+                $suggestNoResults = true;
+            }
+        }
     }
 }
 
@@ -313,12 +379,29 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <?php if (!$rec): ?>
             <h3 style="margin-top:2rem;">Match to a Digital Record</h3>
-            <form method="post" class="inline-fields">
+
+            <?php if (count($suggestedRecords) > 0): ?>
+                <p class="field-hint">Suggested records that match "<?= e((string)($ext[$conf['ext_name']] ?? '')) ?>". Click one to match, or enter a record ID below.</p>
+                <form method="post" class="inline-fields" style="gap:0.75rem; flex-wrap:wrap;">
+                    <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                    <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
+                    <input type="hidden" name="sacrament_type" value="<?= e($previewSacrament) ?>">
+                    <?php foreach ($suggestedRecords as $sug): ?>
+                        <button type="submit" name="record_id" value="<?= (int) $sug['id'] ?>" class="btn btn-secondary btn-small">
+                            #<?= (int) $sug['id'] ?> — <?= e((string)($sug['subject_name'] ?? '')) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </form>
+            <?php elseif ($suggestNoResults): ?>
+                <p class="field-hint">No existing record matched "<?= e((string)($ext[$conf['ext_name']] ?? '')) ?>". You can still enter a record ID below, or encode the record on the Records page first.</p>
+            <?php endif; ?>
+
+            <form method="post" class="inline-fields" style="margin-top:0.75rem;">
                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                 <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                 <input type="hidden" name="sacrament_type" value="<?= e($previewSacrament) ?>">
-                <label>Record ID (look up on the corresponding Records page)
-                    <input type="number" name="record_id" min="1" required>
+                <label>Or enter Record ID (look up on the corresponding Records page)
+                    <input type="number" name="record_id" min="1">
                 </label>
                 <button type="submit" name="match_record" value="1" class="btn btn-small">Match</button>
             </form>

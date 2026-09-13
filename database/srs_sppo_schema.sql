@@ -76,6 +76,7 @@ CREATE TABLE baptismal_records (
   line_no           VARCHAR(20),
   date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by        INT UNSIGNED,
+  certificate_request_id INT UNSIGNED,  -- reverse link: approved cert request that cited this record (set on match)
   person_id         INT UNSIGNED,        -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -107,6 +108,7 @@ CREATE TABLE confirmation_records (
   line_no             VARCHAR(20),
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
+  certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   person_id           INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
@@ -129,6 +131,7 @@ CREATE TABLE first_communion_records (
   line_no               VARCHAR(20),
   date_encoded          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by            INT UNSIGNED,
+  certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   person_id             INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
@@ -152,6 +155,7 @@ CREATE TABLE marriage_records (
   line_no             VARCHAR(20),
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
+  certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   husband_person_id   INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   wife_person_id      INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL

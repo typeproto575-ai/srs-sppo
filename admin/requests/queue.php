@@ -28,7 +28,6 @@ const CERT_EXT = [
     'confirmation'      => ['table' => 'confirmation_certificate_requests',     'name_col' => 'confirmand_full_name'],
     'first_communion'   => ['table' => 'first_communion_certificate_requests',  'name_col' => 'communicant_full_name'],
     'marriage'          => ['table' => 'marriage_certificate_requests',         'name_col' => 'party_a_full_name'],
-    'death_burial'      => ['table' => 'death_burial_certificate_requests',     'name_col' => 'deceased_full_name'],
 ];
 
 $statusOptions = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
