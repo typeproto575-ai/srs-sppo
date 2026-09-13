@@ -150,7 +150,10 @@ require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
 $baseWhere = "WHERE status IN ('approved','ready_for_pickup')";
-$combinedWhere = $rf['where'] === '' ? $baseWhere : $baseWhere . ' AND ' . ltrim($rf['where'], 'WHERE ');
+// $rf['where'] is ' AND ...' when filters are active, '' otherwise —
+// append it as-is (ltrim with a charlist would corrupt it, e.g. it
+// previously produced "AND AND (...)" → SQL 1064).
+$combinedWhere = $baseWhere . $rf['where'];
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests $combinedWhere");
 $countStmt->execute($rf['params']);
