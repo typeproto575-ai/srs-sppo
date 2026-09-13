@@ -456,12 +456,7 @@ html, body {
 .office-card ul { margin: 0; padding-left: 1.1rem; }
 .office-card li { margin-bottom: 0.3rem; }
 
-/* --- Announcements as cards + empty states --- */
-.announcement-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; max-width: 900px; margin: 0 auto; }
-.announcement-card { background: #fff; border: 1px solid var(--color-rule, #e4ded2); border-radius: 8px; padding: 1rem 1.2rem; }
-.announcement-card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
-.announcement-card .event-date { display: inline-block; font-size: 0.78rem; font-weight: 600; color: #2f6b40; background: #eef6ee; border-radius: 999px; padding: 0.15rem 0.6rem; margin-bottom: 0.5rem; }
-.announcement-card p { margin: 0; font-size: 0.92rem; color: #57503f; }
+/* --- Empty states (announcements/results) --- */
 .empty-state { background: #faf8f3; border: 1px dashed var(--color-rule, #e4ded2); border-radius: 8px; padding: 1.4rem 1.2rem; text-align: center; color: #6b6355; max-width: 900px; margin: 0 auto; }
 
 /* --- Carousels (announcements + upcoming events on the landing page) --- */
@@ -745,38 +740,9 @@ html, body {
     color: #1f3d2b;
 }
 
-/* --- Upcoming events list (landing page) --- */
-.event-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 0.75rem;
-    max-width: 900px;
-}
-.event-card {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: #fff;
-    border: 1px solid var(--color-rule, #e4ded2);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-}
-.event-card .event-date {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
-    background: #eef6ee;
-    color: #2f6b40;
-    font-weight: 700;
-    border-radius: 8px;
-    font-size: 0.9rem;
-}
-.event-card .event-details { flex: 1 1 auto; }
-.event-card .event-details strong { display: block; font-size: 0.95rem; color: #1f3d2b; }
-.event-card .event-details p { margin: 0.15rem 0 0; font-size: 0.82rem; color: #6b6355; }
+/* Event type badges (used on carousel cards and the calendar legend).
+   The old .event-list / .event-card grid styles were removed — the landing
+   page renders events as carousel slides with .slide .card now. */
 .event-badge {
     flex: 0 0 auto;
     font-size: 0.72rem;

@@ -98,7 +98,10 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
                 <a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?>>Accounts</a>
             <?php endif; ?>
             <a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?>>Audit Log</a>
-            <a class="btn btn-header-logout" href="<?= $basePath ?>/admin/logout.php">Log Out</a>
+            <form method="post" action="<?= $basePath ?>/admin/logout.php" class="logout-form">
+                <?= csrf_field() ?>
+                <button type="submit" class="logout-link-btn">Log Out</button>
+            </form>
         </nav>
     </div>
 </header>

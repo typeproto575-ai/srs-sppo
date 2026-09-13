@@ -103,6 +103,22 @@ body {
     margin-left: 0.25rem;
 }
 
+/* Log Out is a POST form (CSRF-protected) styled to look like the other
+   utility links in the dark header bar. */
+.logout-form { display: inline-flex; align-items: center; margin-left: 0.25rem; }
+.logout-form .logout-link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    cursor: pointer;
+    font-family: inherit;
+}
+.logout-form .logout-link-btn:hover { color: #fff; }
+
 /* ---- Notification bell (dark header context) --------------------------- */
 .notif-wrap {
     position: relative;
