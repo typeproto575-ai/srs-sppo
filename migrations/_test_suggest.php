@@ -1,6 +1,12 @@
 <?php
-// Smoke test: application->register prefill queries + person-profile sections.
-require_once __DIR__ . '/../config/database.php';
+// Boot smoke test: functions + DB config + security headers (CLI-safe paths).
+require __DIR__ . '/../includes/functions.php';
+require __DIR__ . '/../config/database.php';
+echo 'boot OK; APP_FORCE_HTTPS=' . var_export(APP_FORCE_HTTPS, true) . '; db=' . $DB_NAME . PHP_EOL;
+// Confirm headers do not break CLI (headers_sent() is false; header() is a no-op on CLI).
+security_headers();
+echo 'security_headers OK (CLI no-op path)' . PHP_EOL;
+
 
 $ok = true;
 function check(string $label, callable $fn) {

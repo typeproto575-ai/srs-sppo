@@ -16,6 +16,9 @@
  * =====================================================================
  */
 
+// Deployment switches (HTTPS enforcement, etc.) — before anything renders.
+require_once __DIR__ . '/../config/environment.php';
+
 /**
  * Generate a unique tracking number, e.g. SPPO-2026-000123
  */
@@ -589,19 +592,49 @@ function validate_password_strength(string $password): ?string
 /**
  * Send conservative security headers before any page output.
  * Called once at include time (bottom of functions.php) so every page —
- * public and admin — gets them without per-page edits. Intentionally NOT
- * setting Content-Security-Policy here: FullCalendar and inline scripts
- * would need a carefully allowlisted policy; the three headers below are
- * zero-risk and cover framing, MIME sniffing, and referrer leakage.
+ * public and admin — gets them without per-page edits.
+ *
+ * Content-Security-Policy: allowlists only this site and the FullCalendar
+ * CDN (cdnjs.cloudflare.com). 'unsafe-inline' is required by the app's
+ * existing inline <script>/<style> blocks (calendar init, inline SVG/JS);
+ * it still blocks scripts/styles from any other origin. Tighten by moving
+ * the inline scripts to .js files and dropping 'unsafe-inline' later.
+ *
+ * HTTPS: when APP_FORCE_HTTPS is enabled (config/environment.php), plain
+ * HTTP GET/HEAD requests are 301-redirected to HTTPS and a one-year HSTS
+ * header is sent. Off by default so the local XAMPP HTTP setup keeps
+ * working unchanged.
  */
 function security_headers(): void
 {
     if (headers_sent()) {
         return;
     }
+
+    // Optional HTTPS enforcement — see config/environment.php.
+    if (defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS && PHP_SAPI !== 'cli') {
+        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+            || (($_SERVER['SERVER_PORT'] ?? 0) == 443);
+        if (!$isHttps && in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true)) {
+            // 301 + exit before any DB work or output happens.
+            header('Location: https://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '/'), true, 301);
+            exit;
+        }
+        // Sent only once the connection is (forced to be) HTTPS.
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
+
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
+
+    header("Content-Security-Policy: default-src 'self'; "
+        . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        . "font-src 'self' https://fonts.gstatic.com; "
+        . "img-src 'self' data:; "
+        . "connect-src 'self'");
 }
 
 // Fire-and-forget: applied to every request that loads this file (which is
