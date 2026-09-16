@@ -28,20 +28,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_released']) && csrf_verify()) {
     require_role('secretary');
-    $logId = (int) ($_POST['log_id'] ?? 0);
-    if ($logId) {
-        $stmt = $pdo->prepare('SELECT certificate_request_id FROM certificate_generation_log WHERE id = ?');
-        $stmt->execute([$logId]);
-        $requestId = (int) ($stmt->fetchColumn() ?: 0);
+    $logId              = (int) ($_POST['log_id'] ?? 0);
+    $claimantName       = trim((string) ($_POST['claimant_name'] ?? ''));
+    $claimantRelation   = trim((string) ($_POST['claimant_relationship'] ?? ''));
+    $claimantNotes      = trim((string) ($_POST['claimant_notes'] ?? ''));
+    $idVerified         = isset($_POST['id_verified']) && $_POST['id_verified'] === '1';
 
-        if ($requestId) {
-            $stmt = $pdo->prepare("UPDATE certificate_generation_log SET print_status = 'released', pickup_date = NOW() WHERE id = ?");
-            $stmt->execute([$logId]);
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'released' WHERE id = ?");
-            $stmt->execute([$requestId]);
-
-            log_activity($pdo, current_user()['id'], 'certificate_released', 'certificate_generation_log', $logId, 'Certificate marked released at pickup');
-            $notice = 'Marked as released.';
+    if (!$idVerified) {
+        $notice = 'You must verify the claimant\'s valid ID before releasing the certificate.';
+    } elseif ($claimantName === '') {
+        $notice = 'Claimant name is required.';
+    } elseif ($claimantRelation === '') {
+        $notice = 'Claimant relationship to the subject is required.';
+    } elseif (!$logId) {
+        $notice = 'Invalid generation log.';
+    } else {
+        // Re-check inside the handler: the log must still be the current,
+        // non-superseded one and the request must still be ready_for_pickup.
+        $cur = cert_current_generation_log($pdo, (int) $_POST['certificate_request_id'] ?? 0);
+        if (!$cur || (int) $cur['id'] !== $logId) {
+            $notice = 'This generation log is no longer the active one (it may have been superseded). Please refresh and try again.';
+        } elseif ($cur['print_status'] === 'released') {
+            $notice = 'This certificate has already been released.';
+        } else {
+            // Verify the request is still in the expected state.
+            $stmt = $pdo->prepare('SELECT status FROM certificate_requests WHERE id = ?');
+            $stmt->execute([$cur['certificate_request_id']]);
+            $reqStatus = $stmt->fetchColumn();
+            if ($reqStatus !== 'ready_for_pickup') {
+                $notice = 'The request is no longer ready for pickup (current status: ' . e((string) $reqStatus) . ').';
+            } else {
+                $result = log_certificate_released(
+                    $pdo,
+                    $logId,
+                    (int) $cur['certificate_request_id'],
+                    current_user()['id'],
+                    $claimantName,
+                    $claimantRelation,
+                    $claimantNotes,
+                    $idVerified
+                );
+                if ($result['ok']) {
+                    log_activity($pdo, current_user()['id'], 'certificate_released',
+                        'certificate_generation_log', $logId,
+                        "Certificate released to {$claimantName} ({$claimantRelation})" . ($claimantNotes ? " — notes: {$claimantNotes}" : ''));
+                    $notice = 'Certificate marked as released. Claimant: ' . e($claimantName) . ' (' . e($claimantRelation) . ').';
+                } else {
+                    $notice = $result['reason'];
+                }
+            }
         }
     }
 }
@@ -112,10 +147,24 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= $log['pickup_date'] ? e(date('M j, Y', strtotime($log['pickup_date']))) : '&mdash;' ?></td>
                         <td>
                             <?php if ($log['print_status'] !== 'released'): ?>
-                            <form method="post">
+                            <form method="post" style="min-width:240px;">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="log_id" value="<?= (int) $log['id'] ?>">
-                                <button type="submit" name="mark_released" value="1" class="btn btn-small">Mark Released</button>
+                                <input type="hidden" name="certificate_request_id" value="<?= (int) $log['certificate_request_id'] ?>">
+                                <label>Claimant Name
+                                    <input type="text" name="claimant_name" required placeholder="Full name of person picking up">
+                                </label>
+                                <label>Relationship to Subject
+                                    <input type="text" name="claimant_relationship" required placeholder="e.g. Parent, Self, Guardian">
+                                </label>
+                                <label>Notes (optional)
+                                    <textarea name="claimant_notes" rows="2" placeholder="Any pickup notes..."></textarea>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:0.5rem;font-weight:normal;">
+                                    <input type="checkbox" name="id_verified" value="1" required>
+                                    I verified valid ID at the counter
+                                </label>
+                                <button type="submit" name="mark_released" value="1" class="btn btn-small">Confirm Release</button>
                             </form>
                             <?php endif; ?>
                         </td>

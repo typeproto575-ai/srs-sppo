@@ -676,7 +676,434 @@ function notify(PDO $pdo, string $type, string $title, string $message, string $
             'INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)'
         );
         $stmt->execute([$type, $title, $message, $link]);
+        $insertedId = (int) $pdo->lastInsertId();
+
+        // Post-INSERT verification: with non-strict sql_mode, invalid ENUM values
+        // are silently truncated to '' instead of throwing. Detect that here.
+        $verifyStmt = $pdo->prepare('SELECT type FROM notifications WHERE id = ?');
+        $verifyStmt->execute([$insertedId]);
+        $stored = $verifyStmt->fetchColumn();
+
+        if ($stored !== $type) {
+            // Silent truncation detected: attempted '$type' -> stored '$stored'.
+            error_log(
+                'SRS-SPPO notify ENUM truncation: attempted type="' . $type .
+                '" stored as="' . ($stored === false || $stored === null ? '(empty)' : $stored) .
+                '" for notification id ' . $insertedId .
+                ' (title: ' . $title . ')'
+            );
+        }
     } catch (Throwable $e) {
         error_log('SRS-SPPO notify failed (' . $type . '): ' . $e->getMessage());
     }
+}
+
+/**
+ * Notify the bell dropdown that a sacrament application changed status.
+ *
+ * Single shared entry point for all sacrament-application transitions so the
+ * notification 'type' values stay consistent (see notifications.type ENUM —
+ * an unlisted type is silently truncated to '' in this env's non-strict sql_mode).
+ *
+ * @param PDO    $pdo          Active DB connection.
+ * @param string $newStatus    The status just written (must be in the notifications.type ENUM).
+ * @param string $sacramentType   'baptismal', 'confirmation', 'first_communion', 'marriage'.
+ * @param string $trackingNumber   application tracking_number (from sa.*).
+ * @param string $extra        Optional suffix appended after the first sentence.
+ */
+function notify_sacrament_application_status(
+    PDO $pdo,
+    string $newStatus,
+    string $sacramentType,
+    string $trackingNumber,
+    string $extra = ''
+): void {
+    $kind = ucwords(str_replace('_', ' ', $sacramentType));
+    $state = ucwords(str_replace('_', ' ', $newStatus));
+    notify(
+        $pdo,
+        'application_' . $newStatus,
+        'Application ' . $state,
+        "{$kind} application ({$trackingNumber}) is now {$state}" . ($extra !== '' ? '. ' . $extra : ''),
+        '/admin/requests/applications-queue.php?status=' . urlencode($newStatus)
+    );
+}
+
+// ---------------------------------------------------------------------
+// CERTIFICATE LIFECYCLE helpers (generation log + request status transitions)
+// ---------------------------------------------------------------------
+// These operate on the certificate_generation_log lifecycle:
+//   generated -> printed -> released
+//
+// print_status ENUM already includes these values; "printed" is a new
+// explicit step (previously nothing ever set it — the workflow jumped
+// straight from "generated" to "released"). "Mark Printed" is now a
+// first-class action on the generate/preview page.
+//
+// Superseded logs: when a request is regenerated, the prior generation-log
+// row is marked superseded (superseded_at) so only ONE active log exists
+// per request at any time. Only the current (non-superseded) log is
+// printable or releasable.
+//
+// Reuse cert_request_transition_valid() in generate.php and history.php
+// rather than duplicating status rules inline.
+
+/**
+ * Shared status-transition validator for certificate_requests lifecycle.
+ * Used by generate.php and history.php so both pages enforce the exact
+ * same rules — never hand-code a status comparison in a page.
+ *
+ * Flow: pending -> under_review -> approved -> ready_for_pickup -> released
+ * (printing does NOT change the request status; it only advances the
+ *  generation log's print_status generated -> printed).
+ *
+ * @param string $from Current status value.
+ * @param string $to   Target status value.
+ * @return bool Whether the transition is permitted.
+ */
+function cert_request_transition_valid(string $from, string $to): bool
+{
+    static $map = [
+        'pending'          => ['under_review', 'rejected'],
+        'under_review'     => ['approved', 'rejected'],
+        'approved'         => ['ready_for_pickup'],
+        'ready_for_pickup' => ['released'],
+        'released'         => [],
+        'rejected'         => [],
+    ];
+    return isset($map[$from]) && in_array($to, $map[$from], true);
+}
+
+/**
+ * The CURRENT generation log for a certificate request: the most recent
+ * row that has not been superseded by a regeneration. Returns null when
+ * the request has never been generated (or every row was superseded —
+ * impossible in practice since regeneration always creates a new row).
+ *
+ * @param PDO    $pdo       Active database connection.
+ * @param int    $requestId certificate_requests.id.
+ * @return array|null       The row, or null when none is current.
+ */
+function cert_current_generation_log(PDO $pdo, int $requestId): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT * FROM certificate_generation_log
+          WHERE certificate_request_id = ? AND superseded_at IS NULL
+          ORDER BY id DESC LIMIT 1'
+    );
+    $stmt->execute([$requestId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/**
+ * Marks a generation-log row as superseded (Regenerated), recording the
+ * regeneration staff member and timestamp.
+ *
+ * Use this when a new generation log is created for a request that already
+ * has an active (non-superseded) log — i.e. the user explicitly chose to
+ * regenerate.
+ *
+ * @param PDO    $pdo      Active database connection.
+ * @param int    $logId    certificate_generation_log.id to mark superseded.
+ * @param int    $staffId  Staff user who performed the regeneration.
+ * @return int             Number of rows affected (1 on success).
+ */
+function mark_generation_superseded(PDO $pdo, int $logId, int $staffId): int
+{
+    $stmt = $pdo->prepare(
+        'UPDATE certificate_generation_log
+         SET superseded_at = NOW(), superseded_by = ?
+         WHERE id = ? AND superseded_at IS NULL'
+    );
+    $stmt->execute([$staffId, $logId]);
+    return $stmt->rowCount();
+}
+
+
+/**
+ * Marks the current generation log for a request as "printed".
+ *
+ * Records the staff member and timestamp of the physical-printing
+ * confirmation. Only the current (non-superseded) log can be marked
+ * printed; the print_status must be 'generated'.
+ *
+ * @param PDO    $pdo       Active database connection.
+ * @param int    $requestId certificate_requests.id.
+ * @param int    $staffId   Staff user performing the print confirmation.
+ * @return array            ['ok' => true] on success, or
+ *                          ['ok' => false, 'reason' => ...] on failure.
+ */
+function log_certificate_printed(PDO $pdo, int $requestId, int $staffId): array
+{
+    $current = cert_current_generation_log($pdo, $requestId);
+    if (!$current) {
+        return ['ok' => false, 'reason' => 'No current generation log for this request.'];
+    }
+    if ($current['print_status'] !== 'generated') {
+        return [
+            'ok' => false,
+            'reason' => 'This certificate has already been ' . $current['print_status'] . ' (only a "generated" certificate can be marked printed).',
+        ];
+    }
+
+    $stmt = $pdo->prepare(
+        'UPDATE certificate_generation_log
+         SET print_status = "printed", printed_by = ?, printed_at = NOW()
+         WHERE id = ?'
+    );
+    $stmt->execute([$staffId, $current['id']]);
+    return ['ok' => true];
+}
+
+
+/**
+ * Releases a certificate for pickup, recording claimant verification.
+ *
+ * Before releasing, verifies:
+ *   - the certificate_requests.status is currently 'ready_for_pickup'
+ *     (using cert_request_transition_valid)
+ *   - the generation log being released is the current, non-superseded one
+ *     for that request
+ *
+ * All updates (generation log, request status, audit log, notification)
+ * run in a single DB transaction so they can't partially apply.
+ *
+ * @param PDO    $pdo            Active database connection.
+ * @param int    $requestId      certificate_requests.id.
+ * @param int    $logId          certificate_generation_log.id to release.
+ * @param int    $staffId        Staff user performing the release.
+ * @param string $claimantName   Name of the person picking up the certificate.
+ * @param string $claimantRelation Relationship to the subject (e.g. "Parent", "Self").
+ * @param string $claimantNotes   Optional notes (e.g. "Left at parish office").
+ * @param bool   $idVerified     Whether valid ID was verified in person at the counter.
+ * @return array                 ['ok' => true] on success, or
+ *                               ['ok' => false, 'reason' => ...] on failure.
+ */
+function log_certificate_released(
+    PDO $pdo,
+    int $requestId,
+    int $logId,
+    int $staffId,
+    string $claimantName,
+    string $claimantRelation,
+    string $claimantNotes,
+    bool $idVerified
+): array {
+    // --- Validate the request status transition -------------------------
+    $requestStmt = $pdo->prepare(
+        'SELECT status FROM certificate_requests WHERE id = ?'
+    );
+    $requestStmt->execute([$requestId]);
+    $requestRow = $requestStmt->fetch();
+    if (!$requestRow) {
+        return ['ok' => false, 'reason' => 'Request not found.'];
+    }
+    if (!cert_request_transition_valid($requestRow['status'], 'released')) {
+        return [
+            'ok' => false,
+            'reason' => "Cannot release: certificate request status is '{$requestRow['status']}' (expected 'ready_for_pickup').",
+        ];
+    }
+
+    // --- Validate the generation log is current & not superseded --------
+    $current = cert_current_generation_log($pdo, $requestId);
+    if (!$current) {
+        return ['ok' => false, 'reason' => 'No current generation log for this request.'];
+    }
+    if ((int) $current['id'] !== $logId) {
+        return [
+            'ok' => false,
+            'reason' => 'The generation log being released is not the current active log for this request (it may have been superseded by a regeneration).',
+        ];
+    }
+    if ($current['print_status'] !== 'printed') {
+        return [
+            'ok' => false,
+            'reason' => 'This certificate has already been released (or is not yet marked printed).',
+        ];
+    }
+
+    // --- Apply within a transaction ------------------------------------
+    try {
+        $pdo->beginTransaction();
+
+        // Mark the generation log as released.
+        $releaseStmt = $pdo->prepare(
+            'UPDATE certificate_generation_log
+             SET print_status = "released", pickup_date = NOW()
+             WHERE id = ?'
+        );
+        $releaseStmt->execute([$logId]);
+
+        // Flip the request status to released.
+        $reqUp = $pdo->prepare(
+            'UPDATE certificate_requests
+             SET status = "released", date_processed = NOW(), processed_by = ?
+             WHERE id = ?'
+        );
+        $reqUp->execute([$staffId, $requestId]);
+
+        // Audit-log the release with the claimant verification details.
+        $releaseNote = sprintf(
+            'Certificate released to %s (%s)%s. ID verified in person: %s.',
+            $claimantName,
+            $claimantRelation,
+            $claimantNotes !== '' ? ' Notes: ' . $claimantNotes : '',
+            $idVerified ? 'Yes' : 'No'
+        );
+        log_activity(
+            $pdo,
+            $staffId,
+            'certificate_released',
+            'certificate_requests',
+            $requestId,
+            $releaseNote
+        );
+
+        // Notify relevant parties.
+        $kind = ucwords(str_replace('_', ' ', (string) ($requestRow['sacrament_type'] ?? ''))) . ' Certificate';
+        notify(
+            $pdo,
+            'certificate_picked_up',
+            'Certificate picked up',
+            $kind . ' picked up by ' . $claimantName,
+            '/admin/requests/queue.php?status=released'
+        );
+
+        $pdo->commit();
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('Certificate release failed: ' . $e->getMessage());
+        return ['ok' => false, 'reason' => 'An error occurred while releasing the certificate. Please try again.'];
+    }
+}
+
+/* SACRAMENT APPLICATION TRANSITIONS + APPROVAL (own map, not merged). */
+
+function sacrament_application_status_flow(): array
+{
+    $common = ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+    return [
+        'baptismal'       => $common,
+        'confirmation'    => $common,
+        'first_communion' => $common,
+        'marriage'        => ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    ];
+}
+
+function sacrament_application_transition_valid(string $from, string $to, ?string $sacramentType = null): bool
+{
+    if (in_array($from, ['completed', 'rejected'], true) && $from !== $to) {
+        return false;
+    }
+    $all = ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+    if (!in_array($to, $all, true)) {
+        return false;
+    }
+    if ($sacramentType !== null) {
+        $flow = sacrament_application_status_flow();
+        $stages = $flow[$sacramentType] ?? $all;
+        if (!in_array($to, $stages, true) && $from !== $to) {
+            return false;
+        }
+    }
+    if ($to === 'rejected') {
+        return true;
+    }
+    if ($from === $to) {
+        return true;
+    }
+    $pipe = ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed'];
+    $fp = array_search($from, $pipe, true);
+    $tp = array_search($to, $pipe, true);
+    if ($fp === false || $tp === false) {
+        return false;
+    }
+    return $tp > $fp;
+}
+
+function can_approve_sacrament_application(PDO $pdo, int $applicationId, string $sacramentType): array
+{
+    $missing = [];
+    if ($applicationId <= 0) {
+        return ['ok' => false, 'missing' => ['Application not found.']];
+    }
+    if ($sacramentType === 'marriage') {
+        $stmt = $pdo->prepare('SELECT * FROM marriage_applications WHERE application_id = ?');
+        $stmt->execute([$applicationId]);
+        $ext = $stmt->fetch();
+        if (!$ext) {
+            return ['ok' => false, 'missing' => ['Marriage application details not found.']];
+        }
+        if (empty($ext['canonical_interview_completed'])) {
+            $missing[] = 'Canonical (pastoral) interview not completed.';
+        }
+        if (empty($ext['pre_cana_seminar_completed'])) {
+            $missing[] = 'Pre-Cana / marriage seminar not completed.';
+        }
+        if (empty($ext['banns_date_1']) || empty($ext['banns_date_2']) || empty($ext['banns_date_3'])) {
+            $missing[] = 'Banns must be posted on all three dates (Tawag sa Kasal).';
+        }
+        if (($ext['groom_baptismal_cert_status'] ?? '') !== 'submitted') {
+            $missing[] = "Groom's baptismal certificate not submitted.";
+        }
+        if (($ext['bride_baptismal_cert_status'] ?? '') !== 'submitted') {
+            $missing[] = "Bride's baptismal certificate not submitted.";
+        }
+        if (($ext['groom_confirmation_cert_status'] ?? '') !== 'submitted') {
+            $missing[] = "Groom's confirmation certificate not submitted.";
+        }
+        if (($ext['bride_confirmation_cert_status'] ?? '') !== 'submitted') {
+            $missing[] = "Bride's confirmation certificate not submitted.";
+        }
+        return ['ok' => $missing === [], 'missing' => $missing];
+    }
+    if ($sacramentType === 'baptismal') {
+        $stmt = $pdo->prepare('SELECT * FROM baptismal_applications WHERE application_id = ?');
+        $stmt->execute([$applicationId]);
+        $ext = $stmt->fetch();
+        if (!$ext) {
+            return ['ok' => false, 'missing' => ['Baptismal application details not found.']];
+        }
+        if (empty($ext['documents_verified'])) {
+            $missing[] = 'Required documents not yet verified.';
+        }
+        if (empty($ext['seminar_attended'])) {
+            $missing[] = 'Parents/godparents seminar not yet completed.';
+        }
+        $gpStmt = $pdo->prepare("SELECT godparent_type, COUNT(*) AS c FROM baptismal_application_godparents WHERE baptismal_application_id = ? GROUP BY godparent_type");
+        $gpStmt->execute([(int) $ext['id']]);
+        $counts = ['godfather' => 0, 'godmother' => 0];
+        foreach ($gpStmt->fetchAll() as $row) {
+            $counts[$row['godparent_type']] = (int) $row['c'];
+        }
+        if ($counts['godfather'] < 1) {
+            $missing[] = 'At least one godfather (ninong) must be recorded.';
+        }
+        if ($counts['godmother'] < 1) {
+            $missing[] = 'At least one godmother (ninang) must be recorded.';
+        }
+        return ['ok' => $missing === [], 'missing' => $missing];
+    }
+    if ($sacramentType === 'confirmation' || $sacramentType === 'first_communion') {
+        $table = $sacramentType === 'confirmation' ? 'confirmation_applications' : 'first_communion_applications';
+        $stmt = $pdo->prepare("SELECT * FROM {$table} WHERE application_id = ?");
+        $stmt->execute([$applicationId]);
+        $ext = $stmt->fetch();
+        if (!$ext) {
+            return ['ok' => false, 'missing' => ['Application details not found.']];
+        }
+        if (($ext['baptismal_cert_status'] ?? '') !== 'submitted') {
+            $missing[] = 'Baptismal certificate not submitted (baptism is required first).';
+        }
+        if (empty($ext['seminar_attended'])) {
+            $missing[] = 'Seminar not yet completed.';
+        }
+        return ['ok' => $missing === [], 'missing' => $missing];
+    }
+    return ['ok' => false, 'missing' => ['Unknown sacrament type.']];
 }

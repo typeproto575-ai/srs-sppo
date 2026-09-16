@@ -342,6 +342,8 @@ CREATE TABLE baptismal_applications (
   certificate_done       TINYINT(1) NOT NULL DEFAULT 0, -- per parish form
   baptism_date           DATE,                 -- per parish form (Date of Baptism)
   notes                 TEXT,
+  documents_verified    TINYINT(1) NOT NULL DEFAULT 0, -- secretary: required docs presented (013)
+  seminar_attended      TINYINT(1) NOT NULL DEFAULT 0, -- godparents/parents seminar done (013)
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -369,6 +371,7 @@ CREATE TABLE confirmation_applications (
   preferred_batch       VARCHAR(50),
   sponsor_name          VARCHAR(150),
   age_eligibility_flag  TINYINT(1) NOT NULL DEFAULT 0,
+  seminar_attended      TINYINT(1) NOT NULL DEFAULT 0, -- seminar completed (013)
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -386,6 +389,7 @@ CREATE TABLE first_communion_applications (
   baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   preferred_batch       VARCHAR(50),
   age_eligibility_flag  TINYINT(1) NOT NULL DEFAULT 0,
+  seminar_attended      TINYINT(1) NOT NULL DEFAULT 0, -- seminar completed (013)
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -496,11 +500,22 @@ CREATE TABLE certificate_generation_log (
   id                     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   certificate_request_id INT UNSIGNED NOT NULL,
   generated_by           INT UNSIGNED,
+  printed_by             INT UNSIGNED,            -- staff who confirmed physical printing (see 009)
   generated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  printed_at             DATETIME,                -- when printing was confirmed (see 009)
   print_status           ENUM('generated', 'printed', 'released') NOT NULL DEFAULT 'generated',
   pickup_date            DATETIME,
+  claimant_name          VARCHAR(255),            -- who picked up the certificate (see 010)
+  claimant_relationship  VARCHAR(120),            -- relationship to the subject (see 010)
+  claimant_notes         TEXT,                    -- optional release notes (see 010)
+  id_verified            TINYINT(1) NOT NULL DEFAULT 0, -- whether valid ID was verified (see 010)
+  superseded_at          DATETIME,                -- set when replaced by a newer regeneration (see 009)
+  superseded_by          INT UNSIGNED,            -- staff who performed the regeneration (see 009)
+  KEY idx_cgl_request_active (certificate_request_id, superseded_at),
   FOREIGN KEY (certificate_request_id) REFERENCES certificate_requests(id) ON DELETE CASCADE,
-  FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (printed_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (superseded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- =====================================================================

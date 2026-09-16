@@ -67,13 +67,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
     }
 
     if ($applicationId && $allowedStatus) {
-        $stmt = $pdo->prepare(
-            "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
-        );
-        $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
+        // Re-fetch the CURRENT status: never trust the value rendered earlier
+        // (it may have changed since page load).
+        $curStmt = $pdo->prepare('SELECT status FROM sacrament_applications WHERE id = ?');
+        $curStmt->execute([$applicationId]);
+        $curStatus = (string) $curStmt->fetchColumn();
+        $proceed = true;
+        if ($curStatus === '') {
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, 'Status change refused: application not found.');
+            $proceed = false;
+        } elseif (!sacrament_application_transition_valid($curStatus, $newStatus, $appType)) {
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change refused: {$curStatus} -> {$newStatus} for {$appType}.");
+            $proceed = false;
+        } elseif ($newStatus === 'approved') {
+            // Approval is the hard gate: every prerequisite must be met.
+            $gate = can_approve_sacrament_application($pdo, $applicationId, $appType);
+            if (!$gate['ok']) {
+                log_activity($pdo, current_user()['id'], 'sacrament_application_approval_blocked', 'sacrament_applications', $applicationId, 'Approval blocked; missing: ' . implode(' ', $gate['missing']));
+                $proceed = false;
+            }
+        }
+        if ($proceed) {
+            $stmt = $pdo->prepare(
+                "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
+            );
+            $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
 
-        log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId,
-            "Status changed to {$newStatus}");
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId,
+                "Status changed to {$newStatus}");
+        }
     }
     redirect_to('/admin/requests/applications-queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
     exit;

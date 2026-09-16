@@ -94,20 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             }
 
             if ($decision === 'approved') {
-                $missingClearance = [];
-                if (!(int) $app['pre_cana_seminar_completed']) $missingClearance[] = 'pre-Cana seminar';
-                if (!(int) $app['canonical_interview_completed']) $missingClearance[] = 'canonical interview';
-                if (empty($app['banns_date_1']) || empty($app['banns_date_2']) || empty($app['banns_date_3'])) {
-                    $missingClearance[] = 'three banns dates';
-                }
-                foreach (['groom_baptismal_cert_status' => 'groom baptismal certificate',
-                          'bride_baptismal_cert_status' => 'bride baptismal certificate',
-                          'groom_confirmation_cert_status' => 'groom confirmation certificate',
-                          'bride_confirmation_cert_status' => 'bride confirmation certificate'] as $column => $label) {
-                    if ($app[$column] !== 'submitted') $missingClearance[] = $label;
-                }
-                if ($missingClearance) {
-                    $errors[] = 'Cannot approve until these requirements are complete: ' . implode(', ', $missingClearance) . '.';
+                $gate = can_approve_sacrament_application($pdo, $applicationId, 'marriage');
+                if (!$gate['ok']) {
+                    $errors[] = 'Cannot approve until these requirements are complete: ' . implode('; ', $gate['missing']) . '.';
+                    log_activity($pdo, current_user()['id'], 'sacrament_application_approval_blocked', 'sacrament_applications', $applicationId, 'Approval blocked; missing: ' . implode(' ', $gate['missing']));
                 }
             }
 
@@ -118,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $stmt->execute([$decision, current_user()['id'], $applicationId]);
                 log_activity($pdo, current_user()['id'], 'marriage_application_' . $decision, 'sacrament_applications', $applicationId,
                     "Marriage application {$decision} by secretary");
+                notify_sacrament_application_status($pdo, $decision, $row['sacrament_type'], $row['tracking_number']);
                 $notice = 'Application marked as ' . $decision . '.';
                 // Reload
                 $stmt = $pdo->prepare("SELECT sa.*, ma.* FROM sacrament_applications sa JOIN marriage_applications ma ON ma.application_id = sa.id WHERE sa.id = ?");

@@ -44,31 +44,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
         } else {
+            // ---- Validate tracking-number format before hitting the DB ----
+            // generate_tracking_number() produces e.g. SPPO-2026-000123.
+            // Reject anything that doesn't match so malformed input never reaches SQL.
+            $trackingPattern = '/^SPPO(-[A-Z]+)?-\d{4}-\d{6}$/';
             // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
-            // Keyed on tracking+email to prevent enumeration attacks.
-            $rateKey = $trackingNumber . '|' . $email;
-            if (too_many_attempts($pdo, $rateKey, 8, 15)) {
+            // Keyed on tracking+email (existing key) AND on IP (new, to prevent
+            // rotating one against the other to route around the per-key limit).
+            // The check runs BEFORE format validation so that hammering garbage-
+            // formatted tracking numbers is blocked by the same limit too.
+            $rateKey       = $trackingNumber . '|' . $email;
+            $ipRateKey     = 'ip:' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+            if (too_many_attempts($pdo, $rateKey, 8, 15) || too_many_attempts($pdo, $ipRateKey, 8, 15)) {
                 $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
                 log_activity($pdo, null, 'track_rate_limited', null, null, "Rate limited: {$trackingNumber}");
+            } elseif (!preg_match($trackingPattern, $trackingNumber)) {
+                // Malformed format counts as a failed attempt (rate-limit bypass fix).
+                record_attempt($pdo, $rateKey);
+                record_attempt($pdo, $ipRateKey);
+                $error = 'We couldn\'t find a request matching that tracking number and email combination.';
             } else {
                 // 1. Look in certificate_requests first -- email lives directly on the shared table.
-                $stmt = $pdo->prepare(
-                    "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
-                     FROM certificate_requests WHERE tracking_number = ?"
-                );
-                $stmt->execute([$trackingNumber]);
-                $row = $stmt->fetch();
+                    $stmt = $pdo->prepare(
+                        "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
+                         FROM certificate_requests WHERE tracking_number = ?"
+                    );
+                    $stmt->execute([$trackingNumber]);
+                    $row = $stmt->fetch();
 
-                if ($row) {
-                    // Case-insensitive email match protects against trivial snooping.
-                    if (strcasecmp(trim($row['requester_email']), $email) === 0) {
-                        $result = ['kind' => 'certificate', 'row' => $row];
+                    if ($row) {
+                        // Case-insensitive email match protects against trivial snooping.
+                        if (strcasecmp(trim($row['requester_email']), $email) === 0) {
+                            $result = ['kind' => 'certificate', 'row' => $row];
+                        } else {
+                            // Record failed attempt (wrong email for this tracking number).
+                            record_attempt($pdo, $rateKey);
+                            record_attempt($pdo, $ipRateKey);
+                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
+                        }
                     } else {
-                        // Record failed attempt (wrong email for this tracking number).
-                        record_attempt($pdo, $rateKey);
-                        $error = 'We found that tracking number, but the email address does not match our records.';
-                    }
-                } else {
                     // 2. Look in sacrament_applications -- email lives in the sacrament-specific extension table.
                     $stmt = $pdo->prepare(
                         "SELECT id, tracking_number, sacrament_type, status, date_submitted
@@ -106,17 +120,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
                         }
 
-                        if ($matchedEmail) {
+                                                if ($matchedEmail) {
                             $result = ['kind' => 'application', 'row' => $appRow];
                         } else {
                             // Record failed attempt (no matching email in extension table).
                             record_attempt($pdo, $rateKey);
-                            $error = 'We found that tracking number, but the email address does not match our records.';
+                            record_attempt($pdo, $ipRateKey);
+                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                         }
                     } else {
                         // Record failed attempt (tracking number not found at all).
                         record_attempt($pdo, $rateKey);
-                        $error = 'No request found with that tracking number. Please double-check and try again.';
+                        record_attempt($pdo, $ipRateKey);
+                        $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                     }
                 }
             }

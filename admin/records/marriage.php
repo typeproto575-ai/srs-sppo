@@ -127,8 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 );
                 $u->execute([current_user()['id'], (int) $_POST['from_application']]);
                 if ($u->rowCount()) {
+                    $appRow = $pdo->query("SELECT tracking_number, sacrament_type FROM sacrament_applications WHERE id = " . (int) $_POST['from_application'])->fetch();
                     log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $_POST['from_application'],
                         "Marriage encoded into register (record #{$recordId}); application completed");
+                    notify_sacrament_application_status($pdo, 'completed', (string) $appRow['sacrament_type'], (string) $appRow['tracking_number'], "Marriage encoded into register (record #{$recordId}).");
                     $appDone = '&app_completed=1';
                 }
             }

@@ -9,18 +9,14 @@
  *          print-ready layout for the secretary to print and sign.
  * =====================================================================
  */
-
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_role('secretary');
-
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
-
 $pageTitle = 'Generate / Preview Certificate';
 $notice = null;
-
 // Maps each sacrament type to its extension table (for request details) and
 // the canonical records table (for the authoritative register entry).
 // Used for certificate preview and record matching. The *_name columns let us
@@ -33,7 +29,6 @@ const CERT_EXT = [
     'first_communion'=> ['ext' => 'first_communion_certificate_requests', 'record' => 'first_communion_records',  'ext_name' => 'communicant_full_name', 'record_name' => 'communicant_full_name'],
     'marriage'       => ['ext' => 'marriage_certificate_requests',        'record' => 'marriage_records',         'ext_name' => 'party_a_full_name',     'record_name' => 'husband_full_name'],
 ];
-
 // --- Match a request to a digital record index --------------------------
 // CSRF: forged or stale POSTs are dropped silently - no match is written.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -43,13 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
     $requestId = (int) ($_POST['request_id'] ?? 0);
     $sacramentType = $_POST['sacrament_type'] ?? '';
     $recordId = (int) ($_POST['record_id'] ?? 0);
-
     if ($requestId && $recordId && isset(CERT_EXT[$sacramentType])) {
         $requestStmt = $pdo->prepare('SELECT sacrament_type, status FROM certificate_requests WHERE id = ?');
         $requestStmt->execute([$requestId]);
         $requestRow = $requestStmt->fetch();
         $config = CERT_EXT[$sacramentType];
-
         if (!$requestRow || $requestRow['sacrament_type'] !== $sacramentType) {
             $notice = 'The request type does not match the selected sacrament.';
         } elseif (!in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
@@ -61,7 +54,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
             $extStmt = $pdo->prepare("SELECT * FROM {$config['ext']} WHERE request_id = ?");
             $extStmt->execute([$requestId]);
             $extRow = $extStmt->fetch();
-
             if (!$recordRow || !$extRow) {
                 $notice = 'The selected record or request details could not be found.';
             } else {
@@ -73,10 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
                 $recordName  = trim((string) ($recordRow[$config['record_name']] ?? ''));
                 $nameMismatch = ($subjectName !== '' && $recordName !== ''
                     && strcmp(ucwords($subjectName), ucwords($recordName)) !== 0);
-
                 $stmt = $pdo->prepare("UPDATE {$config['ext']} SET matched_record_id = ? WHERE request_id = ?");
                 $stmt->execute([$recordId, $requestId]);
-
                 // Verify the UPDATE actually affected a row. If rowCount() is 0,
                 // the extension row didn't exist (orphaned request — original
                 // submission didn't save correctly) and we must NOT show a false success.
@@ -94,7 +84,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
                     } catch (\Throwable $e) {
                         // Reverse link is best-effort; forward match already done.
                     }
-
                     log_activity($pdo, current_user()['id'], 'certificate_request_matched', 'certificate_requests', $requestId,
                         "Matched to {$sacramentType} record #{$recordId}" . ($nameMismatch ? " (name mismatch: '{$subjectName}' vs '{$recordName}')" : ''));
                     $notice = $nameMismatch
@@ -105,64 +94,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['match_record']) && cs
         }
     }
 }
-
 // --- Log a generated certificate ----------------------------------------
 // Per the workflow, "generate" = digital draft created on approval. After the
 // secretary generates it, the request is considered physically ready to be
 // printed/signed at the counter, so we flip the status to ready_for_pickup
 // (unless it's already there) and raise the admin bell. "Print" stays a
 // separate, in-person step — never merged with this.
+//
+// Duplicate-log prevention: before inserting, check whether an active
+// (non-released, non-superseded) generation log already exists for this
+// request. If one does, the secretary must explicitly choose "Regenerate"
+// (which supersedes the prior row) — we never silently create a second one.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log_generated']) && csrf_verify()) {
     $requestId = (int) ($_POST['request_id'] ?? 0);
     if ($requestId) {
-                $stmt = $pdo->prepare('SELECT status, tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT status, tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
         $stmt->execute([$requestId]);
         $requestRow = $stmt->fetch();
         if (!$requestRow || !in_array($requestRow['status'], ['approved', 'ready_for_pickup'], true)) {
             $notice = 'Only approved requests can be logged as generated.';
         } else {
+            // --- Duplicate-log guard ------------------------------------
+            $cur = cert_current_generation_log($pdo, $requestId);
+            if ($cur && $cur['print_status'] !== 'released') {
+                // An active log already exists — require explicit regeneration.
+                $existingLogId = (int) $cur['id'];
+                $notice = "An active generation log already exists for this request (log #{$existingLogId}, status: {$cur['print_status']}). To create a new one, use the Regenerate button (it will mark the prior log as superseded).";
+            } else {
+                $stmt = $pdo->prepare(
+                    "INSERT INTO certificate_generation_log (certificate_request_id, generated_by, print_status) VALUES (?, ?, 'generated')"
+                );
+                $stmt->execute([$requestId, current_user()['id']]);
+                // Request ready for pickup (unless already).
+                if ($requestRow['status'] !== 'ready_for_pickup') {
+                    $up = $pdo->prepare('UPDATE certificate_requests SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?');
+                    $up->execute(['ready_for_pickup', current_user()['id'], $requestId]);
+                }
+                $kind = ucwords(str_replace('_', ' ', (string) ($requestRow['sacrament_type'] ?? ''))) . ' Certificate';
+                notify($pdo, 'request_ready', 'Certificate ready for pickup',
+                    $kind . ' for ' . $requestRow['requester_name'] . ' (' . $requestRow['tracking_number'] . ')',
+                    '/admin/requests/queue.php?status=ready_for_pickup');
+                log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed; marked ready for pickup');
+                $notice = 'Logged as generated and marked ready for pickup. Remember to print and have it signed before pickup.';
+            }
+        }
+    }
+}
+// --- Regenerate: supersede the current log, then create a new one --------
+// The user must confirm via the checkbox that they want to replace the
+// current generation log rather than create a second ambiguous one.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate']) && $_POST['confirm_regenerate'] === '1' && csrf_verify()) {
+    $requestId = (int) ($_POST['request_id'] ?? 0);
+    if ($requestId) {
+        $cur = cert_current_generation_log($pdo, $requestId);
+        if (!$cur) {
+            $notice = 'No current generation log to regenerate.';
+        } else {
+            $currentLogId  = (int) $cur['id'];
+            $currentStatus = $cur['print_status'];
+            // Supercede the current log.
+            mark_generation_superseded($pdo, $currentLogId, current_user()['id']);
+            // Create the replacement.
             $stmt = $pdo->prepare(
                 "INSERT INTO certificate_generation_log (certificate_request_id, generated_by, print_status) VALUES (?, ?, 'generated')"
             );
             $stmt->execute([$requestId, current_user()['id']]);
-
-            // The certificate draft now exists — make the request ready for pickup
-            // (the "ready" stage where the counter confirms ID and prints/signs).
-            if ($requestRow['status'] !== 'ready_for_pickup') {
-                $up = $pdo->prepare('UPDATE certificate_requests SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?');
-                $up->execute(['ready_for_pickup', current_user()['id'], $requestId]);
-            }
-            $kind = ucwords(str_replace('_', ' ', (string) ($requestRow['sacrament_type'] ?? ''))) . ' Certificate';
-            notify($pdo, 'request_ready', 'Certificate ready for pickup',
-                $kind . ' for ' . $requestRow['requester_name'] . ' (' . $requestRow['tracking_number'] . ')',
-                '/admin/requests/queue.php?status=ready_for_pickup');
-
-            log_activity($pdo, current_user()['id'], 'certificate_generated', 'certificate_requests', $requestId, 'Certificate generated/printed; marked ready for pickup');
-            $notice = 'Logged as generated and marked ready for pickup. Remember to print and have it signed before pickup.';
+            log_activity($pdo, current_user()['id'], 'certificate_regenerated',
+                'certificate_requests', $requestId,
+                "Regenerated: superseded log #{$currentLogId} (was {$currentStatus}); new log created.");
+            $notice = "Regenerated: prior log #{$currentLogId} ({$currentStatus}) superseded. New generation log created.";
+        }
+    }
+}
+// --- Mark Printed: confirm physical printing was done --------------------
+// This is the in-person step that was previously skipped. It sets the
+// generation log's print_status to 'printed' and records who did it and
+// when. Only the current (non-superseded) log can be marked printed, and
+// only when its status is 'generated' — it cannot skip straight to printed
+// from released, nor can a released certificate be "un-released" into printed.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_printed']) && csrf_verify()) {
+    $requestId = (int) ($_POST['request_id'] ?? 0);
+    if ($requestId) {
+        $result = log_certificate_printed($pdo, $requestId, current_user()['id']);
+        if ($result['ok']) {
+            log_activity($pdo, current_user()['id'], 'certificate_printed',
+                'certificate_requests', $requestId,
+                'Certificate marked as printed (physical copy confirmed).');
+            $notice = 'Marked as printed. The certificate has been physically printed and confirmed.';
+        } else {
+            $notice = $result['reason'];
         }
     }
 }
 
+// --- Helper: render the Regenerate confirmation UI when an active log exists ---
+function render_regenerate_if_active(PDO $pdo, int $requestId): void
+{
+    $cur = cert_current_generation_log($pdo, $requestId);
+    if (!$cur || $cur['print_status'] === 'released') {
+        return;
+    }
+    $logId = (int) $cur['id'];
+    echo '<div class="alert alert-info" style="margin-top:1rem;">';
+    echo '<p><strong>Active generation log exists</strong> (log #' . $logId . ', status: ' . e($cur['print_status']) . '). ';
+    echo 'To create a replacement, confirm below — the prior log will be marked superseded:</p>';
+    echo '<form method="post" style="margin-top:0.5rem;">';
+    echo csrf_field();
+    echo '<input type="hidden" name="request_id" value="' . $requestId . '">';
+    echo '<button type="submit" name="regenerate" value="1" class="btn btn-small">Confirm Regeneration</button>';
+    echo '</form></div>';
+}
 // --- List requests ready to generate (approved or ready_for_pickup) -----
 $selfUrl = $basePath . '/admin/certificates/generate.php';
 $rfConfig = ['date_column' => 'date_submitted', 'search_columns' => ['tracking_number', 'sacrament_type', 'requester_name'], 'placeholder' => 'Search tracking no., sacrament, requester&hellip;', 'ranges' => ['today', 'week', 'month', 'year']];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
-
 $baseWhere = "WHERE status IN ('approved','ready_for_pickup')";
 // $rf['where'] is ' AND ...' when filters are active, '' otherwise —
 // append it as-is (ltrim with a charlist would corrupt it, e.g. it
 // previously produced "AND AND (...)" → SQL 1064).
 $combinedWhere = $baseWhere . $rf['where'];
-
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests $combinedWhere");
 $countStmt->execute($rf['params']);
 $totalRows = (int) $countStmt->fetchColumn();
-
 $stmt = $pdo->prepare("SELECT * FROM certificate_requests $combinedWhere ORDER BY date_submitted ASC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
 $stmt->execute($rf['params']);
 $requests = $stmt->fetchAll();
-
 foreach ($requests as &$req) {
     $conf = CERT_EXT[$req['sacrament_type']] ?? null;
     $req['matched_record_id'] = null;
@@ -174,16 +231,13 @@ foreach ($requests as &$req) {
     }
 }
 unset($req);
-
 // --- Preview a specific request's certificate content --------------------
 $previewData = null;
 $previewSacrament = null;
-
 if (!empty($_GET['record_type']) && !empty($_GET['record_id']) && isset(CERT_EXT[$_GET['record_type']])) {
     $recordType = $_GET['record_type'];
     $recordId = (int) $_GET['record_id'];
     $extTable = CERT_EXT[$recordType]['ext'];
-
     $stmt = $pdo->prepare(
         "SELECT cr.*
          FROM certificate_requests cr
@@ -194,27 +248,23 @@ if (!empty($_GET['record_type']) && !empty($_GET['record_id']) && isset(CERT_EXT
     );
     $stmt->execute([$recordId]);
     $reqRow = $stmt->fetch();
-
     if ($reqRow) {
         $_GET['preview'] = (int) $reqRow['id'];
     } else {
         $notice = 'No approved certificate request is linked to this record yet.';
     }
 }
-
 if (!empty($_GET['preview'])) {
     $reqId = (int) $_GET['preview'];
     $stmt = $pdo->prepare("SELECT * FROM certificate_requests WHERE id = ?");
     $stmt->execute([$reqId]);
     $reqRow = $stmt->fetch();
-
     if ($reqRow) {
         $previewSacrament = $reqRow['sacrament_type'];
         $conf = CERT_EXT[$previewSacrament];
         $s = $pdo->prepare("SELECT * FROM {$conf['ext']} WHERE request_id = ?");
         $s->execute([$reqId]);
         $extRow = $s->fetch();
-
         $recordRow = null;
         if ($extRow && $extRow['matched_record_id']) {
             // Explicitly exclude legitimacy -- internal-only, never surfaced on certificate output.
@@ -223,9 +273,10 @@ if (!empty($_GET['preview'])) {
             $recordRow = $r->fetch();
             if ($recordRow) unset($recordRow['legitimacy']);
         }
-
         $previewData = ['request' => $reqRow, 'ext' => $extRow, 'record' => $recordRow];
 
+        // Fetch current generation log for Mark Printed / Regenerate UI.
+        $currentLog = cert_current_generation_log($pdo, $reqId);
         // ---- Auto-suggest record matches ------------------------------------
         // When a request has no matched record yet, pre-fetch candidate records
         // whose primary name loosely matches the request's stated subject name,
@@ -253,7 +304,6 @@ if (!empty($_GET['preview'])) {
         }
     }
 }
-
 function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
@@ -263,16 +313,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Generate / Preview Certificate</h1>
         <p class="field-hint">Certificates are printed and signed in person — this page prepares the content and logs that it was generated. It does not produce a downloadable file for the requester.</p>
-
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
-
         <?php if ($previewData): ?>
             <?php
                 $req = $previewData['request'];
                 $ext = $previewData['ext'];
                 $rec = $previewData['record'];
                 $source = $rec ?: $ext; // prefer matched canonical record, fall back to what was submitted
-
                 // ---- Compose a proper certificate presentation -------------------
                 // Instead of dumping database columns, we build a curated set of
                 // label/value rows per sacrament. Values are kept raw here; the
@@ -281,7 +328,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 $certSubject = '—';
                 $certPhrase  = '';
                 $certRows    = [];
-
                 switch ($previewSacrament) {
                     case 'baptismal':
                         $certTitle   = 'Baptism';
@@ -296,7 +342,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         }
                         $certRows['Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
                         break;
-
                     case 'confirmation':
                         $certTitle   = 'Confirmation';
                         $certSubject = (string) ($source['confirmand_full_name'] ?? '—');
@@ -308,7 +353,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         $certRows['Father']  = $source['father_full_name'] ?? '—';
                         $certRows['Mother']  = $source['mother_full_name'] ?? '—';
                         break;
-
                     case 'first_communion':
                         $certTitle   = 'First Holy Communion';
                         $certSubject = (string) ($source['communicant_full_name'] ?? '—');
@@ -319,7 +363,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         $certRows['Father']   = $source['father_full_name'] ?? '—';
                         $certRows['Mother']   = $source['mother_full_name'] ?? '—';
                         break;
-
                     case 'marriage':
                         $certTitle   = 'Marriage';
                         $husband = (string) ($source['husband_full_name'] ?? '');
@@ -333,13 +376,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         $certRows['Officiating Minister'] = $source['minister_name'] ?? $source['officiating_minister'] ?? '—';
                         break;
                 }
-
                 // Register entry reference (book / page / line).
                 $refParts = array_filter([$source['book_no'] ?? '', $source['page_no'] ?? '', $source['line_no'] ?? '']);
                 $certRows['Register Entry (Book / Page / Line)'] = $refParts
                     ? implode(' / ', $refParts)
                     : 'Not stated';
-
                 // Request metadata — always taken from the shared request row.
                 $certRows['Requested by'] = $req['requester_name'] ?? '—';
                 $certRows['Purpose'] = (!empty($req['purpose_other']) && ($req['purpose'] ?? '') === 'other')
@@ -352,37 +393,38 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php if (!$rec): ?>
                     <div class="alert alert-warning"><p>No matched digital record yet — this preview uses the requester's submitted details only. Match to a record below for an authoritative preview.</p></div>
                 <?php endif; ?>
-
                 <div class="cert-paper">
                     <p class="cert-parish">Prelature of Infanta — St. Patrick Parish, Dingalan, Aurora</p>
                     <h3>Certificate of <?= e($certTitle) ?></h3>
                     <p class="cert-intro">This is to certify that, according to the records of this parish,</p>
                     <p class="cert-subject"><?= e($certSubject) ?></p>
                     <p class="cert-body"><?= e($certPhrase) ?>, as recorded in the parish register.</p>
-
                     <table class="cert-fields">
                         <?php foreach ($certRows as $label => $value): ?>
                             <tr><th><?= e($label) ?></th><td><?= e((string) $value) ?></td></tr>
                         <?php endforeach; ?>
                     </table>
-
                     <p class="cert-issued">Issued this <?= date('j F Y') ?> at St. Patrick Parish Office, Dingalan, Aurora. This certificate is not valid without the signature of the Parish Secretary and the parish seal.</p>
                     <div class="cert-signature">
                         <span class="sign-line">Parish Secretary</span>
                     </div>
                 </div>
-
                 <button type="button" class="btn btn-primary" onclick="window.print()">Print Certificate</button>
                 <form method="post" style="margin-top:1rem;">
                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                     <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                     <button type="submit" name="log_generated" value="1" class="btn">Mark as Generated</button>
                 </form>
-            </div>
-
+                <?php if ($currentLog && $currentLog['print_status'] === 'generated'): ?>
+                <form method="post" style="margin-top:0.5rem;">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
+                    <button type="submit" name="mark_printed" value="1" class="btn btn-primary">Mark as Printed</button>
+                </form>
+                <?php endif; ?>
+                <?php render_regenerate_if_active($pdo, $req['id']); ?></div>
             <?php if (!$rec): ?>
             <h3 style="margin-top:2rem;">Match to a Digital Record</h3>
-
             <?php if (count($suggestedRecords) > 0): ?>
                 <p class="field-hint">Suggested records that match "<?= e((string)($ext[$conf['ext_name']] ?? '')) ?>". Click one to match, or enter a record ID below.</p>
                 <form method="post" class="inline-fields" style="gap:0.75rem; flex-wrap:wrap;">
@@ -398,7 +440,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php elseif ($suggestNoResults): ?>
                 <p class="field-hint">No existing record matched "<?= e((string)($ext[$conf['ext_name']] ?? '')) ?>". You can still enter a record ID below, or encode the record on the Records page first.</p>
             <?php endif; ?>
-
             <form method="post" class="inline-fields" style="margin-top:0.75rem;">
                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                 <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
@@ -409,13 +450,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <button type="submit" name="match_record" value="1" class="btn btn-small">Match</button>
             </form>
             <?php endif; ?>
-
             <p style="margin-top:1.5rem;"><a href="<?= $basePath ?>/admin/certificates/generate.php">&larr; Back to list</a></p>
         <?php else: ?>
-
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
-
         <?php if (empty($requests)): ?>
             <p>No requests are currently approved or ready for pickup.</p>
         <?php else: ?>
@@ -445,6 +483,5 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
-
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

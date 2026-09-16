@@ -30,60 +30,10 @@ const CERT_EXT = [
     'marriage'          => ['table' => 'marriage_certificate_requests',         'name_col' => 'party_a_full_name'],
 ];
 
-$statusOptions = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
+// Status changes are handled on certificate-detail.php (which enforces
+// transition validation and captures rejection reasons). The queue is a
+// read-only navigational list — no inline POST handler here.
 
-// --- Handle status update ------------------------------------------------
-// CSRF: forged or stale POSTs are dropped silently (fail closed) - the
-// queue simply re-renders with no status change applied.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    redirect_to('/admin/requests/queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
-}
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && csrf_verify()) {
-    $requestId = (int) ($_POST['request_id'] ?? 0);
-    $newStatus = $_POST['new_status'] ?? '';
-
-    if ($requestId && in_array($newStatus, $statusOptions, true)) {
-        $stmt = $pdo->prepare(
-            "UPDATE certificate_requests SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
-        );
-        $stmt->execute([$newStatus, current_user()['id'], $requestId]);
-
-        log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId,
-            "Status changed to {$newStatus}");
-
-        // Admin bell: flag ready-for-pickup so the counter desk remembers
-        // to call the person in and have the copies signed and waiting.
-        if ($newStatus === 'ready_for_pickup') {
-            $nfStmt = $pdo->prepare('SELECT tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
-            $nfStmt->execute([$requestId]);
-            if ($nfRow = $nfStmt->fetch()) {
-                $nfKind = ucwords(str_replace('_', ' ', (string) $nfRow['sacrament_type'])) . ' Certificate';
-                notify($pdo, 'request_ready', 'Certificate ready for pickup',
-                    $nfKind . ' for ' . $nfRow['requester_name'] . ' (' . $nfRow['tracking_number'] . ')',
-                    '/admin/requests/queue.php?status=ready_for_pickup');
-            }
-        }
-
-        // Notify the requester (email) when their certificate is ready for
-        // pickup, or when it has been released at the counter. Safe no-op and
-        // logged when mail is enabled; never blocks the status change.
-        if ($newStatus === 'ready_for_pickup' || $newStatus === 'released') {
-            $mailStmt = $pdo->prepare('SELECT requester_email, tracking_number, sacrament_type FROM certificate_requests WHERE id = ?');
-            $mailStmt->execute([$requestId]);
-            $mailRow = $mailStmt->fetch();
-            $mailTo = trim((string) ($mailRow['requester_email'] ?? ''));
-            if ($mailTo !== '') {
-                $kind = ucwords(str_replace('_', ' ', (string) ($mailRow['sacrament_type'] ?? ''))) . ' Certificate';
-                if (mail_status_update($mailTo, (string) $mailRow['tracking_number'], humanize_label($newStatus), $kind)) {
-                    log_activity($pdo, current_user()['id'], 'status_email_sent', 'certificate_requests', $requestId,
-                        "Status email sent to {$mailTo}");
-                }
-            }
-        }
-    }
-    redirect_to('/admin/requests/queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
-    exit;
-}
 
 // --- Filters ---------------------------------------------------------------
 $filterStatus = $_GET['status'] ?? '';
@@ -187,7 +137,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th>Purpose</th>
                     <th>Submitted</th>
                     <th>Status</th>
-                    <th>Update</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -201,16 +151,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e(date('M j, Y', strtotime($req['date_submitted']))) ?></td>
                         <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></td>
                         <td>
-                            <form method="post" class="inline-fields">
-                                <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
-                                <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                <select name="new_status">
-                                    <?php foreach ($statusOptions as $s): ?>
-                                        <option value="<?= e($s) ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
-                            </form>
+                            <a href="<?= $basePath ?>/admin/requests/certificate-detail.php?id=<?= (int) $req['id'] ?>" class="btn btn-small">Review</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
