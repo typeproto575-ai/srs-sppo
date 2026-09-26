@@ -39,6 +39,61 @@ body {
     line-height: 1.55;
 }
 
+.required-marker {
+    color: #b23a2e;
+    font-weight: 700;
+}
+
+.review-dialog {
+    width: min(760px, calc(100vw - 2rem));
+    max-height: min(88vh, 820px);
+    border: 1px solid rgba(31, 61, 43, 0.16);
+    border-top: 5px solid var(--color-parish-green);
+    border-radius: 14px;
+    padding: 0;
+    overflow: hidden;
+    color: var(--color-ink);
+    background: #fbfaf6;
+    box-shadow: 0 24px 70px rgba(31, 61, 43, 0.32);
+}
+
+.review-dialog::backdrop { background: rgba(31, 61, 43, 0.62); }
+.review-dialog-inner { display: flex; flex-direction: column; max-height: inherit; }
+.review-head { padding: 1.35rem 1.5rem 1.1rem; background: #edf3ec; border-bottom: 1px solid rgba(31, 61, 43, 0.12); }
+.review-head h2 { margin: 0; color: var(--color-ledger-dark); font-size: 1.45rem; }
+.review-head h2::before { content: 'FINAL CHECK'; display: block; margin-bottom: 0.35rem; color: var(--color-parish-green); font: 700 0.68rem/1 var(--font-mono, Consolas, monospace); letter-spacing: 0.12em; }
+.review-head p { margin: 0.45rem 0 0; color: #6b6355; font-size: 0.9rem; }
+.review-body { padding: 1.25rem 1.5rem; overflow-y: auto; }
+.review-section + .review-section { margin-top: 1.25rem; }
+.review-section h3 { margin: 0 0 0.55rem; padding-bottom: 0.4rem; border-bottom: 1px solid rgba(31, 61, 43, 0.14); color: var(--color-ledger-dark); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.review-list { display: grid; grid-template-columns: minmax(9rem, 0.7fr) minmax(0, 1.3fr); margin: 0; border: 1px solid rgba(31, 61, 43, 0.1); border-radius: 8px; overflow: hidden; background: #fff; }
+.review-list dt, .review-list dd { margin: 0; padding: 0.65rem 0.8rem; overflow-wrap: anywhere; }
+.review-list dt { color: #6b6355; background: #f5f3ed; font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.review-list dd { color: var(--color-ink); border-left: 1px solid rgba(31, 61, 43, 0.08); white-space: pre-wrap; }
+.review-list dt:nth-of-type(n + 2), .review-list dd:nth-of-type(n + 2) { border-top: 1px solid rgba(31, 61, 43, 0.08); }
+.review-actions { display: flex; gap: 0.65rem; justify-content: flex-end; padding: 1rem 1.5rem 1.25rem; background: #f5f3ed; border-top: 1px solid rgba(31, 61, 43, 0.12); }
+.review-actions button:focus-visible { outline: 3px solid var(--color-brass); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+    .review-dialog { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); }
+    .review-head, .review-body { padding-left: 1rem; padding-right: 1rem; }
+    .review-list { display: block; }
+    .review-list dt { padding-bottom: 0.2rem; }
+    .review-list dd { padding-top: 0.1rem; border-left: 0; }
+    .review-list dd + dt { margin-top: 0.5rem; border-top: 1px solid rgba(31, 61, 43, 0.08); }
+    .review-actions { flex-direction: column-reverse; padding: 0.9rem 1rem 1rem; }
+    .review-actions .btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .review-dialog[open] { animation: review-dialog-in 160ms ease-out; }
+}
+
+@keyframes review-dialog-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 h1, h2, h3 { font-family: var(--font-display); color: var(--color-ledger-dark); margin-top: 0; }
 
 .site-header {
@@ -68,6 +123,16 @@ h1, h2, h3 { font-family: var(--font-display); color: var(--color-ledger-dark); 
 }
 .site-footer p {
     margin: 0.35rem 0;
+}
+.admin-login-link {
+    color: #6b6355;
+    text-decoration: none;
+    font-size: 0.8rem;
+}
+.admin-login-link:hover,
+.admin-login-link:focus {
+    color: var(--color-parish-green);
+    text-decoration: underline;
 }
 
 fieldset { border: 1px solid var(--color-rule); border-radius: 6px; margin-bottom: 1.5rem; padding: 1rem; background: #fff; }
@@ -107,13 +172,38 @@ input:focus, select:focus, textarea:focus {
     transition: background 0.15s ease;
 }
 .btn:hover { background: var(--color-ledger-dark); }
-.btn-secondary { background: transparent; color: var(--color-parish-green); border: 1.5px solid var(--color-parish-green); }
-.btn-secondary:hover { background: var(--color-parish-green); color: #fff; }
+.btn-secondary {
+    background: #edf3ec;
+    color: var(--color-ledger-dark);
+    border: 1.5px solid var(--color-parish-green);
+}
+.btn-secondary:hover,
+.btn-secondary:focus-visible {
+    background: var(--color-parish-green);
+    color: #fff;
+}
 
 .alert { padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
 .alert-success { background: #e3f5e6; border: 1px solid #8dc79a; }
 .alert-error { background: #fbe4e4; border: 1px solid #d98c8c; }
 .alert-warning { background: #fbf1d9; border: 1px solid #e0c477; }
+
+/* Shared notice card for public online-intake forms. */
+.online-intake-notice {
+    background: #edf3ec;
+    border: 1px solid #b8ceb8;
+    border-left: 4px solid var(--color-parish-green);
+    border-radius: 8px;
+    color: var(--color-ledger-dark);
+    line-height: 1.55;
+    padding: 1rem 1.15rem;
+}
+.online-intake-notice strong {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
 
 .checkbox-label { display: flex; align-items: center; gap: 0.5rem; }
 .checkbox-label input[type="checkbox"] { width: auto; margin: 0; }
@@ -199,27 +289,37 @@ input:focus, select:focus, textarea:focus {
     .ledger-row { animation: none; opacity: 1; transform: none; }
 }
 
-/* Two-path cards: Certificate Request vs. Sacrament Application */
+/* Route cards: certificate, sacrament application, and correction flows */
 .path-cards {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1.5rem;
-    max-width: 780px;
+    max-width: 980px;
     margin: 0 auto 3rem;
     padding: 0 1rem;
 }
-@media (max-width: 640px) {
+@media (max-width: 820px) {
     .path-cards { grid-template-columns: 1fr; }
 }
 .path-card {
     background: #fff;
     border: 1px solid var(--color-rule);
-    border-top: 3px solid var(--color-parish-green);
     border-radius: 6px;
     padding: 1.5rem;
 }
 .path-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
 .path-card p { color: #4a4438; font-size: 0.92rem; margin-bottom: 1rem; }
+.path-card .btn-secondary {
+    background: var(--color-parish-green);
+    color: #fff;
+    border-color: var(--color-parish-green);
+}
+.path-card .btn-secondary:hover,
+.path-card .btn-secondary:focus-visible {
+    background: var(--color-ledger-dark);
+    border-color: var(--color-ledger-dark);
+    color: #fff;
+}
 
 .workflow-cta {
     text-align: center;
@@ -644,6 +744,11 @@ html, body {
     white-space: normal;
     overflow: visible;
 }
+.calendar-shell .fc-event-time {
+    display: inline-block;
+    color: inherit;
+    font-weight: 700;
+}
 .calendar-shell .fc-daygrid-event-harness {
     overflow: visible;
 }
@@ -666,6 +771,13 @@ html, body {
     gap: 0.35rem;
     font-size: 0.82rem;
     color: #57503f;
+}
+.legend-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex: 0 0 12px;
 }
 .legend-swatch {
     display: inline-block;
@@ -810,4 +922,341 @@ html, body {
 }
 @media (max-width: 560px) {
     .hero { padding: 2.25rem 0.9rem 2rem; }
+}
+
+
+/* Public portal homepage: clear service cards and onsite workflow guidance. */
+.portal-hero {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 4.8rem 1.2rem 3.4rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+    gap: 2.5rem;
+    align-items: center;
+}
+.portal-hero-copy h1 { max-width: 14ch; font-size: clamp(2rem, 4.5vw, 3.6rem); line-height: 1.08; margin-bottom: 1rem; }
+.portal-hero-copy .hero-sub { max-width: 58ch; }
+.portal-hero-note { background: var(--color-ledger-dark); color: #fff; border-radius: 12px; padding: 1.65rem; box-shadow: 0 14px 32px rgba(31,61,43,.16); }
+.portal-hero-note h2 { color: #fff; font-size: 1.35rem; margin: .45rem 0 .7rem; }
+.portal-hero-note p { color: #e9f0e7; font-size: .93rem; margin: 0 0 1rem; }
+.portal-hero-note a { color: #f4d994; font-size: .86rem; font-weight: 600; text-decoration: none; }
+.portal-hero-note a:hover { text-decoration: underline; }
+.portal-note-label, .section-kicker { color: var(--color-brass); font-family: var(--font-mono); font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; }
+.portal-section { max-width: 1120px; margin: 0 auto; padding: 2.5rem 1.2rem; }
+.section-heading-row { display: flex; justify-content: space-between; gap: 1.5rem; align-items: end; margin-bottom: 1.2rem; }
+.section-heading-row h2 { margin: .25rem 0 0; font-size: clamp(1.55rem, 3vw, 2.2rem); }
+.section-intro { max-width: 38ch; color: #6b6355; margin: 0; font-size: .93rem; }
+.service-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.service-card { display: flex; flex-direction: column; min-height: 240px; padding: 1.45rem; background: #fff; border: 1px solid var(--color-rule); border-radius: 10px; color: inherit; text-decoration: none; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.service-card:hover, .service-card:focus-visible { transform: translateY(-4px); border-color: var(--color-brass); box-shadow: 0 12px 24px rgba(31,61,43,.1); }
+.service-card-accent { background: var(--color-parish-green); color: #fff; border-color: var(--color-parish-green); }
+.service-card-accent h3, .service-card-accent p { color: #fff; }
+.service-card-accent .service-number, .service-card-accent .service-link { color: #f4d994; }
+.service-number { color: var(--color-brass); font-family: var(--font-mono); font-size: .78rem; letter-spacing: .1em; }
+.service-card h3 { font-size: 1.25rem; margin: 1.7rem 0 .55rem; }
+.service-card p { color: #6b6355; font-size: .9rem; margin: 0 0 1rem; }
+.service-link { color: var(--color-parish-green); font-size: .84rem; font-weight: 600; margin-top: auto; }
+.process-strip { border-top: 1px solid var(--color-rule); border-bottom: 1px solid var(--color-rule); }
+.process-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.process-step { padding: .5rem 1rem .5rem 0; border-right: 1px solid var(--color-rule); }
+.process-step:last-child { border-right: none; }
+.process-step span { color: var(--color-brass); font-family: var(--font-mono); font-size: .78rem; }
+.process-step h3 { margin: .6rem 0 .3rem; font-size: 1.05rem; }
+.process-step p { color: #6b6355; font-size: .86rem; margin: 0; }
+.text-link {
+    color: var(--color-ledger-dark);
+    font-size: .86rem;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+.text-link:hover,
+.text-link:focus-visible { color: var(--color-parish-green); }
+@media (max-width: 800px) {
+    .portal-hero { grid-template-columns: 1fr; padding-top: 3rem; }
+    .portal-hero-copy h1 { max-width: 16ch; }
+    .service-grid { grid-template-columns: 1fr; }
+    .service-card { min-height: 0; }
+    .process-grid { grid-template-columns: repeat(2, 1fr); }
+    .process-step:nth-child(2) { border-right: none; }
+    .process-step:nth-child(-n+2) { padding-bottom: 1rem; border-bottom: 1px solid var(--color-rule); }
+}
+@media (max-width: 560px) {
+    .portal-hero { padding: 2.5rem .9rem 2rem; }
+    .portal-section { padding: 2rem .9rem; }
+    .section-heading-row { display: block; }
+    .section-intro { margin-top: .7rem; }
+    .process-grid { grid-template-columns: 1fr; }
+    .process-step, .process-step:nth-child(2) { border-right: none; border-bottom: 1px solid var(--color-rule); padding: .7rem 0 1rem; }
+    .process-step:last-child { border-bottom: none; }
+}
+
+/* Requirements checklist controls. */
+.checklist-table select, .checklist-table input[type="text"] { margin: 0; min-width: 150px; }
+.checklist-table td { vertical-align: middle; }
+.workflow-checklist-panel { margin: 1.25rem 0; }
+
+
+/* =====================================================================
+   Review-before-submit dialog (public request and application forms)
+   Built by the data-review block in assets/js/main.js.
+   ===================================================================== */
+.review-dialog {
+    border: 1px solid var(--color-rule);
+    border-radius: 8px;
+    padding: 0;
+    width: calc(100% - 2rem);
+    max-width: 640px;
+    background: #fff;
+    color: var(--color-ink);
+}
+.review-dialog::backdrop { background: rgba(31, 61, 43, 0.55); }
+.review-dialog-inner { display: flex; flex-direction: column; max-height: 90vh; }
+.review-head { padding: 1.25rem 1.5rem 0.9rem; border-bottom: 1px solid var(--color-rule); }
+.review-head h2 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+.review-head p { margin: 0; color: #6b6355; font-size: 0.9rem; }
+.review-body { padding: 1rem 1.5rem; overflow-y: auto; }
+.review-section + .review-section { margin-top: 1.25rem; }
+.review-section h3 {
+    font-size: 1rem;
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--color-rule);
+}
+.review-list {
+    margin: 0;
+    display: grid;
+    grid-template-columns: minmax(120px, 38%) 1fr;
+    gap: 0.4rem 1rem;
+}
+.review-list dt { color: #6b6355; font-size: 0.875rem; }
+.review-list dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; white-space: pre-wrap; }
+.review-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--color-rule);
+    background: var(--color-parchment);
+    border-radius: 0 0 8px 8px;
+}
+.review-actions .btn:disabled { opacity: 0.6; cursor: wait; }
+@media (max-width: 560px) {
+    .review-body, .review-head, .review-actions { padding-left: 1rem; padding-right: 1rem; }
+    .review-list { grid-template-columns: 1fr; gap: 0; }
+    .review-list dd { margin-bottom: 0.6rem; }
+    .review-actions { flex-direction: column-reverse; }
+    .review-actions .btn { width: 100%; text-align: center; }
+}
+
+
+/* =====================================================================
+   Certificate request flow (find record -> confirm -> contact)
+   Used by public/certificate-requests/baptismal.php.
+   ===================================================================== */
+.request-context { margin: 0 0 1rem; color: #6b6355; font-size: 0.9rem; }
+.request-steps {
+    display: flex;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    font-size: 0.875rem;
+    color: #6b6355;
+}
+.request-steps li {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 3px solid var(--color-rule);
+}
+.request-steps li span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--color-rule);
+    font-size: 0.8rem;
+    flex: none;
+}
+.request-steps li.is-current { color: var(--color-ink); font-weight: 600; border-bottom-color: var(--color-parish-green); }
+.request-steps li.is-current span { background: var(--color-parish-green); border-color: var(--color-parish-green); color: #fff; }
+.request-steps li.is-done { border-bottom-color: var(--color-parish-green); }
+.request-steps li.is-done span { border-color: var(--color-parish-green); color: var(--color-parish-green); }
+
+.record-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--color-rule);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+}
+.record-card input { margin-top: 0.3rem; width: auto; }
+.record-card strong { display: block; }
+.record-card small { color: #6b6355; }
+.record-card:has(input:checked) { border-color: var(--color-parish-green); background: var(--color-parchment); }
+
+.request-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    padding: 0.9rem 1rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--color-rule);
+    border-left: 4px solid var(--color-parish-green);
+    border-radius: 6px;
+    background: var(--color-parchment);
+}
+.request-summary span { color: #6b6355; font-size: 0.9rem; flex-basis: 100%; }
+.request-summary a { margin-left: auto; font-size: 0.875rem; }
+
+.request-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.request-actions form { margin: 0; }
+.request-alt { margin-top: 1rem; }
+.link-button {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--color-parish-green);
+    text-decoration: underline;
+    cursor: pointer;
+}
+[data-show-if][hidden] { display: none !important; }
+@media (max-width: 560px) {
+    .request-steps { font-size: 0.8rem; }
+    .request-steps li { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+}
+
+
+/* =====================================================================
+   Legal document layout (public/terms.php and any future legal page)
+   A formal numbered-clause document, distinct from the site's card-style
+   pages -- a bordered "paper" with a title block, numbered sections and
+   sub-clauses, and a signature-style closing line.
+   ===================================================================== */
+.legal-document {
+    max-width: 760px;
+    margin: 0 auto 3rem;
+    background: #fff;
+    border: 1px solid var(--color-rule);
+    box-shadow: 0 1px 3px rgba(31, 61, 43, 0.08);
+}
+.legal-document__header {
+    text-align: center;
+    padding: 2.25rem 2.5rem 1.5rem;
+    border-bottom: 3px double var(--color-brass);
+}
+.legal-document__kicker {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-brass);
+    margin-bottom: 0.6rem;
+}
+.legal-document__header h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.4rem;
+}
+.legal-document__subtitle {
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    color: #6b6355;
+    margin: 0;
+}
+.legal-document__meta {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: #6b6355;
+    text-transform: uppercase;
+}
+
+.legal-document__body { padding: 2rem 2.5rem 2.5rem; }
+
+.legal-clause { counter-increment: legal-clause; margin: 0 0 1.75rem; }
+.legal-document__body { counter-reset: legal-clause; }
+.legal-clause__title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-size: 1.05rem;
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--color-rule);
+}
+.legal-clause__title::before {
+    content: counter(legal-clause) ".";
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--color-brass);
+    flex: none;
+}
+.legal-clause p { margin: 0 0 0.75rem; line-height: 1.65; }
+.legal-clause p:last-child { margin-bottom: 0; }
+.legal-clause ol.legal-subclauses {
+    counter-reset: legal-subclause;
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+.legal-clause ol.legal-subclauses > li {
+    counter-increment: legal-subclause;
+    position: relative;
+    padding-left: 2.1rem;
+    margin-bottom: 0.55rem;
+    line-height: 1.6;
+}
+.legal-clause ol.legal-subclauses > li::before {
+    content: counter(legal-clause) "." counter(legal-subclause);
+    position: absolute;
+    left: 0;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--color-brass);
+}
+.legal-term { font-weight: 700; color: var(--color-ledger-dark); }
+
+.legal-document__footer {
+    padding: 1.5rem 2.5rem 2rem;
+    border-top: 1px solid var(--color-rule);
+    text-align: center;
+}
+.legal-document__seal {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-parish-green);
+    border: 1px solid var(--color-parish-green);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+}
+
+@media (max-width: 600px) {
+    .legal-document__header,
+    .legal-document__body,
+    .legal-document__footer { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .legal-clause__title { flex-wrap: wrap; }
 }

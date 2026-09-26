@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['save
 // can_approve_sacrament_application(). Rejections/blocked approvals are logged.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['update_status'])) {
     $newStatus = $_POST['new_status'] ?? '';
-    $allowed = in_array($newStatus, ['submitted', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'], true);
+    $allowed = in_array($newStatus, ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'], true);
     if (!$allowed) {
         $notice = 'Invalid status value.';
     } elseif (!sacrament_application_transition_valid($app['status'], $newStatus, 'first_communion')) {
@@ -67,41 +67,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['upda
 }
 
 function humanize_label(string $s): string { return ucwords(str_replace('_', ' ', $s)); }
-$statusOptions = ['submitted', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+$statusOptions = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
+$workflowEntityType = 'sacrament_application';
+$workflowEntityId = $applicationId;
+$workflowSacramentType = 'first_communion';
 require_once __DIR__ . '/../../includes/admin-header.php';
+require __DIR__ . '/../../includes/workflow-checklist-panel.php';
 ?><p><a href="<?= $basePath ?>/admin/requests/applications-queue.php">&larr; Back to Queue</a></p>
-<h1>First Communion Application Detail</h1>
+<p class="field-hint"><strong>Submission channel:</strong> <?= e(ucfirst($app['submission_channel'] ?? 'onsite')) ?><?= ($app['submission_channel'] ?? 'onsite') === 'online' ? ' — public pre-application; not yet an official parish record' : '' ?></p>
+    <h1>First Communion Application Detail</h1>
 <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
 
 <h2>Applicant</h2>
+<?php
+$applicantAge = $app['applicant_birthdate'] ? calculate_age($app['applicant_birthdate']) : null;
+$firstCommunionAgeStatus = 'Birthdate not recorded';
+if ($applicantAge !== null) {
+    $rangeStmt = $pdo->prepare('SELECT min_age, max_age FROM sacrament_eligibility_settings WHERE sacrament_type = ?');
+    $rangeStmt->execute(['first_communion']);
+    $range = $rangeStmt->fetch() ?: ['min_age' => 0, 'max_age' => null];
+    $firstCommunionAgeStatus = $applicantAge < (int) $range['min_age']
+        ? 'Not yet age-eligible'
+        : ($range['max_age'] !== null && $applicantAge > (int) $range['max_age']
+            ? 'Outside configured range - secretary review'
+            : 'Age-eligible');
+}
+?>
+<div class="table-scroll">
 <table class="admin-table" style="max-width:600px;"><tbody>
 <tr><th>Full Name</th><td><?= e($app['applicant_full_name']) ?></td></tr>
 <tr><th>Birthdate</th><td><?= e($app['applicant_birthdate'] ? date('F j, Y', strtotime($app['applicant_birthdate'])) : '—') ?></td></tr>
-<tr><th>Age Eligibility Flag</th><td><?= $app['age_eligibility_flag'] ? '<span class="flag-badge">Outside configured range</span>' : 'Within range' ?></td></tr>
+<tr><th>Gender / Birthplace</th><td><?= e(ucfirst($app['applicant_gender'] ?? '—')) ?><?= !empty($app['applicant_birthplace']) ? ' / ' . e($app['applicant_birthplace']) : '' ?></td></tr>
+<tr><th>Address</th><td><?= e($app['current_address'] ?? '—') ?></td></tr>
+<tr><th>School / Grade / Adviser</th><td><?= e(($app['school_name'] ?? '—') . ' / ' . ($app['grade_level_section'] ?? '—') . ' / ' . ($app['adviser_name'] ?? '—')) ?></td></tr>
+<tr><th>Age status</th><td><?= e($firstCommunionAgeStatus) ?><?= $applicantAge !== null ? ' (' . (int) $applicantAge . ' years old)' : '' ?></td></tr>
 </tbody></table>
+</div>
 
 <h2>Parent / Guardian</h2>
+<div class="table-scroll">
 <table class="admin-table" style="max-width:600px;"><tbody>
 <tr><th>Name</th><td><?= e($app['parent_guardian_name']) ?></td></tr>
 <tr><th>Contact Number</th><td><?= e($app['contact_number']) ?></td></tr>
 <tr><th>Email</th><td><?= e($app['email']) ?></td></tr>
+<tr><th>Father / Mother</th><td><?= e(($app['father_full_name'] ?? '—') . ' / ' . ($app['mother_maiden_name'] ?? '—')) ?></td></tr>
+<tr><th>Parents' Catholic marriage</th><td><?= e(humanize_label($app['parents_catholic_married'] ?? '—')) ?></td></tr>
 </tbody></table>
+</div>
 
 <h2>Sacramental Prerequisites</h2>
+<div class="table-scroll">
 <table class="admin-table" style="max-width:600px;"><tbody>
 <tr><th>Baptized Here</th><td><?= $app['baptized_here'] ? 'Yes' : 'No' ?></td></tr>
-<tr><th>Baptismal Record</th><td><?= $app['baptismal_record_id'] ? '#' . (int) $app['baptismal_record_id'] : '—' ?></td></tr>
+<tr><th>Baptismal Record</th><td><?= $app['baptismal_record_id'] ? 'Record linked: #' . (int) $app['baptismal_record_id'] : 'No record linked yet' ?></td></tr>
+<tr><th>First Communion Record</th><td>No record linked yet</td></tr>
 <tr><th>Baptismal Cert Status</th><td><?= e(humanize_label($app['baptismal_cert_status'])) ?></td></tr>
+<tr><th>Baptism details</th><td><?= e(($app['baptism_date'] ?? '—') . ' / ' . ($app['baptism_parish_name'] ?? '—') . ' / ' . ($app['baptism_parish_address'] ?? '—')) ?></td></tr>
+<tr><th>Office checklist</th><td>PSA: <?= e(humanize_label($app['psa_birth_certificate_status'] ?? 'pending')) ?>; Catechetical: <?= e(humanize_label($app['catechetical_formation_status'] ?? 'pending')) ?>; Confession: <?= !empty($app['confession_completed']) ? 'Completed' : 'Pending' ?></td></tr>
 <tr><th>Preferred Batch</th><td><?= e($app['preferred_batch'] ?: '—') ?></td></tr>
 </tbody></table>
+</div>
 
 <h2>Application Details</h2>
+<div class="table-scroll">
 <table class="admin-table" style="max-width:600px;"><tbody>
 <tr><th>Tracking Number</th><td><?= e($app['tracking_number']) ?></td></tr>
 <tr><th>Status</th><td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td></tr>
 <tr><th>Date Submitted</th><td><?= e(date('F j, Y g:i A', strtotime($app['date_submitted']))) ?></td></tr>
 <?php if ($app['notes']): ?><tr><th>Notes</th><td><?= e($app['notes']) ?></td></tr><?php endif; ?>
 </tbody></table>
+</div>
 
 <?php if ($prereqNotice): ?>
     <div class="alert alert-warning"><p><?= e($prereqNotice) ?></p>
@@ -117,17 +152,17 @@ $fcGate = can_approve_sacrament_application($pdo, $applicationId, 'first_communi
 <?php else: ?>
 <ul class="field-hint"><?php foreach ($fcGate['missing'] as $m): ?><li><?= e($m) ?></li><?php endforeach; ?></ul>
 <?php endif; ?>
-<form method="post" class="inline-fields">
+<form autocomplete="off" method="post" class="inline-fields">
 <?= csrf_field() ?>
 <label style="display:flex;align-items:center;gap:0.5rem;">
-    <input type="checkbox" name="seminar_attended" value="1" <?= !empty($app['seminar_attended']) ? 'checked' : '' ?>>
+    <input autocomplete="off" type="checkbox" name="seminar_attended" value="1" <?= !empty($app['seminar_attended']) ? 'checked' : '' ?>>
     Seminar completed
 </label>
 <button type="submit" name="save_prereqs" value="1" class="btn btn-small">Save Prerequisites</button>
 </form>
 
 <h2>Update Status</h2>
-<form method="post" class="inline-fields">
+<form autocomplete="off" method="post" class="inline-fields">
 <?= csrf_field() ?>
 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
 <select name="new_status">

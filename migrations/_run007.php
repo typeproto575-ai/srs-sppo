@@ -1,4 +1,8 @@
 <?php
+/**
+ * Developer-only one-off helper for seeding site settings during migration.
+ * Run from the project root only when an operator explicitly needs it.
+ */
 require_once __DIR__ . '/../config/database.php';
 
 $insertOfficeHours = $pdo->prepare(
@@ -7,8 +11,8 @@ $insertOfficeHours = $pdo->prepare(
 );
 $insertOfficeHours->execute(
     ["office_hours_text",
-     "Tuesday - Friday: 8:00 AM - 5:00 PM\nSaturday: 8:00 AM - 12:00 NN\nSunday & Monday: Closed",
-     "Tuesday - Friday: 8:00 AM - 5:00 PM\nSaturday: 8:00 AM - 12:00 NN\nSunday & Monday: Closed"]
+    "Monday - Saturday: 8:00 AM - 12:00 NN\nMonday - Saturday: 2:00 PM - 5:00 PM\nSunday: Closed",
+    "Monday - Saturday: 8:00 AM - 12:00 NN\nMonday - Saturday: 2:00 PM - 5:00 PM\nSunday: Closed"]
 );
 
 $insertOfficeLocation = $pdo->prepare(

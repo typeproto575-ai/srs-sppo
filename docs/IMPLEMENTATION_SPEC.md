@@ -1,417 +1,449 @@
-# Parish Sacramental Records and Certificate Request System — Implementation Specification
+# Parish Sacramental Records and Certificate Request System — Software Requirements Specification
 
-**St. Patrick's Parish, Dingalan, Aurora — Capstone Project**
+**St. Patrick's Parish Office, Dingalan, Aurora — Capstone Project**
 
-Developed and tested locally using **XAMPP** and **VS Code**. Not deployed online for now.
+**Technology:** Plain PHP, HTML, CSS, JavaScript, and MySQL/MariaDB running through XAMPP.
 
----
-
-## Tech Stack
-
-- Frontend: **HTML, CSS, JavaScript** (vanilla; minimal libraries if needed)
-- Backend: **PHP** (plain, no heavy framework)
-- Database: **MySQL/MariaDB** via **XAMPP**
-- Environment: **VS Code** + **XAMPP** (localhost only)
-- Authentication:
-  - **Parish Secretary / Admin**: full account with username + password
-  - **Parishioners (non-account users)**: no full registration; they only provide their **Gmail address** when requesting a certificate, to receive a **reference number** and track request status.
-
-## Project Goal
-
-Build a **local web system** that:
-
-1. Allows the **parish secretary** to:
-   - Record and manage sacramental and related parish records.
-   - Generate printable certificates from those records.
-   - Manage certificate requests from parishioners (view, update status, mark as "ready for pickup").
-
-2. Allows **parishioners** to:
-   - Submit **certificate requests** online (fill a form, provide Gmail, get a reference number).
-   - Track the **status** of their request using that reference number + Gmail.
-   - See **requirements** for each sacrament or service.
-
-3. **Certificates are only released at the parish office** (no delivery, no online download of official sealed certificates).
-
-The system is for **testing and demonstration** only (capstone), but should be designed as if it could be used in a real parish.
+**Document purpose:** This specification defines the approved operating model, user roles, workflows, security controls, and audit requirements for the parish system. It reflects the parish secretary's clarification that requests and applications are handled onsite. The website provides public information and tracking for secretary-created transactions; it is not a parishioner account portal.
 
 ---
 
-## Users & Roles
+## 1. System Overview
 
-### 1. Parish Secretary / Admin
+The Parish Sacramental Records and Certificate Request System (SRS-SPPO) is a secretary-operated digital index and workflow system for parish sacramental records. It supports Baptism, Confirmation, First Holy Communion, Holy Matrimony, and the parish's approved related records.
 
-- Has a **login account** (username + password stored in DB).
-- Can access an **admin dashboard** with modules for:
-  - Sacramental Records (Baptism, Confirmation, First Communion, Marriage, Death/Burial, etc.)
-  - Parishioner / Family Records
-  - Catechism / Formation Records
-  - Mass & Liturgical Scheduling (optional but nice to have)
-  - Certificate Requests Management
-  - User management (other secretaries, priests, etc., if needed)
+The system digitizes record retrieval, request processing, requirements monitoring, scheduling, certificate preparation, printing, pickup, release, reporting, and accountability. The physical parish logbooks remain the canonical records. Digital records must retain the physical register references, including book, page, and line numbers where applicable.
 
-Main capabilities:
+The public website is informational. Parishioners do not create accounts and do not submit certificate requests or sacrament applications directly through the website. A parishioner visits the parish office, where the secretary creates the transaction. If physical requirements cannot be delivered, the parishioner may send them through the parish's official Gmail account. Gmail review remains an office procedure; sending an email does not automatically create a system transaction.
 
-- Create, view, update, and (logically) delete records.
-- Generate and print certificates from existing records.
-- View incoming certificate requests, verify details, and update status:
-  - `Pending` → `Processing` → `Ready for Pickup` → `Claimed` / `Cancelled`
-- Mark when a certificate has been **claimed** at the parish office.
-
-### 2. Parishioners (Public / Non-Account Users)
-
-- Do **not** create full accounts.
-- When requesting a certificate:
-  - Fill out an online form.
-  - Provide **Gmail address**.
-  - System generates a **reference number**.
-  - They use **reference number + Gmail** to check status on a "Track Request" page.
-- Can:
-  - View **requirements** for each sacrament or certificate type.
-  - Submit a **certificate request**.
-  - Track request status.
-- Cannot:
-  - Download official certificates.
-  - Edit parish records.
-  - Access admin functions.
+The system contains no payment module. Payment, fees, amounts, receipts, and financial records are outside the software's scope and must not be stored or processed by this system.
 
 ---
 
-## Core Modules to Implement
+## 2. Goals and Scope
 
-### 1. Sacramental Records Module
+### 2.1 Goals
 
-Support at least these sacraments/records:
+The system shall:
 
-1. **Baptism**
-2. **Confirmation**
-3. **First Holy Communion**
-4. **Holy Matrimony (Church Wedding / Convalidation)**
-5. **Death / Burial**
-6. (Optional) **Anointing of the Sick** (internal record only, no certificate)
-7. (Optional) **Holy Orders** (if relevant; usually diocesan, but can be supported)
+1. Provide the secretary with a reliable workspace for encoding and managing onsite requests and applications.
+2. Provide fast, searchable access to digitized sacramental records while preserving physical-register references.
+3. Support certificate processing, printing, finalization, notification, pickup, and release tracking.
+4. Track requirements received physically or through the official parish Gmail.
+5. Provide public information pages for parish procedures and documentary requirements.
+6. Provide optional public status tracking for reference numbers issued by the parish office, without requiring a parishioner account.
+7. Preserve an append-only audit history of security, account, record, certificate, and workflow actions.
+8. Ensure the parish can recover from secretary turnover, forgotten passwords, and staff changes through a protected Master Account.
 
-For each sacrament, the system must:
+### 2.2 Out of scope
 
-- Store all necessary fields in the database (see "Data Fields" below).
-- Allow the secretary to:
-  - Add new records.
-  - Search/view existing records.
-  - Edit records (with audit trail if possible).
-  - Generate a **printable certificate** (HTML → print / PDF via browser print).
+The system shall not provide:
 
-#### Example Data Fields (adjust as needed)
-
-**Baptism**
-
-- Full name (at baptism / current name)
-- Date of birth
-- Place of birth
-- Sex
-- Names of parents (father, mother)
-- Names of godparents (sponsors)
-- Date of baptism
-- Place of baptism (parish, church)
-- Minister (priest/deacon)
-- Notes (e.g., conditional baptism, reception into full communion)
-- Later notations: confirmation, marriage, holy orders, death (at least flags or linked records)
-
-**Confirmation**
-
-- Full name
-- Date & place of birth
-- Names of parents
-- Names of sponsors
-- Date & place of confirmation
-- Minister (bishop or delegated priest)
-- Reference to baptismal record (parish, book/page/entry if you want)
-
-**First Holy Communion**
-
-- Full name
-- Date & place of birth
-- Date & place of First Communion
-- Parish/church
-- Presiding priest (optional)
-- Reference to baptism/confirmation
-
-**Marriage**
-
-- Full names of bride & groom
-- Date & place of birth (each)
-- Names of parents (each)
-- Date & place of marriage
-- Parish/church of celebration
-- Witnesses & sponsors
-- Type of marriage (canonical form, convalidation, mixed religion, etc.)
-- Pre-nuptial investigation summary (brief text)
-- Link to baptismal records of both spouses (at least by name/parish)
-
-**Death / Burial**
-
-- Full name of deceased
-- Date & place of death
-- Age at death
-- Sex
-- Name of spouse
-- Names of surviving children (optional)
-- Names of parents (optional)
-- Date & place of burial
-- Cemetery/plot location (if applicable)
-
-You can normalize these into separate tables (e.g., `baptisms`, `confirmations`, `marriages`, `deaths`, etc.) with a shared `persons` table if you want a cleaner design.
-
-### 2. Certificate Generation Module
-
-For each sacrament/record type that normally has a certificate:
-
-- Baptism → **Baptismal Certificate**
-- Confirmation → **Confirmation Certificate**
-- First Communion → **First Holy Communion Certificate** (optional)
-- Marriage → **Parochial Marriage Certificate**
-- Death/Burial → **Death/Burial Certificate** (parochial)
-
-Requirements:
-
-- Certificates are generated **from existing records only** (no certificate without a record).
-- Certificates are:
-  - Displayed in a printable HTML layout.
-  - Meant to be printed on parish letterhead or with parish seal image.
-  - Include:
-    - Parish name, address, contact
-    - Title (e.g., "Baptismal Certificate")
-    - All relevant non-confidential data from the record
-    - Space for signature and dry seal (can be an image placeholder)
-    - Date of issuance
-    - Optional: QR code or reference number for internal verification (bonus feature).
-- Certificates are **not downloadable by parishioners** in this version; only the secretary can generate/print them.
-
-### 3. Certificate Request Module (Public-Facing)
-
-This is what parishioners interact with.
-
-#### Public Pages
-
-1. **Home / Landing Page**
-   - Brief description of the system.
-   - Links to:
-     - "Request a Certificate"
-     - "Track Request"
-     - "Sacrament Requirements"
-
-2. **Sacrament Requirements Page**
-   - Lists requirements for:
-     - Baptism (for infants, adults)
-     - Confirmation
-     - First Communion
-     - Marriage (church wedding)
-     - Death/Burial arrangements (if relevant)
-   - Include typical Philippine parish requirements, e.g.:
-
-   **Baptism (Infant)**
-
-   - PSA Birth Certificate of child
-   - PSA Marriage Certificate of parents (if married)
-   - Valid IDs of parents (and godparents, if required)
-   - Certificate of Sponsorship / Godparent eligibility (if required by parish)
-   - Baptismal seminar attendance (parents & godparents)
-
-   **Confirmation**
-
-   - PSA Birth Certificate
-   - Baptismal Certificate
-   - Proof of completion of confirmation catechesis
-   - Valid ID(s); for minors, parent/guardian consent
-
-   **Marriage**
-
-   - Latest Baptismal Certificate "For Marriage Purposes" (valid 3–6 months)
-   - Confirmation Certificate "For Marriage Purposes"
-   - PSA Marriage License
-   - CENOMAR from PSA
-   - Pre-Cana / Family Life seminar certificate
-   - List of sponsors
-   - Valid IDs of both parties
-
-   **Death / Burial**
-
-   - Death Certificate (PSA or local civil registrar)
-   - Valid ID of requesting family member
-   - If parish cemetery: proof of plot ownership (if applicable)
-
-   You can refine these based on typical Philippine parish practice.
-
-3. **Request Certificate Page**
-   - Form fields:
-     - Certificate type (dropdown: Baptismal, Confirmation, First Communion, Marriage, Death/Burial, Membership, etc.)
-     - Full name of person on record
-     - Date of birth
-     - Place of birth (city/municipality, province)
-     - Names of parents (for baptism/confirmation/marriage)
-     - Year (or exact date if known) of sacrament/event
-     - Parish where sacrament/event occurred (default: St. Patrick's Parish, Dingalan, Aurora; but allow "Other" if needed)
-     - Purpose of request (e.g., "For Marriage", "For School", "For Employment", "For Personal Use")
-     - Requester's full name
-     - Requester's Gmail address (required)
-     - Requester's contact number (optional)
-     - Relationship to person on record (self, child, spouse, sibling, etc.)
-   - On submit:
-     - Create a record in `certificate_requests` table.
-     - Generate a **reference number** (e.g., `SPD-2026-000123`).
-     - Show the reference number on-screen.
-     - Display instructions:
-       - "Your certificate can only be claimed at the parish office."
-       - "Use your reference number and Gmail to track your request."
-
-4. **Track Request Page**
-   - Form fields:
-     - Reference number
-     - Gmail address
-   - On submit:
-     - Show current status:
-       - `Pending`
-       - `Processing`
-       - `Ready for Pickup`
-       - `Claimed`
-       - `Cancelled`
-     - Show basic info:
-       - Certificate type
-       - Name on record
-       - Date requested
-       - Remarks (optional, e.g., "Please bring valid ID when claiming.")
-
-### 4. Admin Dashboard (Parish Secretary)
-
-Protected by login.
-
-Main sections:
-
-1. **Dashboard Overview**
-   - Summary counts:
-     - Total sacramental records per type
-     - Pending certificate requests
-     - Requests ready for pickup
-     - Requests claimed today/this week
-
-2. **Sacramental Records Management**
-   - Separate pages/sections for:
-     - Baptisms
-     - Confirmations
-     - First Communion
-     - Marriages
-     - Deaths/Burials
-   - For each:
-     - List view (searchable, filterable by name, year, etc.)
-     - Add new record form
-     - View/edit record form
-     - Button: "Generate Certificate" → opens printable certificate view.
-
-3. **Certificate Requests Management**
-   - List of all requests with:
-     - Reference number
-     - Certificate type
-     - Name on record
-     - Requester name & Gmail
-     - Date requested
-     - Status
-   - Actions:
-     - View details
-     - Update status (dropdown + save)
-     - Add internal remarks (e.g., "Missing baptismal book info; checking archive.")
-     - Mark as "Ready for Pickup"
-     - Mark as "Claimed" (with date/time and secretary name)
-
-4. **User Management (Admin)**
-   - Manage accounts for:
-     - Parish secretaries
-     - Priests (view-only, if needed)
-   - Simple CRUD for admin users.
-
-5. **Settings (Optional)**
-   - Parish info (name, address, contact, logo/seal image).
-   - Certificate templates (basic text configuration).
-   - Reference number format settings.
+- Parishioner registration or parishioner login accounts.
+- Public online certificate-request submission.
+- Public online sacrament-application submission.
+- Public document-upload forms.
+- Online payment, payment verification, fee tracking, currency fields, or financial reports.
+- Digital download of official certificates by parishioners.
+- A priest login for routine canonical approval. The priest's offline confirmation is recorded by the secretary as data and notes.
+- Phone-number collection when the official parish forms specify email as the contact method.
 
 ---
 
-## Database Design (High-Level)
+## 3. User Roles and Access Control
 
-You can ask the AI to propose a concrete schema, but here's the outline:
+The system shall use individual accounts. Users must not share credentials because the audit trail must identify the person who performed each action.
 
-- `users`
-  - id, username, password_hash, role (admin/secretary/priest), created_at
+### 3.1 Parish Administrator / Master Account
 
-- `persons` (optional, for normalization)
-  - id, full_name, date_of_birth, place_of_birth, sex, created_at
+The **Parish Administrator** is the system's Master Account role. The account is normally assigned to the parish priest or another formally designated parish authority. It exists to preserve system continuity when a secretary leaves, forgets a password, or becomes unavailable.
 
-- `baptisms`
-  - id, person_id (or direct fields), father_name, mother_name, godparents (JSON or separate table), date_of_baptism, place_of_baptism, minister, notes, created_at, updated_at
+The Parish Administrator shall have full system access, including:
 
-- `confirmations`
-  - id, person_id, sponsors, date_of_confirmation, place_of_confirmation, minister, baptism_reference, etc.
+- All sacramental records and person profiles.
+- All certificate requests and sacrament applications.
+- Requirements status and review notes.
+- Certificate generation, printing, finalization, pickup, and release history.
+- Scheduling, announcements, reports, backups, and system settings.
+- All security, account-management, and audit-log pages.
+- Creation of new secretary accounts.
+- Password reset for secretary accounts.
+- Activation and deactivation of secretary accounts.
+- Restoration of access after secretary turnover.
+- Export and review of audit logs.
+- Transfer of the Master Account role to a new parish priest or authorized administrator.
 
-- `first_communion`
-  - id, person_id, date, place, presiding_priest, etc.
+The Master Account shall not be permanently removable through the normal application interface. The last active Master Account shall not be deleted, deactivated, or demoted unless another active Master Account is assigned in the same controlled operation.
 
-- `marriages`
-  - id, groom_person_id, bride_person_id, date_of_marriage, place_of_marriage, parish_of_marriage, witnesses, type, pre_nuptial_summary, etc.
+A Master Account transfer shall require explicit confirmation and shall create an immutable audit entry containing the previous master, new master, initiating user, date, time, and reason.
 
-- `deaths`
-  - id, person_id, date_of_death, place_of_death, age_at_death, spouse_name, children_names, parents_names, date_of_burial, burial_place, plot_info, etc.
+### 3.2 Secretary Account
 
-- `certificate_requests`
-  - id, reference_number, certificate_type, person_name, person_dob, person_pob, parents_names, sacrament_year, sacrament_parish, purpose, requester_name, requester_gmail, requester_contact, relationship, status (enum), remarks, created_at, updated_at
+The Secretary account is the operational role. A secretary shall be able to:
 
-- `parish_settings` (optional)
-  - id, parish_name, address, contact, logo_path, seal_image_path, etc.
+- Encode onsite certificate requests.
+- Encode onsite Baptism and Marriage applications.
+- Search, view, and update approved record fields.
+- Record whether requirements were received physically, through Gmail, or through both channels.
+- Record requirements as not received, received, under review, incomplete, or verified.
+- Process certificate requests and match requests to register records.
+- Generate, print, finalize, and release certificates according to the workflow.
+- Manage schedules and announcements.
+- View operational request and record history.
+- Change the secretary's own password and log out.
 
-You can let the AI refine this into actual `CREATE TABLE` statements.
+A Secretary shall not be able to:
+
+- Delete, deactivate, demote, or change the password of the last Master Account.
+- Create or assign another Master Account.
+- Transfer the Master Account role.
+- Delete or edit audit-log entries.
+- Remove audit history.
+- Change security settings reserved for the Parish Administrator.
+- Permanently delete historical records through ordinary workflow actions.
+
+Secretaries may view operational history needed for their work. Sensitive security events relating to Master Accounts, role transfers, and security configuration shall be restricted to the Parish Administrator.
+
+### 3.3 Parishioner / Public Visitor
+
+A parishioner or public visitor has no system account. Public visitors may:
+
+- View parish information, office hours, and location.
+- View sacrament and certificate requirements.
+- Read instructions for onsite requests and Gmail-based requirements submission.
+- Track an existing secretary-created transaction using the reference number issued by the parish office and the email recorded for that transaction, if public tracking is enabled.
+
+A public visitor may not access records, create a transaction directly, upload documents to the website, generate a certificate, or access an administrative page.
+
+### 3.4 Account lifecycle
+
+Secretary accounts shall be deactivated rather than permanently deleted when a staff member leaves. Deactivation preserves the identity attached to historical audit records. The Parish Administrator may later reactivate an account or create a replacement account.
+
+The first login using a temporary password shall require a password change. Passwords shall be stored using a current password-hashing algorithm and shall never appear in logs or source-code comments.
 
 ---
 
-## Functional Requirements Summary
+## 4. Operating Workflows
 
-The system must:
+### 4.1 Certificate request workflow
 
-1. Run on **localhost** via XAMPP.
-2. Use **HTML, CSS, JS, PHP, MySQL** only (no heavy frameworks).
-3. Provide:
-   - Public pages for:
-     - Viewing sacrament requirements
-     - Submitting certificate requests
-     - Tracking request status (reference number + Gmail)
-   - Admin pages (login-protected) for:
-     - Managing sacramental records
-     - Generating certificates (printable)
-     - Managing certificate requests and statuses
-4. Enforce that:
-   - Certificates are generated **only by logged-in secretaries**.
-   - Parishioners **cannot download** certificates; they can only request and track.
-   - Certificates are **claimed at the parish office** (no delivery option).
-5. Include all typical **sacrament requirements** in the "Requirements" page so parishioners know what to prepare before coming to the office.
+Certificate requests are created by the secretary after an onsite request is accepted for processing. A parishioner may send requirements through the official Gmail when physical submission is not possible, but this does not itself create a request.
+
+The approved workflow is:
+
+```text
+Parishioner visits the parish office
+        ↓
+Secretary receives the request and reviews available requirements
+        ↓
+Secretary handles any offline parish procedure outside the system
+        ↓
+Secretary encodes the certificate request
+        ↓
+System generates a reference number
+        ↓
+Secretary searches and verifies the physical parish register
+        ↓
+Request is processed
+        ↓
+Certificate is prepared for printing
+        ↓
+Certificate is printed and finalized
+        ↓
+Status becomes Ready for Pickup
+        ↓
+Parishioner is notified through the approved email procedure
+        ↓
+Certificate is released onsite after identity verification
+```
+
+The system shall not record payment, fee, amount, receipt, or payment-confirmation data. The request workflow shall not include a payment status.
+
+Recommended certificate request statuses are:
+
+| Status | Meaning |
+|---|---|
+| `received` | The secretary encoded the accepted onsite request. |
+| `processing` | The secretary is locating and verifying the parish register record. |
+| `for_printing` | The record has been matched and the certificate may be printed. |
+| `finalizing` | The certificate has been printed and is being checked, signed, or sealed. |
+| `ready_for_pickup` | The finalized certificate is ready at the parish office. |
+| `released` | The certificate was physically released to the verified claimant. |
+| `correction_needed` | The request or supplied information needs clarification. |
+| `unable_to_locate_record` | The record could not currently be located in the parish register. |
+| `cancelled` | Processing was stopped with a recorded reason. |
+
+Legacy database values may be retained during migration, but the user interface shall use the approved meanings above. If an existing `approved` value is retained for compatibility, it shall mean that the record was verified and approved for certificate generation, not that the certificate was released.
+
+### 4.2 Sacrament application workflow
+
+Baptism and Marriage applications are encoded by the secretary after an onsite interview or after the secretary reviews requirements received through the official Gmail. Confirmation and First Holy Communion are handled according to the parish's approved record-status process rather than through new public application forms.
+
+The application workflow shall record:
+
+- Applicant or subject information.
+- Email address or email addresses required by the official parish forms.
+- Requirements source: physical submission, official Gmail, or both.
+- Requirements status: not received, received, under review, incomplete, or verified.
+- Missing-requirement notes.
+- Interview, seminar, banns, clearance, and schedule information where applicable.
+- Secretary notes and status history.
+
+Submitting requirements through Gmail shall not automatically create an application. The secretary must review the email and encode the application.
+
+### 4.3 Certificate pickup and release
+
+When a certificate is ready, the secretary shall mark it `ready_for_pickup` and record the notification action. The final certificate shall not be downloadable by a parishioner.
+
+At pickup, the secretary shall verify the claimant in person, confirm the correct request, and then mark the request `released`. The system shall record the release date, time, staff account, and relevant claimant note without storing a copy of an identity document.
+
+### 4.4 Requirements sent through Gmail
+
+The official Gmail inbox remains outside the application. The system shall store only workflow metadata, such as:
+
+- Submission source: physical, Gmail, or both.
+- Requirements status.
+- Date reviewed.
+- Secretary who reviewed the requirements.
+- Missing-document or correction notes.
+
+The application shall not silently copy Gmail attachments into public web storage. Any future document-storage feature requires a separate privacy and retention design.
 
 ---
 
-## Implementation Checklist
+## 5. Public Website Requirements
 
-1. Propose a **database schema** (SQL) based on this description.
-2. Generate **folder structure** for the project (e.g., `admin/`, `public/`, `includes/`, `assets/`, etc.).
-3. Create:
-   - Basic **config/db.php** for DB connection.
-   - Sample **login system** for admin (session-based).
-   - Public pages:
-     - `index.php` (home)
-     - `requirements.php` (sacrament requirements)
-     - `request.php` (certificate request form)
-     - `track.php` (track request)
-   - Admin pages:
-     - `admin/index.php` (dashboard)
-     - `admin/records/` (CRUD for each sacrament)
-     - `admin/requests/` (manage certificate requests)
-     - `admin/certificates/` (generate/print certificates)
-4. Implement:
-   - Reference number generation logic.
-   - Status workflow for requests.
-   - Printable certificate templates (HTML + CSS).
-5. Suggest **security basics** for a capstone (e.g., password hashing, prepared statements, basic input validation).
+The public website shall function as an information and guidance site. It shall include:
 
-Start by proposing the **database schema and project structure**, then implement page by page.
+- Parish name, location, office hours, and official email address.
+- Sacrament and certificate requirements.
+- Instructions to visit the parish office for requests and applications.
+- Instructions for sending requirements through official Gmail when physical submission is impossible.
+- A warning that sending an email does not automatically create a request or application.
+- Tracking instructions for reference numbers issued by the parish office, if tracking is retained.
+- A Secretary / Admin Login link that leads to the protected administrative login page.
+
+Public pages shall not present online certificate-request or sacrament-application submission as the normal parish workflow. If legacy form routes remain temporarily for compatibility, they shall be disabled or converted to informational pages before production use.
+
+Public tracking shall require both the reference number and the email recorded by the secretary. It shall disclose only minimal information: transaction type, date recorded, current stage, and general instructions. It shall not reveal sensitive sacramental details, full family information, or internal notes.
+
+Contact information collected by the system shall be email-only unless the parish formally approves a change to its official forms and privacy policy.
+
+---
+
+## 6. Functional Modules
+
+### 6.1 Sacramental records
+
+The system shall support searchable and filterable records for Baptism, Confirmation, First Holy Communion, Marriage, and the parish-approved Death/Burial status record. Records shall retain physical register references where applicable.
+
+The secretary shall be able to create, view, search, filter, update, archive, and restore records according to role permissions. Permanent deletion shall not be the normal correction method.
+
+### 6.2 Person and family identity management
+
+The system should support a shared person index to reduce duplicate records. Before creating a new person, the secretary should be shown possible matches based on name, birthdate, parents, and other approved identifying details. The secretary must review possible duplicates before linking or creating a record.
+
+### 6.3 Certificate generation
+
+Certificates shall be generated only from an existing, matched parish record. The printable template shall contain the parish information, certificate type, approved non-confidential sacramental data, register references where appropriate, issuance date, signature area, and seal area.
+
+The certificate lifecycle shall record generation, printing, finalization, reprinting, cancellation, pickup readiness, and release. Parishioners shall not download official certificates through the public website.
+
+### 6.4 Scheduling
+
+The secretary shall be able to manage baptisms, marriages, interviews, seminars, appointments, certificate pickup activities, and other parish events. The system shall warn about overlapping events while leaving final conflict resolution to the secretary.
+
+### 6.5 Reports and backup
+
+Reports shall support approved operational summaries without exposing restricted fields. Database backups shall be restricted to the Parish Administrator and authorized secretary accounts as approved by the parish. Backup files shall not be stored in a publicly accessible web directory.
+
+---
+
+## 7. Audit Logging and Accountability
+
+### 7.1 Audit-log principle
+
+The system shall maintain an append-only audit log. An audit entry, once written, shall not be editable or deletable through the application interface. The Parish Administrator shall have complete viewing, searching, filtering, and export access, but shall not silently alter or remove historical entries.
+
+This protects the reliability of the history when investigating mistakes, staff turnover, unauthorized access, or record corrections.
+
+### 7.2 Events that shall be logged
+
+The system shall log the following events where applicable:
+
+**Security and account events:** successful login, failed login, logout, session timeout, password change, password reset, secretary account creation, account deactivation, account reactivation, role change, Master Account transfer, security-setting change, and rate-limited access attempts.
+
+**Workflow events:** certificate request encoded, sacrament application encoded, requirements marked received, requirements marked incomplete, requirements marked verified, request or application status changed, record matched, certificate generated, certificate printed, certificate finalized, certificate marked ready for pickup, notification attempted, notification failed, notification resent, certificate released, certificate reprinted, certificate cancelled, schedule created or changed, and announcement created or changed.
+
+**Record events:** record created, record edited, record archived, record restored, possible duplicate identified, person linked, person unlinked, and correction recorded.
+
+**System events:** backup created, backup downloaded, restore performed, and relevant configuration changes.
+
+### 7.3 Audit-entry fields
+
+Each audit entry should contain:
+
+| Field | Requirement |
+|---|---|
+| Timestamp | Date and time in the configured parish timezone. |
+| User ID and name | The account that performed the action, or system/anonymous where appropriate. |
+| Role | Master Account or Secretary when an authenticated user performed the action. |
+| Action | A stable machine-readable action name. |
+| Module or target table | The affected system area or data entity. |
+| Target ID | The affected request, application, record, account, or schedule ID where applicable. |
+| Description | A human-readable summary of what occurred. |
+| IP address | Captured for security-sensitive events where legally and operationally appropriate. |
+| User agent | Captured for security investigation where appropriate. |
+| Reason | Required for sensitive corrections, rejection, cancellation, deactivation, restoration, and role transfer. |
+
+The log shall never store passwords, password-reset tokens, Gmail passwords, identity-document images, or complete document contents.
+
+### 7.4 Audit-log access
+
+The Parish Administrator shall have full visibility of all logs, including security events, Master Account actions, account actions, record changes, certificate lifecycle events, and system operations. The Parish Administrator may filter by date range, user, role, action, module, target record, or security category and may export a report.
+
+The Secretary may view operational history needed to process parish work. Security events specifically relating to Master Accounts, role transfers, and protected configuration changes may be restricted to the Parish Administrator.
+
+### 7.5 Audit-log integrity
+
+The normal application interface shall provide no edit-log, delete-log, clear-log, or hide-log operation. If retention or archival is required in the future, it shall preserve the original entries and create a new audit entry describing the archival action. Any database-level maintenance procedure must be restricted, documented, and itself logged where technically possible.
+
+---
+
+## 8. Security Requirements
+
+The system shall:
+
+- Use password hashing and prepared SQL statements.
+- Enforce role checks before rendering protected pages or processing protected POST requests.
+- Use CSRF protection on state-changing forms.
+- Escape user-provided output.
+- Rate-limit login and public tracking attempts.
+- Use session timeout and secure cookie settings in production.
+- Require HTTPS in production.
+- Keep `.git`, backups, development scripts, and configuration secrets outside public access.
+- Keep Gmail SMTP credentials outside the repository and outside audit descriptions.
+- Avoid collecting sensitive identity documents online.
+- Preserve audit history for sensitive actions.
+- Use archive/deactivation behavior rather than immediate destructive deletion.
+
+---
+
+## 9. Database Requirements
+
+The database shall support, at minimum:
+
+- `users` with individual account identity, role, password hash, active status, and timestamps.
+- `persons` or an equivalent shared identity index.
+- Sacramental record tables for Baptism, Confirmation, First Communion, Marriage, and the approved Death/Burial status record.
+- `certificate_requests` and sacrament-specific extension tables.
+- `sacrament_applications` and approved extension tables for Baptism and Marriage.
+- Requirements-source, requirements-status, review-date, and review-note data for requests/applications.
+- Schedules and announcements.
+- Notifications.
+- Append-only `audit_logs`.
+- Migration/version tracking.
+
+There shall be no payment, fee, amount, currency, receipt, or online-payment columns or tables. Existing contact-number columns may be retained temporarily for historical database compatibility, but new application code shall use email only and shall not require or write contact numbers. Removal of legacy columns shall occur through a controlled migration after historical-data review.
+
+The database shall enforce the rule that at least one active Parish Administrator remains available. Account-management operations must not leave the system without a recoverable Master Account.
+
+---
+
+## 10. Functional Requirements Summary
+
+The completed system must:
+
+1. Run on PHP and MySQL/MariaDB through XAMPP.
+2. Provide public informational pages without parishioner accounts.
+3. Provide requirements and official Gmail instructions.
+4. Allow the secretary to encode all requests and applications created onsite or after Gmail requirements review.
+5. Use email as the official contact method.
+6. Exclude payment and financial data completely.
+7. Support searchable sacramental records and physical-register references.
+8. Support certificate processing, printing, finalization, pickup readiness, and onsite release.
+9. Provide optional tracking using a secretary-issued reference number and recorded email.
+10. Provide individual Parish Administrator and Secretary accounts.
+11. Prevent removal or deactivation of the last active Parish Administrator.
+12. Allow the Parish Administrator to create, reset, activate, deactivate, and replace Secretary accounts.
+13. Provide complete Parish Administrator visibility into append-only audit logs.
+14. Prevent normal users from editing or deleting audit history.
+15. Preserve security, privacy, backup, migration, and recovery controls.
+
+---
+
+## 11. Acceptance Scenarios
+
+The system shall be tested with at least these scenarios:
+
+1. A secretary creates an onsite baptismal certificate request using email only.
+2. A secretary records requirements received through Gmail without creating a public account.
+3. A certificate moves from received through processing, printing, finalizing, ready for pickup, and released.
+4. A parishioner tracks a secretary-created request using the issued reference number and email.
+5. A secretary leaves, and the Parish Administrator creates a replacement secretary account without deleting historical actions.
+6. The Parish Administrator resets a secretary password and the action appears in the audit log.
+7. The system refuses to delete or deactivate the last active Parish Administrator.
+8. The Parish Administrator views and exports security and workflow logs.
+9. An attempted audit-log edit or deletion is unavailable through the normal interface.
+10. A request or record correction retains the previous action history and records the reason.
+11. A public visitor cannot create an online request or application through the public website.
+12. No payment or contact-number field is required anywhere in the approved workflow.
+
+---
+
+## References
+
+[1]: ../PROJECT_CONTEXT.md "SRS-SPPO project context and implementation decisions"
+[2]: ../README.md "SRS-SPPO project setup and deployment guide"
+[3]: https://privacy.gov.ph/data-privacy-act/ "Philippine Data Privacy Act resources"
+
+---
+
+**Document status:** Updated to reflect the Parish Administrator/Master Account role, secretary account continuity, append-only audit logging, onsite processing, Gmail-based requirements handling, email-only contact, and the explicit exclusion of payment functionality.
+
+**Author:** Manus AI
+**Last updated:** September 2026
+
+---
+
+## Legacy implementation checklist
+
+The current implementation should be reviewed against this specification in the following order:
+
+1. Confirm the database schema and migrations support the Parish Administrator role and active-account safeguards.
+2. Confirm the account-management interface supports secretary creation, password reset, activation, deactivation, and controlled Master Account transfer.
+3. Convert public request/application routes to information-only pages or disable them.
+4. Remove contact-number requirements from admin encoding and all approved workflows.
+5. Add requirements source and requirements status fields and controls.
+6. Align certificate statuses and dashboard labels with the onsite workflow.
+7. Verify that all security and workflow events write append-only audit entries.
+8. Verify the Parish Administrator audit-log filters and export function.
+9. Remove temporary files and resolve duplicate migration numbering before production deployment.
+10. Execute the acceptance scenarios above using anonymized test records.
+
+This checklist is a release gate. The system should not be treated as production-ready until the requirements and acceptance scenarios have been verified.
+
+
+## Phase 2 — Notifications and Email Alerts
+
+The system provides two complementary alert channels. The secretary interface stores actionable in-app notifications for new requests, application status changes, certificate processing events, conflicts, and pickup activity. These notifications are visible through the administrator notification bell and the full Notifications page, where staff can mark one or all items as read. Notification event types are explicitly enumerated in the database so status alerts cannot be silently discarded by invalid values.
+
+The system may send email alerts to the email address recorded during an onsite request or application. Email is not used to create public accounts, accept payment, deliver certificates, or replace onsite processing. Receipt emails provide the reference number and tracking-page link; status emails communicate the current workflow stage and remind the parishioner that certificates are released in person. Email is disabled by default until the parish configures a verified Gmail relay or other mail transport.
+
+Every email attempt is recorded in `email_delivery_log` with the recipient, subject, event type, related transaction, reference number, delivery status, error message, and timestamp. Delivery statuses are `sent`, `failed`, `disabled`, or `invalid`. The secretary can review the last 100 attempts through Admin > Email Log and request a receipt resend for a related transaction. A failed or disabled email never prevents the secretary from saving a request, changing a status, printing a certificate, or releasing a certificate.
+
+
+## Phase 3 — Account Continuity and Audit Accountability
+
+The system supports two staff roles: Secretary and Parish Administrator. Parish Administrators inherit the operational workspace and are additionally responsible for account continuity, administrator safeguards, and protected system oversight. The account-management interface prevents the last active Parish Administrator from being deactivated, demoted, or deleted. Non-administrator secretaries cannot change Parish Administrator accounts. During first-time setup, when no Parish Administrator exists, the currently signed-in staff account may promote itself through the account-management form; subsequent administrator assignment is restricted to an existing Parish Administrator.
+
+Audit entries remain append-only through the application. New entries record the authenticated role snapshot, client IP address, user-agent summary, and optional reason in addition to the action, target, description, and timestamp. The Audit Log page supports date and text search together with role, user, action, and module filters. The filtered audit history can be exported as CSV; exporting itself creates an audit entry. No edit, delete, clear, or hide operation is provided.
+
+
+## Phase 4 — Public Workflow Alignment and Processing Controls
+
+The public website now presents requests and sacrament applications as onsite parish-office services. Legacy direct submission routes redirect to the requirements and office-process information page, while public tracking remains available for secretary-issued references. The public website does not create accounts, accept payments, collect identity-document uploads, or submit online transactions.
+
+Secretary-side requirements review now records the source of documentary requirements as not yet received, physical submission, official parish Gmail, or both physical and official Gmail. The reviewer can also preserve a missing-requirements or review note with the reviewing account and timestamp. The database includes non-destructive archive metadata for sacramental records and lifecycle fields for certificate finalization and cancellation.
+
+Certificate generation now supports an explicit finalization confirmation after physical printing and signature/seal review. Cancellation requires a reason, changes the request to a preserved cancelled state, records the responsible staff member and timestamp, and writes an append-only audit event. Existing regeneration and physical-printing history remain available.

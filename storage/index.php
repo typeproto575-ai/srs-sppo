@@ -1,4 +1,6 @@
 <?php
-// Extra guard in case .htaccess isn't honored (e.g. misconfigured vhost).
+/**
+ * Deny direct access if the storage directory is served without its .htaccess.
+ */
 http_response_code(403);
 exit('Forbidden');

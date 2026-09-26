@@ -10,6 +10,9 @@
  * Flow:    Enters as 'submitted'; the secretary reviews it in
  *          admin/requests/applications-queue.php. No online ID upload —
  *          identity is verified in person at pickup.
+ * Limit:   Successful submissions are capped at 3 per email address and 20
+ *          per client IP over a rolling 24 hours; the accounting row lives
+ *          in submission_rate_limits (migrations/018_add_submission_rate_limits.sql).
  * =====================================================================
  */
 
@@ -43,14 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $parentGuardian  = trim($_POST['parent_guardian_name'] ?? '');
     $contactNumber   = trim($_POST['contact_number'] ?? '');
     $email           = trim($_POST['email'] ?? '');
-    $preferredDate   = $_POST['preferred_date'] ?: null;
-    $baptismDate     = $_POST['baptism_date'] ?: null;
-    $delegatedMinister = trim($_POST['delegated_minister'] ?? '');
-    $bookNo          = trim($_POST['book_no'] ?? '');
-    $pageNo          = trim($_POST['page_no'] ?? '');
-    $lineNo          = trim($_POST['line_no'] ?? '');
-    $certificateDone = isset($_POST['certificate_done']) ? 1 : 0;
-    $notes           = trim($_POST['notes'] ?? '');
+    $preferredDate   = $_POST['preferred_date'] ?? null;
 
     $godfatherNames      = $_POST['godfather_name'] ?? [];
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
@@ -67,6 +63,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '')           $errors[] = 'Email address is required.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
 
+    // Abuse guard: rolling 24h cap per email address and per client IP.
+    // Runs only after field validation passes, so re-submitting an invalid
+    // form never consumes quota. See includes/functions.php.
+    if (empty($errors)) {
+        $submissionCap = public_submission_allowed($pdo, [$email]);
+        if (!$submissionCap['ok']) {
+            $errors[] = $submissionCap['reason'];
+        }
+    }
+
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
@@ -75,10 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_applications
-                    (tracking_number, sacrament_type, status, notes)
-                 VALUES (?, 'baptismal', 'submitted', ?)"
+                    (tracking_number, submission_channel, sacrament_type, status)
+                 VALUES (?, 'online', 'baptismal', 'submitted')"
             );
-            $stmt->execute([$trackingNumber, $notes]);
+            $stmt->execute([$trackingNumber]);
             $applicationId = (int) $pdo->lastInsertId();
 
             $stmt = $pdo->prepare(
@@ -86,16 +92,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (application_id, child_full_name, child_birthdate, child_birthplace,
                      father_full_name, father_birthplace, mother_maiden_name, mother_birthplace,
                      parents_address, parents_union_type, parent_guardian_name,
-                     contact_number, email, preferred_date, baptism_date,
-                     delegated_minister, book_no, page_no, line_no, certificate_done, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     contact_number, email, preferred_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childBirthplace,
                 $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
                 $parentsAddress, $parentsUnionType, $parentGuardian,
-                $contactNumber, $email, $preferredDate, $baptismDate,
-                $delegatedMinister, $bookNo, $pageNo, $lineNo, $certificateDone, $notes,
+                $contactNumber, $email, $preferredDate,
             ]);
             $baptismalApplicationId = (int) $pdo->lastInsertId();
 
@@ -123,6 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "Baptismal application for {$childName} ({$trackingNumber})",
                 '/admin/requests/applications-queue.php');
 
+            // Count this success against the abuse caps (same transaction,
+            // so a later rollback never consumes quota).
+            record_public_submission($pdo, [$email], 'application_baptismal');
+
             $pdo->commit();
 
             if (mail_request_received($email, $trackingNumber, 'Baptismal Application')) {
@@ -131,6 +139,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Exception $e) {
             $pdo->rollBack();
+            // Never show the success panel (with a tracking number) for a
+            // submission that was rolled back — nothing was saved.
+            $trackingNumber = null;
             $errors[] = 'Something went wrong while submitting your application. Please try again.';
         }
     }
@@ -140,6 +151,8 @@ require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <section class="request-form">
+    <div class="alert alert-info online-intake-notice"><strong>Online application for parish review:</strong> Submitting this form does not mean the application is approved. If documents are needed, the parish office will tell you whether to email them or bring them onsite.</div>
+
     <h1>Baptismal Application</h1>
     <p>Use this form to apply to have an infant or child baptized at this parish. There is no age-eligibility check for Baptism — the parish office will follow up directly with any scheduling requirements.</p>
 
@@ -156,7 +169,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <?php endif; ?>
 
         <!-- Application form: posts back to this page; CSRF-protected -->
-        <form method="post" action="">
+        <form method="post" action="" data-review data-review-title="Check your application before sending" data-review-confirm="Confirm and submit application">
             <?= csrf_field() ?>
             <fieldset>
                 <legend>Child's Information</legend>
@@ -185,7 +198,7 @@ require_once __DIR__ . '/../../includes/header.php';
 
             <fieldset>
                 <legend>Parent/Guardian Submitting This Application</legend>
-                <label>Full Name * <input type="text" name="parent_guardian_name" value="<?= e($_POST['parent_guardian_name'] ?? '') ?>" required></label>
+                <label>Full Name * <input type="text" name="parent_guardian_name" autocomplete="name" value="<?= e($_POST['parent_guardian_name'] ?? '') ?>" required></label>
                 <label>Contact Number * <input type="text" name="contact_number" autocomplete="tel" value="<?= e($_POST['contact_number'] ?? '') ?>" required></label>
                 <label>Email Address * <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required></label>
 
@@ -222,31 +235,13 @@ require_once __DIR__ . '/../../includes/header.php';
             </fieldset>
 
             <fieldset>
-                <legend>Scheduling</legend>
+                <legend>Scheduling and Additional Information</legend>
                 <label>Preferred Date (if any)
                     <input type="date" name="preferred_date" value="<?= e($_POST['preferred_date'] ?? '') ?>">
                 </label>
-                <label>Date of Baptism (if known)
-                    <input type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? '') ?>">
-                </label>
-                <label>Delegated Minister (if any)
-                    <input type="text" name="delegated_minister" value="<?= e($_POST['delegated_minister'] ?? '') ?>">
-                </label>
-                <div class="inline-fields">
-                    <label>Book No. <input type="text" name="book_no" value="<?= e($_POST['book_no'] ?? '') ?>"></label>
-                    <label>Page <input type="text" name="page_no" value="<?= e($_POST['page_no'] ?? '') ?>"></label>
-                    <label>Line <input type="text" name="line_no" value="<?= e($_POST['line_no'] ?? '') ?>"></label>
-                </div>
-                <label class="checkbox-row">
-                    <input type="checkbox" name="certificate_done" value="1" <?= isset($_POST['certificate_done']) ? 'checked' : '' ?>>
-                    Certificate already done (mark if a certificate was previously issued)
-                </label>
-                <label>Additional Notes
-                    <textarea name="notes"><?= e($_POST['notes'] ?? '') ?></textarea>
-                </label>
             </fieldset>
 
-            <button type="submit" class="btn">Submit Application</button>
+            <button type="submit" class="btn">Review Application</button>
         </form>
 
     <?php endif; ?>

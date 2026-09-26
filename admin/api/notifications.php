@@ -4,11 +4,12 @@
  * NOTIFICATIONS API (admin header bell)
  * =====================================================================
  * GET  → JSON snapshot for the bell:
- *        { unread_count, items: [ {kind, id, type, title, message,
- *                                  link, is_read, created_at} ] }
- *        unread_count = unread notifications + today/tomorrow events.
+ *        { unread_count, upcoming_events_count, items: [ {kind, id, type,
+ *          title, message, link, is_read, created_at} ] }
+ *        unread_count = unread notifications only.
+ *        upcoming_events_count = informational today/tomorrow reminders only.
  *        items = upcoming events (live-queried, most urgent first)
- *                followed by the 10 newest notifications.
+ *                followed by the 10 newest unread notifications.
  *
  * POST → action=mark_read&id=N    mark one notification read
  *        action=mark_all_read     mark every notification read
@@ -62,12 +63,13 @@ function notifications_snapshot(PDO $pdo): array
     // Unread count (stored notifications only).
     $unread = (int) $pdo->query('SELECT COUNT(*) FROM notifications WHERE is_read = 0')->fetchColumn();
 
-    // 10 newest notifications: unread first so they stay discoverable,
-    // newest first within each group.
+        // The header bell is an actionable inbox, so read notifications stay in
+        // the archive but are omitted here. The archive page remains unchanged.
     $rows = $pdo->query(
         'SELECT id, type, title, message, link, is_read, created_at
          FROM notifications
-         ORDER BY is_read ASC, created_at DESC
+            WHERE is_read = 0
+            ORDER BY created_at DESC
          LIMIT 10'
     )->fetchAll();
 
@@ -87,8 +89,9 @@ function notifications_snapshot(PDO $pdo): array
     }
 
     // Upcoming events (today + tomorrow), queried live so they show
-    // without needing a scheduler. They count toward the badge but are
-    // never "read" — they simply stop appearing once the date passes.
+    // without needing a scheduler. These are informational reminders only
+    // and have no read/unread state of their own; they must never keep the
+    // bell badge lit when there are zero real notifications to review.
     $evStmt = $pdo->query(
         "SELECT id, event_type, title, event_date, start_time
          FROM schedule_events
@@ -113,8 +116,9 @@ function notifications_snapshot(PDO $pdo): array
     }
 
     return [
-        'unread_count' => $unread + count($events),
-        'items'        => array_merge($events, $items),
+        'unread_count'          => $unread,
+        'upcoming_events_count' => count($events),
+        'items'                 => array_merge($events, $items),
     ];
 }
 

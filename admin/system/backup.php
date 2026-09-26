@@ -1,14 +1,14 @@
 <?php
 /**
  * ================================================================
- * SRS-SPPO DATABASE BACKUP / EXPORT (admin, secretary-only)
+ * SRS-SPPO DATABASE BACKUP / EXPORT (secretary and Parish Administrator)
  * ================================================================
  * 
  * PURPOSE: Generates a portable .sql dump of every table (structure + data)
  * using plain PDO queries -- avoids depending on shell_exec/mysqldump being
  * available, which is not guaranteed on every XAMPP setup.
  * 
- * SECURITY: Only secretaries can access this page (require_role at top).
+ * SECURITY: Staff roles can access this page (require_role at top).
  * The download is logged to the audit log for accountability.
  * 
  * FEATURES:
@@ -23,7 +23,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
-// SECURITY: Restrict to secretary role only
+// SECURITY: Database exports contain all records and password hashes.
 require_role('secretary');
 
 // Page title for header
@@ -130,6 +130,7 @@ $extraHead = '';
         <p class="field-hint">Downloads a full .sql dump (structure + data) of the database. Store this somewhere safe outside the server — this is your disaster-recovery copy alongside the physical logbooks.</p>
         <p class="field-hint"><strong>Security notice:</strong> The exported file contains all sacramental records and hashed account credentials. Store it encrypted and offline — never on shared drives or sent via email.</p>
 
+        <div class="table-scroll">
         <table class="admin-table" style="max-width:500px;">
             <thead><tr><th>Table</th><th>Rows</th></tr></thead>
             <tbody>
@@ -138,8 +139,9 @@ $extraHead = '';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
 
-        <form method="post" style="margin-top:1.5rem;">
+        <form autocomplete="off" method="post" style="margin-top:1.5rem;">
             <?= csrf_field() ?>
             <button type="submit" name="download" value="1" class="btn">Download Full Backup (.sql)</button>
         </form>

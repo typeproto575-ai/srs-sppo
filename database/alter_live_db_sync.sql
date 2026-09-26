@@ -95,4 +95,12 @@ ALTER TABLE marriage_applications
   DROP COLUMN IF EXISTS line_no,
   DROP COLUMN IF EXISTS person_id;
 
--- 6) Legacy ID columns: the live database already dropped them; nothing to relax.
+-- 9) Certificate requests: drop num_copies from the shared request table.
+--    The field was TINYINT UNSIGNED NOT NULL DEFAULT 1, so it is treated as
+--    a required historical field that every request had by default; all current
+--    app code now assumes a single certificate per request and stores no copy
+--    count. This is safe on the live DB because the field is no longer used.
+ALTER TABLE certificate_requests
+  DROP COLUMN IF EXISTS num_copies;
+
+-- 10) Legacy ID columns: the live database already dropped them; nothing to relax.

@@ -19,6 +19,11 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_role('secretary');
 
+// Death/Burial tracking is outside the active system scope. Keep the legacy
+// table for data preservation, but do not expose the old admin page.
+redirect_to('/admin/records/index.php');
+exit;
+
 $basePath = $basePath ?? base_path();
 $pageTitle = 'Death / Burial Status';
 $errors  = [];
@@ -69,19 +74,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 if (isset($_GET['added'])) $success = 'Record saved.';
 // --- Search / filter / pagination --
 $selfUrl = $basePath . '/admin/records/death-burial.php';
-$rfConfig = ['date_column' => 'date_of_death', 'search_columns' => ['deceased_full_name'], 'placeholder' => 'Search deceased name&hellip;', 'ranges' => ['year', 'last_year', 'last5']];
+$rfConfig = ['date_column' => 'date_of_death', 'search_columns' => ['deceased_full_name'], 'placeholder' => 'Search deceased name...', 'ranges' => ['year', 'last_year', 'last5']];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM death_burial_records {$rf['where']}");
+$whereSql = $rf['where'] !== '' ? ' WHERE 1=1 ' . $rf['where'] : '';
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM death_burial_records WHERE is_archived = 0 {$whereSql}");
 $countStmt->execute($rf['params']);
 $totalRows = (int) $countStmt->fetchColumn();
-$listStmt = $pdo->prepare("SELECT * FROM death_burial_records {$rf['where']} ORDER BY date_of_death DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$listStmt = $pdo->prepare("SELECT * FROM death_burial_records WHERE is_archived = 0 {$whereSql} ORDER BY date_of_death DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
 $listStmt->execute($rf['params']);
 $records = $listStmt->fetchAll();
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
         <div class="panel-card">
-            <h1>Death / Burial Status</h1>
+            <div class="page-heading">
+                <h1>Death / Burial Status</h1>
+                <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
+            </div>
             <p class="field-hint">Simplified alive/deceased status tracking per scope decisions. Full Liber Defunctorum register fields are documented in the paper but not implemented.</p>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
@@ -90,28 +99,34 @@ $records = $listStmt->fetchAll();
         <?php endif; ?>
 
 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-<?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
-
         <?php if (empty($records)): ?>
-            <p>No records found<?= $q !== '' ? ' for "' . e($q) . '"' : '' ?>.</p>
+            <div class="empty-state"><h2>No death or burial records found</h2><p><?= ($rf['q'] ?? '') !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Date of Death</th>
-                    <th>Status</th>
-                    <th>Action</th>
+                    <th>Book</th>
+                    <th>Page</th>
+                    <th>Line</th>
+                    <th>Full Name</th>
+                    <th>Date</th>
+                    <th>Sacrament</th>
+                    <th>Options</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($records as $rec): ?>
                     <tr>
-                        <td><?= e($rec['deceased_full_name']) ?></td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td><strong><?= e($rec['deceased_full_name']) ?></strong></td>
                         <td><?= e($rec['date_of_death'] ? date('M j, Y', strtotime($rec['date_of_death'])) : '—') ?></td>
-                        <td><span class="status-badge <?= !empty($rec['is_deceased']) ? 'status-rejected' : 'status-approved' ?>"><?= !empty($rec['is_deceased']) ? 'Deceased' : 'Alive' ?></span></td>
+                        <td><span class="record-type-badge record-type-death_burial">Death / Burial</span></td>
                         <td>
-                            <form method="post" style="display:inline;">
+                            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/view.php?type=death_burial&id=' . (int) $rec['id']) ?>">View record</a>
+                            <form autocomplete="off" method="post" style="display:inline;">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="record_id" value="<?= (int) $rec['id'] ?>">
                                 <input type="hidden" name="is_deceased" value="<?= !empty($rec['is_deceased']) ? '0' : '1' ?>">
@@ -122,17 +137,18 @@ $records = $listStmt->fetchAll();
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
         <h2 style="margin-top:2.5rem;">Add New Record</h2>
         <p class="field-hint">Add a new death/burial record with simplified status tracking.</p>
-        <form method="post" action="">
+        <form autocomplete="off" method="post" action="">
             <?= csrf_field() ?>
             <fieldset>
                 <legend>New Record</legend>
-                <label>Full Name * <input type="text" name="deceased_full_name" required></label>
-                <label>Date of Death <input type="date" name="date_of_death"></label>
+                <label>Full Name * <input autocomplete="off" type="text" name="deceased_full_name" required></label>
+                <label>Date of Death <input autocomplete="off" type="date" name="date_of_death"></label>
             </fieldset>
             <button type="submit" name="add_record" value="1" class="btn">Add Record</button>
         </form>

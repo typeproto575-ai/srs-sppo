@@ -16,7 +16,8 @@
 
 // Set defaults for optional variables
 $basePath = $basePath ?? base_path();
-$isSecretary = isset($isSecretary) ? $isSecretary : (current_user()['role'] === 'secretary');
+$isSecretary = isset($isSecretary) ? $isSecretary : in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
+$isParishAdmin = isset($isParishAdmin) ? $isParishAdmin : is_parish_admin();
 $pageTitle = $pageTitle ?? 'Admin Dashboard';
 $extraHead = $extraHead ?? '';
 
@@ -83,6 +84,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <div class="notif-panel" data-notif-panel hidden>
                 <div class="notif-panel-head">
                     <span class="notif-panel-title">Notifications</span>
+                    <a href="<?= $basePath ?>/admin/notifications.php" class="notif-view-all">View All</a>
                     <button type="button" class="notif-mark-all" data-notif-mark-all>Mark all read</button>
                 </div>
                 <ul class="notif-list" data-notif-list></ul>
@@ -92,13 +94,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <!-- Quick utility links in the top bar -->
         <nav class="master-utilities" aria-label="Admin utilities">
             <a href="<?= $basePath ?>/admin/reports/index.php"<?= $isActive('/admin/reports/index.php', '/admin/reports/monthly.php', '/admin/reports/yearly.php') ?>>Reports</a>
-            <?php if ($isSecretary): ?>
-                <!-- Secretary-only tools -->
-                <a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?>>Backup</a>
-                <a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?>>Accounts</a>
-            <?php endif; ?>
-            <a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?>>Audit Log</a>
-            <form method="post" action="<?= $basePath ?>/admin/logout.php" class="logout-form">
+            <form autocomplete="off" method="post" action="<?= $basePath ?>/admin/logout.php" class="logout-form">
                 <?= csrf_field() ?>
                 <button type="submit" class="logout-link-btn">Log Out</button>
             </form>
@@ -113,6 +109,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <details class="sidebar-group" data-sidebar-group="requests" name="admin-sidebar"<?= $groupIsOpen('/admin/requests/') ?>>
             <summary class="sidebar-group-title">Requests</summary>
             <ul class="sidebar-menu">
+                <li><a href="<?= $basePath ?>/admin/requests/online-requests.php"<?= $isActive('/admin/requests/online-requests.php') ?>>Online Submissions</a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?>>Certificate Requests</a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?>>Sacrament Applications</a></li>
                 <?php if ($isSecretary): ?>
@@ -127,21 +124,22 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/person-mapper.php') ?>>
             <summary class="sidebar-group-title">Records</summary>
             <ul class="sidebar-menu sidebar-submenu">
+                <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php') ?>>All Records</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/baptismal.php"<?= $isActive('/admin/records/baptismal.php') ?>>Baptismal</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?>>Confirmation</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?>>First Communion</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?>>Marriage</a></li>
-                <li><a href="<?= $basePath ?>/admin/records/death-burial.php"<?= $isActive('/admin/records/death-burial.php') ?>>Death / Burial</a></li>
-                <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Mapper</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Linking</a></li>
             </ul>
         </details>
 
         <!-- Certificate generation section -->
-        <details class="sidebar-group" data-sidebar-group="certificates" name="admin-sidebar"<?= $groupIsOpen('/admin/certificates/') ?>>
+        <details class="sidebar-group" data-sidebar-group="certificates" name="admin-sidebar"<?= $groupIsOpen('/admin/certificates/', '/admin/corrections/') ?>>
             <summary class="sidebar-group-title">Certificates</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/certificates/generate.php"<?= $isActive('/admin/certificates/generate.php') ?>>Generate / Preview</a></li>
                 <li><a href="<?= $basePath ?>/admin/certificates/history.php"<?= $isActive('/admin/certificates/history.php') ?>>Print / Pickup History</a></li>
+                <li><a href="<?= $basePath ?>/admin/corrections/correction-list.php"<?= $isActive('/admin/corrections/correction-list.php') ?>>Correction Requests</a></li>
             </ul>
         </details>
 
@@ -155,13 +153,18 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             </ul>
         </details>
 
-        <!-- Website section -->
-        <details class="sidebar-group" data-sidebar-group="website" name="admin-sidebar"<?= $groupIsOpen('/admin/system/site-settings.php') ?>>
-            <summary class="sidebar-group-title">Public Website</summary>
+        <?php if ($isSecretary): ?>
+        <details class="sidebar-group" data-sidebar-group="system" name="admin-sidebar"<?= $groupIsOpen('/admin/system/', '/admin/email-delivery.php') ?>>
+            <summary class="sidebar-group-title">System</summary>
             <ul class="sidebar-menu sidebar-submenu">
-                <li><a href="<?= $basePath ?>/admin/system/site-settings.php"<?= $isActive('/admin/system/site-settings.php') ?>>Public Page Content</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?>>Accounts</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?>>Backup</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/archive-record.php"<?= $isActive('/admin/system/archive-record.php') ?>>Archive / Restore</a></li>
+                <li><a href="<?= $basePath ?>/admin/email-delivery.php"<?= $isActive('/admin/email-delivery.php') ?>>Email Log</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?>>Audit Log</a></li>
             </ul>
         </details>
+        <?php endif; ?>
         </div>
     </nav>
 

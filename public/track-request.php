@@ -36,7 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $error = 'Your session expired. Please try again.';
     } else {
-        $trackingNumber = trim($_POST['tracking_number'] ?? '');
+        // Tracking numbers are generated uppercase; normalize input before rate limiting and lookup.
+        $trackingNumber = strtoupper(trim($_POST['tracking_number'] ?? ''));
         $email          = trim($_POST['email'] ?? '');
 
         if ($trackingNumber === '' || $email === '') {
@@ -145,7 +146,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="request-form">
     <h1>Track My Request</h1>
-    <p>Enter the tracking number and email address you used when you submitted your request or application.</p>
+    <p>Enter the tracking number provided after submission and the same email address used for your request or application.</p>
 
     <?php if ($error): ?>
         <div class="alert alert-error"><p><?= e($error) ?></p></div>
@@ -153,24 +154,14 @@ require_once __DIR__ . '/../includes/header.php';
 
         <?php if ($result): ?>
         <?php
-        // --- User-friendly stage timeline ---------------------------------
-        // Certificates follow one linear pipeline. Applications have a longer
-        // workflow (documents / interview / banns / seminar) which we present
-        // as a single "In Process" stage - purely presentational, the
-        // underlying status values are unchanged.
         $status = $result['row']['status'];
         if ($result['kind'] === 'certificate') {
-            $stageLabels = ['Submitted', 'In Review', 'Approved', 'Ready for Pickup', 'Released'];
-            $stageIndex  = array_search($status, ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released'], true);
+            $timeline = certificate_timeline_definition($status);
+            $stageLabels = array_column($timeline['stages'], 'label');
+            $stageIndex = $timeline['index'];
         } else {
-            $stageLabels = ['Submitted', 'In Process', 'Approved', 'Completed'];
-            $stageMap = [
-                'submitted' => 0,
-                'documents_pending' => 1, 'interview_scheduled' => 1, 'banns_in_progress' => 1,
-                'seminar_pending' => 1, 'ready_for_approval' => 1,
-                'approved' => 2, 'scheduled' => 2,
-                'completed' => 3,
-            ];
+            $stageLabels = ['Application Received', 'Secretary Review', 'Requirements / Onsite Verification', 'Approved', 'Scheduled', 'Completed'];
+            $stageMap = ['submitted' => 0, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'documents_pending' => 1, 'interview_scheduled' => 2, 'banns_in_progress' => 2, 'seminar_pending' => 2, 'awaiting_onsite_verification' => 2, 'ready_for_approval' => 2, 'approved' => 3, 'scheduled' => 4, 'completed' => 5];
             $stageIndex = $stageMap[$status] ?? 0;
         }
         ?>
@@ -179,10 +170,12 @@ require_once __DIR__ . '/../includes/header.php';
             <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> - <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
             <p><strong>Date Submitted:</strong> <?= e(date('F j, Y', strtotime($result['row']['date_submitted']))) ?></p>
 
-            <?php if ($status === 'rejected'): ?>
+            <?php if ($status === 'rejected' || $status === 'cancelled'): ?>
                 <div class="alert alert-warning">
-                    <p><strong>Status: Rejected.</strong> Please contact the parish office directly for details and next steps.</p>
+                    <p><strong>Status: <?= e(ucfirst($status)) ?>.</strong> Please contact the parish office directly for details and next steps.</p>
                 </div>
+            <?php elseif (in_array($status, ['correction_needed', 'unable_to_locate_record'], true)): ?>
+                <div class="alert alert-warning"><p><strong><?= e(humanize_status($status)) ?>.</strong> Please contact the parish office for next steps.</p></div>
             <?php else: ?>
                 <ol class="status-timeline">
                     <?php foreach ($stageLabels as $i => $label): ?>
@@ -194,7 +187,9 @@ require_once __DIR__ . '/../includes/header.php';
                 </ol>
                 <p class="field-hint">
                     <?php if ($status === 'ready_for_pickup'): ?>
-                        Your request is ready! Please visit the parish office with a valid ID. Payment is made at pickup.
+                        Your certificate is ready. Please visit the parish office with your tracking number and valid identification. Certificates are released in person.
+                    <?php elseif ($status === 'released'): ?>
+                        This transaction was released at the parish office.
                     <?php else: ?>
                         Current stage: <strong><?= e($stageLabels[$stageIndex] ?? humanize_status($status)) ?></strong>.
                         Check back any time with this tracking number and your email.
@@ -208,12 +203,12 @@ require_once __DIR__ . '/../includes/header.php';
     <form method="post" action="">
         <?= csrf_field() ?>
         <fieldset>
-            <legend>Look Up Your Request</legend>
+            <legend>Look Up Your Office Transaction</legend>
             <label>Tracking Number *
                 <input type="text" name="tracking_number" placeholder="SPPO-2026-000123" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
             </label>
             <label>Email Address *
-                <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required>
+                <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required>
             </label>
         </fieldset>
         <button type="submit" class="btn">Track Request</button>

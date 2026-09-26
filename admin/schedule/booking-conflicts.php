@@ -3,9 +3,10 @@
  * =====================================================================
  * SRS-SPPO BOOKING CONFLICT REVIEW (admin)
  * =====================================================================
- * Purpose: Surfaces marriage applications whose preferred wedding date
- *          collides with an existing calendar event, so the secretary
- *          can resolve the clash manually (reschedule or confirm).
+ * Purpose: Surfaces marriage applications whose preferred wedding date AND
+ *          TIME overlap with an existing calendar event, so the secretary
+ *          can resolve the clash manually (reschedule or confirm). Same-day
+ *          bookings at different times are not flagged.
  * =====================================================================
  */
 
@@ -28,7 +29,7 @@ $pageTitle = 'Booking Conflict Review';
 // so the fragment is appended as-is to the base WHERE (an ltrim "prefix
 // strip" here previously produced "AND AND (...)" → SQL 1064).
 $selfUrl = $basePath . '/admin/schedule/booking-conflicts.php';
-$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name'], 'placeholder' => 'Search tracking no., groom, bride&hellip;'];
+$rfConfig = ['date_column' => 'ma.preferred_wedding_date', 'search_columns' => ['sa.tracking_number', 'ma.groom_full_name', 'ma.bride_full_name'], 'placeholder' => 'Search tracking no., groom, or bride...'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
@@ -46,7 +47,8 @@ $totalRows = (int) $countStmt->fetchColumn();
 
 $stmt = $pdo->prepare(
     "SELECT sa.id AS application_id, sa.tracking_number, sa.status,
-            ma.groom_full_name, ma.bride_full_name, ma.preferred_wedding_date
+            ma.groom_full_name, ma.bride_full_name, ma.preferred_wedding_date,
+            ma.preferred_wedding_time
      FROM sacrament_applications sa
      JOIN marriage_applications ma ON ma.application_id = sa.id
      $combinedWhere
@@ -56,7 +58,11 @@ $stmt = $pdo->prepare(
 $stmt->execute($rf['params']);
 $applications = $stmt->fetchAll();
 
-$conflictsByDate = [];
+// A wedding application only stores a single preferred TIME, not a
+// duration, so we assume a fixed ceremony length for overlap checking
+// (see DEFAULT_EVENT_SLOT_MINUTES / event_times_overlap() in functions.php,
+// shared with the calendar's own conflict flagging).
+$eventsByDate = [];
 if (!empty($applications)) {
     $dateSet = [];
     foreach ($applications as $a) $dateSet[$a['preferred_wedding_date']] = true;
@@ -67,20 +73,34 @@ if (!empty($applications)) {
     $place = implode(',', $places);
 
     $confStmt = $pdo->prepare(
-        "SELECT event_date, title, event_type FROM schedule_events
+        "SELECT event_date, title, event_type, start_time, end_time FROM schedule_events
          WHERE event_date IN ({$place}) AND event_type IN ('wedding','mass')
          ORDER BY event_date, start_time"
     );
     $confStmt->execute($dates);
     foreach ($confStmt->fetchAll() as $c) {
         $d = $c['event_date'];
-        $conflictsByDate[$d] = $conflictsByDate[$d] ?? [];
-        $conflictsByDate[$d][] = ['title' => $c['title'], 'event_type' => $c['event_type']];
+        $eventsByDate[$d] = $eventsByDate[$d] ?? [];
+        $eventsByDate[$d][] = $c;
     }
 }
 
 foreach ($applications as &$app) {
-    $app['conflicts'] = $conflictsByDate[$app['preferred_wedding_date']] ?? [];
+    $eventsOnDate = $eventsByDate[$app['preferred_wedding_date']] ?? [];
+    $conflicts = [];
+    foreach ($eventsOnDate as $c) {
+        if (!event_times_overlap($app['preferred_wedding_time'], null, $c['start_time'], $c['end_time'])) {
+            continue; // same day, but times don't actually clash
+        }
+        $conflicts[] = [
+            'title' => $c['title'],
+            'event_type' => $c['event_type'],
+            'start_time' => $c['start_time'],
+            'end_time' => $c['end_time'],
+            'time_confirmed' => $app['preferred_wedding_time'] !== null && $c['start_time'] !== null,
+        ];
+    }
+    $app['conflicts'] = $conflicts;
 }
 unset($app);
 
@@ -88,6 +108,8 @@ function humanize_label(string $s): string
 {
     return ucwords(str_replace('_', ' ', $s));
 }
+
+// format_event_time_range() lives in includes/functions.php (shared with calendar.php).
 // Search/filter/pagination setup moved above the queries (rf_parse must run
 // before the COUNT/list SQL is assembled). $selfUrl / $rfConfig / $rf are
 // already defined.
@@ -96,7 +118,7 @@ function humanize_label(string $s): string
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Booking Conflict Review</h1>
-        <p class="field-hint">Compares each pending marriage application's preferred wedding date against the calendar. Nothing here is auto-resolved — the secretary confirms manually and adjusts the calendar as needed.</p>
+        <p class="field-hint">Compares each pending marriage application's preferred wedding date and time against the calendar (assumes a <?= DEFAULT_EVENT_SLOT_MINUTES ?>-minute ceremony when no end time is set). Same-day bookings that don't actually overlap in time are no longer flagged. Nothing here is auto-resolved — the secretary confirms manually and adjusts the calendar as needed.</p>
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
@@ -104,12 +126,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (empty($applications)): ?>
             <p>No open marriage applications to review.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead>
                 <tr>
                     <th>Tracking No.</th>
                     <th>Couple</th>
                     <th>Preferred Date</th>
+                    <th>Preferred Time</th>
                     <th>Status</th>
                     <th>Calendar Conflict</th>
                 </tr>
@@ -120,13 +144,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($app['tracking_number']) ?></td>
                         <td><?= e($app['groom_full_name']) ?> &amp; <?= e($app['bride_full_name']) ?></td>
                         <td><?= e(date('M j, Y', strtotime($app['preferred_wedding_date']))) ?></td>
+                        <td><?= $app['preferred_wedding_time'] ? e(date('g:i A', strtotime($app['preferred_wedding_time']))) : '<span class="field-hint">Not set</span>' ?></td>
                         <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td>
                         <td>
                             <?php if (empty($app['conflicts'])): ?>
                                 None
                             <?php else: ?>
                                 <?php foreach ($app['conflicts'] as $c): ?>
-                                    <span class="flag-badge"><?= e($c['title']) ?> (<?= e(ucfirst($c['event_type'])) ?>)</span><br>
+                                    <span class="flag-badge">
+                                        <?= e($c['title']) ?> (<?= e(ucfirst($c['event_type'])) ?>)
+                                        <?php if ($c['start_time']): ?> &mdash; <?= e(format_event_time_range($c['start_time'], $c['end_time'])) ?><?php endif; ?>
+                                        <?php if (!$c['time_confirmed']): ?><br><small class="field-hint">Time not yet confirmed on one side &mdash; verify manually</small><?php endif; ?>
+                                    </span><br>
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </td>
@@ -134,6 +163,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 

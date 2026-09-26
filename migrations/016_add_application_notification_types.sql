@@ -1,3 +1,4 @@
+-- Extend notification types for the sacrament-application workflow.
 ALTER TABLE notifications
   MODIFY type ENUM('request_new','application_new','request_ready','event_reminder','conflict',
                    'request_under_review','request_approved','request_rejected',

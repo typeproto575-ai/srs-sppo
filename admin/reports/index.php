@@ -113,7 +113,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <a href="?view=yearly&year=<?= (int) $year ?>" class="<?= !$isMonthly ? 'active' : '' ?>">Yearly</a>
         </div>
 
-        <form method="get" class="inline-fields filter-form">
+        <form autocomplete="off" method="get" class="inline-fields filter-form">
             <input type="hidden" name="view" value="<?= e($view) ?>">
             <?php if ($isMonthly): ?>
             <label>Month
@@ -124,7 +124,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </select>
             </label>
             <?php endif; ?>
-            <label>Year <input type="number" name="year" value="<?= (int) $year ?>" min="2000" max="2100"></label>
+            <label>Year <input autocomplete="off" type="number" name="year" value="<?= (int) $year ?>" min="2000" max="2100"></label>
             <button type="submit" class="btn btn-small">View</button>
             <a href="?<?= e($periodQuery) ?>&export=csv" class="btn btn-secondary btn-small">Export CSV</a>
         </form>
@@ -132,6 +132,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <h2><?= e($periodHeading) ?></h2>
 
         <h3>Records Encoded (by sacrament date)</h3>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead><tr><th>Sacrament</th><th>Count</th></tr></thead>
             <tbody>
@@ -140,12 +141,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
 
 
         <h3 style="margin-top:2rem;">Certificate Requests Submitted</h3>
         <?php if (empty($certRows)): ?>
             <p>No certificate requests submitted <?= $isMonthly ? 'this month' : 'this year' ?>.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead><tr><th>Sacrament</th><th>Status</th><th>Count</th></tr></thead>
             <tbody>
@@ -158,12 +161,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php endif; ?>
 
         <h3 style="margin-top:2rem;">Sacrament Applications Submitted</h3>
         <?php if (empty($appRows)): ?>
             <p>No sacrament applications submitted <?= $isMonthly ? 'this month' : 'this year' ?>.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead><tr><th>Sacrament</th><th>Count</th></tr></thead>
             <tbody>
@@ -172,5 +177,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

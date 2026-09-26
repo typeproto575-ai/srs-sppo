@@ -44,7 +44,7 @@ $basePath = $basePath ?? base_path();
 <main class="login-page">
     <h1>Log Out</h1>
     <p class="field-hint">Are you sure you want to end your session?</p>
-    <form method="post" action="">
+    <form autocomplete="off" method="post" action="">
         <?= csrf_field() ?>
         <button type="submit" class="btn">Yes, log out</button>
         <a class="btn btn-secondary" href="<?= $basePath ?>/admin/dashboard.php">Cancel</a>

@@ -68,9 +68,10 @@ srs-sppo/
 
 ## What's built
 
-- **Fully built:** All public forms (4 certificate requests + 2 sacrament applications (Baptismal and Marriage)), secretary dashboard, all admin queues/records/certificates/schedule/reports/system pages, Marriage clearance detail page, walk-in encoding, tracking/status-check, public calendar, audit logging, database backup/export.
-- **Not implemented:** SMTP emission is **built (wired into all public forms + secretary status changes) but off by default** — `config/mail.php` has `MAIL_ENABLED = false` for the XAMPP demo (no mail server). Enable it there and set `MAIL_FROM_*` / `MAIL_SITE_URL` to go live; `includes/mail.php` is a safe no-op meanwhile.
-- Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles — layout mirrors a typical parish certificate and can be restyled to the parish's official format in `assets/css/admin.css`.
+- **Live public intake:** Four certificate-request forms plus Baptismal and Marriage sacrament-application forms. Confirmation and First Communion application tables remain only for legacy data compatibility; their current workflow is register encoding, not new public intake.
+- **Live office workflow:** Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, tracking/status lookup, correction requests, and the shared System tools. Parish Administrators retain the additional role protections for Parish Administrator account changes.
+- **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application records delivery attempts and safely continues when mail is unavailable. To enable it, configure the server's SMTP/sendmail relay, `MAIL_FROM_ADDRESS`, and `MAIL_SITE_URL` in the environment; never commit credentials.
+- Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 
 ## Design decisions (see PROJECT_CONTEXT.md for full details)
 

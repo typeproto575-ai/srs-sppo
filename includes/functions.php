@@ -18,6 +18,7 @@
 
 // Deployment switches (HTTPS enforcement, etc.) — before anything renders.
 require_once __DIR__ . '/../config/environment.php';
+require_once __DIR__ . '/mail.php';
 
 /**
  * Generate a unique tracking number, e.g. SPPO-2026-000123
@@ -47,7 +48,6 @@ function generate_tracking_number(PDO $pdo, string $table = 'certificate_request
 
     return sprintf('%s%06d', $prefix, $next);
 }
-
 /**
  * True when an exception is a MySQL duplicate-key error (driver code 1062).
  * That is the signal that a generated tracking number lost a race with a
@@ -62,7 +62,6 @@ function is_duplicate_key_error(Exception $e): bool
     // in the message text (e.g. "SQLSTATE[23000]: ... 1062 Duplicate entry...").
     return strpos($e->getMessage(), '1062') !== false;
 }
-
 /**
  * Run a full insert wrapped in ONE transaction, retrying the whole body
  * when a duplicate-key error is raised (typically a tracking-number race).
@@ -122,11 +121,8 @@ function calculate_age(string $birthdate): int
     return $birth->diff($today)->y;
 }
 
-/**
- * Check whether an age falls outside a sacrament's configured eligibility range.
- * Returns true if it SHOULD be flagged (not blocked) for secretary/priest review.
- */
-function is_outside_eligibility(PDO $pdo, string $sacramentType, int $age): bool
+/** Return the configured age range for a sacrament. */
+function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
 {
     $stmt = $pdo->prepare(
         "SELECT min_age, max_age FROM sacrament_eligibility_settings WHERE sacrament_type = ?"
@@ -134,29 +130,50 @@ function is_outside_eligibility(PDO $pdo, string $sacramentType, int $age): bool
     $stmt->execute([$sacramentType]);
     $row = $stmt->fetch();
 
-    if (!$row) {
-        return false; // no rule configured yet -- don't flag
+    $minAge = 0;
+    $maxAge = null;
+
+    if ($row) {
+        $minAge = (int) $row['min_age'];
+        $maxAge = $row['max_age'] !== null ? (int) $row['max_age'] : null;
     }
 
-    if ($age < (int) $row['min_age']) {
-        return true;
-    }
-    if ($row['max_age'] !== null && $age > (int) $row['max_age']) {
-        return true;
-    }
-    return false;
+    return ['min_age' => $minAge, 'max_age' => $maxAge];
+}
+
+/** Return a review-friendly age status without blocking the application. */
+function sacrament_age_status(PDO $pdo, string $sacramentType, int $age): string
+{
+    $range = sacrament_eligibility_range($pdo, $sacramentType);
+    if ($age < $range['min_age']) return 'Not yet age-eligible';
+    if ($range['max_age'] !== null && $age > $range['max_age']) return 'Outside configured range - secretary review';
+    return 'Age-eligible';
+}
+
+/** Check whether an age falls outside a sacrament's configured range. */
+function is_outside_eligibility(PDO $pdo, string $sacramentType, int $age): bool
+{
+    $status = sacrament_age_status($pdo, $sacramentType, $age);
+
+    return $status !== 'Age-eligible';
 }
 
 /**
  * Write an entry to the audit log.
  */
-function log_activity(PDO $pdo, ?int $userId, string $action, ?string $targetTable = null, ?int $targetId = null, ?string $description = null): void
+function log_activity(PDO $pdo, ?int $userId, string $action, ?string $targetTable = null, ?int $targetId = null, ?string $description = null, ?string $reason = null): void
 {
+    $role = null;
+    if (function_exists('current_user') && current_user()) {
+        $role = current_user()['role'] ?? null;
+    }
+    $ip = client_ip();
+    $agent = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500) ?: null;
     $stmt = $pdo->prepare(
-        "INSERT INTO audit_logs (user_id, action, target_table, target_id, description)
-         VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO audit_logs (user_id, role_snapshot, action, target_table, target_id, description, ip_address, user_agent, reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
-    $stmt->execute([$userId, $action, $targetTable, $targetId, $description]);
+    $stmt->execute([$userId, $role, $action, $targetTable, $targetId, $description, $ip, $agent, $reason]);
 }
 /**
  * Record a failed login/tracking attempt for rate limiting.
@@ -190,6 +207,154 @@ function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, i
     );
     $stmt->execute([$identifier, $windowMinutes]);
     return ((int) $stmt->fetch()['c']) >= $maxAttempts;
+}
+
+/* =====================================================================
+ * PUBLIC SUBMISSION RATE LIMITING (abuse guard for the no-login forms)
+ * =====================================================================
+ * The four certificate-request forms and the two sacrament-application
+ * forms are open to anyone, so without a cap a single person or script can
+ * bury the secretary's queue in junk. Two caps are enforced, both over a
+ * ROLLING 24-hour window (NOW() - INTERVAL 1 DAY) rather than calendar day,
+ * which avoids timezone/edge-of-midnight surprises:
+ *
+ *   - 3 successful submissions per email address
+ *   - 20 successful submissions per client IP
+ *
+ * Only SUCCESSFUL submissions are counted (recorded just before commit),
+ * so a visitor who re-submits a form with validation errors never burns
+ * quota, and a failed INSERT leaves no trace.
+ *
+ * This is spam/abuse prevention, NOT an eligibility rule. It never blocks
+ * anyone permanently and never overrides the "flag, don't auto-reject"
+ * sacrament-eligibility policy — it only asks the visitor to try again
+ * tomorrow or come to the parish office.
+ *
+ * Marriage applications carry two addresses (groom + bride); a cap breach
+ * on EITHER party blocks the submission, which closes the "submit three as
+ * the groom, three more as the bride" loophole.
+ *
+ * Fail-open by design: if the tracking table is missing (migration 018 not
+ * yet applied), the helpers allow the submission rather than break every
+ * public form. See migrations/018_add_submission_rate_limits.sql.
+ * ===================================================================== */
+
+// Tunable caps — change here only; every public form reads these constants.
+define('PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY', 3);
+define('PUBLIC_SUBMISSIONS_PER_IP_PER_DAY', 20);
+
+/**
+ * Canonical form of a submitter address for rate-limit comparison.
+ * Trim + lowercase, so "Ana@Gmail.com " and "ana@gmail.com" count as one
+ * person instead of two.
+ */
+function normalize_submission_email(string $email): string
+{
+    return strtolower(trim($email));
+}
+
+/**
+ * Would this submission breach the public abuse caps?
+ *
+ * @param PDO         $pdo    Database connection
+ * @param string[]    $emails Submitter address(es) — marriage passes both parties
+ * @param string|null $ip     Client IP; defaults to client_ip()
+ * @return array{ok: bool, reason: string|null} ok=false with a visitor-facing
+ *         reason when a cap is already used up.
+ */
+function public_submission_allowed(PDO $pdo, array $emails, ?string $ip = null): array
+{
+    $ip = $ip ?? client_ip();
+
+    // Distinct, non-empty, normalized addresses (marriage may send two).
+    $lookup = [];
+    foreach ($emails as $email) {
+        $email = normalize_submission_email((string) $email);
+        if ($email !== '') {
+            $lookup[$email] = true;
+        }
+    }
+
+    try {
+        foreach (array_keys($lookup) as $email) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) AS c FROM submission_rate_limits
+                  WHERE email = ? AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 DAY)'
+            );
+            $stmt->execute([$email]);
+            if ((int) $stmt->fetch()['c'] >= PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY) {
+                return [
+                    'ok'     => false,
+                    'reason' => 'This email address has already reached the daily submission limit ('
+                        . PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY . ' per day). '
+                        . 'Please try again tomorrow, or visit the parish office to follow up in person.',
+                ];
+            }
+        }
+
+        // 'unknown' comes from client_ip() when REMOTE_ADDR is unavailable
+        // (CLI/odd setups) — counting it would lump unrelated visitors
+        // together, so it is skipped.
+        if ($ip !== '' && $ip !== 'unknown') {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) AS c FROM submission_rate_limits
+                  WHERE ip_address = ? AND form_type <> \'record_search\'
+                    AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 DAY)'
+            );
+            $stmt->execute([$ip]);
+            if ((int) $stmt->fetch()['c'] >= PUBLIC_SUBMISSIONS_PER_IP_PER_DAY) {
+                return [
+                    'ok'     => false,
+                    'reason' => 'Too many submissions have been made from this network today. '
+                        . 'Please try again tomorrow, or visit the parish office to submit in person.',
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        // Table not migrated yet (or other transient DB issue): let the
+        // submission through rather than take the public forms offline.
+        return ['ok' => true, 'reason' => null];
+    }
+
+    return ['ok' => true, 'reason' => null];
+}
+
+/**
+ * Record a SUCCESSFUL public submission for both caps.
+ * Call this inside the caller's transaction, immediately before commit, so
+ * a rolled-back submission never consumes quota.
+ *
+ * @param PDO         $pdo      Database connection
+ * @param string[]    $emails   Submitter address(es) — marriage passes both parties
+ * @param string      $formType Short label for diagnostics, e.g. 'certificate_baptismal'
+ * @param string|null $ip       Client IP; defaults to client_ip()
+ */
+function record_public_submission(PDO $pdo, array $emails, string $formType, ?string $ip = null): void
+{
+    $ip = $ip ?? client_ip();
+
+    $lookup = [];
+    foreach ($emails as $email) {
+        $email = normalize_submission_email((string) $email);
+        if ($email !== '') {
+            $lookup[$email] = true;
+        }
+    }
+    if (empty($lookup)) {
+        return;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO submission_rate_limits (email, ip_address, form_type) VALUES (?, ?, ?)'
+        );
+        foreach (array_keys($lookup) as $email) {
+            $stmt->execute([$email, $ip, $formType]);
+        }
+    } catch (Throwable $e) {
+        // Never let bookkeeping failure abort a legitimate submission.
+        error_log('SRS-SPPO: could not record submission rate limit: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -403,13 +568,54 @@ function csrf_verify(?string $token = null): bool
  * =====================================================================
  * The physical registers number entries sequentially, and the digital
  * index mirrors that habit:
- *   - register_next_logbook_numbers() suggests the next Entry No. (plus
- *     the last Book/Page/Line) so the encode dialog opens pre-filled;
+ *   - register_next_logbook_numbers() suggests the next Entry No. and
+ *     cascades Book/Page/Line: Line runs 1..REGISTER_LINES_PER_PAGE
+ *     within a page; past that the Page increments (1..REGISTER_PAGES_PER_BOOK
+ *     per book); past the last page the Book increments and is shown in
+ *     Roman numerals ("I", "II", ...). Rows that do not fit the scheme
+ *     (legacy/demo data) trigger a fresh "I / 1 / 1" suggestion. The
+ *     suggestion is only a pre-fill — dialog fields stay editable.
  *   - register_shift_entry_numbers() makes room for an entry inserted in
  *     the middle of a sequence by bumping every later entry with the same
  *     prefix up by one — it MUST run inside the caller's transaction so
  *     the shift lands together with the new row.
  */
+
+// Physical capacity of one register book: 10 lines per page, 500 pages per book.
+define('REGISTER_LINES_PER_PAGE', 10);
+define('REGISTER_PAGES_PER_BOOK', 500);
+
+/** Integer -> Roman numeral (1..3999); empty string outside that range. */
+function register_roman_numeral(int $number): string
+{
+    if ($number < 1 || $number > 3999) return '';
+    $pairs = [
+        1000 => 'M', 900 => 'CM', 500 => 'D', 400 => 'CD', 100 => 'C',
+        90 => 'XC', 50 => 'L', 40 => 'XL', 10 => 'X', 9 => 'IX',
+        5 => 'V', 4 => 'IV', 1 => 'I',
+    ];
+    $out = '';
+    foreach ($pairs as $value => $glyph) {
+        while ($number >= $value) { $out .= $glyph; $number -= $value; }
+    }
+    return $out;
+}
+
+/** Roman numeral -> integer ("I" -> 1); null when not a valid Roman numeral. */
+function register_roman_to_int(string $roman): ?int
+{
+    $roman = strtoupper(trim($roman));
+    if ($roman === '' || !preg_match('/^[IVXLCDM]+$/', $roman)) return null;
+    $values = ['I' => 1, 'V' => 5, 'X' => 10, 'L' => 50, 'C' => 100, 'D' => 500, 'M' => 1000];
+    $total = 0;
+    $len = strlen($roman);
+    for ($i = 0; $i < $len; $i++) {
+        $v = $values[$roman[$i]];
+        $next = $i + 1 < $len ? $values[$roman[$i + 1]] : 0;
+        $total += ($v < $next) ? -$v : $v; // subtractive pair (IV, IX, XL, ...)
+    }
+    return $total;
+}
 
 /**
  * Split an entry number into prefix + trailing number, e.g.
@@ -430,30 +636,50 @@ function register_build_entry_no(array $parts, int $number): string
 }
 
 /**
- * Suggest the next logbook numbers from the most recently encoded row:
- * Entry No. = last + 1 (same prefix and zero-padding), Book/Page copied
- * as-is, Line + 1 when the last line is purely numeric. Every field stays
- * editable in the dialog — these are only suggestions.
+ * Suggest the next logbook numbers from the most recently encoded row,
+ * cascading Line -> Page -> Book across the physical limits:
+ *   Line 1..REGISTER_LINES_PER_PAGE (overflow: next page, line 1)
+ *   Page 1..REGISTER_PAGES_PER_BOOK (overflow: next book in Roman numerals, page 1)
+ * When the last row does not fit the scheme (legacy/demo data) the
+ * suggestion restarts at Book "I", Page 1, Line 1. Suggestions only —
+ * the encode dialog fields remain fully editable.
  *
  * @param string $table Register table name — page-authored, never user input.
  */
-function register_next_logbook_numbers(PDO $pdo, string $table): array
+function register_next_logbook_numbers(PDO $pdo, string $table, bool $lockRows = false): array
 {
-    $row = $pdo->query("SELECT entry_no, book_no, page_no, line_no FROM {$table} ORDER BY id DESC LIMIT 1")->fetch();
-    if (!$row) return ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => ''];
+    $lock = $lockRows ? ' FOR UPDATE' : '';
+    $row = $pdo->query("SELECT entry_no, book_no, page_no, line_no FROM {$table} ORDER BY id DESC LIMIT 1{$lock}")->fetch();
+    if (!$row) return ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
 
     $entryNo = '';
     $parts = register_parse_entry_no((string) ($row['entry_no'] ?? ''));
     if ($parts) $entryNo = register_build_entry_no($parts, $parts['number'] + 1);
 
-    $lineNo = (string) ($row['line_no'] ?? '');
-    if ($lineNo !== '' && ctype_digit($lineNo)) $lineNo = (string) ((int) $lineNo + 1);
+    // --- Book/Page/Line cascade ------------------------------------------
+    $bookRaw = trim((string) ($row['book_no'] ?? ''));
+    $pageRaw = trim((string) ($row['page_no'] ?? ''));
+    $lineRaw = trim((string) ($row['line_no'] ?? ''));
+
+    $bookInt = register_roman_to_int($bookRaw);
+    if ($bookInt === null && ctype_digit($bookRaw)) $bookInt = (int) $bookRaw;
+
+    if ($bookInt === null || !ctype_digit($pageRaw) || !ctype_digit($lineRaw)
+        || (int) $pageRaw < 1 || (int) $lineRaw < 1) {
+        // Legacy/nonconforming numbering (e.g. "B-1" / "17" / "9") — start fresh.
+        return ['entry_no' => $entryNo, 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
+    }
+
+    $page = (int) $pageRaw;
+    $line = (int) $lineRaw + 1;
+    if ($line > REGISTER_LINES_PER_PAGE) { $line = 1; $page++; }
+    if ($page > REGISTER_PAGES_PER_BOOK) { $page = 1; $bookInt++; }
 
     return [
         'entry_no' => $entryNo,
-        'book_no'  => (string) ($row['book_no'] ?? ''),
-        'page_no'  => (string) ($row['page_no'] ?? ''),
-        'line_no'  => $lineNo,
+        'book_no'  => register_roman_numeral($bookInt),
+        'page_no'  => (string) $page,
+        'line_no'  => (string) $line,
     ];
 }
 
@@ -482,6 +708,61 @@ function register_shift_entry_numbers(PDO $pdo, string $table, string $entryNo):
         $shifted++;
     }
     return $shifted;
+}
+
+function structured_name_parts(string $fullName): array
+{
+    $tokens = preg_split('/\s+/', trim($fullName), -1, PREG_SPLIT_NO_EMPTY);
+    $suffix = '';
+    if ($tokens && in_array(strtolower(end($tokens)), ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'], true)) {
+        $suffix = array_pop($tokens);
+    }
+    $first = array_shift($tokens) ?? '';
+    $last = array_pop($tokens) ?? '';
+    return [$first, implode(' ', $tokens), $last, $suffix];
+}
+
+function compose_structured_name(string $first, string $middle, string $last, string $suffix = ''): string
+{
+    return trim(implode(' ', array_filter([trim($first), trim($middle), trim($last), trim($suffix)])));
+}
+
+function display_name_with_middle_initial(string $fullName): string
+{
+    $fullName = trim((string) $fullName);
+    if ($fullName === '') {
+        return '';
+    }
+
+    $tokens = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY);
+    if (count($tokens) === 0) {
+        return $fullName;
+    }
+
+    $suffix = '';
+    if (count($tokens) > 1 && in_array(strtolower((string) end($tokens)), ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'], true)) {
+        $suffix = array_pop($tokens);
+    }
+
+    $first = array_shift($tokens) ?? '';
+    $last = array_pop($tokens) ?? '';
+    $middle = implode(' ', $tokens);
+
+    if ($first === '' && $last === '') {
+        return $fullName;
+    }
+
+    $formatted = trim(implode(' ', array_filter([
+        $first,
+        $middle !== '' ? ((function_exists('mb_substr') ? mb_substr($middle, 0, 1) : substr($middle, 0, 1))) . '.' : '',
+        $last,
+    ])));
+
+    if ($suffix !== '') {
+        $formatted .= ' ' . $suffix;
+    }
+
+    return $formatted !== '' ? $formatted : $fullName;
 }
 
 // ---------------------------------------------------------------------
@@ -727,6 +1008,55 @@ function notify_sacrament_application_status(
         "{$kind} application ({$trackingNumber}) is now {$state}" . ($extra !== '' ? '. ' . $extra : ''),
         '/admin/requests/applications-queue.php?status=' . urlencode($newStatus)
     );
+
+    // Applications may have one email (Baptism, Confirmation, First Communion)
+    // or two emails (Marriage). Delivery is best-effort and is recorded in the
+    // email delivery log; a mail failure must never block the status change.
+    $emails = [];
+    try {
+        if ($sacramentType === 'marriage') {
+            $stmt = $pdo->prepare('SELECT ma.application_id, groom_email, bride_email FROM marriage_applications ma JOIN sacrament_applications sa ON sa.id = ma.application_id WHERE sa.tracking_number = ?');
+            $stmt->execute([$trackingNumber]);
+            $row = $stmt->fetch() ?: [];
+            $emails = [$row['groom_email'] ?? '', $row['bride_email'] ?? ''];
+            $applicationId = (int) ($row['application_id'] ?? 0);
+        } else {
+            $table = [
+                'baptismal' => 'baptismal_applications',
+                'confirmation' => 'confirmation_applications',
+                'first_communion' => 'first_communion_applications',
+            ][$sacramentType] ?? null;
+            if ($table) {
+                $stmt = $pdo->prepare("SELECT a.application_id, email FROM {$table} a JOIN sacrament_applications sa ON sa.id = a.application_id WHERE sa.tracking_number = ?");
+                $stmt->execute([$trackingNumber]);
+                $row = $stmt->fetch() ?: [];
+                $emails = [($row['email'] ?? '')];
+                $applicationId = (int) ($row['application_id'] ?? 0);
+            }
+        }
+        $kind .= ' Application';
+        foreach (array_unique(array_filter($emails)) as $email) {
+            mail_status_update($email, $trackingNumber, $state, $kind, $pdo, 'sacrament_application', $applicationId ?? null);
+        }
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO application status email failed: ' . $e->getMessage());
+    }
+}
+
+/** Send a certificate status alert and record the attempt in email_delivery_log. */
+function notify_certificate_requester_status(PDO $pdo, int $requestId, string $status): void
+{
+    try {
+        $stmt = $pdo->prepare('SELECT requester_email, tracking_number, sacrament_type FROM certificate_requests WHERE id = ?');
+        $stmt->execute([$requestId]);
+        $row = $stmt->fetch();
+        if (!$row) return;
+        $label = ucwords(str_replace('_', ' ', $status));
+        $kind = ucwords(str_replace('_', ' ', $row['sacrament_type'])) . ' Certificate';
+        mail_status_update($row['requester_email'], $row['tracking_number'], $label, $kind, $pdo, 'certificate_request', $requestId);
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO certificate status email failed: ' . $e->getMessage());
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -740,10 +1070,11 @@ function notify_sacrament_application_status(
 // straight from "generated" to "released"). "Mark Printed" is now a
 // first-class action on the generate/preview page.
 //
-// Superseded logs: when a request is regenerated, the prior generation-log
-// row is marked superseded (superseded_at) so only ONE active log exists
-// per request at any time. Only the current (non-superseded) log is
-// printable or releasable.
+// Regeneration is an IN-PLACE refresh: the existing generation-log row for a
+// request is updated rather than superseded-and-replaced, so exactly ONE log
+// row exists per request and superseded_at is never set by the application.
+// The superseded_at IS NULL guards below therefore always pass; they are kept
+// as a cheap invariant check rather than as live workflow state.
 //
 // Reuse cert_request_transition_valid() in generate.php and history.php
 // rather than duplicating status rules inline.
@@ -764,12 +1095,18 @@ function notify_sacrament_application_status(
 function cert_request_transition_valid(string $from, string $to): bool
 {
     static $map = [
-        'pending'          => ['under_review', 'rejected'],
-        'under_review'     => ['approved', 'rejected'],
-        'approved'         => ['ready_for_pickup'],
-        'ready_for_pickup' => ['released'],
-        'released'         => [],
-        'rejected'         => [],
+        'pending'                    => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'submitted'                 => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'under_review'              => ['requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
+        'requirements_pending'      => ['requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
+        'requirements_incomplete'   => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'awaiting_onsite_verification' => ['approved', 'rejected', 'cancelled'],
+        'approved'                  => ['processing', 'ready_for_pickup', 'rejected', 'cancelled'],
+        'processing'                => ['ready_for_pickup'],
+        'ready_for_pickup'          => ['released'],
+        'released'                  => [],
+        'rejected'                  => [],
+        'cancelled'                 => [],
     ];
     return isset($map[$from]) && in_array($to, $map[$from], true);
 }
@@ -795,31 +1132,6 @@ function cert_current_generation_log(PDO $pdo, int $requestId): ?array
     $row = $stmt->fetch();
     return $row ?: null;
 }
-
-/**
- * Marks a generation-log row as superseded (Regenerated), recording the
- * regeneration staff member and timestamp.
- *
- * Use this when a new generation log is created for a request that already
- * has an active (non-superseded) log — i.e. the user explicitly chose to
- * regenerate.
- *
- * @param PDO    $pdo      Active database connection.
- * @param int    $logId    certificate_generation_log.id to mark superseded.
- * @param int    $staffId  Staff user who performed the regeneration.
- * @return int             Number of rows affected (1 on success).
- */
-function mark_generation_superseded(PDO $pdo, int $logId, int $staffId): int
-{
-    $stmt = $pdo->prepare(
-        'UPDATE certificate_generation_log
-         SET superseded_at = NOW(), superseded_by = ?
-         WHERE id = ? AND superseded_at IS NULL'
-    );
-    $stmt->execute([$staffId, $logId]);
-    return $stmt->rowCount();
-}
-
 
 /**
  * Marks the current generation log for a request as "printed".
@@ -850,9 +1162,12 @@ function log_certificate_printed(PDO $pdo, int $requestId, int $staffId): array
     $stmt = $pdo->prepare(
         'UPDATE certificate_generation_log
          SET print_status = "printed", printed_by = ?, printed_at = NOW()
-         WHERE id = ?'
+         WHERE id = ? AND print_status = "generated" AND superseded_at IS NULL'
     );
     $stmt->execute([$staffId, $current['id']]);
+    if ($stmt->rowCount() !== 1) {
+        return ['ok' => false, 'reason' => 'The certificate changed before printing could be recorded. Refresh and try again.'];
+    }
     return ['ok' => true];
 }
 
@@ -892,7 +1207,7 @@ function log_certificate_released(
 ): array {
     // --- Validate the request status transition -------------------------
     $requestStmt = $pdo->prepare(
-        'SELECT status FROM certificate_requests WHERE id = ?'
+        'SELECT status, requester_email, tracking_number, sacrament_type FROM certificate_requests WHERE id = ?'
     );
     $requestStmt->execute([$requestId]);
     $requestRow = $requestStmt->fetch();
@@ -923,6 +1238,12 @@ function log_certificate_released(
             'reason' => 'This certificate has already been released (or is not yet marked printed).',
         ];
     }
+    if (empty($current['finalized_at'])) {
+        return [
+            'ok' => false,
+            'reason' => 'This certificate must be finalized as signed and sealed before it can be released.',
+        ];
+    }
 
     // --- Apply within a transaction ------------------------------------
     try {
@@ -932,9 +1253,12 @@ function log_certificate_released(
         $releaseStmt = $pdo->prepare(
             'UPDATE certificate_generation_log
              SET print_status = "released", pickup_date = NOW()
-             WHERE id = ?'
+             WHERE id = ? AND print_status = "printed" AND finalized_at IS NOT NULL AND superseded_at IS NULL'
         );
         $releaseStmt->execute([$logId]);
+        if ($releaseStmt->rowCount() !== 1) {
+            throw new RuntimeException('The certificate changed before release could be recorded. Refresh and try again.');
+        }
 
         // Flip the request status to released.
         $reqUp = $pdo->prepare(
@@ -943,6 +1267,9 @@ function log_certificate_released(
              WHERE id = ?'
         );
         $reqUp->execute([$staffId, $requestId]);
+        if ($reqUp->rowCount() !== 1) {
+            throw new RuntimeException('The request changed before release could be recorded. Refresh and try again.');
+        }
 
         // Audit-log the release with the claimant verification details.
         $releaseNote = sprintf(
@@ -972,6 +1299,17 @@ function log_certificate_released(
         );
 
         $pdo->commit();
+        if (!empty($requestRow['requester_email'])) {
+            mail_status_update(
+                $requestRow['requester_email'],
+                $requestRow['tracking_number'],
+                'Released',
+                $kind,
+                $pdo,
+                'certificate_request',
+                $requestId
+            );
+        }
         return ['ok' => true];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -986,21 +1324,21 @@ function log_certificate_released(
 
 function sacrament_application_status_flow(): array
 {
-    $common = ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+    $common = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
     return [
         'baptismal'       => $common,
         'confirmation'    => $common,
         'first_communion' => $common,
-        'marriage'        => ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+        'marriage'       => ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'],
     ];
 }
 
 function sacrament_application_transition_valid(string $from, string $to, ?string $sacramentType = null): bool
 {
-    if (in_array($from, ['completed', 'rejected'], true) && $from !== $to) {
+    if (in_array($from, ['completed', 'rejected', 'cancelled'], true) && $from !== $to) {
         return false;
     }
-    $all = ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+    $all = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
     if (!in_array($to, $all, true)) {
         return false;
     }
@@ -1011,13 +1349,13 @@ function sacrament_application_transition_valid(string $from, string $to, ?strin
             return false;
         }
     }
-    if ($to === 'rejected') {
+    if (in_array($to, ['rejected', 'cancelled'], true)) {
         return true;
     }
     if ($from === $to) {
         return true;
     }
-    $pipe = ['submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed'];
+    $pipe = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed'];
     $fp = array_search($from, $pipe, true);
     $tp = array_search($to, $pipe, true);
     if ($fp === false || $tp === false) {
@@ -1106,4 +1444,243 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
         return ['ok' => $missing === [], 'missing' => $missing];
     }
     return ['ok' => false, 'missing' => ['Unknown sacrament type.']];
+}
+
+
+/* =====================================================================
+ * WORKFLOW REQUIREMENTS CHECKLIST
+ * ===================================================================== */
+
+/** Return the default checklist labels for a transaction type. */
+function workflow_requirement_templates(string $entityType, string $sacramentType): array
+{
+    if ($entityType === 'certificate_request') {
+        $templates = [
+            'baptismal' => [
+                'request_details' => 'Request details verified',
+                'subject_identity' => 'Subject identity and birth details verified',
+                'register_record' => 'Baptismal register record located',
+                'supporting_document' => 'Supporting document received and reviewed',
+            ],
+            'confirmation' => [
+                'request_details' => 'Request details verified',
+                'subject_identity' => 'Subject identity and birth details verified',
+                'register_record' => 'Confirmation register record located',
+                'supporting_document' => 'Supporting document received and reviewed',
+            ],
+            'first_communion' => [
+                'request_details' => 'Request details verified',
+                'subject_identity' => 'Subject identity and birth details verified',
+                'register_record' => 'First Communion register record located',
+                'supporting_document' => 'Supporting document received and reviewed',
+            ],
+            'marriage' => [
+                'request_details' => 'Request details verified',
+                'party_identity' => 'Parties and marriage details verified',
+                'register_record' => 'Marriage register record located',
+                'supporting_document' => 'Supporting document received and reviewed',
+            ],
+        ];
+        return $templates[$sacramentType] ?? [];
+    }
+
+    return [
+        'application_details' => 'Application details verified',
+        'requirements' => 'Required documents received and reviewed',
+        'parish_review' => 'Parish review requirements completed',
+    ];
+}
+
+/** Create missing default checklist rows; safe to call on every detail page. */
+function ensure_workflow_requirements(PDO $pdo, string $entityType, int $entityId, string $sacramentType): void
+{
+    try {
+        $stmt = $pdo->prepare('INSERT IGNORE INTO workflow_requirements (entity_type, entity_id, requirement_key, requirement_label) VALUES (?, ?, ?, ?)');
+        foreach (workflow_requirement_templates($entityType, $sacramentType) as $key => $label) {
+            $stmt->execute([$entityType, $entityId, $key, $label]);
+        }
+    } catch (Throwable $e) {
+        // Older installations can continue operating until migration 019 is applied.
+    }
+}
+
+/** Fetch checklist rows for a transaction. */
+function workflow_requirements_for(PDO $pdo, string $entityType, int $entityId): array
+{
+    try {
+        $stmt = $pdo->prepare('SELECT wr.*, u.full_name AS reviewer_name FROM workflow_requirements wr LEFT JOIN users u ON u.id = wr.reviewed_by WHERE wr.entity_type = ? AND wr.entity_id = ? ORDER BY wr.id');
+        $stmt->execute([$entityType, $entityId]);
+        return $stmt->fetchAll();
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function workflow_requirement_status_label(string $status): string
+{
+    return ucwords(str_replace('_', ' ', $status));
+}
+
+/** Human-facing certificate stages. Legacy values are mapped without changing old data. */
+function certificate_timeline_definition(string $status): array
+{
+    $stages = [
+        ['key' => 'received', 'label' => 'Received'],
+        ['key' => 'processing', 'label' => 'Processing'],
+        ['key' => 'for_printing', 'label' => 'For Printing'],
+        ['key' => 'finalizing', 'label' => 'Finalizing'],
+        ['key' => 'ready_for_pickup', 'label' => 'Ready for Pickup'],
+        ['key' => 'released', 'label' => 'Released'],
+    ];
+    $map = [
+        'pending' => 0, 'submitted' => 0, 'under_review' => 1, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'awaiting_onsite_verification' => 1, 'approved' => 2, 'processing' => 3,
+        'for_printing' => 2, 'finalizing' => 3,
+        'ready_for_pickup' => 4, 'released' => 5,
+        'rejected' => 1, 'correction_needed' => 1, 'unable_to_locate_record' => 1,
+    ];
+    $index = $map[$status] ?? 0;
+    return ['stages' => $stages, 'index' => $index, 'terminal' => in_array($status, ['rejected', 'cancelled'], true)];
+}
+
+/**
+ * Generate a cryptographically secure UUIDv4 string.
+ */
+function generate_uuidv4(): string
+{
+    $data = random_bytes(16);
+    $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // set version to 0100
+    $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // set bits 6-7 to 10
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+// =============================================================================
+// CERTIFICATE NAME CASING (display-only -- never mutates stored data)
+// =============================================================================
+// Names are stored exactly as encoded or typed (mixed/lower/whatever the
+// secretary or requester used) so the raw value stays useful for spotting
+// records that need cleanup. These two helpers format a COPY of a name for
+// printing on an actual certificate, matching the parish's existing
+// baptismal-certificate convention: the person(s) being certified in ALL
+// CAPS, everyone else (parents, minister, sponsors) in Title Case.
+// Used by admin/certificates/generate.php and admin/certificates/baptismal-certificate.php.
+
+/**
+ * Title-case a name for certificate printing, keeping common Filipino/Spanish
+ * name particles lowercase (e.g. "Juan de la Cruz", not "Juan De La Cruz")
+ * and common suffixes in their conventional form ("Jr.", "III").
+ * A placeholder dash or empty string is returned unchanged.
+ */
+function cert_format_title_case(string $value): string
+{
+    $value = trim($value);
+    if ($value === '' || $value === '—') {
+        return $value;
+    }
+
+    // Parish naming convention keeps "de/dela/del/..." capitalized as part of
+    // the surname (e.g. "Ramon Dela Cruz", "Maria De Guzman") -- only the
+    // Spanish conjunction "y" ("and", as in "Garcia y Santos") stays lowercase.
+    static $suffixes = ['jr' => 'Jr.', 'sr' => 'Sr.', 'ii' => 'II', 'iii' => 'III', 'iv' => 'IV'];
+    static $lowerParticles = ['y'];
+
+    $words = preg_split('/\s+/', $value);
+    $out = [];
+    foreach ($words as $i => $word) {
+        $bare = rtrim($word, '.,');
+        $key = function_exists('mb_strtolower') ? mb_strtolower($bare, 'UTF-8') : strtolower($bare);
+        if (isset($suffixes[$key])) {
+            $out[] = $suffixes[$key];
+        } elseif ($i > 0 && in_array($key, $lowerParticles, true)) {
+            $out[] = $key;
+        } else {
+            $out[] = function_exists('mb_convert_case') ? mb_convert_case($word, MB_CASE_TITLE, 'UTF-8') : ucwords(strtolower($word));
+        }
+    }
+    return implode(' ', $out);
+}
+
+/**
+ * Upper-case a name for certificate printing (the certified person's own
+ * name). A placeholder dash or empty string is returned unchanged.
+ */
+function cert_format_upper_case(string $value): string
+{
+    $value = trim($value);
+    if ($value === '' || $value === '—') {
+        return $value;
+    }
+    return function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
+}
+
+function admin_sort_url(string $url, string $key, string $sort): string
+{
+    if ($key === 'date') {
+        $next = $sort === 'date_desc' ? 'date_asc' : 'date_desc';
+    } else {
+        $next = $sort === $key ? $key . '_desc' : ($sort === $key . '_desc' ? $key : $key);
+    }
+    $query = $_GET;
+    $query['sort'] = $next;
+    $query['page'] = 1;
+    return $url . '?' . http_build_query($query);
+}
+
+function admin_sort_indicator(string $key, string $sort): string
+{
+    $direction = null;
+    if ($key === 'date') {
+        $direction = $sort === 'date_desc' ? 'desc' : ($sort === 'date_asc' ? 'asc' : null);
+    } elseif ($sort === $key) {
+        $direction = 'asc';
+    } elseif ($sort === $key . '_desc') {
+        $direction = 'desc';
+    }
+    if ($direction === 'asc') {
+        return ' <span class="sort-indicator" aria-hidden="true">↑</span>';
+    }
+    if ($direction === 'desc') {
+        return ' <span class="sort-indicator" aria-hidden="true">↓</span>';
+    }
+    return ' <span class="sort-indicator sort-indicator-muted" aria-hidden="true">↕</span>';
+}
+
+// =====================================================================
+// SCHEDULE CONFLICT HELPERS
+// =====================================================================
+// Shared by admin/schedule/calendar.php and admin/schedule/booking-conflicts.php
+// so "conflict" always means an actual TIME overlap, not just the same date.
+
+// Fallback event length used when a start_time exists but no end_time was
+// given (e.g. a wedding application only records a single preferred time).
+define('DEFAULT_EVENT_SLOT_MINUTES', 60);
+
+/**
+ * Whether two time windows on the same day overlap.
+ *
+ * A missing start time on either side means "time not yet confirmed" — we
+ * can't rule out an overlap, so it's still reported as a possible conflict;
+ * callers should distinguish this from a confirmed time clash in the UI.
+ */
+function event_times_overlap(?string $aStart, ?string $aEnd, ?string $bStart, ?string $bEnd, int $defaultMinutes = DEFAULT_EVENT_SLOT_MINUTES): bool
+{
+    if ($aStart === null || $bStart === null) {
+        return true; // can't confirm either way — flag for manual review
+    }
+    $aStartTs = strtotime($aStart);
+    $bStartTs = strtotime($bStart);
+    $aEndTs = $aEnd !== null ? strtotime($aEnd) : $aStartTs + $defaultMinutes * 60;
+    $bEndTs = $bEnd !== null ? strtotime($bEnd) : $bStartTs + $defaultMinutes * 60;
+    return $aStartTs < $bEndTs && $bStartTs < $aEndTs;
+}
+
+/**
+ * Format a start/end time pair as "10:00 AM–11:00 AM" (or just the start
+ * time when there's no end). Returns '' when there's no start time.
+ */
+function format_event_time_range(?string $start, ?string $end): string
+{
+    if ($start === null) return '';
+    $label = date('g:i A', strtotime($start));
+    if ($end !== null) $label .= '–' . date('g:i A', strtotime($end));
+    return $label;
 }

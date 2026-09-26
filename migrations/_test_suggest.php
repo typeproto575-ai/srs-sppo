@@ -1,4 +1,8 @@
 <?php
+/**
+ * Developer-only CLI smoke test for database-backed suggestion helpers.
+ * This is not part of the public or administrator application paths.
+ */
 // Boot smoke test: functions + DB config + security headers (CLI-safe paths).
 require __DIR__ . '/../includes/functions.php';
 require __DIR__ . '/../config/database.php';

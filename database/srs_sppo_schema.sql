@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS srs_sppo_db
 USE srs_sppo_db;
 
 -- =====================================================================
--- 1. USERS (staff accounts — secretary role only; the priest is not a system user)
+-- 1. USERS (Parish Administrator and Secretary staff accounts)
 -- =====================================================================
 
 CREATE TABLE users (
@@ -19,8 +19,9 @@ CREATE TABLE users (
   username        VARCHAR(50)  NOT NULL UNIQUE,
   email           VARCHAR(150) NOT NULL UNIQUE,
   password_hash   VARCHAR(255) NOT NULL,
-  role            ENUM('secretary') NOT NULL DEFAULT 'secretary',
+  role            ENUM('secretary','parish_admin') NOT NULL DEFAULT 'secretary',
   is_active       TINYINT(1) NOT NULL DEFAULT 1,
+  auth_version    INT UNSIGNED NOT NULL DEFAULT 1,
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -57,7 +58,12 @@ CREATE TABLE baptismal_records (
   entry_no          VARCHAR(20),
   baptism_date      DATE NOT NULL,
   baptism_place     VARCHAR(150),          -- Locus Baptismi (per Baptismal Register)
+  child_birthplace  VARCHAR(150),          -- Child's place of birth (printed on certificates)
   child_full_name   VARCHAR(150) NOT NULL,
+  child_first_name  VARCHAR(100),
+  child_middle_name VARCHAR(100),
+  child_last_name   VARCHAR(100),
+  child_suffix      VARCHAR(20),
   birth_date        DATE,
   legitimacy        ENUM('legitimate', 'illegitimate') NULL,  -- internal only, never exposed on outputs
   union_type        ENUM('legitimate', 'civil', 'natural') NULL,  -- Legitimate=Church Marriage, Civil=Civil Marriage, Natural=Not Married
@@ -78,7 +84,11 @@ CREATE TABLE baptismal_records (
   encoded_by        INT UNSIGNED,
   certificate_request_id INT UNSIGNED,  -- reverse link: approved cert request that cited this record (set on match)
   person_id         INT UNSIGNED,        -- bridge to persons.id (Person Mapper)
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
+  mapper_skipped_at DATETIME NULL,
+  book_verified_by  INT UNSIGNED,        -- secretary who confirmed this entry vs. the physical register (031)
+  book_verified_at  DATETIME NULL,
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE baptismal_sponsors (
@@ -96,6 +106,10 @@ CREATE TABLE confirmation_records (
   entry_no            VARCHAR(20),
   confirmation_date   DATE NOT NULL,
   confirmand_full_name VARCHAR(150) NOT NULL,
+  confirmand_first_name VARCHAR(100),
+  confirmand_middle_name VARCHAR(100),
+  confirmand_last_name VARCHAR(100),
+  confirmand_suffix VARCHAR(20),
   birthdate           DATE,
   father_name         VARCHAR(150),
   mother_maiden_name  VARCHAR(150),          -- renamed from mother_name for consistency with baptismal_records
@@ -110,8 +124,12 @@ CREATE TABLE confirmation_records (
   encoded_by          INT UNSIGNED,
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   person_id           INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
+  mapper_skipped_at   DATETIME NULL,
+  book_verified_by    INT UNSIGNED,      -- secretary who confirmed this entry vs. the physical register (031)
+  book_verified_at    DATETIME NULL,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- --- First Communion ---------------------------------------------------
@@ -120,6 +138,10 @@ CREATE TABLE first_communion_records (
   entry_no              VARCHAR(20),
   communion_date        DATE NOT NULL,
   communicant_full_name VARCHAR(150) NOT NULL,
+  communicant_first_name VARCHAR(100),
+  communicant_middle_name VARCHAR(100),
+  communicant_last_name VARCHAR(100),
+  communicant_suffix VARCHAR(20),
   domicile              VARCHAR(255),      -- address per Book of First Communicants
   father_name           VARCHAR(150),
   mother_maiden_name    VARCHAR(150),        -- renamed from mother_name for consistency with baptismal_records
@@ -133,8 +155,12 @@ CREATE TABLE first_communion_records (
   encoded_by            INT UNSIGNED,
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   person_id             INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
+  mapper_skipped_at     DATETIME NULL,
+  book_verified_by      INT UNSIGNED,    -- secretary who confirmed this entry vs. the physical register (031)
+  book_verified_at      DATETIME NULL,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- --- Marriage ------------------------------------------------------------
@@ -143,11 +169,29 @@ CREATE TABLE marriage_records (
   entry_no            VARCHAR(20),
   marriage_date       DATE NOT NULL,
   husband_full_name   VARCHAR(150) NOT NULL,
+  husband_first_name  VARCHAR(100),
+  husband_middle_name VARCHAR(100),
+  husband_last_name   VARCHAR(100),
+  husband_suffix      VARCHAR(20),
   wife_maiden_name    VARCHAR(150) NOT NULL,
+  wife_first_name     VARCHAR(100),
+  wife_middle_name    VARCHAR(100),
+  wife_last_name      VARCHAR(100),
+  wife_suffix         VARCHAR(20),
   husband_birthdate   DATE,
   husband_birthplace  VARCHAR(150),
+  husband_civil_status VARCHAR(50),
+  husband_age         INT UNSIGNED,
+  husband_origin      VARCHAR(150),
+  husband_residence   VARCHAR(255),
+  husband_parents_name VARCHAR(255),
   wife_birthdate      DATE,
   wife_birthplace     VARCHAR(150),
+  wife_civil_status   VARCHAR(50),
+  wife_age            INT UNSIGNED,
+  wife_origin         VARCHAR(150),
+  wife_residence      VARCHAR(255),
+  wife_parents_name   VARCHAR(255),
   officiating_minister VARCHAR(150),
   remarks             TEXT,
   book_no             VARCHAR(20),
@@ -158,7 +202,12 @@ CREATE TABLE marriage_records (
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
   husband_person_id   INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
   wife_person_id      INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
+  husband_mapper_skipped_at DATETIME NULL,
+  wife_mapper_skipped_at    DATETIME NULL,
+  book_verified_by     INT UNSIGNED,      -- secretary who confirmed this entry vs. the physical register (031)
+  book_verified_at     DATETIME NULL,
+  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE marriage_witnesses (
@@ -194,19 +243,20 @@ CREATE TABLE death_burial_records (
 CREATE TABLE certificate_requests (
   id                          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   tracking_number             VARCHAR(30) NOT NULL UNIQUE,
+  submission_channel          ENUM('online','onsite') NOT NULL DEFAULT 'onsite',
   sacrament_type              ENUM('baptismal', 'confirmation', 'first_communion', 'marriage') NOT NULL,
   requester_name              VARCHAR(150) NOT NULL,
   requester_relationship      ENUM('self', 'parent', 'guardian', 'spouse', 'sibling', 'child', 'other') NOT NULL,
   requester_relationship_other VARCHAR(100),
   requester_email             VARCHAR(150) NOT NULL,
-  requester_contact_number    VARCHAR(30) NOT NULL,
-  purpose                     ENUM('marriage', 'school', 'employment', 'travel', 'civil_registration', 'immigration', 'legal', 'other') NOT NULL,
+  requester_contact_number    VARCHAR(30),
+  purpose                     VARCHAR(40) NOT NULL,  -- values come from the public forms (see migration 030)
   purpose_other               VARCHAR(150),
-  num_copies                  TINYINT UNSIGNED NOT NULL DEFAULT 1,
   notes                       TEXT,
-  status                      ENUM('pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected') NOT NULL DEFAULT 'pending',
+  status                      ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending',
   date_submitted               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed               DATETIME,
+  verification_code            VARCHAR(64) NULL UNIQUE,
   processed_by                 INT UNSIGNED,
   FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -217,7 +267,7 @@ CREATE TABLE baptismal_certificate_requests (
   child_full_name      VARCHAR(150) NOT NULL,
   father_full_name     VARCHAR(150) NOT NULL,
   mother_full_name     VARCHAR(150) NOT NULL,
-  birthplace           VARCHAR(150) NOT NULL,
+  birthplace           VARCHAR(150),
   birthdate            DATE NOT NULL,
   date_of_baptism      DATE,
   officiating_minister VARCHAR(150),
@@ -308,10 +358,9 @@ CREATE TABLE marriage_certificate_requests (
 CREATE TABLE sacrament_applications (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   tracking_number VARCHAR(30) NOT NULL UNIQUE,
+  submission_channel ENUM('online','onsite') NOT NULL DEFAULT 'onsite',
   sacrament_type  ENUM('baptismal', 'confirmation', 'first_communion', 'marriage') NOT NULL,
-  status          ENUM('submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress',
-                        'seminar_pending', 'ready_for_approval', 'approved', 'scheduled',
-                        'completed', 'rejected') NOT NULL DEFAULT 'submitted',
+  status          ENUM('submitted','requirements_pending','requirements_incomplete','awaiting_onsite_verification','documents_pending','interview_scheduled','banns_in_progress','seminar_pending','ready_for_approval','approved','scheduled','completed','rejected','cancelled') NOT NULL DEFAULT 'submitted',
   date_submitted  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed  DATETIME,
   processed_by    INT UNSIGNED,
@@ -332,7 +381,7 @@ CREATE TABLE baptismal_applications (
   parents_address       VARCHAR(255),          -- per parish form
   parents_union_type    ENUM('legitimate', 'civil', 'natural') DEFAULT 'legitimate', -- per parish form
   parent_guardian_name  VARCHAR(150) NOT NULL, -- whoever is submitting/vouching for the child
-  contact_number        VARCHAR(30) NOT NULL,
+  contact_number        VARCHAR(30),
   email                 VARCHAR(150) NOT NULL,
   preferred_date         DATE,
   delegated_minister     VARCHAR(150),          -- per parish form
@@ -362,12 +411,28 @@ CREATE TABLE confirmation_applications (
   application_id        INT UNSIGNED NOT NULL UNIQUE,
   applicant_full_name   VARCHAR(150) NOT NULL,
   applicant_birthdate   DATE NOT NULL,
+  applicant_gender      VARCHAR(20),
+  applicant_birthplace  VARCHAR(150),
+  current_address       VARCHAR(255),
+  school_name           VARCHAR(150),
+  grade_level_section   VARCHAR(100),
+  adviser_name          VARCHAR(150),
   parent_guardian_name  VARCHAR(150) NOT NULL,
-  contact_number        VARCHAR(30) NOT NULL,
+  father_full_name      VARCHAR(150),
+  mother_maiden_name    VARCHAR(150),
+  contact_number        VARCHAR(30),
   email                 VARCHAR(150) NOT NULL,
+  parents_catholic_married VARCHAR(30),
   baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
+  baptism_date          DATE,
+  baptism_parish_name   VARCHAR(150),
+  baptism_parish_address VARCHAR(255),
   baptismal_record_id   INT UNSIGNED,
   baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
+  psa_birth_certificate_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  catechetical_formation_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  confession_completed  TINYINT(1) NOT NULL DEFAULT 0,
+  parental_consent      TINYINT(1) NOT NULL DEFAULT 0,
   preferred_batch       VARCHAR(50),
   sponsor_name          VARCHAR(150),
   age_eligibility_flag  TINYINT(1) NOT NULL DEFAULT 0,
@@ -382,7 +447,7 @@ CREATE TABLE first_communion_applications (
   applicant_full_name   VARCHAR(150) NOT NULL,
   applicant_birthdate   DATE NOT NULL,
   parent_guardian_name  VARCHAR(150) NOT NULL,
-  contact_number        VARCHAR(30) NOT NULL,
+  contact_number        VARCHAR(30),
   email                 VARCHAR(150) NOT NULL,
   baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
   baptismal_record_id   INT UNSIGNED,
@@ -401,10 +466,18 @@ CREATE TABLE marriage_applications (
   groom_full_name             VARCHAR(150) NOT NULL,
   groom_birthdate             DATE NOT NULL,
   groom_birthplace            VARCHAR(150) NOT NULL,
-  groom_contact_number        VARCHAR(30) NOT NULL,
+  groom_current_address       VARCHAR(255),
+  groom_address_length        VARCHAR(80),
+  groom_contact_number        VARCHAR(30),
   groom_email                 VARCHAR(150) NOT NULL,
+  groom_religion              VARCHAR(100),
+  groom_occupation            VARCHAR(150),
+  groom_father_name           VARCHAR(150),
+  groom_mother_maiden_name    VARCHAR(150),
   groom_marital_status        ENUM('single', 'widowed', 'annulled') NOT NULL,
   groom_baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
+  groom_confirmed              TINYINT(1) NOT NULL DEFAULT 0,
+  groom_previous_marriage     VARCHAR(30),
   groom_baptismal_record_id   INT UNSIGNED,
   groom_baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   groom_confirmation_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
@@ -412,10 +485,18 @@ CREATE TABLE marriage_applications (
   bride_full_name             VARCHAR(150) NOT NULL,
   bride_birthdate             DATE NOT NULL,
   bride_birthplace            VARCHAR(150) NOT NULL,
-  bride_contact_number        VARCHAR(30) NOT NULL,
+  bride_current_address       VARCHAR(255),
+  bride_address_length        VARCHAR(80),
+  bride_contact_number        VARCHAR(30),
   bride_email                 VARCHAR(150) NOT NULL,
+  bride_religion              VARCHAR(100),
+  bride_occupation            VARCHAR(150),
+  bride_father_name           VARCHAR(150),
+  bride_mother_maiden_name    VARCHAR(150),
   bride_marital_status        ENUM('single', 'widowed', 'annulled') NOT NULL,
   bride_baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
+  bride_confirmed              TINYINT(1) NOT NULL DEFAULT 0,
+  bride_previous_marriage     VARCHAR(30),
   bride_baptismal_record_id   INT UNSIGNED,
   bride_baptismal_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
   bride_confirmation_cert_status ENUM('submitted', 'pending') NOT NULL DEFAULT 'pending',
@@ -423,8 +504,21 @@ CREATE TABLE marriage_applications (
   preferred_wedding_date      DATE NOT NULL,
   preferred_wedding_time      TIME,
   preferred_wedding_venue     ENUM('church','barangay_chapel') NOT NULL DEFAULT 'church',  -- Kasal venue
+  assigned_priest_name        VARCHAR(150),
+  civilly_married_to_each_other TINYINT(1) NOT NULL DEFAULT 0,
+  civil_marriage_date         DATE,
+  civil_marriage_place        VARCHAR(150),
   venue_chapel_name           VARCHAR(150) DEFAULT NULL,  -- chapel name when preferred_wedding_venue = 'barangay_chapel'
-  marriage_license_ref      VARCHAR(100),  -- Marriage license reference number (text field, not upload)
+  marriage_license_ref      VARCHAR(100),
+  groom_cenomar_status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+  bride_cenomar_status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+  marriage_license_status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+  psa_marriage_contract_status VARCHAR(20) NOT NULL DEFAULT 'not_applicable',
+  groom_baptismal_annotated   TINYINT(1) NOT NULL DEFAULT 0,
+  bride_baptismal_annotated   TINYINT(1) NOT NULL DEFAULT 0,
+  groom_confirmation_annotated TINYINT(1) NOT NULL DEFAULT 0,
+  bride_confirmation_annotated TINYINT(1) NOT NULL DEFAULT 0,
+  -- Marriage license reference number (text field, not upload)
   pre_cana_seminar_completed  TINYINT(1) NOT NULL DEFAULT 0,
   pre_cana_completion_date    DATE,
   canonical_interview_completed TINYINT(1) NOT NULL DEFAULT 0,
@@ -432,7 +526,8 @@ CREATE TABLE marriage_applications (
   banns_date_1                DATE,
   banns_date_2                DATE,
   banns_date_3                DATE,
-  assigned_priest_name        VARCHAR(150),
+  groom_banns_status           VARCHAR(30) NOT NULL DEFAULT 'pending',
+  bride_banns_status           VARCHAR(30) NOT NULL DEFAULT 'pending',
 
   FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE CASCADE,
   FOREIGN KEY (groom_baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
@@ -519,18 +614,62 @@ CREATE TABLE certificate_generation_log (
 ) ENGINE=InnoDB;
 
 -- =====================================================================
--- 8. AUDIT LOG (activity logging, per your admin dashboard's Audit Log page)
+-- 8. CERTIFICATE CORRECTION REQUESTS
+-- =====================================================================
+
+CREATE TABLE correction_requests (
+  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  tracking_number    VARCHAR(50) NOT NULL,
+  requester_name     VARCHAR(255) NOT NULL,
+  requester_email    VARCHAR(255) NOT NULL,
+  certificate_id     INT UNSIGNED NOT NULL,
+  requested_changes  TEXT NOT NULL,
+  document_path      VARCHAR(255),
+  admin_note         TEXT,
+  status             ENUM('pending','processing','completed','rejected') NOT NULL DEFAULT 'pending',
+  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_correction_tracking (tracking_number),
+  KEY idx_correction_status_created (status, created_at)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 9. AUDIT LOG (activity logging, per your admin dashboard's Audit Log page)
 -- =====================================================================
 
 CREATE TABLE audit_logs (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id      INT UNSIGNED,
+  role_snapshot ENUM('secretary','priest','parish_admin') DEFAULT NULL,
   action       VARCHAR(150) NOT NULL,
   target_table VARCHAR(100),
   target_id    INT UNSIGNED,
   description  TEXT,
+  ip_address   VARCHAR(45) DEFAULT NULL,
+  user_agent   VARCHAR(500) DEFAULT NULL,
+  reason       VARCHAR(500) DEFAULT NULL,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_audit_created_action (created_at, action),
+  KEY idx_audit_role (role_snapshot, created_at),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 9. PUBLIC SUBMISSION RATE LIMITS (abuse guard for the no-login forms)
+-- One row per successful public submission; powers the rolling 24h caps
+-- of 3 per email address and 20 per client IP enforced in
+-- includes/functions.php (see migrations/018_add_submission_rate_limits.sql).
+-- Rows are disposable -- safe to purge whenever.
+-- =====================================================================
+
+CREATE TABLE submission_rate_limits (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  email        VARCHAR(150) NOT NULL,
+  ip_address   VARCHAR(45) NOT NULL,
+  form_type    VARCHAR(50) NOT NULL,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_email_time (email, submitted_at),
+  KEY idx_ip_time    (ip_address, submitted_at)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -557,7 +696,7 @@ CREATE TABLE site_settings (
 INSERT INTO site_settings (setting_key, setting_value) VALUES
 ('hero_eyebrow_text', 'Parish Office Online'),
 ('hero_subtitle_text', 'Dingalan, Aurora - the parish''s sacrament records and certificates, kept faithfully for generations, now easier to reach.'),
-('office_hours_text', CONCAT('Tuesday - Friday: 8:00 AM - 5:00 PM', CHAR(10), 'Saturday: 8:00 AM - 12:00 NN', CHAR(10), 'Sunday & Monday: Closed')),
+('office_hours_text', CONCAT('Monday - Saturday: 8:00 AM - 12:00 NN', CHAR(10), 'Monday - Saturday: 2:00 PM - 5:00 PM', CHAR(10), 'Sunday: Closed')),
 ('office_location_text', CONCAT('St. Patrick''s Parish Office', CHAR(10), 'Dingalan, Aurora, Philippines'));
 
 -- =====================================================================
@@ -569,7 +708,12 @@ INSERT INTO site_settings (setting_key, setting_value) VALUES
 -- endpoint prepends base_path() so it works in subfolder installs too.
 CREATE TABLE notifications (
   id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  type        ENUM('request_new', 'application_new', 'request_ready', 'event_reminder', 'conflict') NOT NULL,
+  type        ENUM('request_new','application_new','request_ready','event_reminder','conflict',
+                   'request_under_review','request_approved','request_rejected',
+                   'application_submitted','application_documents_pending','application_interview_scheduled',
+                   'application_banns_in_progress','application_seminar_pending','application_ready_for_approval',
+                   'application_approved','application_scheduled','application_completed','application_rejected',
+                   'certificate_picked_up') NOT NULL,
   title       VARCHAR(150) NOT NULL,
   message     VARCHAR(255) NOT NULL,
   link        VARCHAR(200) NOT NULL,
@@ -578,3 +722,96 @@ CREATE TABLE notifications (
   read_at     DATETIME NULL,
   INDEX idx_notif_unread (is_read, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================================
+-- 11. EMAIL DELIVERY LOG
+-- Records sent, failed, disabled, and invalid email attempts.
+-- =====================================================================
+CREATE TABLE email_delivery_log (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  recipient       VARCHAR(150) NOT NULL,
+  subject_line    VARCHAR(255) NOT NULL,
+  event_type      VARCHAR(80) NOT NULL,
+  entity_type     VARCHAR(80) DEFAULT NULL,
+  entity_id       INT UNSIGNED DEFAULT NULL,
+  tracking_number VARCHAR(40) DEFAULT NULL,
+  delivery_status ENUM('sent','failed','disabled','invalid') NOT NULL,
+  error_message   VARCHAR(500) DEFAULT NULL,
+  sent_by         INT UNSIGNED DEFAULT NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_email_delivery_entity (entity_type, entity_id),
+  KEY idx_email_delivery_status (delivery_status, created_at),
+  KEY idx_email_delivery_recipient (recipient, created_at),
+  FOREIGN KEY (sent_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================================
+-- 10. WORKFLOW REQUIREMENTS CHECKLIST
+-- Tracks documentary review without storing uploaded documents.
+-- =====================================================================
+CREATE TABLE workflow_requirements (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  entity_type     ENUM('certificate_request','sacrament_application') NOT NULL,
+  entity_id       INT UNSIGNED NOT NULL,
+  requirement_key VARCHAR(80) NOT NULL,
+  requirement_label VARCHAR(180) NOT NULL,
+  status          ENUM('not_received','received','under_review','incomplete','verified','not_applicable') NOT NULL DEFAULT 'not_received',
+  notes           VARCHAR(500) DEFAULT NULL,
+  reviewed_by     INT UNSIGNED DEFAULT NULL,
+  reviewed_at     DATETIME DEFAULT NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_workflow_requirement (entity_type, entity_id, requirement_key),
+  KEY idx_workflow_requirement_entity (entity_type, entity_id),
+  KEY idx_workflow_requirement_status (status),
+  FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+
+-- =====================================================================
+-- 11. PHASE 4 WORKFLOW CONTROLS
+-- Existing deployments use migrations/022_phase4_workflow_controls.sql.
+-- Fresh installs apply the same fields after the base tables are created.
+-- =====================================================================
+ALTER TABLE certificate_requests
+  ADD COLUMN requirements_source ENUM('not_yet_received','physical','official_gmail','physical_and_gmail') NOT NULL DEFAULT 'not_yet_received',
+  ADD COLUMN requirements_reviewed_at DATETIME NULL,
+  ADD COLUMN requirements_reviewed_by INT UNSIGNED NULL,
+  ADD COLUMN missing_requirements_note VARCHAR(500) NULL,
+  ADD COLUMN cancelled_at DATETIME NULL,
+  ADD COLUMN cancelled_by INT UNSIGNED NULL,
+  ADD COLUMN cancellation_reason VARCHAR(500) NULL;
+ALTER TABLE sacrament_applications
+  ADD COLUMN requirements_source ENUM('not_yet_received','physical','official_gmail','physical_and_gmail') NOT NULL DEFAULT 'not_yet_received',
+  ADD COLUMN requirements_reviewed_at DATETIME NULL,
+  ADD COLUMN requirements_reviewed_by INT UNSIGNED NULL,
+  ADD COLUMN missing_requirements_note VARCHAR(500) NULL;
+ALTER TABLE certificate_generation_log
+  ADD COLUMN finalized_by INT UNSIGNED NULL,
+  ADD COLUMN finalized_at DATETIME NULL,
+  ADD COLUMN cancelled_by INT UNSIGNED NULL,
+  ADD COLUMN cancelled_at DATETIME NULL,
+  ADD COLUMN cancellation_reason VARCHAR(500) NULL,
+  ADD COLUMN reprint_reason VARCHAR(500) NULL;
+ALTER TABLE certificate_requests
+  MODIFY status ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending';
+ALTER TABLE baptismal_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
+ALTER TABLE confirmation_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
+ALTER TABLE first_communion_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
+ALTER TABLE marriage_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
+ALTER TABLE death_burial_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
+
+-- --- Secretary password recovery --------------------------------------
+CREATE TABLE password_reset_tokens (
+  id                BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id           INT UNSIGNED NOT NULL,
+  token_hash        CHAR(64) NOT NULL UNIQUE,
+  requested_ip      VARCHAR(45) NOT NULL,
+  expires_at        DATETIME NOT NULL,
+  used_at           DATETIME DEFAULT NULL,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  attempts          TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  INDEX idx_password_reset_user_created (user_id, created_at),
+  INDEX idx_password_reset_expiry (expires_at),
+  CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;

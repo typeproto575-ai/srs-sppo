@@ -41,8 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Your session expired. Please try again.';
     } else {
         // Collect credentials (never echoed back unescaped — only $error is).
-        $username = trim($_POST['username'] ?? '');
-        $password = $_POST['password'] ?? '';
+        // Normalize usernames to avoid case-sensitivity issues between DBs and
+        // seeded accounts; keep the lockout key consistent with the same value.
+        $username = strtolower(trim((string) ($_POST['username'] ?? '')));
+        $password = (string) ($_POST['password'] ?? '');
 
         // ---- Rate limiting: two independent checks ---------------------------
         //   1. Per-username (8 in 15 min): stops brute-force on one account.
@@ -55,9 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
             log_activity($pdo, null, 'login_rate_limited', null, null, "Rate limited: {$username}");
         } else {
-            // Look up an ACTIVE account by username. Prepared statement
-            // prevents SQL injection from the username field.
-            $stmt = $pdo->prepare('SELECT * FROM users WHERE username = ? AND is_active = 1');
+            // Look up an ACTIVE account by username. Using LOWER(username) keeps
+            // matching consistent even when the database contains mixed-case names.
+            $stmt = $pdo->prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND is_active = 1 LIMIT 1');
             $stmt->execute([$username]);
             $user = $stmt->fetch();
 
@@ -72,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'username'  => $user['username'],
                     'full_name' => $user['full_name'],
                     'role'      => $user['role'],
+                    'auth_version' => (int) ($user['auth_version'] ?? 1),
                 ];
                 $_SESSION['last_activity'] = time(); // start the idle window
                 log_activity($pdo, $user['id'], 'login'); // audit trail
@@ -98,11 +101,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Circular parish logo as the browser favicon (transparent corners) -->
     <link rel="icon" type="image/png" href="<?= $basePath ?>/assets/images/logo-circle.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>">
     <!-- Login layout styles (.login-page) live in admin.css -->
-    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css?v=<?= filemtime(__DIR__ . '/../assets/css/admin.css') ?>">
 </head>
-<body>
+<body class="login-shell">
 <main class="login-page">
     <!-- Parish logo above the login card -->
     <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="login-logo">
@@ -110,29 +113,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Authentication error, HTML-escaped -->
     <?php if ($error): ?><p class="alert alert-error"><?= e($error) ?></p><?php endif; ?>
     <!-- Posts back to this same page; token guards against CSRF -->
-    <form method="post" action="">
+    <form autocomplete="off" method="post" action="">
         <?= csrf_field() ?>
-        <label>Username <input type="text" name="username" autocomplete="username" required></label>
-        <label>Password</label>
-        <div class="password-wrap">
-            <input type="password" name="password" autocomplete="current-password" required>
-            <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false">
-                <!-- Eye: password hidden (initial state) -->
-                <svg class="eye-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                </svg>
-                <!-- Eye with slash: password visible (starts hidden) -->
-                <svg class="eye-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-                    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-            </button>
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" autocomplete="off" autocapitalize="off" required>
         </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <div class="password-wrap">
+                <input type="password" id="password" name="password" autocomplete="off" required>
+                <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false">
+                    <span class="password-toggle-visual" aria-hidden="true">
+                        <svg class="eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+                            <path d="M3 3l18 18"/>
+                            <path d="M10.58 10.58A2 2 0 0 0 13.42 13.42"/>
+                            <path d="M9.88 5.08A10.94 10.94 0 0 1 12 5c5.5 0 10 7 10 7a16.93 16.93 0 0 1-4.61 5.68"/>
+                            <path d="M6.61 6.61A16.93 16.93 0 0 0 2 12s4.5 7 10 7a10.94 10.94 0 0 0 5.12-1.4"/>
+                        </svg>
+                    </span>
+                    <span class="password-toggle-text">Show</span>
+                </button>
+            </div>
+        </div>
+
         <button type="submit" class="btn">Log In</button>
     </form>
+    <p class="login-recovery-link"><a href="<?= $basePath ?>/admin/forgot-password.php">Forgot your password?</a></p>
 </main>
 <!-- Site-wide JS (loads the password show/peek toggle above) -->
 <?php $mainJsVersion = file_exists(__DIR__ . '/../assets/js/main.js') ? filemtime(__DIR__ . '/../assets/js/main.js') : time(); ?>

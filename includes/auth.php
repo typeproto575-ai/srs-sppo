@@ -19,6 +19,11 @@ function current_user(): ?array
     return $_SESSION['user'] ?? null;
 }
 
+function is_parish_admin(): bool
+{
+    return (current_user()['role'] ?? null) === 'parish_admin';
+}
+
 function require_login(): void
 {
     if (!current_user()) {
@@ -64,11 +69,11 @@ function require_login(): void
 
         global $pdo;
         if (isset($pdo) && is_object($pdo)) {
-            $stmt = $pdo->prepare('SELECT is_active FROM users WHERE id = ?');
+            $stmt = $pdo->prepare('SELECT is_active, auth_version FROM users WHERE id = ?');
             $stmt->execute([current_user()['id']]);
             $row = $stmt->fetch();
 
-            if (!$row || (int) $row['is_active'] !== 1) {
+            if (!$row || (int) $row['is_active'] !== 1 || (int) ($row['auth_version'] ?? 1) !== (int) (current_user()['auth_version'] ?? 1)) {
                 // Account was deactivated — destroy the session.
                 $_SESSION = [];
                 if (ini_get('session.use_cookies')) {
@@ -91,7 +96,10 @@ function require_role($roles): void
 {
     require_login();
     $roles = is_array($roles) ? $roles : [$roles];
-    if (!in_array(current_user()['role'], $roles, true)) {
+    $role = current_user()['role'];
+    $allowed = in_array($role, $roles, true)
+        || ($role === 'parish_admin' && in_array('secretary', $roles, true));
+    if (!$allowed) {
         http_response_code(403);
         die('You do not have access to this page.');
     }
