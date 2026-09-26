@@ -77,7 +77,299 @@ document.addEventListener('DOMContentLoaded', function () {
             if (popup.open && !popup.contains(ev.target)) popup.open = false;
         });
     });
-    // ---- 5) Admin sidebar dropdowns ----------------------------------------
+
+    // ---- 5) Baptismal prerequisite finder -------------------------------
+    // Search uses the values currently typed in the unsaved record. The
+    // hidden ID changes only after the secretary explicitly selects a result.
+    document.querySelectorAll('[data-baptismal-finder]').forEach(function (finder) {
+        var search = finder.querySelector('[data-baptismal-search]');
+        var findButton = finder.querySelector('[data-baptismal-find]');
+        var hiddenId = finder.querySelector('[data-baptismal-id]');
+        var selection = finder.querySelector('[data-baptismal-selection]');
+        var resultsBox = finder.querySelector('[data-baptismal-results]');
+        var form = finder.closest('form');
+        var personSelect = form ? form.querySelector('[name="person_id"]') : null;
+        if (!search || !findButton || !hiddenId || !selection || !resultsBox || !form) return;
+
+        var clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'btn btn-secondary btn-small baptismal-finder-clear';
+        clear.textContent = 'Clear selection';
+        clear.hidden = true;
+        selection.appendChild(clear);
+
+        function renderSelection(label) {
+            selection.textContent = '';
+            if (!hiddenId.value) {
+                clear.hidden = true;
+                selection.appendChild(clear);
+                return;
+            }
+            var text = document.createElement('strong');
+            text.textContent = 'Selected: ' + (label || 'Baptismal record') + ' (#' + hiddenId.value + ')';
+            selection.appendChild(text);
+            selection.appendChild(clear);
+            clear.hidden = false;
+        }
+
+        function value(name) {
+            var input = form.querySelector('[name="' + name + '"]');
+            return input ? input.value.trim() : '';
+        }
+
+        function composedName(prefix) {
+            return [value(prefix + '_first_name'), value(prefix + '_middle_name'), value(prefix + '_last_name'), value(prefix + '_suffix')]
+                .filter(Boolean).join(' ');
+        }
+
+        function renderResults(records) {
+            resultsBox.textContent = '';
+            if (!records.length) {
+                resultsBox.textContent = 'No possible Baptismal records found.';
+                return;
+            }
+            records.forEach(function (record) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'baptismal-finder-result';
+                var name = document.createElement('strong');
+                name.textContent = record.child_full_name || 'Unnamed record';
+                var details = document.createElement('span');
+                var reference = [record.book_no, record.page_no, record.line_no].filter(Boolean).join(' / ') || 'No logbook reference';
+                details.textContent = '#' + record.id + ' | Birth: ' + (record.birth_date || 'not recorded') + ' | Baptism: ' + (record.baptism_date || 'not recorded') + ' | Parents: ' + (record.father_name || 'not recorded') + ' / ' + (record.mother_name || record.mother_maiden_name || 'not recorded') + ' | ' + reference;
+                button.appendChild(name);
+                button.appendChild(details);
+                button.addEventListener('click', function () {
+                    hiddenId.value = record.id;
+                    search.value = record.child_full_name || '';
+                    renderSelection(record.child_full_name);
+                    resultsBox.textContent = 'Record selected. Review the details above before saving.';
+                });
+                resultsBox.appendChild(button);
+            });
+        }
+
+        findButton.addEventListener('click', function () {
+            var params = new URLSearchParams({
+                name: composedName('confirmand') || composedName('communicant') || value('confirmand_full_name') || value('communicant_full_name'),
+                birth_date: value('birthdate'),
+                father_name: value('father_name'),
+                mother_name: value('mother_maiden_name'),
+                person_id: personSelect ? personSelect.value : ''
+            });
+            findButton.disabled = true;
+            resultsBox.textContent = 'Searching Baptismal records...';
+            fetch(findButton.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
+                .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error('Search failed')); })
+                .then(function (data) { renderResults(data.results || []); })
+                .catch(function () { resultsBox.textContent = 'The Baptismal record search is unavailable. Please try again.'; })
+                .finally(function () { findButton.disabled = false; });
+        });
+        clear.addEventListener('click', function () {
+            hiddenId.value = '';
+            search.value = '';
+            renderSelection('');
+            resultsBox.textContent = '';
+        });
+        renderSelection('Existing Baptismal record');
+    });
+
+    // ---- 6) Manual person identity finder -------------------------------
+    document.querySelectorAll('[data-person-finder]').forEach(function (finder) {
+        var form = finder.closest('form');
+        var search = finder.querySelector('[data-person-search]');
+        var findButton = finder.querySelector('[data-person-find]');
+        var hiddenId = finder.querySelector('[data-person-id]');
+        var selection = finder.querySelector('[data-person-selection]');
+        var resultsBox = finder.querySelector('[data-person-results]');
+        if (!form || !search || !findButton || !hiddenId || !selection || !resultsBox) return;
+
+        var clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'btn btn-secondary btn-small person-finder-clear';
+        clear.textContent = 'Clear selection';
+        clear.hidden = true;
+
+        function field(name) {
+            var input = form.querySelector('[name="' + name + '"]');
+            return input ? input.value.trim() : '';
+        }
+
+        function namePrefix() {
+            if (form.querySelector('[name="child_first_name"]')) return 'child';
+            if (form.querySelector('[name="confirmand_first_name"]')) return 'confirmand';
+            return 'communicant';
+        }
+
+        function renderSelection() {
+            selection.textContent = '';
+            if (!hiddenId.value) {
+                clear.hidden = true;
+                selection.appendChild(clear);
+                return;
+            }
+            var text = document.createElement('strong');
+            text.textContent = 'Selected person ID #' + hiddenId.value;
+            selection.appendChild(text);
+            selection.appendChild(clear);
+            clear.hidden = false;
+        }
+
+        function clearStaleSelection() {
+            hiddenId.value = '';
+            renderSelection();
+            resultsBox.textContent = '';
+        }
+
+        function renderResults(records) {
+            resultsBox.textContent = '';
+            if (!records.length) {
+                resultsBox.textContent = 'No possible people found.';
+                return;
+            }
+            records.forEach(function (record) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'person-finder-result';
+                var name = document.createElement('strong');
+                name.textContent = [record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' ') || 'Unnamed person';
+                var details = document.createElement('span');
+                details.textContent = 'Person ID #' + record.id + (record.maiden_name ? ' | Maiden name: ' + record.maiden_name : '') + (record.birth_date ? ' | Born: ' + record.birth_date : '');
+                button.appendChild(name);
+                button.appendChild(details);
+                button.addEventListener('click', function () {
+                    hiddenId.value = record.id;
+                    search.value = name.textContent;
+                    renderSelection();
+                    resultsBox.textContent = 'Person selected. Review the identity before saving.';
+                });
+                resultsBox.appendChild(button);
+            });
+        }
+
+        function searchPeople() {
+            var prefix = namePrefix();
+            var birthField = prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : '';
+            var params = new URLSearchParams({
+                first_name: field(prefix + '_first_name'),
+                middle_name: field(prefix + '_middle_name'),
+                last_name: field(prefix + '_last_name'),
+                suffix: field(prefix + '_suffix'),
+                birth_date: birthField ? field(birthField) : ''
+            });
+            if (!params.get('first_name') && !params.get('middle_name') && !params.get('last_name') && !params.get('birth_date')) {
+                resultsBox.textContent = 'Enter a name or birth date before searching.';
+                return;
+            }
+            findButton.disabled = true;
+            resultsBox.textContent = 'Searching possible people...';
+            fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
+                .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error('Search failed')); })
+                .then(function (data) { renderResults(data.results || []); })
+                .catch(function () { resultsBox.textContent = 'The person search is unavailable. Please try again.'; })
+                .finally(function () { findButton.disabled = false; });
+            }
+
+            var searchTimer = null;
+            findButton.addEventListener('click', searchPeople);
+
+        clear.addEventListener('click', function () {
+            hiddenId.value = '';
+            search.value = '';
+            renderSelection();
+            resultsBox.textContent = '';
+        });
+
+        ['first_name', 'middle_name', 'last_name', 'suffix'].forEach(function (part) {
+            var input = form.querySelector('[name="' + namePrefix() + '_' + part + '"]');
+            if (input) input.addEventListener('input', function () {
+                clearStaleSelection();
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(searchPeople, 600);
+            });
+        });
+        var birthInput = form.querySelector('[name="birth_date"], [name="birthdate"]');
+        if (birthInput) birthInput.addEventListener('change', function () {
+            clearStaleSelection();
+            window.clearTimeout(searchTimer);
+            searchPeople();
+        });
+        renderSelection();
+    });
+
+    // ---- 7) Person Mapper search-first assignment -----------------------
+    // Mapper rows search identities only after the secretary asks for a
+    // lookup. Nothing is assigned until a result is explicitly selected.
+    document.querySelectorAll('[data-mapper-person-finder]').forEach(function (finder) {
+        var search = finder.querySelector('[data-mapper-person-search]');
+        var findButton = finder.querySelector('[data-mapper-person-find]');
+        var hiddenId = finder.querySelector('[data-mapper-person-id]');
+        var selection = finder.querySelector('[data-mapper-person-selection]');
+        var resultsBox = finder.querySelector('[data-mapper-person-results]');
+        var assignButton = finder.querySelector('[data-mapper-person-assign]');
+        if (!search || !findButton || !hiddenId || !selection || !resultsBox || !assignButton) return;
+
+        function clearSelection() {
+            hiddenId.value = '';
+            assignButton.disabled = true;
+            selection.textContent = '';
+        }
+
+        function renderResults(records) {
+            resultsBox.textContent = '';
+            if (!records.length) {
+                resultsBox.textContent = 'No possible people found.';
+                return;
+            }
+            records.forEach(function (record) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'mapper-person-result';
+                var name = document.createElement('strong');
+                name.textContent = [record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' ') || 'Unnamed person';
+                var details = document.createElement('span');
+                details.textContent = 'Person ID #' + record.id + (record.maiden_name ? ' | Maiden name: ' + record.maiden_name : '') + (record.birth_date ? ' | Born: ' + record.birth_date : '');
+                button.appendChild(name);
+                button.appendChild(details);
+                button.addEventListener('click', function () {
+                    hiddenId.value = record.id;
+                    selection.textContent = 'Selected: ' + name.textContent + ' (#' + record.id + ')';
+                    assignButton.disabled = false;
+                    resultsBox.textContent = 'Person selected. Review the identity before assigning.';
+                });
+                resultsBox.appendChild(button);
+            });
+        }
+
+        function searchPeople() {
+            var query = search.value.trim();
+            clearSelection();
+            if (!query) {
+                resultsBox.textContent = 'Enter a name, maiden name, or birth date first.';
+                return;
+            }
+            findButton.disabled = true;
+            resultsBox.textContent = 'Searching possible people...';
+            fetch(findButton.closest('[data-mapper-person-finder]').dataset.endpoint + '?q=' + encodeURIComponent(query), { credentials: 'same-origin' })
+                .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error('Search failed')); })
+                .then(function (data) { renderResults(data.results || []); })
+                .catch(function () { resultsBox.textContent = 'The person search is unavailable. Please try again.'; })
+                .finally(function () { findButton.disabled = false; });
+        }
+
+        findButton.addEventListener('click', searchPeople);
+        search.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchPeople();
+            }
+        });
+        search.addEventListener('input', function () {
+            clearSelection();
+            resultsBox.textContent = '';
+        });
+    });
+    // ---- 6) Admin sidebar dropdowns ----------------------------------------
     // No persistence: every page load is server-driven (see $groupIsOpen in
     // includes/admin-header.php). Refreshing therefore always resets the
     // menus — dashboard loads with all groups closed, inner pages load with
@@ -100,15 +392,22 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!input) return; // malformed markup — leave it alone
 
         btn.addEventListener('click', function () {
-            var showing = input.type === 'text';
-            input.type = showing ? 'password' : 'text';
-            btn.setAttribute('aria-pressed', showing ? 'false' : 'true');
-            btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
-            btn.classList.toggle('is-showing', !showing);
+            var currentlyVisible = input.type === 'text';
+            var nextVisible = !currentlyVisible;
+            input.type = nextVisible ? 'text' : 'password';
+            btn.setAttribute('aria-pressed', nextVisible ? 'true' : 'false');
+            btn.setAttribute('aria-label', nextVisible ? 'Hide password' : 'Show password');
+            btn.classList.toggle('is-showing', nextVisible);
+
+            var toggleText = btn.querySelector('.password-toggle-text');
+            if (toggleText) {
+                toggleText.textContent = nextVisible ? 'Hide' : 'Show';
+            }
+
             var eyeOn = btn.querySelector('.eye-on');
             var eyeOff = btn.querySelector('.eye-off');
-            if (eyeOn) eyeOn.hidden = !showing;
-            if (eyeOff) eyeOff.hidden = showing;
+            if (eyeOn) eyeOn.hidden = nextVisible;
+            if (eyeOff) eyeOff.hidden = !nextVisible;
             // Keep the caret where the user was typing.
             input.focus({ preventScroll: true });
         });
@@ -116,7 +415,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ---- 7) Admin notification bell ----------------------------------------
     // Global notifications stream (see admin/api/notifications.php):
-    //   - badge shows unread notifications + today/tomorrow events;
+    //   - badge shows unread notifications only;
+    //   - reminders for today/tomorrow still appear in the panel but do not
+    //     keep the red dot lit on their own;
     //   - the panel lists events first, then the 10 newest notifications;
     //   - clicking an item marks it read and opens its link;
     //   - re-polls every 60s, but only while the tab is visible.
@@ -177,10 +478,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 li.appendChild(a);
                 list.appendChild(li);
 
-                // Mark read on navigation (never blocks the link itself).
+                // Mark read before navigation so the browser does not cancel
+                // the request when it leaves the current page.
                 if (item.kind === 'notif' && !item.is_read) {
-                    a.addEventListener('click', function () {
-                        markRead('mark_read', item.id);
+                    a.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        markRead('mark_read', item.id, function () {
+                            window.location.href = item.link;
+                        });
                     });
                 }
             });
@@ -203,7 +508,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .catch(function () { /* offline or logged out — badge just stays stale */ });
         }
 
-        function markRead(action, id) {
+        function markRead(action, id, after) {
             var body = new URLSearchParams({ action: action, csrf_token: csrf });
             if (id) body.append('id', id);
             fetch(api, {
@@ -212,8 +517,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 body: body
             })
                 .then(function (r) { return r.ok ? r.json() : null; })
-                .then(apply)
-                .catch(function () { /* non-fatal */ });
+                .then(function (data) {
+                    apply(data);
+                    if (after) after();
+                })
+                .catch(function () {
+                    if (after) after();
+                });
         }
 
         bell.addEventListener('click', function () {
@@ -338,6 +648,224 @@ document.addEventListener('DOMContentLoaded', function () {
             touchStartX = null;
             restartAutoplay();
         }, { passive: true });
+    });
+
+    // ---- Review-before-submit for public forms ---------------------------
+    // Add data-review to a public request/application form. When the visitor
+    // submits it (after the browser's own required-field checks pass), a
+    // summary dialog lists everything they entered, grouped by fieldset.
+    // "Go back and edit" closes the dialog with nothing sent; "Confirm and
+    // submit" sends the form. Optional attributes on the <form>:
+    //   data-review-title="..."    heading of the dialog
+    //   data-review-confirm="..."  text of the confirm button
+    // If <dialog> is unsupported the form simply submits as before, and the
+    // server still validates everything, so this is a convenience layer only.
+    document.querySelectorAll('form[data-review], form[data-review-form]').forEach(function (form) {
+        if (typeof HTMLDialogElement === 'undefined') return;
+
+        // Controls that are never shown in the summary.
+        var SKIP_NAMES = { terms_accepted: true };
+
+        function cleanLabel(text) {
+            return text.replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
+        }
+
+        // The visible question for a control: the text of its wrapping
+        // <label> (or label[for]) minus the control itself and any hints.
+        function labelFor(control) {
+            var label = control.closest('label');
+            if (!label && control.id) label = form.querySelector('label[for="' + control.id + '"]');
+            if (!label) return cleanLabel(control.getAttribute('aria-label') || control.name || '');
+            var clone = label.cloneNode(true);
+            clone.querySelectorAll('input, select, textarea, .field-hint, small').forEach(function (n) { n.remove(); });
+            return cleanLabel(clone.textContent);
+        }
+
+        function formatDate(value) {
+            var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+            if (!m) return value;
+            var d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+            return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        }
+
+        function formatTime(value) {
+            var m = /^(\d{2}):(\d{2})/.exec(value);
+            if (!m) return value;
+            var h = parseInt(m[1], 10);
+            return ((h % 12) || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM');
+        }
+
+        // Returns { label, value } for a control, or null when it should be
+        // left out (empty, hidden, button, unchecked, or on the skip list).
+        function describe(control) {
+            var type = (control.type || '').toLowerCase();
+            if (!control.name || control.disabled) return null;
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'reset' || type === 'file') return null;
+            if (SKIP_NAMES[control.name]) return null;
+
+            var value = '';
+            var label = labelFor(control);
+            if (control.tagName === 'SELECT') {
+                var opt = control.options[control.selectedIndex];
+                value = opt && opt.value !== '' ? opt.text.trim() : '';
+            } else if (type === 'checkbox') {
+                value = control.checked ? 'Yes' : '';
+            } else if (type === 'radio') {
+                if (!control.checked) return null;
+                var group = control.closest('fieldset');
+                var legend = group ? group.querySelector('legend') : null;
+                value = label;
+                label = legend ? cleanLabel(legend.textContent) : cleanLabel(control.name);
+            } else if (type === 'date') {
+                value = formatDate(control.value);
+            } else if (type === 'time') {
+                value = formatTime(control.value);
+            } else {
+                value = control.value.trim();
+            }
+            if (value === '') return null;
+            // Repeated fields (e.g. godfather_name[]) get their row number so
+            // "Godfather Name 3" and "Residence 3" stay matched up.
+            if (control.name.slice(-2) === '[]') {
+                var same = Array.prototype.filter.call(form.elements, function (c) { return c.name === control.name; });
+                if (same.length > 1) label += ' ' + (same.indexOf(control) + 1);
+            }
+            return { label: label, value: value };
+        }
+
+        // ---- Build the dialog once; it is refilled on every submit --------
+        var dlg = document.createElement('dialog');
+        dlg.className = 'review-dialog';
+        var titleId = 'review-dialog-title-' + Math.random().toString(36).slice(2);
+        dlg.setAttribute('aria-labelledby', titleId);
+
+        var inner = document.createElement('div');
+        inner.className = 'review-dialog-inner';
+
+        var head = document.createElement('div');
+        head.className = 'review-head';
+        var title = document.createElement('h2');
+        title.id = titleId;
+        title.textContent = form.getAttribute('data-review-title') || 'Please check your details';
+        var lead = document.createElement('p');
+        lead.textContent = 'Read through what you entered. Nothing is sent until you confirm.';
+        head.appendChild(title);
+        head.appendChild(lead);
+
+        var body = document.createElement('div');
+        body.className = 'review-body';
+
+        var actions = document.createElement('div');
+        actions.className = 'review-actions';
+        var backBtn = document.createElement('button');
+        backBtn.type = 'button';
+        backBtn.className = 'btn btn-secondary';
+        backBtn.textContent = 'Go back and edit';
+        var confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = 'btn';
+        var confirmText = form.getAttribute('data-review-confirm') || 'Confirm and submit';
+        confirmBtn.textContent = confirmText;
+        actions.appendChild(backBtn);
+        actions.appendChild(confirmBtn);
+
+        inner.appendChild(head);
+        inner.appendChild(body);
+        inner.appendChild(actions);
+        dlg.appendChild(inner);
+        document.body.appendChild(dlg);
+
+        function fillSummary() {
+            body.textContent = '';
+            var section = null, list = null, currentGroup = undefined;
+            Array.prototype.forEach.call(form.elements, function (control) {
+                var item = describe(control);
+                if (!item) return;
+                var group = control.closest('fieldset');
+                if (section === null || group !== currentGroup) {
+                    currentGroup = group;
+                    section = document.createElement('section');
+                    section.className = 'review-section';
+                    var legend = group ? group.querySelector('legend') : null;
+                    if (legend) {
+                        var h = document.createElement('h3');
+                        h.textContent = cleanLabel(legend.textContent);
+                        section.appendChild(h);
+                    }
+                    list = document.createElement('dl');
+                    list.className = 'review-list';
+                    section.appendChild(list);
+                    body.appendChild(section);
+                }
+                var dt = document.createElement('dt');
+                dt.textContent = item.label;
+                var dd = document.createElement('dd');
+                dd.textContent = item.value; // textContent only: never inject user input as HTML
+                list.appendChild(dt);
+                list.appendChild(dd);
+            });
+        }
+
+        form.addEventListener('submit', function (ev) {
+            if (form.getAttribute('data-reviewed') === '1') return; // already confirmed
+            ev.preventDefault();
+            form._reviewSubmitter = ev.submitter || null;
+            fillSummary();
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = confirmText;
+            body.scrollTop = 0;
+            dlg.showModal();
+        });
+
+        backBtn.addEventListener('click', function () { dlg.close(); });
+        dlg.addEventListener('click', function (ev) {
+            if (ev.target === dlg) dlg.close(); // click landed on the backdrop
+        });
+
+        confirmBtn.addEventListener('click', function () {
+            // Lock the button so a double-click cannot send two requests
+            // (the server also caps submissions per email address per day).
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Submitting…';
+            form.setAttribute('data-reviewed', '1');
+            if (form._reviewSubmitter && typeof form.requestSubmit === 'function') {
+                form.requestSubmit(form._reviewSubmitter);
+            } else {
+                form.submit();
+            }
+        });
+
+        // Coming back to the page with the Back button (bfcache) should not
+        // leave the form stuck in its "already confirmed" state.
+        window.addEventListener('pageshow', function (ev) {
+            if (ev.persisted) {
+                form.removeAttribute('data-reviewed');
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = confirmText;
+                if (dlg.open) dlg.close();
+            }
+        });
+    });
+
+    // ---- Show a field only while another field has a given value ---------
+    // <label data-show-if="purpose=other"> is shown (and submitted) only while
+    // the control named "purpose" in the same form has the value "other".
+    // Without JavaScript the field simply stays visible.
+    document.querySelectorAll('[data-show-if]').forEach(function (el) {
+        var parts = el.getAttribute('data-show-if').split('=');
+        var form = el.closest('form');
+        var control = form && form.elements[parts[0]];
+        if (!control) return;
+        function sync() {
+            var show = control.value === parts[1];
+            el.hidden = !show;
+            el.querySelectorAll('input, select, textarea').forEach(function (i) {
+                i.disabled = !show;
+                i.required = show;
+            });
+        }
+        control.addEventListener('change', sync);
+        sync();
     });
 
 });

@@ -17,12 +17,12 @@
 // Which tab is currently active (defaults to none highlighted)
 $currentApp = $currentApp ?? '';
 
-// All available application types with their labels and URLs
+// All active public application types with their labels and URLs.
+// Confirmation and First Communion remain office-encoded only; they are not
+// available as new public application routes.
 $appTabs = [
-    'baptismal'       => ['label' => 'Baptismal',       'url' => base_path() . '/public/sacrament-applications/baptismal.php'],
-    'confirmation'    => ['label' => 'Confirmation',    'url' => base_path() . '/public/sacrament-applications/confirmation.php'],
-    'first_communion' => ['label' => 'First Communion', 'url' => base_path() . '/public/sacrament-applications/first-communion.php'],
-    'marriage'        => ['label' => 'Marriage',        'url' => base_path() . '/public/sacrament-applications/marriage.php'],
+    'baptismal' => ['label' => 'Baptismal', 'url' => base_path() . '/public/sacrament-applications/baptismal.php'],
+    'marriage'  => ['label' => 'Marriage',  'url' => base_path() . '/public/sacrament-applications/marriage.php'],
 ];
 ?>
 

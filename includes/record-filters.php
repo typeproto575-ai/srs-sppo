@@ -22,9 +22,12 @@
  *      Column names come from the page (never user input), so they may
  *      safely include table aliases like 'fc.communion_date'.
  *   2) require_once this file, then: $rf = rf_parse($rfConfig);
- *   3) Build COUNT + list queries with "{$rf['where']}" (empty when no
- *      filter is active) and $rf['params']; append
- *      "LIMIT {$rf['per_page']} OFFSET {$rf['offset']}".
+ *   3) Call rf_parse() BEFORE building the SQL, then combine the fragment:
+ *      $rf['where'] is '' when no filter is active, otherwise it already
+ *      begins with ' AND ' — append it directly to a base WHERE clause
+ *      (never prepend another ' AND ' and never ltrim it, which strips
+ *      characters and corrupts the fragment). Execute with $rf['params'];
+ *      append "LIMIT {$rf['per_page']} OFFSET {$rf['offset']}".
  *   4) In the HTML: rf_render_bar($selfUrl, $rfConfig, $rf); before the
  *      table, rf_render_pagination($selfUrl, $totalRows, $rf); after it.
  * =====================================================================
@@ -85,8 +88,13 @@ function rf_default_ranges(): array
  */
 function rf_parse(array $config): array
 {
+    $search = trim($_GET['q'] ?? '');
+    // Tracking numbers are generated uppercase; normalize tracking-shaped searches without changing name searches.
+    if (preg_match('/^SPPO(-[A-Z]+)?-\d{4}-\d{6}(-[A-Z0-9]{4,6})?$/i', $search)) {
+        $search = strtoupper($search);
+    }
     $rf = [
-        'q'        => trim($_GET['q'] ?? ''),
+        'q'        => $search,
         'range'    => $_GET['range'] ?? '',
         'from'     => trim($_GET['date_from'] ?? ''),
         'to'       => trim($_GET['date_to'] ?? ''),
@@ -151,13 +159,13 @@ function rf_page_url(string $selfUrl, int $page): string
 function rf_render_bar(string $selfUrl, array $config, array $rf): void
 {
     $dOn = $rf['range'] !== '';
-    $placeholder = $config['placeholder'] ?? 'Search name, entry no., minister&hellip;';
+    $placeholder = $config['placeholder'] ?? 'Search name, entry no., minister…';
     $extraFilters = $config['filters'] ?? [];
     ?>
         <div class="record-filter-bar">
             <!-- Standalone search: always visible; runs on Enter or the button.
                  Hidden inputs keep the active date + extra filters when searching. -->
-            <form method="get" action="<?= e($selfUrl) ?>" class="search-form">
+            <form autocomplete="off" method="get" action="<?= e($selfUrl) ?>" class="search-form">
                 <?php if ($dOn): ?>
                     <input type="hidden" name="range" value="<?= e($rf['range']) ?>">
                     <?php if ($rf['range'] === 'custom'): ?>
@@ -168,7 +176,7 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                 <?php foreach ($extraFilters as $fKey => $fDef): ?>
                     <?php if (trim($_GET[$fKey] ?? '') !== ''): ?><input type="hidden" name="<?= e($fKey) ?>" value="<?= e($_GET[$fKey]) ?>"><?php endif; ?>
                 <?php endforeach; ?>
-                <input type="search" name="q" value="<?= e($rf['q']) ?>" placeholder="<?= e($placeholder) ?>">
+                <input autocomplete="off" type="search" name="q" value="<?= e($rf['q']) ?>" placeholder="<?= e($placeholder) ?>">
                 <button type="submit" class="btn btn-small">Search</button>
                 <?php if ($rf['q'] !== ''): $clearGet = array_diff_key($_GET, ['q' => 1, 'page' => 1]); ?>
                     <a href="<?= e($selfUrl . ($clearGet ? '?' . http_build_query($clearGet) : '')) ?>" class="btn btn-secondary btn-small">Clear</a>
@@ -179,28 +187,28 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
                  badge on the button shows when a date filter is active. -->
             <details class="filter-popup">
                 <summary class="filter-summary">Filters<?= $dOn ? ' <span class="filter-count">1</span>' : '' ?></summary>
-                <form method="get" action="<?= e($selfUrl) ?>" class="filter-panel">
+                <form autocomplete="off" method="get" action="<?= e($selfUrl) ?>" class="filter-panel">
                     <!-- The search term rides along so applying a date choice
                          never clears the current search. -->
                     <?php if ($rf['q'] !== ''): ?><input type="hidden" name="q" value="<?= e($rf['q']) ?>"><?php endif; ?>
                     <p class="filter-title">Date</p>
                     <div class="filter-body">
-                        <label class="filter-option"><input type="radio" name="range" value="" <?= $rf['range'] === '' ? 'checked' : '' ?>> All dates</label>
+                        <label class="filter-option"><input autocomplete="off" type="radio" name="range" value="" <?= $rf['range'] === '' ? 'checked' : '' ?>> All dates</label>
                         <?php foreach (($config['ranges'] ?? rf_default_ranges()) as $rk): ?>
-                            <label class="filter-option"><input type="radio" name="range" value="<?= e($rk) ?>" <?= $rf['range'] === $rk ? 'checked' : '' ?>> <?= e(rf_range_label($rk)) ?></label>
+                            <label class="filter-option"><input autocomplete="off" type="radio" name="range" value="<?= e($rk) ?>" <?= $rf['range'] === $rk ? 'checked' : '' ?>> <?= e(rf_range_label($rk)) ?></label>
                         <?php endforeach; ?>
-                        <label class="filter-option"><input type="radio" name="range" value="custom" <?= $rf['range'] === 'custom' ? 'checked' : '' ?>> Custom range</label>
+                        <label class="filter-option"><input autocomplete="off" type="radio" name="range" value="custom" <?= $rf['range'] === 'custom' ? 'checked' : '' ?>> Custom range</label>
                         <div class="filter-custom-dates">
-                            <label>From <input type="number" name="date_from" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['from']) ?>"></label>
-                            <label>To <input type="number" name="date_to" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['to']) ?>"></label>
+                            <label>From <input autocomplete="off" type="number" name="date_from" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['from']) ?>"></label>
+                            <label>To <input autocomplete="off" type="number" name="date_to" min="1900" max="2100" step="1" placeholder="YYYY" value="<?= e($rf['to']) ?>"></label>
                         </div>
                     </div>
                     <?php foreach ($extraFilters as $fKey => $fDef): ?>
                         <p class="filter-title"><?= e($fDef['label'] ?? ucwords(str_replace('_', ' ', $fKey))) ?></p>
                         <div class="filter-body">
-                            <label class="filter-option"><input type="radio" name="<?= e($fKey) ?>" value="" <?= (trim($_GET[$fKey] ?? '') === '') ? 'checked' : '' ?>> All</label>
+                            <label class="filter-option"><input autocomplete="off" type="radio" name="<?= e($fKey) ?>" value="" <?= (trim($_GET[$fKey] ?? '') === '') ? 'checked' : '' ?>> All</label>
                             <?php foreach (($fDef['options'] ?? []) as $optVal => $optLabel): ?>
-                                <label class="filter-option"><input type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (trim($_GET[$fKey] ?? '') === (string) $optVal) ? 'checked' : '' ?>> <?= e($optLabel) ?></label>
+                                <label class="filter-option"><input autocomplete="off" type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (trim($_GET[$fKey] ?? '') === (string) $optVal) ? 'checked' : '' ?>> <?= e($optLabel) ?></label>
                             <?php endforeach; ?>
                         </div>
                     <?php endforeach; ?>
@@ -212,7 +220,7 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
 
             <!-- Per-page selector: hidden inputs carry the active search and
                  date filter so switching page size never loses either. -->
-            <form method="get" action="<?= e($selfUrl) ?>" class="per-page-form">
+            <form autocomplete="off" method="get" action="<?= e($selfUrl) ?>" class="per-page-form">
                 <?php if ($rf['q'] !== ''): ?><input type="hidden" name="q" value="<?= e($rf['q']) ?>"><?php endif; ?>
                 <?php if ($dOn): ?><input type="hidden" name="range" value="<?= e($rf['range']) ?>"><?php endif; ?>
                 <?php if ($dOn && $rf['range'] === 'custom'): ?><input type="hidden" name="date_from" value="<?= e($rf['from']) ?>"><input type="hidden" name="date_to" value="<?= e($rf['to']) ?>"><?php endif; ?>
@@ -322,6 +330,7 @@ function rf_render_bar(string $selfUrl, array $config, array $rf): void
 /** "Showing X–Y of Z" + first / prev / numbered / next / last links. */
 function rf_render_pagination(string $selfUrl, int $total, array $rf): void
 {
+    if ($total === 0) return;
     $pages = max(1, (int) ceil($total / $rf['per_page']));
     $from  = $total === 0 ? 0 : $rf['offset'] + 1;
     $to    = min($total, $rf['offset'] + $rf['per_page']);

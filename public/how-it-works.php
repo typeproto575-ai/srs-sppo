@@ -22,9 +22,9 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Intro hero: frames the request workflow -->
 <section class="workflow-hero">
-    <span class="eyebrow">How a Request Works</span>
-    <h1>From asking, to receiving — the same record, now easier to find.</h1>
-    <p>St. Patrick Parish has kept these records by hand for generations, entered line by line in the register. This is how we keep doing that, with a faster way in.</p>
+<span class="eyebrow">How Online Intake Works</span>
+    <h1>Convenient submission, careful parish review.</h1>
+    <p>Online forms make it easier to send complete details before visiting the office. They do not replace secretary verification, the physical register, or in-person certificate release.</p>
 </section>
 
 <!-- Step-by-step ledger (one row per step) -->
@@ -34,8 +34,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>Choose what you need</h3>
-            <p>A certificate for a sacrament that already happened, or an application to receive one — Baptismal, Confirmation, First Communion, or Marriage.</p>
+<h3>Choose what you need</h3>
+            <p>Choose a certificate if the sacrament already happened. Choose an application if you are preparing for Baptism, Confirmation, First Communion, or Marriage.</p>
         </div>
     </div>
 
@@ -43,8 +43,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>Fill in what you know</h3>
-            <p>Name, date, and the people involved. If you don't know the book, page, or line number from the register, that's fine — the secretary looks that up for you.</p>
+<h3>Submit a pre-application</h3>
+            <p>Enter the names, dates, relationship, purpose, and other details requested by the form. You do not need an account, and you should not upload an identity document.</p>
         </div>
     </div>
 
@@ -52,8 +52,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>We check the record</h3>
-            <p>The secretary matches your request against the register. Anything unusual is flagged for a closer look, never rejected outright without review.</p>
+<h3>Secretary review</h3>
+            <p>The secretary checks the submission against the parish register and reviews requirements. An online submission is not an official parish record and is not automatically approved.</p>
         </div>
     </div>
 
@@ -61,8 +61,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>Keep your tracking number</h3>
-            <p>When you submit, you'll receive a tracking number. Keep it safe — you can check your request's status any time with that number.</p>
+<h3>Keep your tracking number</h3>
+            <p>After a successful submission, keep the tracking number and recorded email address. Use both to view a limited public status timeline.</p>
         </div>
     </div>
 
@@ -70,8 +70,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-            <h3>Pick it up in person</h3>
-            <p>Bring a valid ID to the parish office. Payment is made at pickup, same as always — there's no online payment involved.</p>
+<h3>Verify and complete onsite</h3>
+            <p>If documents are needed, the parish office will tell you whether to send them to the parish's official email address or bring them to the office. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
         </div>
     </div>
 
@@ -86,8 +86,13 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
     <div class="path-card">
         <h3>Sacrament Application</h3>
-        <p>You're applying to receive a sacrament here — enrolling a child for Confirmation or First Communion, or applying to be married at this parish.</p>
-        <a href="<?= $basePath ?>/public/certificate-request.php" class="btn btn-secondary">Start an Application</a>
+        <p>You're applying to receive a sacrament here — currently Baptism or Marriage. The secretary records Confirmation and First Communion as received/not-received statuses on the parish record.</p>
+        <a href="<?= $basePath ?>/public/sacrament-application.php" class="btn btn-secondary">Start an Application</a>
+    </div>
+    <div class="path-card">
+        <h3>Correction Request</h3>
+        <p>You already received a certificate and need to report an incorrect detail or ask for an amendment to the issued record.</p>
+        <a href="<?= $basePath ?>/public/correction-request.php" class="btn btn-secondary">Request a Correction</a>
     </div>
 </div>
 
@@ -95,6 +100,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="workflow-cta">
     <a href="<?= $basePath ?>/public/certificate-request.php" class="btn">Start a Request</a>
     <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
+    <a href="<?= $basePath ?>/public/correction-request.php" class="btn btn-secondary">Request a Correction</a>
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

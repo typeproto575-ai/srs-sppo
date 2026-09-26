@@ -30,70 +30,26 @@ const CERT_EXT = [
     'marriage'          => ['table' => 'marriage_certificate_requests',         'name_col' => 'party_a_full_name'],
 ];
 
-$statusOptions = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
+// Status changes are handled on certificate-detail.php (which enforces
+// transition validation and captures rejection reasons). The queue is a
+// read-only navigational list — no inline POST handler here.
 
-// --- Handle status update ------------------------------------------------
-// CSRF: forged or stale POSTs are dropped silently (fail closed) - the
-// queue simply re-renders with no status change applied.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    redirect_to('/admin/requests/queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
-}
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && csrf_verify()) {
-    $requestId = (int) ($_POST['request_id'] ?? 0);
-    $newStatus = $_POST['new_status'] ?? '';
-
-    if ($requestId && in_array($newStatus, $statusOptions, true)) {
-        $stmt = $pdo->prepare(
-            "UPDATE certificate_requests SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
-        );
-        $stmt->execute([$newStatus, current_user()['id'], $requestId]);
-
-        log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId,
-            "Status changed to {$newStatus}");
-
-        // Admin bell: flag ready-for-pickup so the counter desk remembers
-        // to call the person in and have the copies signed and waiting.
-        if ($newStatus === 'ready_for_pickup') {
-            $nfStmt = $pdo->prepare('SELECT tracking_number, sacrament_type, requester_name FROM certificate_requests WHERE id = ?');
-            $nfStmt->execute([$requestId]);
-            if ($nfRow = $nfStmt->fetch()) {
-                $nfKind = ucwords(str_replace('_', ' ', (string) $nfRow['sacrament_type'])) . ' Certificate';
-                notify($pdo, 'request_ready', 'Certificate ready for pickup',
-                    $nfKind . ' for ' . $nfRow['requester_name'] . ' (' . $nfRow['tracking_number'] . ')',
-                    '/admin/requests/queue.php?status=ready_for_pickup');
-            }
-        }
-
-        // Notify the requester (email) when their certificate is ready for
-        // pickup, or when it has been released at the counter. Safe no-op and
-        // logged when mail is enabled; never blocks the status change.
-        if ($newStatus === 'ready_for_pickup' || $newStatus === 'released') {
-            $mailStmt = $pdo->prepare('SELECT requester_email, tracking_number, sacrament_type FROM certificate_requests WHERE id = ?');
-            $mailStmt->execute([$requestId]);
-            $mailRow = $mailStmt->fetch();
-            $mailTo = trim((string) ($mailRow['requester_email'] ?? ''));
-            if ($mailTo !== '') {
-                $kind = ucwords(str_replace('_', ' ', (string) ($mailRow['sacrament_type'] ?? ''))) . ' Certificate';
-                if (mail_status_update($mailTo, (string) $mailRow['tracking_number'], humanize_label($newStatus), $kind)) {
-                    log_activity($pdo, current_user()['id'], 'status_email_sent', 'certificate_requests', $requestId,
-                        "Status email sent to {$mailTo}");
-                }
-            }
-        }
-    }
-    redirect_to('/admin/requests/queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
-    exit;
-}
 
 // --- Filters ---------------------------------------------------------------
 $filterStatus = $_GET['status'] ?? '';
 $filterSacrament = $_GET['sacrament'] ?? '';
+$filterChannel = $_GET['channel'] ?? '';
+$allowedRequestStatuses = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
 
 $where  = [];
 $params = [];
-if ($filterStatus !== '' && in_array($filterStatus, $statusOptions, true)) {
+if ($filterStatus !== '' && in_array($filterStatus, $allowedRequestStatuses, true)) {
     $where[] = 'status = ?';
     $params[] = $filterStatus;
+}
+if ($filterChannel !== '' && in_array($filterChannel, ['online', 'onsite'], true)) {
+    $where[] = 'submission_channel = ?';
+    $params[] = $filterChannel;
 }
 if ($filterSacrament !== '' && array_key_exists($filterSacrament, CERT_EXT)) {
     $where[] = 'sacrament_type = ?';
@@ -106,18 +62,24 @@ $selfUrl = $basePath . '/admin/requests/queue.php';
 $rfConfig = [
     'date_column'    => 'date_submitted',
     'search_columns' => ['tracking_number', 'requester_name', 'requester_email'],
-    'placeholder'    => 'Search tracking no., requester, email&hellip;',
+    'placeholder'    => 'Search tracking no., requester, email...',
     'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [
                 'pending'         => 'Pending',
+                'submitted'      => 'Submitted',
                 'under_review'    => 'Under review',
+                'requirements_pending' => 'Requirements pending',
+                'requirements_incomplete' => 'Requirements incomplete',
+                'awaiting_onsite_verification' => 'Awaiting onsite verification',
                 'approved'        => 'Approved',
                 'ready_for_pickup'=> 'Ready for pickup',
                 'released'        => 'Released',
                 'rejected'        => 'Rejected',
+                'cancelled'       => 'Cancelled',
             ]],
+        'channel'   => ['label' => 'Channel', 'options' => ['online' => 'Online', 'onsite' => 'Onsite']],
         'sacrament' => ['label' => 'Sacrament',
             'options' => [
                 'baptismal'      => 'Baptismal',
@@ -130,23 +92,41 @@ $rfConfig = [
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
+$sort = $_GET['sort'] ?? 'date_desc';
+$allowedSorts = ['tracking', 'tracking_desc', 'sacrament', 'sacrament_desc', 'requester', 'requester_desc', 'purpose', 'purpose_desc', 'channel', 'channel_desc', 'date_desc', 'date_asc', 'status', 'status_desc'];
+if (!in_array($sort, $allowedSorts, true)) $sort = 'date_desc';
+$orderClauses = [
+    'tracking' => 'tracking_number ASC, id ASC', 'tracking_desc' => 'tracking_number DESC, id DESC',
+    'sacrament' => 'sacrament_type ASC, id ASC', 'sacrament_desc' => 'sacrament_type DESC, id DESC',
+    'requester' => 'requester_name ASC, id ASC', 'requester_desc' => 'requester_name DESC, id DESC',
+    'purpose' => 'purpose ASC, id ASC', 'purpose_desc' => 'purpose DESC, id DESC',
+    'channel' => 'submission_channel ASC, id ASC', 'channel_desc' => 'submission_channel DESC, id DESC',
+    'date_desc' => 'date_submitted DESC, id DESC', 'date_asc' => 'date_submitted ASC, id ASC',
+    'status' => 'status ASC, id ASC', 'status_desc' => 'status DESC, id DESC',
+];
+$orderClause = $orderClauses[$sort];
 
-$combinedWhere = $rf['where'];
-if ($whereSql !== '') {
-    $combinedWhere = $combinedWhere === '' ? "WHERE $where[0]" : "$combinedWhere AND $where[0]";
-}
-// Handle multiple where clauses
-if (count($where) > 1) {
-    $extraStr = implode(' AND ', $where);
-    $combinedWhere = $rf['where'] === '' ? "WHERE $extraStr" : $rf['where'] . " AND $extraStr";
+$allClauses = [];
+$allParams = [];
+
+if ($rf['where'] !== '') {
+    $allClauses[] = ltrim($rf['where'], ' AND');
+    $allParams = array_merge($allParams, $rf['params']);
 }
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests $combinedWhere");
-$countStmt->execute(array_merge($rf['params'], $params));
+if ($where !== []) {
+    $allClauses[] = '(' . implode(' AND ', $where) . ')';
+    $allParams = array_merge($allParams, $params);
+}
+
+$combinedWhere = $allClauses === [] ? '' : ' WHERE ' . implode(' AND ', $allClauses);
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM certificate_requests{$combinedWhere}");
+$countStmt->execute($allParams);
 $totalRows = (int) $countStmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT * FROM certificate_requests $combinedWhere ORDER BY date_submitted DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
-$stmt->execute(array_merge($rf['params'], $params));
+$stmt = $pdo->prepare("SELECT * FROM certificate_requests{$combinedWhere} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute($allParams);
 $requests = $stmt->fetchAll();
 
 // Fetch the sacrament-specific "who this is about" name for each row.
@@ -177,17 +157,19 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (empty($requests)): ?>
             <p>No certificate requests match this filter.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Tracking No.</th>
-                    <th>Sacrament</th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'tracking') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'tracking', $sort)) ?>">Tracking No.<?= admin_sort_indicator('tracking', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'sacrament') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'sacrament', $sort)) ?>">Sacrament<?= admin_sort_indicator('sacrament', $sort) ?></a></th>
                     <th>Subject</th>
-                    <th>Requester</th>
-                    <th>Purpose</th>
-                    <th>Submitted</th>
-                    <th>Status</th>
-                    <th>Update</th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'requester') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'requester', $sort)) ?>">Requester<?= admin_sort_indicator('requester', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'purpose') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'purpose', $sort)) ?>">Purpose<?= admin_sort_indicator('purpose', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'channel') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'channel', $sort)) ?>">Channel<?= admin_sort_indicator('channel', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -198,24 +180,37 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($req['subject_name'] ?? '—') ?></td>
                         <td><?= e($req['requester_name']) ?><br><small><?= e($req['requester_email']) ?></small></td>
                         <td><?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></td>
+                        <td><?= e(ucfirst($req['submission_channel'] ?? 'onsite')) ?></td>
                         <td><?= e(date('M j, Y', strtotime($req['date_submitted']))) ?></td>
                         <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></td>
-                        <td>
-                            <form method="post" class="inline-fields">
-                                <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
-                                <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                <select name="new_status">
-                                    <?php foreach ($statusOptions as $s): ?>
-                                        <option value="<?= e($s) ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
-                            </form>
+                        <td class="row-actions">
+                            <?php
+                            $nextAction = 'Review';
+                            $nextUrl = $basePath . '/admin/requests/certificate-detail.php?id=' . (int) $req['id'];
+                            if ($req['status'] === 'approved') {
+                                $nextAction = 'Preview / Generate';
+                                $nextUrl = $basePath . '/admin/certificates/generate.php?preview=' . (int) $req['id'];
+                            } elseif ($req['status'] === 'ready_for_pickup') {
+                                $generationCheck = $pdo->prepare(
+                                    'SELECT id FROM certificate_generation_log WHERE certificate_request_id = ? AND superseded_at IS NULL ORDER BY id DESC LIMIT 1'
+                                );
+                                $generationCheck->execute([(int) $req['id']]);
+                                if ($generationCheck->fetchColumn()) {
+                                    $nextAction = 'Print / Pickup';
+                                    $nextUrl = $basePath . '/admin/certificates/history.php?request_id=' . (int) $req['id'];
+                                } else {
+                                    $nextAction = 'Preview / Generate';
+                                    $nextUrl = $basePath . '/admin/certificates/generate.php?preview=' . (int) $req['id'];
+                                }
+                            }
+                            ?>
+                            <a href="<?= e($nextUrl) ?>" class="btn btn-small<?= $req['status'] === 'ready_for_pickup' ? ' btn-secondary' : '' ?>"><?= e($nextAction) ?></a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

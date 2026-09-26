@@ -19,6 +19,10 @@ require_once __DIR__ . '/../includes/auth.php'; // session + role guard
 require_role('secretary');                      // dashboard is secretary-only
 
 $pageTitle = 'Admin Dashboard';
+$featureDisabledNotice = null;
+if (isset($_GET['disabled']) && $_GET['disabled'] === 'death-burial') {
+    $featureDisabledNotice = 'Death/Burial records are not currently available.';
+}
 
 // ---- Quick stats -----------------------------------------------------------
 // Count of certificate requests still awaiting processing.
@@ -47,14 +51,13 @@ $underReviewCount = (int) $pdo->query(
 )->fetch()['c'];
 
 // ---- Archive registry totals ------------------------------------------------
-// Live COUNT(*) per digitised logbook for the registry grid below. Death/burial
-// is tracked as a simplified status table, so counting its rows still reflects
-// how many deceased parishioners have been recorded, even though it is not a
-// full sacrament register and does not export certificates.
+// Live COUNT(*) per digitised logbook for the registry grid below. Death/Burial
+// is intentionally excluded from the active admin dashboard while the feature
+// remains disabled, but the data remains in the database unchanged.
 // Table names come from a hardcoded list (never user input), so no
 // parameterisation is needed.
 $registryCounts = [];
-foreach (['baptismal_records', 'confirmation_records', 'first_communion_records', 'marriage_records', 'death_burial_records'] as $registryTable) {
+foreach (['baptismal_records', 'confirmation_records', 'first_communion_records', 'marriage_records'] as $registryTable) {
     $registryCounts[$registryTable] = (int) $pdo->query(
         "SELECT COUNT(*) c FROM {$registryTable}"
     )->fetch()['c'];
@@ -84,6 +87,11 @@ if ((current_user()['username'] ?? null) === 'secretary') {
                 <a href="<?= $basePath ?>/admin/system/accounts.php">Change your password now</a> to protect parish records.
             </div>
 <?php endif; ?>
+<?php if ($featureDisabledNotice): ?>
+            <div class="alert alert-warning" role="alert">
+                <p><?= e($featureDisabledNotice) ?></p>
+            </div>
+<?php endif; ?>
         <section class="dashboard-shell">
             <div class="dashboard-hero">
                 <div>
@@ -93,6 +101,7 @@ if ((current_user()['username'] ?? null) === 'secretary') {
                     <p class="dashboard-subtitle">Monitor record flows, pending requests, and priority parish actions from one place.</p>
                 </div>
                 <div class="dashboard-actions">
+                    <a href="<?= $basePath ?>/admin/records/index.php" class="btn btn-primary">All Records</a>
                     <a href="<?= $basePath ?>/admin/requests/queue.php" class="btn btn-primary">Review Requests</a>
                     <a href="<?= $basePath ?>/admin/system/accounts.php" class="btn btn-secondary btn-dark">Staff Accounts</a>
                 </div>
@@ -147,11 +156,6 @@ if ((current_user()['username'] ?? null) === 'secretary') {
                         <h3>Marriage</h3>
                         <span class="registry-count"><?= (int) $registryCounts['marriage_records'] ?></span>
                     </a>
-                    <a class="registry-card" href="<?= $basePath ?>/admin/records/death-burial.php">
-                        <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 8h10"/></svg></span>
-                        <h3>Death / Burial Status</h3>
-                        <span class="registry-count"><?= (int) $registryCounts['death_burial_records'] ?></span>
-                    </a>
                 </div>
             </div><!-- /.registry-summary -->
 
@@ -166,8 +170,8 @@ if ((current_user()['username'] ?? null) === 'secretary') {
                 <div class="mini-panel">
                     <h3>Your tools</h3>
                     <div class="tool-list">
-                        <a href="<?= $basePath ?>/admin/system/accounts.php">Staff Account Management</a>
-                        <a href="<?= $basePath ?>/admin/system/backup.php">Export Database</a>
+                            <a href="<?= $basePath ?>/admin/system/accounts.php">Staff Account Management</a>
+                            <a href="<?= $basePath ?>/admin/system/backup.php">Export Database</a>
                     </div>
                 </div>
             </div>

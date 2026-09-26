@@ -1,17 +1,21 @@
 # SPPO-IS root protection
 # 1. Deny direct web access to dotfiles/dot-directories (.git/, .env, .htaccess)
-# 2. Block temp/debug scripts left in the project root
+# 2. Block throwaway/migration helper scripts (any filename starting with "_")
+#    and markdown docs/metadata that must never be served
 #
-# Dev/debug tooling lives in /devtools/ (denied + gitignored). The name-pattern
-# rules below are defense-in-depth: even if a script matching one of these
-# stems is ever re-created anywhere under the web root, Apache refuses it.
+# Migration helpers like migrations/_run007.php and migrations/_test_suggest.php
+# execute DB writes/queries when browsed — the "^_" rule below refuses any file
+# whose name starts with an underscore, anywhere under the web root.
 
 # Apache 2.4+
 <IfModule mod_authz_core.c>
     <FilesMatch "^\.">
         Require all denied
     </FilesMatch>
-    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt)$">
+    <FilesMatch "^_">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md)$">
         Require all denied
     </FilesMatch>
     # Dev/debug script stems (check_*, list_*, create_*, audit_*, fix*)
@@ -26,7 +30,11 @@
         Order deny,allow
         Deny from all
     </FilesMatch>
-    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt)$">
+    <FilesMatch "^_">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md)$">
         Order deny,allow
         Deny from all
     </FilesMatch>

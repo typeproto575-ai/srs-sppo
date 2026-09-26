@@ -36,7 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $error = 'Your session expired. Please try again.';
     } else {
-        $trackingNumber = trim($_POST['tracking_number'] ?? '');
+        // Tracking numbers are generated uppercase; normalize input before rate limiting and lookup.
+        $trackingNumber = strtoupper(trim($_POST['tracking_number'] ?? ''));
         $email          = trim($_POST['email'] ?? '');
 
         if ($trackingNumber === '' || $email === '') {
@@ -44,31 +45,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
         } else {
+            // ---- Validate tracking-number format before hitting the DB ----
+            // generate_tracking_number() produces e.g. SPPO-2026-000123.
+            // Reject anything that doesn't match so malformed input never reaches SQL.
+            $trackingPattern = '/^SPPO(-[A-Z]+)?-\d{4}-\d{6}$/';
             // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
-            // Keyed on tracking+email to prevent enumeration attacks.
-            $rateKey = $trackingNumber . '|' . $email;
-            if (too_many_attempts($pdo, $rateKey, 8, 15)) {
+            // Keyed on tracking+email (existing key) AND on IP (new, to prevent
+            // rotating one against the other to route around the per-key limit).
+            // The check runs BEFORE format validation so that hammering garbage-
+            // formatted tracking numbers is blocked by the same limit too.
+            $rateKey       = $trackingNumber . '|' . $email;
+            $ipRateKey     = 'ip:' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+            if (too_many_attempts($pdo, $rateKey, 8, 15) || too_many_attempts($pdo, $ipRateKey, 8, 15)) {
                 $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
                 log_activity($pdo, null, 'track_rate_limited', null, null, "Rate limited: {$trackingNumber}");
+            } elseif (!preg_match($trackingPattern, $trackingNumber)) {
+                // Malformed format counts as a failed attempt (rate-limit bypass fix).
+                record_attempt($pdo, $rateKey);
+                record_attempt($pdo, $ipRateKey);
+                $error = 'We couldn\'t find a request matching that tracking number and email combination.';
             } else {
                 // 1. Look in certificate_requests first -- email lives directly on the shared table.
-                $stmt = $pdo->prepare(
-                    "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
-                     FROM certificate_requests WHERE tracking_number = ?"
-                );
-                $stmt->execute([$trackingNumber]);
-                $row = $stmt->fetch();
+                    $stmt = $pdo->prepare(
+                        "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
+                         FROM certificate_requests WHERE tracking_number = ?"
+                    );
+                    $stmt->execute([$trackingNumber]);
+                    $row = $stmt->fetch();
 
-                if ($row) {
-                    // Case-insensitive email match protects against trivial snooping.
-                    if (strcasecmp(trim($row['requester_email']), $email) === 0) {
-                        $result = ['kind' => 'certificate', 'row' => $row];
+                    if ($row) {
+                        // Case-insensitive email match protects against trivial snooping.
+                        if (strcasecmp(trim($row['requester_email']), $email) === 0) {
+                            $result = ['kind' => 'certificate', 'row' => $row];
+                        } else {
+                            // Record failed attempt (wrong email for this tracking number).
+                            record_attempt($pdo, $rateKey);
+                            record_attempt($pdo, $ipRateKey);
+                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
+                        }
                     } else {
-                        // Record failed attempt (wrong email for this tracking number).
-                        record_attempt($pdo, $rateKey);
-                        $error = 'We found that tracking number, but the email address does not match our records.';
-                    }
-                } else {
                     // 2. Look in sacrament_applications -- email lives in the sacrament-specific extension table.
                     $stmt = $pdo->prepare(
                         "SELECT id, tracking_number, sacrament_type, status, date_submitted
@@ -106,17 +121,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
                         }
 
-                        if ($matchedEmail) {
+                                                if ($matchedEmail) {
                             $result = ['kind' => 'application', 'row' => $appRow];
                         } else {
                             // Record failed attempt (no matching email in extension table).
                             record_attempt($pdo, $rateKey);
-                            $error = 'We found that tracking number, but the email address does not match our records.';
+                            record_attempt($pdo, $ipRateKey);
+                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                         }
                     } else {
                         // Record failed attempt (tracking number not found at all).
                         record_attempt($pdo, $rateKey);
-                        $error = 'No request found with that tracking number. Please double-check and try again.';
+                        record_attempt($pdo, $ipRateKey);
+                        $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                     }
                 }
             }
@@ -129,7 +146,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="request-form">
     <h1>Track My Request</h1>
-    <p>Enter the tracking number and email address you used when you submitted your request or application.</p>
+    <p>Enter the tracking number provided after submission and the same email address used for your request or application.</p>
 
     <?php if ($error): ?>
         <div class="alert alert-error"><p><?= e($error) ?></p></div>
@@ -137,24 +154,14 @@ require_once __DIR__ . '/../includes/header.php';
 
         <?php if ($result): ?>
         <?php
-        // --- User-friendly stage timeline ---------------------------------
-        // Certificates follow one linear pipeline. Applications have a longer
-        // workflow (documents / interview / banns / seminar) which we present
-        // as a single "In Process" stage - purely presentational, the
-        // underlying status values are unchanged.
         $status = $result['row']['status'];
         if ($result['kind'] === 'certificate') {
-            $stageLabels = ['Submitted', 'In Review', 'Approved', 'Ready for Pickup', 'Released'];
-            $stageIndex  = array_search($status, ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released'], true);
+            $timeline = certificate_timeline_definition($status);
+            $stageLabels = array_column($timeline['stages'], 'label');
+            $stageIndex = $timeline['index'];
         } else {
-            $stageLabels = ['Submitted', 'In Process', 'Approved', 'Completed'];
-            $stageMap = [
-                'submitted' => 0,
-                'documents_pending' => 1, 'interview_scheduled' => 1, 'banns_in_progress' => 1,
-                'seminar_pending' => 1, 'ready_for_approval' => 1,
-                'approved' => 2, 'scheduled' => 2,
-                'completed' => 3,
-            ];
+            $stageLabels = ['Application Received', 'Secretary Review', 'Requirements / Onsite Verification', 'Approved', 'Scheduled', 'Completed'];
+            $stageMap = ['submitted' => 0, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'documents_pending' => 1, 'interview_scheduled' => 2, 'banns_in_progress' => 2, 'seminar_pending' => 2, 'awaiting_onsite_verification' => 2, 'ready_for_approval' => 2, 'approved' => 3, 'scheduled' => 4, 'completed' => 5];
             $stageIndex = $stageMap[$status] ?? 0;
         }
         ?>
@@ -163,10 +170,12 @@ require_once __DIR__ . '/../includes/header.php';
             <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> - <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
             <p><strong>Date Submitted:</strong> <?= e(date('F j, Y', strtotime($result['row']['date_submitted']))) ?></p>
 
-            <?php if ($status === 'rejected'): ?>
+            <?php if ($status === 'rejected' || $status === 'cancelled'): ?>
                 <div class="alert alert-warning">
-                    <p><strong>Status: Rejected.</strong> Please contact the parish office directly for details and next steps.</p>
+                    <p><strong>Status: <?= e(ucfirst($status)) ?>.</strong> Please contact the parish office directly for details and next steps.</p>
                 </div>
+            <?php elseif (in_array($status, ['correction_needed', 'unable_to_locate_record'], true)): ?>
+                <div class="alert alert-warning"><p><strong><?= e(humanize_status($status)) ?>.</strong> Please contact the parish office for next steps.</p></div>
             <?php else: ?>
                 <ol class="status-timeline">
                     <?php foreach ($stageLabels as $i => $label): ?>
@@ -178,7 +187,9 @@ require_once __DIR__ . '/../includes/header.php';
                 </ol>
                 <p class="field-hint">
                     <?php if ($status === 'ready_for_pickup'): ?>
-                        Your request is ready! Please visit the parish office with a valid ID. Payment is made at pickup.
+                        Your certificate is ready. Please visit the parish office with your tracking number and valid identification. Certificates are released in person.
+                    <?php elseif ($status === 'released'): ?>
+                        This transaction was released at the parish office.
                     <?php else: ?>
                         Current stage: <strong><?= e($stageLabels[$stageIndex] ?? humanize_status($status)) ?></strong>.
                         Check back any time with this tracking number and your email.
@@ -192,12 +203,12 @@ require_once __DIR__ . '/../includes/header.php';
     <form method="post" action="">
         <?= csrf_field() ?>
         <fieldset>
-            <legend>Look Up Your Request</legend>
+            <legend>Look Up Your Office Transaction</legend>
             <label>Tracking Number *
                 <input type="text" name="tracking_number" placeholder="SPPO-2026-000123" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
             </label>
             <label>Email Address *
-                <input type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required>
+                <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required>
             </label>
         </fieldset>
         <button type="submit" class="btn">Track Request</button>

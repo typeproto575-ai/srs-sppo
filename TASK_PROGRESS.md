@@ -1,4 +1,17 @@
-# SRS-SPPO — Commenting and Upgrade Checklist
+# SRS-SPPO — Documentation and Maintenance Checklist
+
+The live behavior is defined by `PROJECT_CONTEXT.md`. This checklist tracks
+documentation and maintenance work only; it must not describe legacy pages as
+active features. A file is considered documented when its opening comment
+states its purpose, access boundary, and important side effects. Individual
+HTML inputs do not need narration when their names and labels are clear.
+
+## Verified baseline
+- [x] README and defense guide agree with the live public scope and mail setting
+- [x] Legacy Confirmation/First Communion application tables are labeled as compatibility data
+- [x] Non-existent priest pages removed from this checklist; there is no priest portal
+- [ ] Run syntax validation with the XAMPP PHP binary (`C:\xampp\php\php.exe`)
+- [ ] Perform a browser smoke test for public intake, tracking, admin login, and certificate preview
 
 ## Phase 1: Core infrastructure (includes/)
 - [x] includes/functions.php — already well-commented, add missing pieces
@@ -55,11 +68,8 @@
 - [ ] admin/system/audit-log.php — add header comment, comment sections
 - [ ] admin/system/person-mapper.php — add header comment, comment sections
 
-## Phase 5: Priest pages
-- [ ] priest/dashboard.php — add header comment, comment sections
-- [ ] priest/marriage-approval.php — add header comment, comment sections
-- [ ] priest/schedule.php — add header comment, comment sections
-- [ ] priest/reports.php — add header comment, comment sections
+## Phase 5: Removed scope
+- [x] Priest portal — intentionally not part of the live system; canonical clearance is recorded by the Secretary
 
 ## Phase 6: Assets
 - [ ] assets/css/style.css — add section header comments
@@ -67,6 +77,6 @@
 - [ ] assets/js/main.js — add header comment, comment each function
 
 ## Phase 7: Final verification
-- [ ] Run PHP syntax check on all .php files
-- [ ] Verify all files have header comments
-- [ ] Check for any remaining bugs (undefined variables, etc.)
+- [ ] Run PHP syntax check on all .php files with XAMPP PHP
+- [ ] Verify all executable PHP/CSS/JS entry points have a useful header or section comment
+- [ ] Check for remaining stale links, undefined variables, and references to removed workflows

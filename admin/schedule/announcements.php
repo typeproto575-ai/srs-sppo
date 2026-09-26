@@ -120,15 +120,25 @@ if (isset($_GET['updated'])) $success = 'Announcement updated.';
 if (isset($_GET['deleted'])) $success = 'Announcement deleted.';
 
 $selfUrl = $basePath . '/admin/schedule/announcements.php';
-$rfConfig = ['date_column' => 'created_at', 'search_columns' => ['title', 'content'], 'placeholder' => 'Search announcement title or content&hellip;'];
+$rfConfig = ['date_column' => 'created_at', 'search_columns' => ['title', 'content'], 'placeholder' => 'Search announcement title or content...'];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
+$sort = $_GET['sort'] ?? 'date_desc';
+$allowedSorts = ['title', 'title_desc', 'event_date', 'event_date_desc', 'status', 'status_desc', 'date_desc', 'date_asc'];
+if (!in_array($sort, $allowedSorts, true)) $sort = 'date_desc';
+$orderClauses = [
+    'title' => 'title ASC, id ASC', 'title_desc' => 'title DESC, id DESC',
+    'event_date' => 'event_date ASC, id ASC', 'event_date_desc' => 'event_date DESC, id DESC',
+    'status' => 'is_published ASC, id ASC', 'status_desc' => 'is_published DESC, id DESC',
+    'date_desc' => 'created_at DESC, id DESC', 'date_asc' => 'created_at ASC, id ASC',
+];
+$orderClause = $orderClauses[$sort];
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM announcements {$rf['where']}");
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM announcements WHERE 1=1 {$rf['where']}");
 $countStmt->execute($rf['params']);
 $totalRows = (int) $countStmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT * FROM announcements {$rf['where']} ORDER BY created_at DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt = $pdo->prepare("SELECT * FROM announcements WHERE 1=1 {$rf['where']} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
 $stmt->execute($rf['params']);
 $announcements = $stmt->fetchAll();
 
@@ -162,8 +172,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (empty($announcements)): ?>
             <p>No announcements yet.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
-            <thead><tr><th>Title</th><th>Event Date</th><th>Status</th><th>Posted</th><th></th></tr></thead>
+            <thead><tr><th><a class="table-sort-link<?= str_starts_with($sort, 'title') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'title', $sort)) ?>">Title<?= admin_sort_indicator('title', $sort) ?></a></th><th><a class="table-sort-link<?= str_starts_with($sort, 'event_date') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'event_date', $sort)) ?>">Event Date<?= admin_sort_indicator('event_date', $sort) ?></a></th><th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th><th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Posted<?= admin_sort_indicator('date', $sort) ?></a></th><th></th></tr></thead>
             <tbody>
                 <?php foreach ($announcements as $a): ?>
                     <tr>
@@ -174,12 +185,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td class="row-actions">
                             <?php if ($isSecretary): ?>
                             <a class="btn btn-small" href="<?= $basePath ?>/admin/schedule/announcements.php?edit=<?= (int) $a['id'] ?>">Edit</a>
-                            <form method="post" style="display:inline;">
+                            <form autocomplete="off" method="post" style="display:inline;">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
                                 <button type="submit" name="toggle_publish" value="1" class="btn btn-secondary btn-small"><?= $a['is_published'] ? 'Unpublish' : 'Publish' ?></button>
                             </form>
-                            <form method="post" style="display:inline;" data-confirm="Delete this announcement?">
+                            <form autocomplete="off" method="post" style="display:inline;" data-confirm="Delete this announcement?">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
                                 <button type="submit" name="delete_announcement" value="1" class="btn btn-secondary btn-small">Delete</button>
@@ -190,6 +201,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
@@ -201,14 +213,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
-                <form method="post" action="">
+                <form autocomplete="off" method="post" action="">
                     <?= csrf_field() ?>
                     <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editAnnouncement['id'] ?>"><?php endif; ?>
-                    <label>Title * <input type="text" name="title" value="<?= e($_POST['title'] ?? ($editAnnouncement['title'] ?? '')) ?>" required></label>
-                    <label>Content * <textarea name="content" required><?= e($_POST['content'] ?? ($editAnnouncement['content'] ?? '')) ?></textarea></label>
-                    <label>Related Event Date (optional) <input type="date" name="event_date" value="<?= e($_POST['event_date'] ?? ($editAnnouncement['event_date'] ?? '')) ?>"></label>
+                    <label>Title * <input autocomplete="off" type="text" name="title" value="<?= e($_POST['title'] ?? ($editAnnouncement['title'] ?? '')) ?>" required></label>
+                    <label>Content * <textarea autocomplete="off" name="content" required><?= e($_POST['content'] ?? ($editAnnouncement['content'] ?? '')) ?></textarea></label>
+                    <label>Related Event Date (optional) <input autocomplete="off" type="date" name="event_date" value="<?= e($_POST['event_date'] ?? ($editAnnouncement['event_date'] ?? '')) ?>"></label>
                     <label class="checkbox-label">
-                        <input type="checkbox" name="is_published" value="1" <?= (($_SERVER['REQUEST_METHOD'] === 'POST' ? isset($_POST['is_published']) : (bool) ($editAnnouncement['is_published'] ?? true))) ? 'checked' : '' ?>>
+                        <input autocomplete="off" type="checkbox" name="is_published" value="1" <?= (($_SERVER['REQUEST_METHOD'] === 'POST' ? isset($_POST['is_published']) : (bool) ($editAnnouncement['is_published'] ?? true))) ? 'checked' : '' ?>>
                         Publish immediately (visible on the public landing page)
                     </label>
                     <div class="form-actions">

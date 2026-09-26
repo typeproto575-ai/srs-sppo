@@ -14,8 +14,8 @@ SRS-SPPO is a plain-PHP (no framework) parish office tool for one user: the
 Confirmation, First Communion, Marriage) and runs the office workflow around
 them:
 
-1. **Parishioners** submit certificate requests or sacrament applications
-   through public forms and receive a **tracking number**.
+1. **Parishioners** submit certificate requests or Baptismal/Marriage
+   sacrament applications through public forms and receive a **tracking number**.
 2. The **Secretary** processes those in the admin queues, updates statuses,
    encodes walk-in requests, and manages the digital logbooks.
 3. The **Secretary** matches each approved request to a digital record and
@@ -37,7 +37,7 @@ These are *deliberate removals/choices* — good defense talking points, not gap
 | **No payment/fees anywhere** | Fees are paid in person at pickup. No monetary fields or logic exist by design. |
 | **No parishioner accounts** | Tracking is via tracking number + email, not a login. Only the Secretary has an account. |
 | **Eligibility checks flag, never auto-block** | Age/prerequisite checks set a warning flag for the Secretary's review; they never silently reject a submission. |
-| **Email is not yet sent** | Every form has a `// TODO` marker for SMTP. Copy on the site is truthful ("keep this tracking number"). Tracking lookup works over HTTP. |
+| **Email is disabled by default** | `MAIL_ENABLED` is `false` in `config/mail.php`. The workflow remains usable through the tracking number and email lookup, while delivery attempts are logged when configured. |
 | **Locally hosted (XAMPP)** | Intended as a demonstration system "as if for a real parish", not yet production-deployed. |
 
 ## 3. System map
@@ -46,7 +46,7 @@ These are *deliberate removals/choices* — good defense talking points, not gap
 public/                     parishioner side (no login)
   index.php                 landing, calendar, announcements
   certificate-request.php   hub -> 4 certificate request forms
-  sacrament-applications/   baptism • confirmation • first communion • marriage
+   sacrament-applications/   baptism • marriage (live public flows)
   track-request.php         lookup by tracking number + email
 admin/                      Secretary only
   dashboard.php             counts + registry summary
@@ -96,8 +96,8 @@ loaded, follow this order:
 6. **Certificates → Certificate Requests** (queue). Open the pending Baptismal
    request (SPPO-2026-000031) and update its status to `under_review`, then
    `approved`.
-7. **Certificates → Generate / Preview**. The approved Marriage and First
-   Communion requests are listed. Open one → a proper printable **certificate**
+7. **Certificates → Generate / Preview**. An approved request is listed. Open
+   one → a proper printable **certificate**
    shows (matched record → register data). Click **Print Certificate** and show
    the print-only paper; **Mark as Generated**.
 8. Show **Print / Pickup History** now contains the entry.
@@ -143,10 +143,11 @@ forms. The audit log records who did what.
 forms and the Booking Conflicts page flag overlaps for the Secretary, who
 resolves manually — no automated reservation lock.
 
-**Q: Why is there no email being sent?**
-Sending email needs an SMTP server. This demo keeps copy truthful ("save your
-tracking number") and provides lookup by tracking number. The `TODO` markers
-show exactly where a PHPMailer/SMTP integration would slot in.
+**Q: Why might an email not arrive?**
+Email delivery is disabled by default and depends on the deployment's SMTP
+relay. The system never makes delivery a prerequisite for submission: the
+requester can always use the tracking number plus submission email on the
+tracking page, and staff can inspect delivery attempts in the admin log.
 
 **Q: Why no framework?**
 A plain PHP/MySQL app is easier to deploy (any XAMPP machine), easier for a
@@ -160,7 +161,7 @@ submission is never silently blocked.
 
 ## 7. Known limitations (be ready to say these)
 
-- Email sending is not implemented (tracking lookup is the fallback).
+- Email delivery is disabled by default and requires deployment-specific SMTP configuration.
 - Real certificate templates depend on the parish's official layout; the
   current print-ready certificate uses a clean parish-style template.
 - First Communion/Confirmation age ranges are placeholders pending the parish

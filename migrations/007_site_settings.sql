@@ -16,5 +16,5 @@ CREATE TABLE IF NOT EXISTS site_settings (
 INSERT INTO site_settings (setting_key, setting_value) VALUES
 ('hero_eyebrow_text', 'Parish Office Online'),
 ('hero_subtitle_text', 'Dingalan, Aurora - the parish''s sacrament records and certificates, kept faithfully for generations, now easier to reach.'),
-('office_hours_text', CONCAT('Tuesday - Friday: 8:00 AM - 5:00 PM', CHAR(10), 'Saturday: 8:00 AM - 12:00 NN', CHAR(10), 'Sunday & Monday: Closed')),
+('office_hours_text', CONCAT('Monday - Saturday: 8:00 AM - 12:00 PM', CHAR(10), 'Monday - Saturday: 2:00 PM - 5:00 PM', CHAR(10), 'Sunday: Closed')),
 ('office_location_text', CONCAT('St. Patrick''s Parish Office', CHAR(10), 'Dingalan, Aurora, Philippines'));

@@ -31,10 +31,15 @@
  */
 
 // Master switch: false = all mail calls are silent no-ops; true = send mail.
+// Enabled via XAMPP's sendmail relay pointing at Gmail SMTP (see
+// C:\xampp\sendmail\sendmail.ini — auth_username/auth_password must hold a
+// Gmail App Password for the account below). Requires Apache restart.
 define('MAIL_ENABLED', false);
 
 // "From" address and display name shown to recipients.
-define('MAIL_FROM_ADDRESS', 'no-reply@stpatricks-parish.example.ph');
+// NOTE: must be the same Gmail account configured in sendmail.ini, or Gmail
+// will reject the relayed message.
+define('MAIL_FROM_ADDRESS', 'yourparishgmail@gmail.com'); // TODO: real parish Gmail
 define('MAIL_FROM_NAME',    "St. Patrick's Parish Office");
 
 // Prefix added to every subject line (lets parishioners filter our mail).

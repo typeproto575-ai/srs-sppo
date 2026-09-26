@@ -1,71 +1,47 @@
 ﻿<?php
 /**
- * =====================================================================
- * SRS-SPPO REQUEST SELECTOR (public hub page)
- * =====================================================================
- * Purpose: Landing page that routes visitors to the right form:
- *            1. Certificate requests  — proof of an already-recorded
- *               sacrament (Baptismal, Confirmation, First Communion,
- *               Marriage).
- *            2. Sacrament applications — enrolling to RECEIVE a sacrament
- *               (Baptism and Marriage only).
- *          Pure navigation; no database access needed beyond the header.
- * =====================================================================
+ * SRS-SPPO public service selector.
+ * Online actions create pre-applications only; the secretary verifies and
+ * approves every transaction before processing or physical release.
  */
-
-require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
-
-// Subfolder-safe URL prefix for every link below.
 $basePath = $basePath ?? base_path();
-
-$pageTitle = 'Request a Certificate or Apply for a Sacrament';
+$pageTitle = 'Parish Office Services';
 require_once __DIR__ . '/../includes/header.php';
 ?>
-
-<section class="request-selector">
-    <h1>What would you like to do?</h1>
-
-    <!-- Option 1: certificates for sacraments already on record -->
-    <div class="option-group">
-        <h2>1. Request a Certificate</h2>
-        <p>Get proof of a sacrament that already took place.</p>
-        <div class="hub-cards">
-            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/baptismal.php">
-                <h3>Baptismal Certificate</h3>
-                <p>Proof of baptism recorded in the parish register.</p>
-            </a>
-            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/confirmation.php">
-                <h3>Confirmation Certificate</h3>
-                <p>Proof of the sacrament of Confirmation.</p>
-            </a>
-            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/first-communion.php">
-                <h3>First Communion Certificate</h3>
-                <p>Proof of receiving First Communion.</p>
-            </a>
-            <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/marriage.php">
-                <h3>Marriage Certificate</h3>
-                <p>Proof of marriage recorded at this parish.</p>
-            </a>
-        </div>
-    </div>
-
-    <!-- Option 2: applications to receive a sacrament -->
-    <div class="option-group">
-        <h2>2. Apply for a Sacrament</h2>
-        <p>Enroll or apply to receive a sacrament at this parish.</p>
-        <div class="hub-cards hub-cards-applications">
-            <a class="hub-card hub-card-application" href="<?= $basePath ?>/public/sacrament-applications/baptismal.php">
-                <h3>Baptismal Application</h3>
-                <p>Apply to have an infant or child baptized here.</p>
-            </a>
-            <a class="hub-card hub-card-application" href="<?= $basePath ?>/public/sacrament-applications/marriage.php">
-                <h3>Marriage Application</h3>
-                <p>Start the marriage process — interview, banns, and pre-Cana are arranged with the office.</p>
-            </a>
-        </div>
-    </div>
-    <p class="field-hint">Confirmation and First Communion have no application forms by design - they are recorded as received/not-received status flags on your parish record. Enrolment is arranged directly at the parish office.</p>
+<section class="workflow-hero">
+    <span class="eyebrow">Parish Office Services</span>
+    <h1>Request a certificate or apply for a sacrament</h1>
+    <p>Use an online form to send your details to the parish office for review, or visit the office for help. A submission is not approval or an official certificate; the secretary verifies requirements and identity before processing.</p>
 </section>
-
+<section class="option-group">
+    <h2>Request a certificate</h2>
+    <p>Use these forms when the sacrament has already taken place and you need a certified copy of the parish record.</p>
+    <div class="hub-cards">
+        <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/baptismal.php"><h3>Baptismal Certificate</h3><p>Request a certified copy of an existing baptismal record.</p><strong>Request online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/confirmation.php"><h3>Confirmation Certificate</h3><p>Request a certified copy of an existing confirmation record.</p><strong>Request online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/first-communion.php"><h3>First Communion Certificate</h3><p>Request a certified copy of an existing First Communion record.</p><strong>Request online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/certificate-requests/marriage.php"><h3>Marriage Certificate</h3><p>Request a certified copy of an existing marriage record.</p><strong>Request online &rarr;</strong></a>
+    </div>
+</section>
+<section class="option-group">
+    <h2>Apply for a sacrament</h2>
+    <p>Online applications are currently available for Baptism and Marriage. Confirmation and First Communion are recorded by the secretary as received/not-received statuses on the parish record.</p>
+    <div class="hub-cards">
+        <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/baptismal.php"><h3>Baptism Application</h3><p>Start an application for a child or infant baptism.</p><strong>Apply online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/marriage.php"><h3>Marriage Application</h3><p>Start the parish review process for a marriage application.</p><strong>Apply online &rarr;</strong></a>
+    </div>
+</section>
+<section class="option-group">
+    <h2>Need to correct an issued certificate?</h2>
+    <p>If you already received a certificate and need to report an error or request a correction, use the parish correction request form.</p>
+    <div class="hub-cards">
+        <a class="hub-card" href="<?= $basePath ?>/public/correction-request.php"><h3>Certificate Correction Request</h3><p>Report an issue in a previously issued certificate and provide the tracking number and details of the correction needed.</p><strong>Submit correction request &rarr;</strong></a>
+    </div>
+</section>
+<section class="option-group">
+    <h2>Before submitting</h2>
+    <p>Online forms do not create an account, accept payment, collect identity-document uploads, guarantee approval, or release a certificate online. If documents are needed, the parish office will tell you whether to send them to the parish's official email address or bring them onsite.</p>
+    <div class="hero-actions"><a class="btn" href="<?= $basePath ?>/public/requirements.php">View Requirements</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/how-it-works.php">How It Works</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/track-request.php">Track My Request</a></div>
+</section>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

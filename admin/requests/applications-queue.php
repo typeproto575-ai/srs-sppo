@@ -55,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && csrf_verify()) {
     $applicationId = (int) ($_POST['application_id'] ?? 0);
     $newStatus     = $_POST['new_status'] ?? '';
+    $appType       = '';
 
     // Validate the requested status against the workflow of THIS
     // application's sacrament type (never another type's stages).
@@ -67,13 +68,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
     }
 
     if ($applicationId && $allowedStatus) {
-        $stmt = $pdo->prepare(
-            "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
-        );
-        $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
+        // Re-fetch the CURRENT status: never trust the value rendered earlier
+        // (it may have changed since page load).
+        $curStmt = $pdo->prepare('SELECT status FROM sacrament_applications WHERE id = ?');
+        $curStmt->execute([$applicationId]);
+        $curStatus = (string) $curStmt->fetchColumn();
+        $proceed = true;
+        if ($curStatus === '') {
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, 'Status change refused: application not found.');
+            $proceed = false;
+        } elseif (!sacrament_application_transition_valid($curStatus, $newStatus, $appType)) {
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change refused: {$curStatus} -> {$newStatus} for {$appType}.");
+            $proceed = false;
+        } elseif ($newStatus === 'approved') {
+            // Approval is the hard gate: every prerequisite must be met.
+            $gate = can_approve_sacrament_application($pdo, $applicationId, $appType);
+            if (!$gate['ok']) {
+                log_activity($pdo, current_user()['id'], 'sacrament_application_approval_blocked', 'sacrament_applications', $applicationId, 'Approval blocked; missing: ' . implode(' ', $gate['missing']));
+                $proceed = false;
+            }
+        }
+        if ($proceed) {
+            $stmt = $pdo->prepare(
+                "UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?"
+            );
+            $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
 
-        log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId,
-            "Status changed to {$newStatus}");
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId,
+                "Status changed to {$newStatus}");
+        }
     }
     redirect_to('/admin/requests/applications-queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
     exit;
@@ -82,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
 // --- Filters ---------------------------------------------------------------
 $filterStatus    = $_GET['status'] ?? '';
 $filterSacrament = $_GET['sacrament'] ?? '';
+$filterChannel = $_GET['channel'] ?? '';
 $sacramentTypes  = ['baptismal', 'confirmation', 'first_communion', 'marriage'];
 
 $where  = [];
@@ -100,12 +124,15 @@ $selfUrl = $basePath . '/admin/requests/applications-queue.php';
 $rfConfig = [
     'date_column'    => 'date_submitted',
     'search_columns' => ['tracking_number', 'sacrament_type'],
-    'placeholder'    => 'Search tracking no. or sacrament&hellip;',
+    'placeholder'    => 'Search tracking no. or sacrament...',
     'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [
                 'submitted'          => 'Submitted',
+                'requirements_pending' => 'Requirements pending',
+                'requirements_incomplete' => 'Requirements incomplete',
+                'awaiting_onsite_verification' => 'Awaiting onsite verification',
                 'documents_pending' => 'Documents pending',
                 'interview_scheduled' => 'Interview scheduled',
                 'banns_in_progress'  => 'Banns in progress',
@@ -115,7 +142,9 @@ $rfConfig = [
                 'scheduled'          => 'Scheduled',
                 'completed'          => 'Completed',
                 'rejected'           => 'Rejected',
+                'cancelled'          => 'Cancelled',
             ]],
+        'channel'   => ['label' => 'Channel', 'options' => ['online' => 'Online', 'onsite' => 'Onsite']],
         'sacrament' => ['label' => 'Sacrament',
             'options' => [
                 'baptismal'      => 'Baptismal',
@@ -127,19 +156,39 @@ $rfConfig = [
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
+$sort = $_GET['sort'] ?? 'date_desc';
+$allowedSorts = ['tracking', 'tracking_desc', 'sacrament', 'sacrament_desc', 'channel', 'channel_desc', 'date_desc', 'date_asc', 'status', 'status_desc'];
+if (!in_array($sort, $allowedSorts, true)) $sort = 'date_desc';
+$orderClauses = [
+    'tracking' => 'tracking_number ASC, id ASC', 'tracking_desc' => 'tracking_number DESC, id DESC',
+    'sacrament' => 'sacrament_type ASC, id ASC', 'sacrament_desc' => 'sacrament_type DESC, id DESC',
+    'channel' => 'submission_channel ASC, id ASC', 'channel_desc' => 'submission_channel DESC, id DESC',
+    'date_desc' => 'date_submitted DESC, id DESC', 'date_asc' => 'date_submitted ASC, id ASC',
+    'status' => 'status ASC, id ASC', 'status_desc' => 'status DESC, id DESC',
+];
+$orderClause = $orderClauses[$sort];
 
-$combinedWhere = $rf['where'];
-if (!empty($where)) {
-    $extraStr = implode(' AND ', $where);
-    $combinedWhere = $combinedWhere === '' ? "WHERE $extraStr" : "$combinedWhere AND $extraStr";
+$allClauses = [];
+$allParams = [];
+
+if ($rf['where'] !== '') {
+    $allClauses[] = ltrim($rf['where'], ' AND');
+    $allParams = array_merge($allParams, $rf['params']);
 }
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications $combinedWhere");
-$countStmt->execute(array_merge($rf['params'], $params));
+if ($where !== []) {
+    $allClauses[] = '(' . implode(' AND ', $where) . ')';
+    $allParams = array_merge($allParams, $params);
+}
+
+$combinedWhere = $allClauses === [] ? '' : ' WHERE ' . implode(' AND ', $allClauses);
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications{$combinedWhere}");
+$countStmt->execute($allParams);
 $totalRows = (int) $countStmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT * FROM sacrament_applications $combinedWhere ORDER BY date_submitted DESC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
-$stmt->execute(array_merge($rf['params'], $params));
+$stmt = $pdo->prepare("SELECT * FROM sacrament_applications{$combinedWhere} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt->execute($allParams);
 $applications = $stmt->fetchAll();
 
 // Fetch sacrament-specific applicant name + flags for each row.
@@ -148,6 +197,8 @@ foreach ($applications as &$app) {
     $app['flagged']       = false;
     $app['flag_reason']   = [];
     $app['id_view_urls']  = []; // [label => url]
+    $app['age_status']    = null;
+    $app['record_status'] = null;
 
     if ($app['sacrament_type'] === 'baptismal') {
         $s = $pdo->prepare("SELECT child_full_name FROM baptismal_applications WHERE application_id = ?");
@@ -157,21 +208,25 @@ foreach ($applications as &$app) {
             $app['subject_name'] = $row['child_full_name'];
         }
     } elseif ($app['sacrament_type'] === 'confirmation') {
-        $s = $pdo->prepare("SELECT applicant_full_name, age_eligibility_flag, baptismal_cert_status FROM confirmation_applications WHERE application_id = ?");
+        $s = $pdo->prepare("SELECT applicant_full_name, applicant_birthdate, age_eligibility_flag, baptismal_record_id, baptismal_cert_status FROM confirmation_applications WHERE application_id = ?");
         $s->execute([$app['id']]);
         $row = $s->fetch();
         if ($row) {
             $app['subject_name'] = $row['applicant_full_name'];
-            if ($row['age_eligibility_flag']) { $app['flagged'] = true; $app['flag_reason'][] = 'outside age range'; }
+            $app['age_status'] = $row['applicant_birthdate'] ? sacrament_age_status($pdo, 'confirmation', calculate_age($row['applicant_birthdate'])) : 'Birthdate not recorded';
+            if ($app['age_status'] !== 'Age-eligible') { $app['flagged'] = true; $app['flag_reason'][] = strtolower($app['age_status']); }
+            $app['record_status'] = $row['baptismal_record_id'] ? 'Baptismal record linked' : 'No baptismal record linked yet';
             if ($row['baptismal_cert_status'] === 'pending') { $app['flag_reason'][] = 'baptismal cert not yet submitted'; }
         }
     } elseif ($app['sacrament_type'] === 'first_communion') {
-        $s = $pdo->prepare("SELECT applicant_full_name, age_eligibility_flag, baptismal_cert_status FROM first_communion_applications WHERE application_id = ?");
+        $s = $pdo->prepare("SELECT applicant_full_name, applicant_birthdate, age_eligibility_flag, baptismal_record_id, baptismal_cert_status FROM first_communion_applications WHERE application_id = ?");
         $s->execute([$app['id']]);
         $row = $s->fetch();
         if ($row) {
             $app['subject_name'] = $row['applicant_full_name'];
-            if ($row['age_eligibility_flag']) { $app['flagged'] = true; $app['flag_reason'][] = 'outside age range'; }
+            $app['age_status'] = $row['applicant_birthdate'] ? sacrament_age_status($pdo, 'first_communion', calculate_age($row['applicant_birthdate'])) : 'Birthdate not recorded';
+            if ($app['age_status'] !== 'Age-eligible') { $app['flagged'] = true; $app['flag_reason'][] = strtolower($app['age_status']); }
+            $app['record_status'] = $row['baptismal_record_id'] ? 'Baptismal record linked' : 'No baptismal record linked yet';
             if ($row['baptismal_cert_status'] === 'pending') { $app['flag_reason'][] = 'baptismal cert not yet submitted'; }
         }
     } elseif ($app['sacrament_type'] === 'marriage') {
@@ -206,16 +261,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (empty($applications)): ?>
             <p>No sacrament applications match this filter.</p>
         <?php else: ?>
+        <div class="table-scroll">
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Tracking No.</th>
-                    <th>Sacrament</th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'tracking') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'tracking', $sort)) ?>">Tracking No.<?= admin_sort_indicator('tracking', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'sacrament') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'sacrament', $sort)) ?>">Sacrament<?= admin_sort_indicator('sacrament', $sort) ?></a></th>
                     <th>Applicant(s)</th>
-                    <th>Submitted</th>
+                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
+                    <th>Record link</th>
                     <th>Flags</th>
                     <th>Actions</th>
-                    <th>Status</th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th>
                     <th>Update</th>
                 </tr>
             </thead>
@@ -225,7 +282,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($app['tracking_number']) ?></td>
                         <td><?= e(humanize_label($app['sacrament_type'])) ?></td>
                         <td><?= e($app['subject_name'] ?? '—') ?></td>
+                        <td><?= e(ucfirst($app['submission_channel'] ?? 'onsite')) ?></td>
                         <td><?= e(date('M j, Y', strtotime($app['date_submitted']))) ?></td>
+                        <td><?= e($app['record_status'] ?? 'Not applicable') ?></td>
                         <td>
                             <?php if ($app['flagged']): ?>
                                 <span class="flag-badge" title="<?= e(implode('; ', $app['flag_reason'])) ?>">&#9873; For review</span>
@@ -233,7 +292,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 —
                             <?php endif; ?>
                         </td>
-                        <td>
+                        <td class="row-actions">
                             
                             <?php
                             $detailPages = [
@@ -247,8 +306,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php endif; ?>
                         </td>
                         <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td>
-                        <td>
-                            <form method="post" class="inline-fields">
+                        <td class="row-actions">
+                            <form autocomplete="off" method="post" class="inline-fields">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <select name="new_status">
@@ -272,6 +331,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
         <p class="field-hint">
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         Flagged rows (age outside configured range, prerequisite documents pending, etc.) are shown for review — they are never auto-rejected. <?php if ($filterSacrament === 'marriage' || $filterSacrament === ''): ?>Marriage applications use the <a href="<?= $basePath ?>/admin/requests/marriage-detail.php">Marriage Detail</a> page for clearance recording and approval.<?php endif; ?></p>

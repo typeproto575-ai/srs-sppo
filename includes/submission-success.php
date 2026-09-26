@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * =====================================================================
  * SRS-SPPO SHARED SUBMISSION-SUCCESS PANEL (public)
@@ -8,7 +8,7 @@
  *          saves successfully. Deliberately more prominent than an
  *          inline alert: the tracking number is the parishioner's only
  *          key to their request, so the panel makes it easy to copy,
- *          print, or photograph before navigating away.
+ *          email, or photograph before navigating away.
  *
  * Contract (set by the calling page before including):
  *   $trackingNumber  - (required) the generated tracking number
@@ -18,8 +18,11 @@
  *
  * Scope note: the panel points at Track My Request only - never a
  * download/print-your-certificate flow (certificates are picked up and
- * printed at the counter per project rules). "Print" here prints this
- * confirmation page itself, for note-keeping.
+ * printed at the counter per project rules). The action buttons here are
+ * visitor-side conveniences only: "Send to Email" opens the visitor's
+ * own mail app (with a Gmail-on-the-web fallback link) with this
+ * confirmation pre-filled - the parish never handles the recipient
+ * address; "Copy" duplicates the number on the spot.
  * =====================================================================
  */
 
@@ -36,23 +39,21 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <p class="submission-tracking" id="submission-tracking-number"><?= e($trackingNumber) ?></p>
-                <button type="button" class="btn btn-small" id="copy-tracking-btn">Copy Number</button>
-                <button type="button" class="btn btn-secondary btn-small" id="print-confirmation-btn">Print This Page</button>
+                <button type="button" class="btn btn-secondary btn-small" id="copy-tracking-btn">Copy Number</button>
             </div>
 
             <div class="submission-next-steps">
                 <h3>What happens next</h3>
                 <ol>
-                    <li>The secretary matches your submission against the parish register.</li>
-                    <li>Check your status any time on the
+                    <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
+                    <li>Keep the tracking number and the same email address. Check your status any time on the
                         <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a>
                         page using this number <em>and</em> the email you provided.</li>
-                    <li>When it shows <strong>Ready for Pickup</strong>, visit the parish office
-                        with a valid ID to claim and complete your request in person.</li>
+                    <li>If requirements are needed, follow the parish office's email instructions or visit the office. When the status shows <strong>Ready for Pickup</strong>, bring valid ID and claim the printed certificate in person.</li>
                 </ol>
             </div>
 
-            <p class="field-hint">Write this number down before leaving this page - the parish office cannot resend it without verifying your identity in person.</p>
+            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Write this tracking number down before leaving this page.</p>
         </div>
         <script>
         (function () {
@@ -84,11 +85,6 @@ $basePath       = $basePath ?? base_path();
                         return ok;
                     }
                 });
-            }
-            // Print: prints the confirmation page only (nav/footer hidden via CSS).
-            var pbtn = document.getElementById('print-confirmation-btn');
-            if (pbtn) {
-                pbtn.addEventListener('click', function () { window.print(); });
             }
         })();
         </script>

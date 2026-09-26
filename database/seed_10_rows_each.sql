@@ -124,19 +124,19 @@ INSERT IGNORE INTO baptismal_records
 VALUES
   (6, 'B-2026-003', '2026-04-12', 'St. Patrick Parish Church', 'Diego Andrea S. Manalo', '2026-01-30', 'legitimate', 'legitimate',
    'Fernando S. Manalo', 'Dingalan, Aurora', 'Cecilia A. Manalo', 'Aquino', 'Dingalan, Aurora',
-   'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'B-1', '16', '7', 1),
+   'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '6', 1),
   (7, 'B-2026-004', '2026-05-10', 'St. Patrick Parish Church', 'Bea Margaret L. Ocampo', '2026-02-22', 'legitimate', 'legitimate',
    'Dennis L. Ocampo', 'Baler, Aurora', 'Ruth M. Ocampo', 'Lim', 'Baler, Aurora',
-   'Baler, Aurora', 'Brgy. Tanawan, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'B-1', '17', '2', 1),
+   'Baler, Aurora', 'Brgy. Tanawan, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '7', 1),
   (8, 'B-2026-005', '2026-06-14', 'St. Patrick Parish Church', 'Gabriel Nico R. Sarmiento', '2026-03-18', 'legitimate', 'civil',
    'Alfredo R. Sarmiento', 'Dingalan, Aurora', 'Judith F. Sarmiento', 'Fajardo', 'Dingalan, Aurora',
-   'Dingalan, Aurora', 'Brgy. Caragsakan, Dingalan, Aurora', 'Rev. Fr. Eduardo S. Ramos', NULL, 'B-1', '18', '9', 1),
+   'Dingalan, Aurora', 'Brgy. Caragsakan, Dingalan, Aurora', 'Rev. Fr. Eduardo S. Ramos', NULL, 'I', '1', '8', 1),
   (9, 'B-2026-006', '2026-07-19', 'St. Patrick Parish Church', 'Hannah Grace T. Delos Santos', '2026-04-05', 'legitimate', 'legitimate',
    'Marco T. Delos Santos', 'Dingalan, Aurora', 'Yolanda G. Delos Santos', 'Gonzales', 'Dingalan, Aurora',
-   'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'B-1', '19', '4', 1),
+   'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', 'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '9', 1),
   (10, 'B-2026-007', '2026-08-09', 'St. Patrick Parish Church', 'Ivan Lloyd P. Magbanua', '2026-05-27', 'legitimate', 'legitimate',
    'Efren P. Magbanua', 'Dingalan, Aurora', 'Divina B. Magbanua', 'Bautista', 'Dingalan, Aurora',
-   'Dingalan, Aurora', 'Brgy. Tanawan, Dingalan, Aurora', 'Rev. Fr. Eduardo S. Ramos', NULL, 'B-1', '20', '6', 1);
+   'Dingalan, Aurora', 'Brgy. Tanawan, Dingalan, Aurora', 'Rev. Fr. Eduardo S. Ramos', NULL, 'I', '1', '10', 1);
 
 -- Baptismal sponsors (10 total; godfather/godmother type)
 INSERT IGNORE INTO baptismal_sponsors (id, baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES
@@ -157,28 +157,28 @@ INSERT IGNORE INTO confirmation_records
 VALUES
   (3, 'C-2025-008', '2025-05-25', 'Trisha Anne M. Salvador', '2010-08-14',
    'Ruben M. Salvador', 'Divina M. Salvador', 'Corazon M. Salvador',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '08', '3', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '3', 1),
   (4, 'C-2025-009', '2025-05-25', 'Miguel Luis A. Bautista', '2010-11-02',
    'Anthony A. Bautista', 'Stella A. Bautista', 'Peter A. Bautista',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '08', '4', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '4', 1),
   (5, 'C-2025-010', '2025-10-19', 'Angelo D. Marquez', '2009-03-27',
    'Efren D. Marquez', 'Sylvia D. Marquez', 'Ramon D. Marquez',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '10', '1', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '5', 1),
   (6, 'C-2025-011', '2025-10-19', 'Kimberly T. Aguilar', '2011-06-30',
    'Renato T. Aguilar', 'Marites T. Aguilar', 'Lourdes T. Aguilar',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '10', '2', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '6', 1),
   (7, 'C-2026-003', '2026-03-29', 'Joshua P. Del Rosario', '2011-09-08',
    'Danilo P. Del Rosario', 'Elena P. Del Rosario', 'Arturo P. Del Rosario',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '11', '5', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '7', 1),
   (8, 'C-2026-004', '2026-03-29', 'Nicole E. Ventura', '2012-01-16',
    'Raul E. Ventura', 'Susana E. Ventura', 'Mila E. Ventura',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '11', '6', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '8', 1),
   (9, 'C-2026-005', '2026-04-26', 'Francis Ivan G. Ocampo', '2010-05-21',
    'Alberto G. Ocampo', 'Rosa G. Ocampo', 'Nestor G. Ocampo',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '12', '1', 1),
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '9', 1),
   (10, 'C-2026-006', '2026-04-26', 'Mariel S. Fajardo', '2011-12-11',
    'Conrado S. Fajardo', 'Amparo S. Fajardo', 'Teresita S. Fajardo',
-   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'C-2', '12', '2', 1);
+   'Most Rev. Reynaldo G. Evangelista, D.D.', NULL, NULL, 'I', '1', '10', 1);
 
 -- =====================================================================
 -- 5. FIRST COMMUNION RECORDS (10 total)
@@ -189,29 +189,29 @@ INSERT IGNORE INTO first_communion_records
    remarks, book_no, page_no, line_no, encoded_by)
 VALUES
   (3, 'FC-2026-002', '2026-03-14', 'Cassandra Marie D. Gatchalian',
-   'Ramon D. Gatchalian', 'Lourdes D. Gatchalian', 'Rev. Fr. Jose M. Villanueva', 4,
-   NULL, 'FC-1', '05', '2', 1),
+   'Ramon D. Gatchalian', 'Lourdes D. Gatchalian', 'Rev. Fr. Jose M. Villanueva', 4);
+   NULL, 'I', '1', '3', 1)
   (4, 'FC-2026-003', '2026-03-14', 'Joshua P. Del Rosario',
    'Danilo P. Del Rosario', 'Elena P. Del Rosario', 'Rev. Fr. Jose M. Villanueva', NULL,
-   NULL, 'FC-1', '05', '3', 1),
+   NULL, 'I', '1', '4', 1),
   (5, 'FC-2026-004', '2026-03-14', 'Nicole E. Ventura',
    'Raul E. Ventura', 'Susana E. Ventura', 'Rev. Fr. Jose M. Villanueva', NULL,
-   NULL, 'FC-1', '05', '4', 1),
+   NULL, 'I', '1', '5', 1),
   (6, 'FC-2025-010', '2025-11-30', 'Angelo D. Marquez',
    'Efren D. Marquez', 'Sylvia D. Marquez', 'Rev. Fr. Eduardo S. Ramos', NULL,
-   NULL, 'FC-1', '03', '3', 1),
+   NULL, 'I', '1', '6', 1),
   (7, 'FC-2025-011', '2025-11-30', 'Kimberly T. Aguilar',
    'Renato T. Aguilar', 'Marites T. Aguilar', 'Rev. Fr. Eduardo S. Ramos', NULL,
-   NULL, 'FC-1', '03', '4', 1),
+   NULL, 'I', '1', '7', 1),
   (8, 'FC-2025-012', '2025-11-30', 'Miguel Luis A. Bautista',
    'Anthony A. Bautista', 'Stella A. Bautista', 'Rev. Fr. Eduardo S. Ramos', NULL,
-   NULL, 'FC-1', '03', '5', 1),
+   NULL, 'I', '1', '8', 1),
   (9, 'FC-2026-005', '2026-05-16', 'Rafael Domingo Mendoza',
    'Ernesto M. Mendoza', 'Cecilia R. Mendoza', 'Rev. Fr. Jose M. Villanueva', NULL,
-   NULL, 'FC-1', '06', '1', 1),
+   NULL, 'I', '1', '9', 1),
   (10, 'FC-2026-006', '2026-05-16', 'Angelica F. Sarmiento',
    'Victor S. Sarmiento', 'Rowena F. Sarmiento', 'Rev. Fr. Jose M. Villanueva', NULL,
-   NULL, 'FC-1', '06', '2', 1);
+   NULL, 'I', '1', '10', 1);
 
 -- =====================================================================
 -- 6. MARRIAGE RECORDS (10 total)
@@ -223,28 +223,28 @@ INSERT IGNORE INTO marriage_records
 VALUES
   (3, 'M-2024-015', '2024-11-30', 'Roberto C. Villanueva', 'Josephine A. Cruz',
    '1988-05-04', 'Dingalan, Aurora', '1990-09-12', 'Dingalan, Aurora',
-   'Rev. Fr. Jose M. Villanueva', NULL, 'M-2', '31', '7', 1),
+   'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '3', 1),
   (4, 'M-2025-002', '2025-01-25', 'Arnel T. Domingo', 'Rosalie M. Fajardo',
    '1991-02-14', 'Dingalan, Aurora', '1993-07-08', 'Maria Aurora, Aurora',
-   'Rev. Fr. Eduardo S. Ramos', NULL, 'M-3', '01', '2', 1),
+   'Rev. Fr. Eduardo S. Ramos', NULL, 'I', '1', '4', 1),
   (5, 'M-2025-008', '2025-05-10', 'Ericson L. Manalastas', 'Divina B. Soriano',
    '1989-12-01', 'Baler, Aurora', '1992-04-19', 'Dingalan, Aurora',
-   'Rev. Fr. Jose M. Villanueva', NULL, 'M-3', '08', '3', 1),
+   'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '5', 1),
   (6, 'M-2025-013', '2025-08-23', 'Ferdinand R. Aguinaldo', 'Melinda S. Torres',
    '1990-06-22', 'Dingalan, Aurora', '1991-10-30', 'Dingalan, Aurora',
-   'Rev. Fr. Eduardo S. Ramos', NULL, 'M-3', '14', '5', 1),
+   'Rev. Fr. Eduardo S. Ramos', NULL, 'I', '1', '6', 1),
   (7, 'M-2025-017', '2025-10-18', 'Gilbert A. Mercado', 'Nenita D. Salvador',
    '1987-03-09', 'Dingalan, Aurora', '1989-08-15', 'Maria Aurora, Aurora',
-   'Rev. Fr. Jose M. Villanueva', NULL, 'M-3', '16', '2', 1),
+   'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '7', 1),
   (8, 'M-2026-001', '2026-01-17', 'Hernando G. Lopez', 'Charito M. Delgado',
    '1992-07-19', 'Dingalan, Aurora', '1994-02-25', 'Dingalan, Aurora',
-   'Rev. Fr. Jose M. Villanueva', NULL, 'M-3', '19', '1', 1),
+   'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '8', 1),
   (9, 'M-2026-003', '2026-03-21', 'Irineo B. Gonzales', 'Marilou T. Panganiban',
    '1993-11-05', 'Maria Aurora, Aurora', '1995-05-23', 'Dingalan, Aurora',
-   'Rev. Fr. Eduardo S. Ramos', NULL, 'M-3', '20', '3', 1),
+   'Rev. Fr. Eduardo S. Ramos', NULL, 'I', '1', '9', 1),
   (10, 'M-2026-006', '2026-06-06', 'Jerome F. Alcantara', 'Rowena V. Enrile',
    '1991-09-28', 'Dingalan, Aurora', '1993-12-03', 'Dingalan, Aurora',
-   'Rev. Fr. Jose M. Villanueva', NULL, 'M-3', '23', '2', 1);
+   'Rev. Fr. Jose M. Villanueva', NULL, 'I', '1', '10', 1);
 
 -- Marriage witnesses (10 total)
 INSERT IGNORE INTO marriage_witnesses (id, marriage_record_id, witness_name, witness_residence) VALUES
@@ -281,24 +281,24 @@ VALUES
 INSERT IGNORE INTO certificate_requests
   (id, tracking_number, sacrament_type, requester_name, requester_relationship,
    requester_relationship_other, requester_email, requester_contact_number,
-   purpose, purpose_other, num_copies, notes, status,
+   purpose, purpose_other, notes, status,
    date_submitted, date_processed, processed_by)
 VALUES
   (7, 'SPPO-2026-000037', 'baptismal', 'Ramon A. De Guzman', 'father', NULL,
    'ramon.deguzman@example.com', '0923 777 8899',
-   'legal', NULL, 1, 'Certified true copy for legal purposes.',
+   'legal', NULL, 'Certified true copy for legal purposes.',
    'under_review', '2026-09-05 10:00:00', '2026-09-06 09:00:00', NULL),
   (8, 'SPPO-2026-000038', 'confirmation', 'Mercy M. Tolentino', 'parent', NULL,
    'mercy.tolentino@example.com', '0924 888 9900',
-   'school', NULL, 1, NULL,
+   'school', NULL, NULL,
    'pending', '2026-09-06 11:30:00', NULL, NULL),
   (9, 'SPPO-2026-000039', 'first_communion', 'Danilo P. Del Rosario', 'parent', NULL,
    'danilo.delrosario@example.com', '0925 999 0011',
-   'marriage', NULL, 1, 'Required for church marriage requirements.',
+   'marriage', NULL, 'Required for church marriage requirements.',
    'approved', '2026-09-07 13:00:00', '2026-09-08 10:30:00', NULL),
   (10, 'SPPO-2026-000040', 'marriage', 'Charito M. Delgado', 'spouse', NULL,
    'charito.delgado@example.com', '0926 000 1122',
-   'immigration', NULL, 2, NULL,
+   'immigration', NULL, NULL,
    'ready_for_pickup', '2026-09-08 15:45:00', '2026-09-09 09:15:00', NULL);
 
 -- Baptismal certificate request details (fills every baptismal request: 1,5,6,7)
@@ -309,7 +309,7 @@ INSERT IGNORE INTO baptismal_certificate_requests
 VALUES
   (4, 7, 'Mateo Rafael A. De Guzman', 'Ramon A. De Guzman', 'Elena V. De Guzman',
    'Dingalan, Aurora', '2025-11-20', '2026-02-15', 'Rev. Fr. Jose M. Villanueva',
-   'Antonio V. De Guzman; Marlene B. Cruz', 'B-1', '12', '3', 1);
+   'Antonio V. De Guzman; Marlene B. Cruz', 'I', '1', '1', 1);
 
 -- Confirmation certificate request details (fills every confirmation request: 2,8)
 INSERT IGNORE INTO confirmation_certificate_requests

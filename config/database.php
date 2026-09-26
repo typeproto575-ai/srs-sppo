@@ -7,7 +7,7 @@
  * FILE: config/database.php
  * ROLE: Shared PDO database connection for the entire application.
  *
- * Every page (public, admin, and priest) includes this file to get access
+ * Every page (public and admin) includes this file to get access
  * to the $pdo variable, which is used for ALL database queries in the system.
  *
  * Technology used: Plain PHP + PDO (PHP Data Objects) + MySQL/MariaDB.
@@ -41,17 +41,20 @@
  * @filesource  config/database.php
  */
 
-// Database server hostname — 'localhost' means the DB runs on the same machine
-$DB_HOST = 'localhost';
+// Database server hostname — 'localhost' means the DB runs on the same machine.
+// Each value can be overridden by an environment variable so real deployments
+// never need credentials inside the code (set SRS_DB_USER/SRS_DB_PASS etc. in
+// the server environment). Falls back to the XAMPP defaults when unset.
+$DB_HOST = getenv('SRS_DB_HOST') ?: 'localhost';
 
 // Name of the MySQL database that holds all SRS-SPPO tables
-$DB_NAME = 'srs_sppo_db';
+$DB_NAME = getenv('SRS_DB_NAME') ?: 'srs_sppo_db';
 
 // MySQL username — 'root' is the default XAMPP admin account (no password)
-$DB_USER = 'root';
+$DB_USER = getenv('SRS_DB_USER') ?: 'root';
 
 // MySQL password — empty by default in XAMPP; set a strong password in production
-$DB_PASS = '';
+$DB_PASS = getenv('SRS_DB_PASS') !== false ? getenv('SRS_DB_PASS') : '';
 
 // ---------------------------------------------------------------------------
 // CREATE THE PDO INSTANCE

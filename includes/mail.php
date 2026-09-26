@@ -1,114 +1,78 @@
 <?php
 /**
- * ============================================================================
- * SRS-SPPO SHARED MAIL HELPERS
- * ============================================================================
- * Purpose: One place for the email notifications used across the system:
- *   - send_mail()               : low-level plain-text sender (safe no-op)
- *   - mail_request_received()   : "we got your request — here is the tracking #"
- *   - mail_status_update()      : "your request status changed"
- * Every call is safe when email is disabled: send_mail() returns false and the
- * caller never breaks. All settings live in config/mail.php.
- *
- * Requires includes/functions.php to already be loaded (for base_path()).
- *
- * @package     SRS-SPPO
- * @subpackage  Includes
- * @filesource  includes/mail.php
+ * SRS-SPPO mail helpers. All delivery attempts are recorded when the
+ * email_delivery_log table is available. Email failures never break parish
+ * workflows.
  */
-
 require_once __DIR__ . '/../config/mail.php';
 
-/**
- * Send a plain-text email via PHP's built-in mail().
- *
- * Safe no-op: returns false (without sending) when mail is disabled, the
- * address is blank/invalid, or the local mailer fails. Never throws.
- *
- * @param string $to        Recipient email address.
- * @param string $subject   Subject line (MAIL_SUBJECT_PREFIX is prepended).
- * @param string $bodyText  Plain-text message body.
- * @return bool             True only when the message was handed to the mailer.
- */
-function send_mail(string $to, string $subject, string $bodyText): bool
+function email_delivery_log(PDO $pdo, string $to, string $subject, string $eventType, string $status, ?string $error = null, ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null): void
 {
-    // Master switch off — behave like the demo (no MTA installed).
-    if (MAIL_ENABLED !== true) {
-        return false;
+    try {
+        $stmt = $pdo->prepare('INSERT INTO email_delivery_log (recipient, subject_line, event_type, entity_type, entity_id, tracking_number, delivery_status, error_message, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $user = function_exists('current_user') ? current_user() : null;
+        $stmt->execute([$to, $subject, $eventType, $entityType, $entityId, $trackingNumber, $status, $error, $user['id'] ?? null]);
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO email delivery log failed: ' . $e->getMessage());
     }
+}
 
+function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = null, string $eventType = 'generic', ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null): bool
+{
+    $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $to = trim($to);
-    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+    $fullSubject = MAIL_SUBJECT_PREFIX . $subject;
+    if (MAIL_ENABLED !== true) {
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'disabled', 'Email is disabled.', $entityType, $entityId, $trackingNumber);
         return false;
     }
-
-    $subject = MAIL_SUBJECT_PREFIX . $subject;
-
-    // Minimal, robust headers for a plain-text UTF-8 message.
+    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'invalid', 'Recipient email is invalid.', $entityType, $entityId, $trackingNumber);
+        return false;
+    }
     $headers = implode("\r\n", [
-        'From: ' . MAIL_FROM_ADDRESS,
+        'From: ' . MAIL_FROM_NAME . ' <' . MAIL_FROM_ADDRESS . '>',
+        'Reply-To: ' . MAIL_FROM_ADDRESS,
         'MIME-Version: 1.0',
         'Content-Type: text/plain; charset=UTF-8',
         'Content-Transfer-Encoding: 8bit',
     ]);
-
-    // @ suppresses mailer warnings when no MTA is configured; mail() returns
-    // false on failure instead of throwing.
-    return @mail($to, $subject, $bodyText, $headers);
+    $sent = @mail($to, $fullSubject, $bodyText, $headers);
+    if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, $sent ? 'sent' : 'failed', $sent ? null : 'The configured mail transport did not accept the message.', $entityType, $entityId, $trackingNumber);
+    return $sent;
 }
 
-/**
- * Confirmation email sent after a public form is successfully submitted.
- * Tells the parishioner their tracking number and how to check status.
- *
- * @param string $to            Recipient email address.
- * @param string $trackingNumber The generated tracking number to show.
- * @param string $kind           Human request type, e.g. "Baptismal Certificate Request".
- * @return bool                 True only when the message was sent.
- */
-function mail_request_received(string $to, string $trackingNumber, string $kind): bool
+function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
-    // Build the tracking-page link (subfolder-safe via base_path()).
     $trackUrl = rtrim(MAIL_SITE_URL, '/') . base_path() . '/public/track-request.php';
-
     $body = "Dear Parishioner,\r\n\r\n"
-        . "Thank you for submitting your " . $kind . " to St. Patrick's Parish Office.\r\n\r\n"
+        . "The parish office has recorded your " . $kind . ".\r\n\r\n"
         . "Your tracking number is: " . $trackingNumber . "\r\n\r\n"
-        . "You can check the status of your request any time at:\r\n"
-        . $trackUrl . "\r\n\r\n"
-        . "Please keep this tracking number — it is how you look up your request. "
-        . "Final processing and pickup happen in person at the parish office, "
-        . "where you must present a valid ID. Certificates are never emailed "
-        . "or downloaded; they are printed and released only at the counter.\r\n\r\n"
-        . "God bless,\r\n"
-        . "St. Patrick's Parish Office — Dingalan, Aurora";
-
-    return send_mail($to, $kind . " — Received — " . $trackingNumber, $body);
+        . "Track your request at:\r\n" . $trackUrl . "\r\n\r\n"
+        . "Please keep this tracking number. Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
 
-/**
- * Status-change notification sent by the secretary (e.g. when a certificate
- * becomes ready for pickup).
- *
- * @param string $to            Recipient email address.
- * @param string $trackingNumber The request's tracking number.
- * @param string $humaneStatus   Human-readable status, e.g. "Ready For Pickup".
- * @param string $kind           Human request type, e.g. "Baptismal Certificate".
- * @return bool                 True only when the message was sent.
- */
-function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind): bool
+function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
     $trackUrl = rtrim(MAIL_SITE_URL, '/') . base_path() . '/public/track-request.php';
-
     $body = "Dear Parishioner,\r\n\r\n"
         . "This is an update on your " . $kind . " (tracking number: " . $trackingNumber . ").\r\n\r\n"
-        . "Current status: " . $humaneStatus . "\r\n\r\n"
-        . "For full details, check your request at:\r\n"
-        . $trackUrl . "\r\n\r\n"
-        . "If your certificate is ready for pickup, please visit the parish office "
-        . "with a valid ID. Certificates are released only in person.\r\n\r\n"
-        . "God bless,\r\n"
-        . "St. Patrick's Parish Office — Dingalan, Aurora";
+        . "Current stage: " . $humaneStatus . "\r\n\r\n"
+        . "For details, visit:\r\n" . $trackUrl . "\r\n\r\n"
+        . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);
+}
 
-    return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body);
+function mail_password_reset(string $to, string $resetUrl, ?PDO $pdo = null, ?int $userId = null): bool
+{
+    $body = "Dear Parish Office Staff Member,\r\n\r\n"
+        . "A password reset was requested for your SRS-SPPO staff account.\r\n\r\n"
+        . "Use this one-time link within 30 minutes:\r\n" . $resetUrl . "\r\n\r\n"
+        . "If you did not request this, you may ignore this message. Your password will not change unless the link is used.\r\n\r\n"
+        . "For security, do not forward this link.\r\n\r\n"
+        . "St. Patrick's Parish Office - Dingalan, Aurora";
+    return send_mail($to, 'Secretary password reset', $body, $pdo, 'password_reset', 'users', $userId);
 }

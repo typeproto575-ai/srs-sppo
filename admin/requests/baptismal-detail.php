@@ -32,6 +32,8 @@ $applicationId = (int) ($_GET['id'] ?? 0);
 if (!$applicationId) { redirect_to('/admin/requests/applications-queue.php'); }
 
 $notice = null;
+$prereqNotice = null;
+$prereqMissing = [];
 
 // Fetch the baptismal application with its base application data
 $stmt = $pdo->prepare("SELECT sa.*, ba.* FROM sacrament_applications sa JOIN baptismal_applications ba ON ba.application_id = sa.id WHERE sa.id = ? AND sa.sacrament_type = 'baptismal'");
@@ -44,14 +46,40 @@ $gpStmt = $pdo->prepare("SELECT godparent_name, godparent_residence, godparent_t
 $gpStmt->execute([$app['id']]);
 $godparents = $gpStmt->fetchAll();
 
-// Handle status update form submission
+// Handle status update form submission.
+// Transition is validated against the per-sacrament workflow; 'approved' is
+// additionally gated on can_approve_sacrament_application(). Both rejected
+// transitions and blocked approvals are written to the audit log.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['update_status'])) {
     $newStatus = $_POST['new_status'] ?? '';
-    $validStatuses = ['submitted', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
-    if (in_array($newStatus, $validStatuses, true)) {
+    $allowed = in_array($newStatus, ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'], true);
+    if (!$allowed) {
+        $notice = 'Invalid status value.';
+    } elseif (!sacrament_application_transition_valid($app['status'], $newStatus, 'baptismal')) {
+        $notice = 'Status change refused: ' . humanize_label($app['status']) . ' to ' . humanize_label($newStatus) . ' is not a valid transition.';
+        log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change refused: {$app['status']} -> {$newStatus}.");
+    } elseif ($newStatus === 'approved') {
+        $gate = can_approve_sacrament_application($pdo, $applicationId, 'baptismal');
+        if (!$gate['ok']) {
+            $prereqNotice = 'Cannot approve yet — missing prerequisites:';
+            $prereqMissing = $gate['missing'];
+            log_activity($pdo, current_user()['id'], 'sacrament_application_approval_blocked', 'sacrament_applications', $applicationId, 'Approval blocked; missing: ' . implode(' ', $gate['missing']));
+        } else {
+            $stmt = $pdo->prepare("UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?");
+            $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
+            log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId, "Status changed to {$newStatus}");
+            notify_sacrament_application_status($pdo, $newStatus, $app['sacrament_type'], $app['tracking_number']);
+            $notice = 'Status updated.';
+            // Refresh the application data after update
+            $stmt = $pdo->prepare("SELECT sa.*, ba.* FROM sacrament_applications sa JOIN baptismal_applications ba ON ba.application_id = sa.id WHERE sa.id = ?");
+            $stmt->execute([$applicationId]);
+            $app = $stmt->fetch();
+        }
+    } else {
         $stmt = $pdo->prepare("UPDATE sacrament_applications SET status = ?, date_processed = NOW(), processed_by = ? WHERE id = ?");
         $stmt->execute([$newStatus, current_user()['id'], $applicationId]);
         log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId, "Status changed to {$newStatus}");
+        notify_sacrament_application_status($pdo, $newStatus, $app['sacrament_type'], $app['tracking_number']);
         $notice = 'Status updated.';
         // Refresh the application data after update
         $stmt = $pdo->prepare("SELECT sa.*, ba.* FROM sacrament_applications sa JOIN baptismal_applications ba ON ba.application_id = sa.id WHERE sa.id = ?");
@@ -60,65 +88,174 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['upda
     }
 }
 
+// Save prerequisite flags (secretary records them here; approval is blocked
+// until they are met). This is a separate action from a status change.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['save_prereqs'])) {
+    $docFlag = isset($_POST['documents_verified']) ? 1 : 0;
+    $semFlag = isset($_POST['seminar_attended']) ? 1 : 0;
+    $up = $pdo->prepare("UPDATE baptismal_applications SET documents_verified = ?, seminar_attended = ? WHERE application_id = ?");
+    $up->execute([$docFlag, $semFlag, $applicationId]);
+    log_activity($pdo, current_user()['id'], 'sacrament_application_prereqs_updated', 'sacrament_applications', $applicationId, "Prerequisites saved: documents_verified={$docFlag}, seminar_attended={$semFlag}.");
+    $notice = 'Prerequisites saved.';
+    $stmt = $pdo->prepare("SELECT sa.*, ba.* FROM sacrament_applications sa JOIN baptismal_applications ba ON ba.application_id = sa.id WHERE sa.id = ?");
+    $stmt->execute([$applicationId]);
+    $app = $stmt->fetch();
+}
+
 // Helper function to convert enum values to human-readable labels
 function humanize_label(string $s): string { return ucwords(str_replace('_', ' ', $s)); }
 
 // All valid status options for the dropdown
-$statusOptions = ['submitted', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'];
+$statusOptions = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
 
+$workflowEntityType = 'sacrament_application';
+$workflowEntityId = $applicationId;
+$workflowSacramentType = 'baptismal';
 // Include the shared admin header (nav, page title, etc.)
 require_once __DIR__ . '/../../includes/admin-header.php';
-?><p><a href="<?= $basePath ?>/admin/requests/applications-queue.php">&larr; Back to Queue</a></p>
-<h1>Baptismal Application Detail</h1>
-<?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
+require __DIR__ . '/../../includes/workflow-checklist-panel.php';
+?>
+<div class="detail-shell">
+    <div class="page-heading">
+        <div>
+            <p class="detail-kicker">Sacrament Application</p>
+            <p class="field-hint"><strong>Submission channel:</strong> <?= e(ucfirst($app['submission_channel'] ?? 'onsite')) ?><?= ($app['submission_channel'] ?? 'onsite') === 'online' ? ' — public pre-application; not yet an official parish record' : '' ?></p>
+    <h1>Baptismal Application Detail</h1>
+        </div>
+        <a href="<?= $basePath ?>/admin/requests/applications-queue.php" class="btn btn-secondary btn-small">&larr; Back to Queue</a>
+    </div>
 
-<!-- Child Information Section -->
-<h2>Child</h2>
-<table class="admin-table" style="max-width:600px;"><tbody>
-<tr><th>Full Name</th><td><?= e($app['child_full_name']) ?></td></tr>
-<tr><th>Birthdate</th><td><?= e($app['child_birth_date'] ? date('F j, Y', strtotime($app['child_birth_date'])) : '—') ?></td></tr>
-<tr><th>Birthplace</th><td><?= e($app['child_birthplace']) ?></td></tr>
-</tbody></table>
+    <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
 
-<!-- Parents/Guardian Information Section -->
-<h2>Parents</h2>
-<table class="admin-table" style="max-width:600px;"><tbody>
-<tr><th>Father's Name</th><td><?= e($app['father_full_name']) ?></td></tr>
-<tr><th>Mother's Name</th><td><?= e($app['mother_guardian_name']) ?></td></tr>
-<tr><th>Contact Number</th><td><?= e($app['contact_number']) ?></td></tr>
-<tr><th>Email</th><td><?= e($app['email']) ?></td></tr>
-</tbody></table>
+    <div class="detail-grid">
+        <section class="detail-panel">
+            <div class="detail-panel-head">
+                <h2>Child Information</h2>
+                <span class="detail-chip">Applicant</span>
+            </div>
+            <dl class="detail-list">
+                <div><dt>Full Name</dt><dd><?= e($app['child_full_name']) ?></dd></div>
+                <div><dt>Birthdate</dt><dd><?= e($app['child_birthdate'] ? date('F j, Y', strtotime($app['child_birthdate'])) : '—') ?></dd></div>
+                <div><dt>Birthplace</dt><dd><?= e($app['child_birthplace']) ?></dd></div>
+            </dl>
+        </section>
 
-<!-- Godparents Section (only shown if godparents exist) -->
-<?php if (!empty($godparents)): ?>
-<h2>Godparents</h2>
-<table class="admin-table" style="max-width:600px;"><thead><tr><th>Type</th><th>Name</th><th>Residence</th></tr></thead><tbody>
-<?php foreach ($godparents as $gp): ?>
-<tr><td><?= e(ucfirst($gp['godparent_type'])) ?></td><td><?= e($gp['godparent_name']) ?></td><td><?= e($gp['godparent_residence'] ?: '—') ?></td></tr>
-<?php endforeach; ?>
-</tbody></table>
-<?php endif; ?>
+        <section class="detail-panel">
+            <div class="detail-panel-head">
+                <h2>Parent / Guardian</h2>
+                <span class="detail-chip">Contact</span>
+            </div>
+            <dl class="detail-list">
+                <div><dt>Father's Name</dt><dd><?= e($app['father_full_name']) ?></dd></div>
+                <div><dt>Mother's Name</dt><dd><?= e($app['mother_maiden_name']) ?></dd></div>
+                <div><dt>Contact Number</dt><dd><?= e($app['contact_number']) ?></dd></div>
+                <div><dt>Email</dt><dd><?= e($app['email']) ?></dd></div>
+            </dl>
+        </section>
+    </div>
 
-<!-- Application Details Section -->
-<h2>Application Details</h2>
-<table class="admin-table" style="max-width:600px;"><tbody>
-<tr><th>Tracking Number</th><td><?= e($app['tracking_number']) ?></td></tr>
-<tr><th>Status</th><td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td></tr>
-<tr><th>Preferred Date</th><td><?= e($app['preferred_date'] ? date('F j, Y', strtotime($app['preferred_date'])) : '—') ?></td></tr>
-<tr><th>Date Submitted</th><td><?= e(date('F j, Y g:i A', strtotime($app['date_submitted']))) ?></td></tr>
-<?php if ($app['notes']): ?><tr><th>Notes</th><td><?= e($app['notes']) ?></td></tr><?php endif; ?>
-</tbody></table>
+    <?php if (!empty($godparents)): ?>
+    <section class="detail-panel">
+        <div class="detail-panel-head">
+            <h2>Godparents</h2>
+            <span class="detail-chip">Sponsors</span>
+        </div>
+        <div class="table-scroll">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Type</th><th>Name</th><th>Residence</th></tr>
+            </thead>
+            <tbody>
+                <?php foreach ($godparents as $gp): ?>
+                <tr>
+                    <td><?= e(ucfirst($gp['godparent_type'])) ?></td>
+                    <td><?= e($gp['godparent_name']) ?></td>
+                    <td><?= e($gp['godparent_residence'] ?: '—') ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </section>
+    <?php endif; ?>
 
-<!-- Status Update Form (CSRF-protected) -->
-<h2>Update Status</h2>
-<form method="post" class="inline-fields">
-<?= csrf_field() ?>
-<input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-<select name="new_status">
-<?php foreach ($statusOptions as $s): ?>
-<option value="<?= e($s) ?>" <?= $app['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
-<?php endforeach; ?>
-</select>
-<button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
-</form>
+    <div class="detail-grid">
+        <section class="detail-panel">
+            <div class="detail-panel-head">
+                <h2>Application Details</h2>
+                <span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span>
+            </div>
+            <dl class="detail-list">
+                <div><dt>Tracking Number</dt><dd><?= e($app['tracking_number']) ?></dd></div>
+                <div><dt>Preferred Date</dt><dd><?= e($app['preferred_date'] ? date('F j, Y', strtotime($app['preferred_date'])) : '—') ?></dd></div>
+                <div><dt>Date Submitted</dt><dd><?= e(date('F j, Y g:i A', strtotime($app['date_submitted']))) ?></dd></div>
+                <?php if ($app['notes']): ?><div><dt>Notes</dt><dd><?= e($app['notes']) ?></dd></div><?php endif; ?>
+            </dl>
+        </section>
+
+        <section class="detail-panel">
+            <div class="detail-panel-head">
+                <h2>Prerequisites</h2>
+                <?php
+                $bapGate = can_approve_sacrament_application($pdo, $applicationId, 'baptismal');
+                ?>
+                <?php if ($bapGate['ok']): ?><span class="detail-chip success">Ready</span><?php else: ?><span class="detail-chip warning">Needs review</span><?php endif; ?>
+            </div>
+
+            <?php if ($prereqNotice): ?>
+                <div class="alert alert-warning"><p><?= e($prereqNotice) ?></p>
+                <ul><?php foreach ($prereqMissing as $m): ?><li><?= e($m) ?></li><?php endforeach; ?></ul></div>
+            <?php endif; ?>
+
+            <?php if ($bapGate['ok']): ?>
+            <p class="field-hint success-text">All prerequisites met — this application can be approved.</p>
+            <?php else: ?>
+            <ul class="check-list"><?php foreach ($bapGate['missing'] as $m): ?><li><?= e($m) ?></li><?php endforeach; ?></ul>
+            <?php endif; ?>
+
+            <form autocomplete="off" method="post" class="inline-fields compact-fields">
+                <?= csrf_field() ?>
+                <label class="check-row">
+                    <input autocomplete="off" type="checkbox" name="documents_verified" value="1" <?= !empty($app['documents_verified']) ? 'checked' : '' ?>>
+                    Required documents verified
+                </label>
+                <label class="check-row">
+                    <input autocomplete="off" type="checkbox" name="seminar_attended" value="1" <?= !empty($app['seminar_attended']) ? 'checked' : '' ?>>
+                    Parents/godparents seminar completed
+                </label>
+                <button type="submit" name="save_prereqs" value="1" class="btn btn-small">Save Prerequisites</button>
+            </form>
+        </section>
+    </div>
+
+    <section class="detail-panel">
+        <div class="detail-panel-head">
+            <h2>Update Status</h2>
+            <span class="detail-chip neutral">Workflow</span>
+        </div>
+        <form autocomplete="off" method="post" class="inline-fields status-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+            <label class="select-wrap">
+                <span>New status</span>
+                <select name="new_status">
+                    <?php foreach ($statusOptions as $s): ?>
+                    <option value="<?= e($s) ?>" <?= $app['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
+        </form>
+
+        <?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
+        <div class="action-cta">
+            <a class="btn btn-small" href="<?= $basePath ?>/admin/records/baptismal.php?from_application=<?= (int) $app['id'] ?>">
+                Encode into baptismal register (pre-filled)
+            </a>
+            <span class="field-hint">Opens the encode form with this application's data; saving completes the application.</span>
+        </div>
+        <?php endif; ?>
+    </section>
+
+</div>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
