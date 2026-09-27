@@ -15,6 +15,53 @@ const CERT_EXT = [
     'marriage'        => ['table' => 'marriage_certificate_requests',        'name_col' => 'party_a_full_name',     'record_table' => 'marriage_records',        'record_name' => 'husband_full_name'],
 ];
 
+const ALWAYS_BLANK_ONLINE = [
+    'baptismal'       => ['birthplace', 'sponsors_text', 'book_no', 'page_no', 'line_no'],
+    'confirmation'    => ['place_of_baptism', 'book_no', 'page_no', 'line_no'],
+    'first_communion' => ['book_no', 'page_no', 'line_no'],
+    'marriage'        => [
+        'party_a_father_name', 'party_a_mother_name', 'party_a_baptized_in_church_of',
+        'party_a_date_of_baptism', 'party_a_book_no', 'party_a_page_no', 'party_a_line_no',
+        'party_b_father_name', 'party_b_mother_name', 'party_b_baptized_in_church_of',
+        'party_b_date_of_baptism', 'party_b_book_no', 'party_b_page_no', 'party_b_line_no',
+    ],
+];
+
+// Curated register fields for the matched record, in display order, with the
+// same labels admin/records/view.php uses so one field never reads two
+// different ways across admin screens. Internal columns (legitimacy,
+// union_type, mapper/book-verification stamps) stay out. Dates render as full
+// dates below; `birthdate` needs an explicit test, matching neither the
+// `_date` nor the `_birthdate` suffix.
+const RECORD_DISPLAY_FIELDS = [
+    'baptismal' => [
+        'baptism_date' => 'Date of baptism', 'birth_date' => 'Birth date',
+        'baptism_place' => 'Place of baptism', 'child_birthplace' => "Child's birthplace",
+        'father_name' => "Father's name", 'father_birthplace' => "Father's birthplace",
+        'mother_name' => "Mother's name", 'mother_maiden_name' => "Mother's maiden name",
+        'mother_birthplace' => "Mother's birthplace", 'parents_origin' => "Parents' origin",
+        'parents_residence' => "Parents' residence", 'proxy_name' => 'Proxy (if any)',
+        'minister_name' => 'Minister', 'remarks' => 'Remarks',
+    ],
+    'confirmation' => [
+        'confirmation_date' => 'Date of confirmation', 'birthdate' => 'Birth date',
+        'father_name' => "Father's name", 'mother_maiden_name' => "Mother's maiden name",
+        'sponsor_name' => 'Sponsor', 'minister_name' => 'Minister', 'remarks' => 'Remarks',
+    ],
+    'first_communion' => [
+        'communion_date' => 'Date of first communion', 'domicile' => 'Residence',
+        'father_name' => "Father's name", 'mother_maiden_name' => "Mother's maiden name",
+        'minister_name' => 'Minister', 'remarks' => 'Remarks',
+    ],
+    'marriage' => [
+        'marriage_date' => 'Marriage date', 'wife_maiden_name' => "Wife's maiden name",
+        'husband_birthdate' => "Husband's birth date", 'husband_birthplace' => "Husband's birthplace",
+        'husband_civil_status' => 'Husband civil status', 'wife_birthdate' => "Wife's birth date",
+        'wife_birthplace' => "Wife's birthplace", 'wife_civil_status' => 'Wife civil status',
+        'officiating_minister' => 'Minister', 'remarks' => 'Remarks',
+    ],
+];
+
 $requestId = (int) ($_GET['id'] ?? 0);
 if (!$requestId) { redirect_to('/admin/requests/queue.php'); }
 
@@ -230,8 +277,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <table class="admin-table" style="max-width:700px;"><tbody>
     <?php
 $notProvided = [];
+$alwaysBlankOnline = ($req['submission_channel'] ?? 'onsite') === 'online';
+$suppress = ALWAYS_BLANK_ONLINE[$req['sacrament_type']] ?? [];
 foreach ($extRow as $col => $val) {
     if ($col === 'id' || $col === 'request_id' || $col === 'matched_record_id') continue;
+    // Online forms never collect these columns, so they are structurally
+    // blank on every online row. Skip them entirely so they are neither
+    // displayed nor reported as "Not Provided" (which would wrongly imply
+    // the requester failed to supply something the form never asked for).
+    if ($alwaysBlankOnline && in_array($col, $suppress, true)) continue;
     if ($val === null || trim((string) $val) === '') {
         $notProvided[] = humanize_label($col);
         continue;
@@ -255,6 +309,20 @@ if ($notProvided): ?>
 <table class="admin-table" style="max-width:700px;"><tbody>
     <tr><th>Record ID</th><td>#<?= (int) $matchedRecord['id'] ?></td></tr>
     <tr><th>Name</th><td><?= e($matchedRecord[CERT_EXT[$req['sacrament_type']]['record_name']]) ?></td></tr>
+    <?php foreach (RECORD_DISPLAY_FIELDS[$req['sacrament_type']] ?? [] as $col => $label):
+        $val = $matchedRecord[$col] ?? null;
+        if ($val === null || trim((string) $val) === '') continue;
+        if (str_ends_with($col, '_date') || str_ends_with($col, '_birthdate') || $col === 'birthdate') {
+            $val = date('F j, Y', strtotime((string) $val));
+        } ?>
+    <tr><th><?= e($label) ?></th><td><?= e((string) $val) ?></td></tr>
+    <?php endforeach;
+    $bookNo = $matchedRecord['book_no'] ?? null;
+    $pageNo = $matchedRecord['page_no'] ?? null;
+    $lineNo = $matchedRecord['line_no'] ?? null;
+    if (($bookNo !== null && $bookNo !== '') || ($pageNo !== null && $pageNo !== '') || ($lineNo !== null && $lineNo !== '')): ?>
+    <tr><th>Register Entry</th><td>Book <?= $bookNo !== null && $bookNo !== '' ? e((string) $bookNo) : '&mdash;' ?> &middot; Page <?= $pageNo !== null && $pageNo !== '' ? e((string) $pageNo) : '&mdash;' ?> &middot; Line <?= $lineNo !== null && $lineNo !== '' ? e((string) $lineNo) : '&mdash;' ?></td></tr>
+    <?php endif; ?>
 </tbody></table>
 </div>
 <?php else: ?>
