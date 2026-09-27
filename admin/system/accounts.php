@@ -327,13 +327,13 @@ $extraHead = '';
         <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
 
         <!-- Bulk actions: the checkboxes on the cards feed this form via form="bulk-form" -->
-        <form autocomplete="off" method="post" id="bulk-form" class="bulk-bar">
+        <form autocomplete="off" method="post" id="bulk-form" class="bulk-bar" data-confirm="Apply this action to the selected accounts?">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="bulk">
             <span class="bulk-count" id="bulk-count">0 selected</span>
             <button type="submit" name="bulk_action" value="activate" class="btn btn-small btn-secondary" disabled>Activate selected</button>
             <button type="submit" name="bulk_action" value="deactivate" class="btn btn-small btn-secondary" disabled>Deactivate selected</button>
-            <button type="submit" name="bulk_action" value="delete" class="btn btn-small btn-danger" disabled>Delete selected</button>
+            <button type="submit" name="bulk_action" value="delete" class="btn btn-small btn-danger" disabled data-confirm="Delete the selected accounts permanently? This cannot be undone.">Delete selected</button>
         </form>
 
         <section class="accounts-grid">

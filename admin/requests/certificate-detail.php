@@ -424,7 +424,7 @@ if ($notProvided): ?>
 <?php endif; ?>
 
 <?php if (cert_request_transition_valid($req['status'], 'approved')): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;">
+<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Approve this certificate request?">
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="approve">
     <button type="submit" class="btn btn-small">Approve</button>
@@ -434,7 +434,7 @@ if ($notProvided): ?>
 <?php if (cert_request_transition_valid($req['status'], 'rejected')): ?>
     <details class="reject-disclosure"<?= (($_POST['action'] ?? '') === 'reject') ? ' open' : '' ?>>
         <summary class="btn btn-small btn-danger">Reject Request</summary>
-        <form autocomplete="off" method="post" style="margin-top:0.5rem;">
+        <form autocomplete="off" method="post" style="margin-top:0.5rem;" data-confirm="Reject this request with the reason entered above?">
 
             <?= csrf_field() ?>
             <div class="form-group">

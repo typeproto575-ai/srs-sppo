@@ -715,7 +715,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php if ($rec && !$bookVerified): ?>
                     <div class="alert alert-warning">
                         <p><strong>Not yet confirmed against the physical register book.</strong> Check the corresponding logbook entry, then confirm below before this certificate can be marked as generated.</p>
-                        <form autocomplete="off" method="post" class="cert-action-form">
+                        <form autocomplete="off" method="post" class="cert-action-form" data-confirm="Confirm this record matches the physical register book? This will be logged as verified.">
                             <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                             <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                             <input type="hidden" name="sacrament_type" value="<?= e($previewSacrament) ?>">
@@ -735,7 +735,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="field-hint">Register book verified<?= $verifierName !== '' ? ' by ' . e($verifierName) : '' ?><?= !empty($rec['book_verified_at']) ? ' on ' . e(date('F j, Y', strtotime($rec['book_verified_at']))) : '' ?>.</p>
                 <?php endif; ?>
                 <div class="cert-action-toolbar">
-                <form autocomplete="off" method="post" class="cert-action-form">
+                <form autocomplete="off" method="post" class="cert-action-form" data-confirm="Mark this certificate as generated? This logs it as issued.">
                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                     <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                     <button type="submit" name="log_generated" value="1" class="btn" <?= $bookVerified ? '' : 'disabled title="Confirm the register book verification above first."' ?>>Mark as Generated</button>

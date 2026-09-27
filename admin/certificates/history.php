@@ -199,7 +199,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php if ($log['print_status'] === 'generated'): ?>
                             <div class="cert-history-actions">
                                 <a class="btn btn-small" href="<?= $basePath ?>/admin/certificates/generate.php?preview=<?= (int) $log['certificate_request_id'] ?>&print_only=1">Print Certificate</a>
-                                <form autocomplete="off" method="post">
+                                <form autocomplete="off" method="post" data-confirm="Mark this certificate as printed?">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="certificate_request_id" value="<?= (int) $log['certificate_request_id'] ?>">
                                     <button type="submit" name="mark_printed" value="1" class="btn btn-small">Mark as Printed</button>
@@ -208,7 +208,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php elseif ($log['print_status'] === 'printed' && empty($log['finalized_at'])): ?>
                             <div class="cert-history-actions">
                                 <a class="btn btn-small" href="<?= $basePath ?>/admin/certificates/generate.php?preview=<?= (int) $log['certificate_request_id'] ?>&print_only=1">Print Certificate</a>
-                                <form autocomplete="off" method="post">
+                                <form autocomplete="off" method="post" data-confirm="Finalize this certificate as signed and sealed? This closes out its processing.">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="certificate_request_id" value="<?= (int) $log['certificate_request_id'] ?>">
                                     <button type="submit" name="finalize_certificate" value="1" class="btn btn-small">Finalize Signed and Sealed</button>

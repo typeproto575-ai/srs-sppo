@@ -5,7 +5,8 @@
    (via includes/footer.php / admin-footer.php):
      1. Auto-dismiss flash messages marked with [data-auto-dismiss].
      2. Confirmation prompts for destructive submits marked with
-        [data-confirm="message"] on the <form>.
+        [data-confirm="message"] on the <form>, or on an individual submit
+        button (a button-level message overrides the form's).
       3. Modal encode dialogs ([data-open-dialog], [data-autoshow]).
       4. Record-list filter panel sync + click-outside close.
       5. Admin sidebar dropdown open/closed memory (localStorage).
@@ -24,9 +25,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ---- 2) Confirm-before-submit for risky forms ------------------------
     // e.g. <form method="post" data-confirm="Delete this record?">
+    // A form with several submit buttons can give each button its own message
+    // via a button-level data-confirm; buttons without one fall back to the
+    // form's message, so single-message forms behave exactly as before.
     document.querySelectorAll('form[data-confirm]').forEach(function (form) {
         form.addEventListener('submit', function (ev) {
-            if (!window.confirm(form.getAttribute('data-confirm'))) {
+            var message = (ev.submitter && ev.submitter.getAttribute('data-confirm')) || form.getAttribute('data-confirm');
+            if (!window.confirm(message)) {
                 ev.preventDefault(); // user cancelled — stop the submission
             }
         });

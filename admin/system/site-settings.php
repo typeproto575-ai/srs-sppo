@@ -102,7 +102,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <strong>The site settings table is missing.</strong> Run <code>migrations/007_site_settings.sql</code> against the database first.
             </div>
         <?php elseif ($tableExists): ?>
-        <form method="post" class="settings-form">
+        <form method="post" class="settings-form" data-confirm="Save these settings? They apply to the whole system immediately.">
             <?= csrf_field() ?>
 
             <fieldset class="admin-card">
