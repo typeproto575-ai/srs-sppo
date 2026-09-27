@@ -27,6 +27,11 @@ $basePath = base_path();
 $notice = null;
 $errors = [];
 
+// Set when create_and_assign hits an exact-name match in `persons`. Holds
+// record_id/full_name/matches so the warning renders on the row that was
+// submitted, and adds an entry to $errors so the INSERT below is skipped.
+$duplicateWarning = null;
+
 // A submitted table/column pair must resolve to one known mapping. This
 // prevents a valid column name from being used against the wrong table.
 $mappings = [
@@ -56,6 +61,16 @@ $mappings = [
         'date_sql' => 'wife_birthdate', 'skip_column' => 'wife_mapper_skipped_at',
     ],
 ];
+
+// All persons (small parish-scale table) for one-click name suggestions and
+// for the create_and_assign duplicate guard. Loaded here, before the POST
+// block, so the duplicate check can call mapper_suggestions() -- which is
+// defined below but available, since function declarations in this file are
+// unconditional and top-level.
+$allPersons = $pdo->query(
+    'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
+     FROM persons ORDER BY last_name, first_name LIMIT 2000'
+)->fetchAll();
 
 function mapper_name_parts(string $fullName): array
 {
@@ -213,7 +228,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'The selected person does not exist.';
             }
         } elseif ($action === 'create_and_assign') {
-            if ($fullName === '') $errors[] = 'A full name is required.';
+            if ($fullName === '') {
+                $errors[] = 'A full name is required.';
+            } elseif (($_POST['confirm_create_duplicate'] ?? '') !== '1') {
+                // No reliable birth date exists yet for a typed name, so pass
+                // null and match on name alone.
+                //
+                // A dist === 0 hit alone is NOT enough: mapper_normalize()
+                // trims before it strips punctuation, so a typed
+                // "Cordova Jr." normalizes to "cordova  " with a trailing
+                // space, which levenshteins as distance 2 against the clean
+                // stored form and would sail straight through a dist === 0
+                // test. So also accept normalized-equality, double-normalized
+                // so both sides are free of trailing separators. This keeps
+                // the rule identical to the suggestion chips (case-, suffix-
+                // and punctuation-insensitive) and leaves mapper_suggestions()
+                // and mapper_normalize() untouched.
+                $needle = mapper_normalize(mapper_normalize($fullName));
+                $isSameName = static function (array $p) use ($needle): bool {
+                    if ($needle === '') return false;
+                    $parts = implode(' ', array_filter([
+                        $p['first_name'], $p['middle_name'], $p['last_name'], $p['maiden_name'],
+                    ]));
+                    return mapper_normalize(mapper_normalize($parts)) === $needle;
+                };
+                $duplicateMatches = array_values(array_filter(
+                    mapper_suggestions($fullName, null, $allPersons, 5),
+                    static fn(array $s): bool => $s['dist'] === 0 || $isSameName($s['p'])
+                ));
+                if ($duplicateMatches) {
+                    $duplicateWarning = [
+                        'record_id' => $recordId,
+                        'full_name' => $fullName,
+                        'matches' => $duplicateMatches,
+                    ];
+                    $errors[] = 'A person with this exact name already exists. See the warning below to confirm creating a separate person anyway, or assign to the existing one instead.';
+                }
+            }
         } else {
             $errors[] = 'Choose an existing person or enter a new full name.';
         }
@@ -281,17 +332,53 @@ foreach ($mappings as $section => $mapping) {
 
 if ($activeSection === null) $activeSection = array_key_first($mappings);
 
-// All persons (small parish-scale table) for one-click name suggestions.
-$allPersons = $pdo->query(
-    'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
-     FROM persons ORDER BY last_name, first_name LIMIT 2000'
-)->fetchAll();
-
+// Two people can share a name AND have no birth date on file (common in parish
+// records), so birth date alone cannot be relied on to tell candidates apart.
+// The id always distinguishes them and is what the form already submits.
 function mapper_person_label(array $p): string
 {
     $label = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'], $p['last_name'], $p['suffix']])));
     if (!empty($p['maiden_name'])) $label .= ' (maiden: ' . $p['maiden_name'] . ')';
+    $label .= !empty($p['birth_date'])
+        ? ' — b. ' . date('M j, Y', strtotime($p['birth_date']))
+        : ' — no birth date on file';
+    $label .= ' (#' . (int) $p['id'] . ')';
     return $label;
+}
+
+// Renders the exact-name duplicate warning for one record. Called either on
+// that record's row, or page-level when the record sits outside the loaded
+// row window (the register lists are fetched with LIMIT 50, so a submitted
+// record is not guaranteed to be on the page).
+function mapper_duplicate_warning(array $warn, string $section, int $recordId): void
+{
+    ?>
+    <div class="alert alert-warning" style="margin:0.5rem 0; width:100%;">
+        <p><strong>Possible duplicate:</strong> "<?= e($warn['full_name']) ?>" matches an existing person exactly:</p>
+        <div class="mapper-suggestions">
+            <?php foreach ($warn['matches'] as $m): ?>
+                <form autocomplete="off" method="post" class="mapper-suggestion">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="assign">
+                    <input type="hidden" name="section" value="<?= e($section) ?>">
+                    <input type="hidden" name="record_id" value="<?= $recordId ?>">
+                    <input type="hidden" name="person_id" value="<?= (int) $m['p']['id'] ?>">
+                    <button class="btn btn-secondary btn-small" type="submit">Assign to <?= e(mapper_person_label($m['p'])) ?> instead</button>
+                </form>
+                <a href="person-profile.php?id=<?= (int) $m['p']['id'] ?>" class="mapper-profile-link" title="View person profile (all linked records)">&#10697;</a>
+            <?php endforeach; ?>
+        </div>
+        <form autocomplete="off" method="post" style="margin-top:0.5rem;">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="create_and_assign">
+            <input type="hidden" name="section" value="<?= e($section) ?>">
+            <input type="hidden" name="record_id" value="<?= $recordId ?>">
+            <input type="hidden" name="new_person_name" value="<?= e($warn['full_name']) ?>">
+            <input type="hidden" name="confirm_create_duplicate" value="1">
+            <button class="btn btn-small" type="submit" onclick="return confirm('Create a separate new person anyway? This will not merge with the existing match.');">Create separate person anyway</button>
+        </form>
+    </div>
+    <?php
 }
 
 $pageTitle = 'Person Linking';
@@ -332,6 +419,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php $rows = $unmatched[$activeSection] ?? []; ?>
         <?php $skippedRows = $skipped[$activeSection] ?? []; ?>
+
+        <?php // Duplicate guard fallback: the row-level warning cannot render
+              // if the submitted record is outside the loaded row window, so
+              // show the same block once above the list in that case. ?>
+        <?php if ($duplicateWarning && !in_array((int) $duplicateWarning['record_id'], array_map('intval', array_column($rows, 'id')), true)):
+            mapper_duplicate_warning($duplicateWarning, (string) $activeSection, (int) $duplicateWarning['record_id']);
+        endif; ?>
         <?php $activeMapping = $mappings[$activeSection]; ?>
         <?php $highConfidenceCount = 0; ?>
         <?php foreach ($rows as $candidateRow): ?>
@@ -405,6 +499,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <div class="mapper-person-results" data-mapper-person-results></div>
                         </form>
 
+                        <?php if ($duplicateWarning && (int) $duplicateWarning['record_id'] === (int) $r['id']):
+                            mapper_duplicate_warning($duplicateWarning, (string) $activeSection, (int) $r['id']);
+                        endif; ?>
                         <!-- Create new person + assign form -->
                         <form autocomplete="off" method="post" class="mapper-action-form">
                             <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
