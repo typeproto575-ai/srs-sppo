@@ -21,6 +21,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/person-linking.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
@@ -40,26 +41,22 @@ $personLabel = trim(implode(' ', array_filter([
 ])));
 if (!empty($person['maiden_name'])) $personLabel .= ' (maiden: ' . $person['maiden_name'] . ')';
 
-// Same registry/table mapping the person mapper uses ('mapper' = the
-// section key used by person-mapper.php tabs).
-$sections = [
-    'Baptismal'       => ['type' => 'baptismal',       'table' => 'baptismal_records',       'column' => 'person_id', 'name' => 'child_full_name',       'date' => 'baptism_date'],
-    'Confirmation'    => ['type' => 'confirmation',    'table' => 'confirmation_records',    'column' => 'person_id', 'name' => 'confirmand_full_name',  'date' => 'confirmation_date'],
-    'First Communion' => ['type' => 'first_communion', 'table' => 'first_communion_records', 'column' => 'person_id', 'name' => 'communicant_full_name', 'date' => 'communion_date'],
-];
+// Bridge table/column mapping now lives in includes/person-linking.php so
+// this page, the persons directory and the delete guard all agree on it — one
+// source of truth instead of a copy per page.
+$sections = person_bridge_sections();
+$marriageRoles = person_bridge_marriage_roles();
 
-$marriageRoles = [
-    'As husband' => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'husband_person_id', 'name' => 'wife_maiden_name', 'date' => 'marriage_date'],
-    'As wife'    => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'wife_person_id',    'name' => 'husband_full_name', 'date' => 'marriage_date'],
-];
-
-// --- Remove a wrong person-to-record link -------------------------------
-// Clears one *_person_id bridge cell (the same bridge the person
+// --- Unlink a wrong link, or delete an unlinked person -------------------
+// Unlink clears one *_person_id bridge cell (the same bridge the person
 // mapper fills in). Table and column names are looked up in the $sections /
 // $marriageRoles allow-list above — never taken from POST — so a forged
 // section_key cannot reach an arbitrary table. The UPDATE re-asserts that
 // the row still points at this person, which makes a double submit or a
 // raced change report cleanly instead of silently appearing to succeed.
+//
+// Delete never touches a register row: it removes the persons row only, and
+// only when person_delete_if_unlinked() recounts every bridge on the spot.
 $actionError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unlink') {
     if (!csrf_verify()) {
@@ -81,9 +78,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unlin
                 $actionError = 'That link was already removed or no longer matches this person.';
             } else {
                 log_activity($pdo, current_user()['id'], 'unmap_person', $sec['table'], $unlinkRecordId,
-                    "Removed the link between this record and {$personLabel} (#{$personId}).");
+                    "Removed the link between this record and " . person_identity_label($person) . " (#{$personId}).");
                 redirect_to('/admin/system/person-profile.php?id=' . $personId . '&unlinked=1');
             }
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
+    if (!csrf_verify()) {
+        $actionError = 'Your session expired. Please try again.';
+    } else {
+        // person_delete_if_unlinked() reads the row itself (existence check
+        // and audit label), so there is nothing to pre-check here.
+        $result = person_delete_if_unlinked($pdo, $personId, current_user()['id']);
+        if (!$result['ok']) {
+            $actionError = $result['error'];
+        } else {
+            redirect_to('/admin/system/persons.php?deleted=1');
         }
     }
 }
@@ -108,6 +118,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <?php if ($actionError): ?><p class="alert alert-error"><?= e($actionError) ?></p><?php endif; ?>
 <?php if (isset($_GET['unlinked'])): ?><p class="alert alert-success">Link removed. The record is back in the mapping queue.</p><?php endif; ?>
 <p class="field-hint">Person #<?= (int) $person['id'] ?><?= !empty($person['birth_date']) ? ' &middot; born ' . e(date('F j, Y', strtotime($person['birth_date']))) : '' ?> &middot; <?= (int) $totalLinked ?> linked register row<?= $totalLinked === 1 ? '' : 's' ?></p>
+<?php if ($totalLinked === 0): ?>
+    <form method="post" data-confirm="Delete this person? This cannot be undone.">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-danger btn-small">Delete this person</button>
+    </form>
+<?php else: ?>
+    <p class="field-hint">Remove all <?= (int) $totalLinked ?> linked record<?= $totalLinked === 1 ? '' : 's' ?> above before this person can be deleted.</p>
+<?php endif; ?>
 
 <?php foreach ($sections as $label => $sec): $rows = $linked[$label]; ?>
     <h2><?= e($label) ?></h2>

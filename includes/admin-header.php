@@ -120,7 +120,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         </details>
 
         <!-- Records section -->
-        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/person-mapper.php') ?>>
+        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/person-mapper.php', '/admin/system/persons.php') ?>>
             <summary class="sidebar-group-title">Records</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php') ?>>All Records</a></li>
@@ -129,6 +129,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?>>First Communion</a></li>
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?>>Marriage</a></li>
                 <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?>>Person Linking</a></li>
+                <li><a href="<?= $basePath ?>/admin/system/persons.php"<?= $isActive('/admin/system/persons.php') ?>>Persons</a></li>
             </ul>
         </details>
 
