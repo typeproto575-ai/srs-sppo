@@ -102,6 +102,22 @@ if (!$record) {
     exit;
 }
 
+// Audit trail for this record alone. log_activity() writes target_table = the
+// record's own table and target_id = its id, so that pair is the record's
+// identity in the log. LIMIT 20 caps the panel; the link at the bottom of it
+// reaches the rest through the audit-log deep link. al.id breaks ties for
+// entries written in the same second (one encode can log twice).
+$historyStmt = $pdo->prepare(
+    "SELECT al.*, u.full_name AS user_name
+     FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     WHERE al.target_table = ? AND al.target_id = ?
+     ORDER BY al.created_at DESC, al.id DESC
+     LIMIT 20"
+);
+$historyStmt->execute([$definition['table'], $recordId]);
+$recordHistory = $historyStmt->fetchAll();
+
 $personLabels = [];
 foreach ($definition['person_columns'] as $column => $label) {
     $personId = (int) ($record[$column] ?? 0);
@@ -199,6 +215,13 @@ function record_view_value(string $field, $value): string
     return (string) $value;
 }
 
+// Audit actions are stored snake_case ('baptismal_record_updated',
+// 'record_archived'); render them as a sentence instead of dumping the code.
+function record_history_action_label(string $action): string
+{
+    return ucfirst(str_replace('_', ' ', $action));
+}
+
 $pageTitle = $definition['label'] . ' Record';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -263,6 +286,30 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $link['person']['id']) ?>">View person profile</a>
                         </div>
                     <?php endforeach; ?>
+                <?php endif; ?>
+            </aside>
+
+            <aside class="panel-card record-detail-card">
+                <h2>Record history</h2>
+                <?php if (!$recordHistory): ?>
+                    <p class="field-hint">No history recorded for this record yet.</p>
+                <?php else: ?>
+                    <ul class="record-person-link-list record-history-list">
+                        <?php foreach ($recordHistory as $entry): ?>
+                            <li class="record-person-link">
+                                <div>
+                                    <span class="field-hint"><?= e(date('M j, Y g:i A', strtotime($entry['created_at']))) ?></span>
+                                    <strong><?= e(record_history_action_label($entry['action'])) ?></strong>
+                                </div>
+                                <small>
+                                    <?= e($entry['user_name'] ?? 'System / Public Form') ?>
+                                    <?php if (!empty($entry['description'])): ?><br><?= e($entry['description']) ?><?php endif; ?>
+                                    <?php if (!empty($entry['reason'])): ?><br>Reason: <?= e($entry['reason']) ?><?php endif; ?>
+                                </small>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/audit-log.php?module=' . urlencode($definition['table']) . '&record_id=' . $recordId) ?>">View full audit log for this record</a>
                 <?php endif; ?>
             </aside>
         </div>

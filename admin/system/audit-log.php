@@ -25,6 +25,7 @@ $filterRole = in_array(($_GET['role'] ?? ''), ['secretary', 'parish_admin'], tru
 $filterUser = max(0, (int) ($_GET['user_id'] ?? 0));
 $filterAction = trim((string) ($_GET['action_name'] ?? ''));
 $filterModule = trim((string) ($_GET['module'] ?? ''));
+$filterRecordId = max(0, (int) ($_GET['record_id'] ?? 0));
 $userOptions = $pdo->query('SELECT id, full_name, role FROM users ORDER BY full_name')->fetchAll();
 $actionOptions = $pdo->query('SELECT DISTINCT action FROM audit_logs ORDER BY action')->fetchAll(PDO::FETCH_COLUMN);
 $moduleOptions = $pdo->query("SELECT DISTINCT target_table FROM audit_logs WHERE target_table IS NOT NULL AND target_table <> '' ORDER BY target_table")->fetchAll(PDO::FETCH_COLUMN);
@@ -48,6 +49,10 @@ if ($filterRole !== '') { $extraWhere .= ' AND al.role_snapshot = ?'; $rf['param
 if ($filterUser > 0) { $extraWhere .= ' AND al.user_id = ?'; $rf['params'][] = $filterUser; }
 if ($filterAction !== '') { $extraWhere .= ' AND al.action = ?'; $rf['params'][] = $filterAction; }
 if ($filterModule !== '') { $extraWhere .= ' AND al.target_table = ?'; $rf['params'][] = $filterModule; }
+// Deep link from a record's "Record history" panel. target_id is only unique
+// within a table, so it is honoured only alongside module (target_table) --
+// a bare ?record_id= would otherwise match that id in every table.
+if ($filterRecordId > 0 && $filterModule !== '') { $extraWhere .= ' AND al.target_id = ?'; $rf['params'][] = $filterRecordId; }
 
 $countStmt = $pdo->prepare(
     "SELECT COUNT(*) FROM audit_logs al
