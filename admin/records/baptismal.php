@@ -100,13 +100,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     // Sponsors (Godfathers and Godmothers) - separate arrays for each type
     $godfatherNames      = $_POST['godfather_name'] ?? [];
+    if (!is_array($godfatherNames)) { $godfatherNames = []; }
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
+    if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
     $godmotherNames      = $_POST['godmother_name'] ?? [];
+    if (!is_array($godmotherNames)) { $godmotherNames = []; }
     $godmotherResidences = $_POST['godmother_residence'] ?? [];
+    if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
     
     // Keep old field names for backward compatibility with database
-    $sponsorNames      = array_merge($godfatherNames, $godmotherNames);
-    $sponsorResidences = array_merge($godfatherResidences, $godmotherResidences);
+    $sponsorNames      = array_merge(is_array($godfatherNames) ? $godfatherNames : [], is_array($godmotherNames) ? $godmotherNames : []);
+    $sponsorResidences = array_merge(is_array($godfatherResidences) ? $godfatherResidences : [], is_array($godmotherResidences) ? $godmotherResidences : []);
 
     if ($baptismDate === '') $errors[] = 'Baptism date is required.';
     if ($childName === '')   $errors[] = "Child's full name is required.";
@@ -155,9 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godfather')"
             );
             foreach ($godfatherNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $sponsorStmt->execute([$recordId, $name, trim($godfatherResidences[$i] ?? '')]);
+                $sponsorStmt->execute([$recordId, $name, trim(isset($godfatherResidences[$i]) && is_string($godfatherResidences[$i]) ? $godfatherResidences[$i] : '')]);
             }
             
             // Insert godmothers (Ninang)
@@ -165,9 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godmother')"
             );
             foreach ($godmotherNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $sponsorStmt2->execute([$recordId, $name, trim($godmotherResidences[$i] ?? '')]);
+                $sponsorStmt2->execute([$recordId, $name, trim(isset($godmotherResidences[$i]) && is_string($godmotherResidences[$i]) ? $godmotherResidences[$i] : '')]);
             }
 
             log_activity($pdo, current_user()['id'], 'baptismal_record_encoded', 'baptismal_records', $recordId,
@@ -214,9 +220,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
     $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
     $godfatherNames      = $_POST['godfather_name'] ?? [];
+    if (!is_array($godfatherNames)) { $godfatherNames = []; }
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
+    if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
     $godmotherNames      = $_POST['godmother_name'] ?? [];
+    if (!is_array($godmotherNames)) { $godmotherNames = []; }
     $godmotherResidences = $_POST['godmother_residence'] ?? [];
+    if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
     $entryNo          = trim($_POST['entry_no'] ?? '');
     $baptismDate      = $_POST['baptism_date'] ?? '';
     $baptismPlace     = trim($_POST['baptism_place'] ?? '');
@@ -272,17 +282,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godfather')"
             );
             foreach ($godfatherNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $gfStmt->execute([$editId, $name, trim($godfatherResidences[$i] ?? '')]);
+                $gfStmt->execute([$editId, $name, trim(isset($godfatherResidences[$i]) && is_string($godfatherResidences[$i]) ? $godfatherResidences[$i] : '')]);
             }
             $gmStmt = $pdo->prepare(
                 "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godmother')"
             );
             foreach ($godmotherNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $gmStmt->execute([$editId, $name, trim($godmotherResidences[$i] ?? '')]);
+                $gmStmt->execute([$editId, $name, trim(isset($godmotherResidences[$i]) && is_string($godmotherResidences[$i]) ? $godmotherResidences[$i] : '')]);
             }
 
             log_activity($pdo, current_user()['id'], 'baptismal_record_updated', 'baptismal_records', $editId,
@@ -303,6 +315,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 // --- Edit mode: load the requested record into the encode form -----------
 $editRecord   = null;
 $editSponsors = [];
+$editGodfathers = [];
+$editGodmothers = [];
 if (isset($_GET['edit'])) {
     $editId = (int) $_GET['edit'];
     $stmt = $pdo->prepare("SELECT * FROM baptismal_records WHERE id = ?");
@@ -420,7 +434,7 @@ $stmt = $pdo->prepare(
 $stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
 
-$isSecretary = current_user()['role'] === 'secretary';
+$isSecretary = in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -562,25 +576,58 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </fieldset>
 
             <!-- Godfathers (Ninong) - up to 8 -->
+            <?php
+            // Row source: values just submitted (validation re-render), then
+            // loaded edit sponsors (edit mode), else a single blank row.
+            // New rows are cloned client-side — see main.js, section 9.
+            $gfRows = $_POST['godfather_name'] ?? array_column($editGodfathers ?? [], 'sponsor_name');
+            if (!is_array($gfRows)) { $gfRows = []; }
+            $gfRows = array_values($gfRows);
+            $gfRes = $_POST['godfather_residence'] ?? array_column($editGodfathers ?? [], 'sponsor_residence');
+            if (!is_array($gfRes)) { $gfRes = []; }
+            $gfRes = array_values($gfRes);
+            if (count($gfRows) === 0) { $gfRows = ['']; }
+            ?>
             <fieldset>
                 <legend>Godfathers (Ninong) - Up to 8</legend>
-                <?php for ($i = 0; $i < 8; $i++): ?>
-                    <div class="inline-fields">
-                        <label>Godfather Name <input autocomplete="off" type="text" name="godfather_name[]" value="<?= e($_POST['godfather_name'][$i] ?? $editGodfathers[$i]['sponsor_name'] ?? '') ?>"></label>
-                        <label>Residence <input autocomplete="off" type="text" name="godfather_residence[]" value="<?= e($_POST['godfather_residence'][$i] ?? $editGodfathers[$i]['sponsor_residence'] ?? '') ?>"></label>
-                    </div>
-                <?php endfor; ?>
+                <div data-repeat-group="godfather" data-repeat-max="8">
+                    <?php foreach ($gfRows as $i => $rowName): ?>
+                        <div class="godparent-row">
+                            <div class="inline-fields">
+                                <label>Godfather Name <input autocomplete="off" type="text" name="godfather_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <label>Residence <input autocomplete="off" type="text" name="godfather_residence[]" value="<?= e(isset($gfRes[$i]) && is_string($gfRes[$i]) ? $gfRes[$i] : '') ?>"></label>
+                            </div>
+                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
             </fieldset>
 
             <!-- Godmothers (Ninang) - up to 8 -->
+            <?php
+            $gmRows = $_POST['godmother_name'] ?? array_column($editGodmothers ?? [], 'sponsor_name');
+            if (!is_array($gmRows)) { $gmRows = []; }
+            $gmRows = array_values($gmRows);
+            $gmRes = $_POST['godmother_residence'] ?? array_column($editGodmothers ?? [], 'sponsor_residence');
+            if (!is_array($gmRes)) { $gmRes = []; }
+            $gmRes = array_values($gmRes);
+            if (count($gmRows) === 0) { $gmRows = ['']; }
+            ?>
             <fieldset>
                 <legend>Godmothers (Ninang) - Up to 8</legend>
-                <?php for ($i = 0; $i < 8; $i++): ?>
-                    <div class="inline-fields">
-                        <label>Godmother Name <input autocomplete="off" type="text" name="godmother_name[]" value="<?= e($_POST['godmother_name'][$i] ?? $editGodmothers[$i]['sponsor_name'] ?? '') ?>"></label>
-                        <label>Residence <input autocomplete="off" type="text" name="godmother_residence[]" value="<?= e($_POST['godmother_residence'][$i] ?? $editGodmothers[$i]['sponsor_residence'] ?? '') ?>"></label>
-                    </div>
-                <?php endfor; ?>
+                <div data-repeat-group="godmother" data-repeat-max="8">
+                    <?php foreach ($gmRows as $i => $rowName): ?>
+                        <div class="godparent-row">
+                            <div class="inline-fields">
+                                <label>Godmother Name <input autocomplete="off" type="text" name="godmother_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <label>Residence <input autocomplete="off" type="text" name="godmother_residence[]" value="<?= e(isset($gmRes[$i]) && is_string($gmRes[$i]) ? $gmRes[$i] : '') ?>"></label>
+                            </div>
+                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godmother">Add another godmother</button>
             </fieldset>
 
             <fieldset>

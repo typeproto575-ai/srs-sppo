@@ -92,7 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $lineNo          = trim($_POST['line_no'] ?? '');
 
     $witnessNames      = $_POST['witness_name'] ?? [];
+    if (!is_array($witnessNames)) { $witnessNames = []; }
     $witnessResidences = $_POST['witness_residence'] ?? [];
+    if (!is_array($witnessResidences)) { $witnessResidences = []; }
 
     if ($marriageDate === '')   $errors[] = 'Marriage date is required.';
     if ($husbandName === '')    $errors[] = "Husband's full name is required.";
@@ -136,9 +138,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "INSERT INTO marriage_witnesses (marriage_record_id, witness_name, witness_residence) VALUES (?, ?, ?)"
             );
             foreach ($witnessNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $witnessStmt->execute([$recordId, $name, trim($witnessResidences[$i] ?? '')]);
+                $witnessStmt->execute([$recordId, $name, trim(isset($witnessResidences[$i]) && is_string($witnessResidences[$i]) ? $witnessResidences[$i] : '')]);
             }
 
             log_activity($pdo, current_user()['id'], 'marriage_record_encoded', 'marriage_records', $recordId,
@@ -207,7 +210,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $pageNo            = trim($_POST['page_no'] ?? '');
     $lineNo            = trim($_POST['line_no'] ?? '');
     $witnessNames      = $_POST['witness_name'] ?? [];
+    if (!is_array($witnessNames)) { $witnessNames = []; }
     $witnessResidences = $_POST['witness_residence'] ?? [];
+    if (!is_array($witnessResidences)) { $witnessResidences = []; }
 
     if ($marriageDate === '')   $errors[] = 'Marriage date is required.';
     if ($husbandName === '')    $errors[] = "Husband's full name is required.";
@@ -243,9 +248,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 "INSERT INTO marriage_witnesses (marriage_record_id, witness_name, witness_residence) VALUES (?, ?, ?)"
             );
             foreach ($witnessNames as $i => $name) {
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $witnessStmt->execute([$editId, $name, trim($witnessResidences[$i] ?? '')]);
+                $witnessStmt->execute([$editId, $name, trim(isset($witnessResidences[$i]) && is_string($witnessResidences[$i]) ? $witnessResidences[$i] : '')]);
             }
 
             log_activity($pdo, current_user()['id'], 'marriage_record_updated', 'marriage_records', $editId,
@@ -379,7 +385,7 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
-$isSecretary = current_user()['role'] === 'secretary';
+$isSecretary = in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -523,14 +529,32 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <label>Officiating Minister <input autocomplete="off" type="text" name="officiating_minister" value="<?= e($_POST['officiating_minister'] ?? $editRecord['officiating_minister'] ?? '') ?>"></label>
             </fieldset>
 
+            <?php
+            // Row source: values just submitted (validation re-render), then
+            // loaded witnesses (edit mode), else a single blank row.
+            // New rows are cloned client-side — see main.js, section 9.
+            $witnessRows = $_POST['witness_name'] ?? array_column($editWitnesses, 'witness_name');
+            if (!is_array($witnessRows)) { $witnessRows = []; }
+            $witnessRows = array_values($witnessRows);
+            $witnessRes = $_POST['witness_residence'] ?? array_column($editWitnesses, 'witness_residence');
+            if (!is_array($witnessRes)) { $witnessRes = []; }
+            $witnessRes = array_values($witnessRes);
+            if (count($witnessRows) === 0) { $witnessRows = ['']; }
+            ?>
             <fieldset>
                 <legend>Witnesses</legend>
-                <?php for ($i = 0; $i < 2; $i++): ?>
-                    <div class="inline-fields">
-                        <label>Witness Name <input autocomplete="off" type="text" name="witness_name[]" value="<?= e($_POST['witness_name'][$i] ?? $editWitnesses[$i]['witness_name'] ?? '') ?>"></label>
-                        <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" value="<?= e($_POST['witness_residence'][$i] ?? $editWitnesses[$i]['witness_residence'] ?? '') ?>"></label>
-                    </div>
-                <?php endfor; ?>
+                <div data-repeat-group="witness" data-repeat-max="2">
+                    <?php foreach ($witnessRows as $i => $rowName): ?>
+                        <div class="godparent-row">
+                            <div class="inline-fields">
+                                <label>Witness Name <input autocomplete="off" type="text" name="witness_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" value="<?= e(isset($witnessRes[$i]) && is_string($witnessRes[$i]) ? $witnessRes[$i] : '') ?>"></label>
+                            </div>
+                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="witness">Add another witness</button>
             </fieldset>
 
             <fieldset>

@@ -274,7 +274,7 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($rf['params']);
 $records = $stmt->fetchAll();
-$isSecretary = current_user()['role'] === 'secretary';
+$isSecretary = in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
