@@ -14,20 +14,6 @@ $allowed = [
     'death_burial_records' => 'Death/Burial status record',
 ];
 
-function archive_record_safe_return(?string $return): ?string
-{
-    $value = trim((string) ($return ?? ''));
-    if ($value === '') {
-        return null;
-    }
-
-    if (preg_match('#^/admin(?:/[A-Za-z0-9._-]+)+\.php(?:\?.*)?$#', $value) !== 1) {
-        return null;
-    }
-
-    return $value;
-}
-
 $message = '';
 $error = '';
 $table = (string) ($_GET['table'] ?? $_POST['table'] ?? '');
@@ -36,7 +22,7 @@ $action = (string) ($_GET['action'] ?? $_POST['action'] ?? 'archive');
 if (!in_array($action, ['archive', 'restore'], true)) {
     $action = 'archive';
 }
-$return = archive_record_safe_return($_GET['return'] ?? $_POST['return'] ?? null);
+$return = safe_internal_return_url($_GET['return'] ?? $_POST['return'] ?? null);
 $record = null;
 $recordName = null;
 $recordDate = null;
@@ -51,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? 'archive');
     $reason = trim((string) ($_POST['reason'] ?? ''));
     $confirm = (string) ($_POST['confirm'] ?? '') === '1';
-    $return = archive_record_safe_return($_POST['return'] ?? null);
+    $return = safe_internal_return_url($_POST['return'] ?? null);
 
     if (!$error && (!isset($allowed[$table]) || $id < 1)) {
         $error = 'A valid record must be selected.';

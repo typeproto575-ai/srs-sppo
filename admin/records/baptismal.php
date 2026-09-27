@@ -19,6 +19,10 @@ require_role('secretary');
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
 
+// This page's own app-relative URL (path + current query string) so the record
+// view can send the user back here with the same search, filter and page.
+$selfReturn = '/admin/records/baptismal.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
+
 $pageTitle = 'Baptismal Records';
 $errors  = [];
 $success = null;
@@ -480,7 +484,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
                             <td class="row-actions">
                                 <a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=baptismal&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a>
-                                <a href="<?= e($basePath . '/admin/records/view.php?type=baptismal&id=' . (int) $rec['id']) ?>" class="btn btn-secondary btn-small">View record</a>
+                                <a href="<?= e($basePath . '/admin/records/view.php?type=baptismal&id=' . (int) $rec['id'] . '&return=' . urlencode($selfReturn)) ?>" class="btn btn-secondary btn-small">View record</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>

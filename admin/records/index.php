@@ -12,6 +12,10 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_role('secretary');
 
 $basePath = base_path();
+
+// This page's own app-relative URL (path + current query string) so the record
+// view can send the user back here with the same search, filter and page.
+$selfReturn = '/admin/records/index.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
 $pageTitle = 'All Records';
 $search = trim((string) ($_GET['q'] ?? ''));
 $type = (string) ($_GET['type'] ?? '');
@@ -250,7 +254,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         $reference = $record['book_no'] !== null && $record['book_no'] !== ''
                             ? trim($record['book_no'] . ' / ' . $record['page_no'] . ' / ' . $record['line_no'], ' /')
                             : 'Not recorded';
-                        $viewUrl = $basePath . '/admin/records/view.php?type=' . urlencode($record['record_type']) . '&id=' . (int) $record['id'];
+                        $viewUrl = $basePath . '/admin/records/view.php?type=' . urlencode($record['record_type']) . '&id=' . (int) $record['id'] . '&return=' . urlencode($selfReturn);
                         ?>
                         <tr>
                             <td><?= e($record['book_no'] ?: '—') ?></td>

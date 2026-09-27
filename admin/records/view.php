@@ -11,6 +11,10 @@ require_role('secretary');
 $basePath = base_path();
 $recordType = (string) ($_GET['type'] ?? '');
 $recordId = (int) ($_GET['id'] ?? 0);
+// Where the user came from, when the list page passed it. Already validated as
+// an app-relative /admin path by safe_internal_return_url(); null means fall
+// back to the All Records index.
+$returnUrl = safe_internal_return_url($_GET['return'] ?? null);
 $mapperSection = [
     'baptismal' => 'baptismal',
     'confirmation' => 'confirmation',
@@ -242,6 +246,26 @@ function record_history_action_label(string $action): string
     return ucfirst(str_replace('_', ' ', $action));
 }
 
+// The button used to always read "Back to All Records" even when it returned
+// you to a filtered parish list. Name it after the page it actually goes to,
+// so the label always matches where the click will land.
+function record_return_label(?string $returnUrl): string
+{
+    if (!$returnUrl) {
+        return 'Back to All Records';
+    }
+    $labels = [
+        'baptismal.php' => 'Back to Baptismal Records',
+        'confirmation.php' => 'Back to Confirmation Records',
+        'first-communion.php' => 'Back to First Communion Records',
+        'marriage.php' => 'Back to Marriage Records',
+        'index.php' => 'Back to All Records',
+    ];
+    $path = parse_url($returnUrl, PHP_URL_PATH) ?: '';
+    $file = basename($path);
+    return $labels[$file] ?? 'Back to All Records';
+}
+
 $pageTitle = $definition['label'] . ' Record';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -251,7 +275,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h1><?= e($definition['label']) ?> record</h1>
             </div>
             <div class="page-actions">
-                <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
+                <a class="btn btn-secondary btn-small" href="<?= e($basePath . ($returnUrl ?: '/admin/records/index.php')) ?>"><?= e(record_return_label($returnUrl)) ?></a>
                 <a class="btn btn-primary btn-small" href="<?= e($basePath . $definition['edit'] . '?edit=' . $recordId) ?>">Edit record</a>
                 <?php
                 $archiveReturn = urlencode('/admin/records/view.php?type=' . $recordType . '&id=' . $recordId);
@@ -289,7 +313,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <li class="record-person-link">
                                 <div>
                                     <span class="field-hint"><?= e($related['label']) ?></span>
-                                    <a href="<?= e($basePath . '/admin/records/view.php?type=' . $related['type'] . '&id=' . (int) $related['id']) ?>"><?= e($related['name'] ?: 'Record #' . (int) $related['id']) ?></a>
+                                    <a href="<?= e($basePath . '/admin/records/view.php?type=' . $related['type'] . '&id=' . (int) $related['id'] . ($returnUrl ? '&return=' . urlencode($returnUrl) : '')) ?>"><?= e($related['name'] ?: 'Record #' . (int) $related['id']) ?></a>
                                 </div>
                                 <small><?= e(record_view_value($related['date_field'], $related['date_value'])) ?></small>
                             </li>

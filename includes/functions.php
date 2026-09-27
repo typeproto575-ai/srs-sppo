@@ -487,6 +487,42 @@ function base_path(): string
 }
 
 /**
+ * Validate a browser-supplied "return" URL, so a page can send the user back
+ * to the list they actually came from instead of a hardcoded default.
+ *
+ * Only app-root-relative paths under /admin are accepted, with an optional
+ * query string. That keeps the value a safe redirect target: no absolute URLs,
+ * no protocol-relative "//host" forms, nothing outside the admin area, and no
+ * ".." traversal segments in the path -- a ".." inside the query string is
+ * allowed, as it is inert data and is never joined onto a path.
+ * Returns null when the value is absent or fails the check, so callers fall
+ * back to their own default. The result is already app-relative -- do not run
+ * it through base_path() again at the point of use.
+ */
+function safe_internal_return_url(?string $return): ?string
+{
+    $value = trim((string) ($return ?? ''));
+    if ($value === '') {
+        return null;
+    }
+
+    if (preg_match('#^/admin(?:/[A-Za-z0-9._-]+)+\.php(?:\?.*)?$#', $value) !== 1) {
+        return null;
+    }
+
+    // The character class above allows dots, so path segments like ".." slip past
+    // it and could climb out of /admin ("/admin/../../evil.php"). Only the path is
+    // ever joined onto base_path(), so test just that part -- a ".." in the query
+    // string (a search term, say) is inert data. parse_url() leaves dot segments
+    // unresolved, so the traversal above is still caught.
+    if (strpos((string) parse_url($value, PHP_URL_PATH), '..') !== false) {
+        return null;
+    }
+
+    return $value;
+}
+
+/**
  * Redirect to an app-root-relative path (e.g. '/admin/login.php') and stop.
  * Always use this instead of header('Location: /...') so the subfolder
  * prefix from base_path() is applied automatically.
