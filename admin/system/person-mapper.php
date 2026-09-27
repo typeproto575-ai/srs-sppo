@@ -31,22 +31,27 @@ $errors = [];
 // prevents a valid column name from being used against the wrong table.
 $mappings = [
     'baptismal' => [
+        'label' => 'Baptismal record',
         'table' => 'baptismal_records', 'column' => 'person_id', 'name' => 'child_full_name',
         'date_sql' => 'COALESCE(birth_date, baptism_date)', 'skip_column' => 'mapper_skipped_at',
     ],
     'confirmation' => [
+        'label' => 'Confirmation record',
         'table' => 'confirmation_records', 'column' => 'person_id', 'name' => 'confirmand_full_name',
         'date_sql' => 'birthdate', 'skip_column' => 'mapper_skipped_at',
     ],
     'first_communion' => [
+        'label' => 'First Communion record',
         'table' => 'first_communion_records', 'column' => 'person_id', 'name' => 'communicant_full_name',
         'date_sql' => 'NULL', 'skip_column' => 'mapper_skipped_at',
     ],
     'marriage_husband' => [
+        'label' => 'Marriage record (husband)',
         'table' => 'marriage_records', 'column' => 'husband_person_id', 'name' => 'husband_full_name',
         'date_sql' => 'husband_birthdate', 'skip_column' => 'husband_mapper_skipped_at',
     ],
     'marriage_wife' => [
+        'label' => 'Marriage record (wife)',
         'table' => 'marriage_records', 'column' => 'wife_person_id', 'name' => 'wife_maiden_name',
         'date_sql' => 'wife_birthdate', 'skip_column' => 'wife_mapper_skipped_at',
     ],
@@ -178,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $update->execute([(int) $person['id'], (int) $bulkRow['id']]);
                         if ($update->rowCount() === 1) {
                             log_activity($pdo, current_user()['id'], 'map_person', $mapping['table'], (int) $bulkRow['id'],
-                                "Mapped {$mapping['column']} to person_id=" . (int) $person['id']);
+                                "{$mapping['label']} #{$bulkRow['id']} linked to person #{$person['id']} in the system.");
                         }
                     }
                     $pdo->commit();
@@ -236,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->rowCount() < 1) throw new RuntimeException('Record was not found or was not changed.');
 
                 log_activity($pdo, current_user()['id'], $actionName, $mapping['table'], $recordId,
-                    "Mapped {$mapping['column']} to person_id={$personId}");
+                    "{$mapping['label']} #{$recordId} linked to person #{$personId} in the system.");
                 $pdo->commit();
                 $notice = 'Person mapping saved.';
             } catch (Throwable $e) {

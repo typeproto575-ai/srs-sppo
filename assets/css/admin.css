@@ -509,6 +509,16 @@ textarea {
     margin-top: 0;
 }
 
+/* This grid fills row-wise, so with three or four panels the later asides
+   wrap back under the main card in the wide left column. Pin the main card to
+   column 1 and let every aside stack down the right rail. Row count is a
+   span, not "1 / -1": these rows are implicit, where -1 has no line to
+   resolve against. Unused rows collapse to zero height, and align-items:
+   start keeps the card from stretching. */
+.record-detail-grid > section.record-detail-card {
+    grid-row: 1 / span 3;
+}
+
 .baptismal-finder-results {
     display: grid;
     gap: 0.4rem;
@@ -668,6 +678,19 @@ textarea {
     margin: 1rem 0 0;
 }
 
+/* Quiet heading above each grouped block of fields. Sentence case to match
+   the other labels in this panel; no border, because .record-detail-list > div
+   already draws the rule on its own first row. Every group title follows a
+   .record-detail-list, so one margin value governs them all -- there is no
+   workable "first group only" selector here, since the panel's first <p> is
+   the "Read-only view" hint and :first-of-type would never match a title. */
+.record-detail-group-title {
+    margin: 1.1rem 0 0.15rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--admin-muted);
+}
+
 .record-detail-list > div {
     display: grid;
     grid-template-columns: minmax(9rem, 0.45fr) minmax(0, 1fr);
@@ -703,6 +726,17 @@ textarea {
     color: var(--admin-green);
     font-size: 0.85rem;
     font-weight: 700;
+}
+
+/* The Related records and Record history panels both markup their list with
+   this class, but no rule ever existed for it and neither stylesheet has a
+   global ul reset (only * { box-sizing: border-box; }), so the list inherited
+   the browser default: disc bullets and ~40px of start padding. The
+   .record-person-link divider/spacing below already shapes these lists. */
+.record-person-link-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 @media (max-width: 760px) {

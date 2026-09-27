@@ -28,15 +28,20 @@ $recordDefinitions = [
         'date' => 'baptism_date',
         'edit' => '/admin/records/baptismal.php',
         'person_columns' => ['person_id' => 'Person identity'],
-        'fields' => [
-            'birth_date' => 'Birth date', 'baptism_place' => 'Place of baptism',
-            'child_birthplace' => "Child's birthplace",
-            'father_name' => "Father's name", 'father_birthplace' => "Father's birthplace",
-            'mother_name' => "Mother's name", 'mother_maiden_name' => "Mother's maiden name",
-            'mother_birthplace' => "Mother's birthplace",
-            'parents_origin' => "Parents' origin", 'parents_residence' => "Parents' residence",
-            'proxy_name' => 'Proxy (if any)',
-            'minister_name' => 'Minister', 'remarks' => 'Remarks',
+        'field_groups' => [
+            'Child' => [
+                'birth_date' => 'Birth date', 'baptism_place' => 'Place of baptism',
+                'child_birthplace' => "Child's birthplace",
+            ],
+            'Parents' => [
+                'father_name' => "Father's name", 'father_birthplace' => "Father's birthplace",
+                'mother_name' => "Mother's name", 'mother_maiden_name' => "Mother's maiden name",
+                'mother_birthplace' => "Mother's birthplace",
+                'parents_origin' => "Parents' origin", 'parents_residence' => "Parents' residence",
+            ],
+            'Ceremony' => [
+                'proxy_name' => 'Proxy (if any)', 'minister_name' => 'Minister', 'remarks' => 'Remarks',
+            ],
         ],
     ],
     'confirmation' => [
@@ -47,10 +52,14 @@ $recordDefinitions = [
         'date' => 'confirmation_date',
         'edit' => '/admin/records/confirmation.php',
         'person_columns' => ['person_id' => 'Person identity'],
-        'fields' => [
-            'birthdate' => 'Birth date', 'father_name' => "Father's name",
-            'mother_maiden_name' => "Mother's maiden name", 'sponsor_name' => 'Sponsor',
-            'minister_name' => 'Minister', 'remarks' => 'Remarks',
+        'field_groups' => [
+            'Confirmand' => [
+                'birthdate' => 'Birth date', 'father_name' => "Father's name",
+                'mother_maiden_name' => "Mother's maiden name",
+            ],
+            'Ceremony' => [
+                'sponsor_name' => 'Sponsor', 'minister_name' => 'Minister', 'remarks' => 'Remarks',
+            ],
         ],
     ],
     'first_communion' => [
@@ -61,10 +70,14 @@ $recordDefinitions = [
         'date' => 'communion_date',
         'edit' => '/admin/records/first-communion.php',
         'person_columns' => ['person_id' => 'Person identity'],
-        'fields' => [
-            'domicile' => 'Residence', 'father_name' => "Father's name",
-            'mother_maiden_name' => "Mother's maiden name", 'minister_name' => 'Minister',
-            'remarks' => 'Remarks',
+        'field_groups' => [
+            'Communicant' => [
+                'domicile' => 'Residence', 'father_name' => "Father's name",
+                'mother_maiden_name' => "Mother's maiden name",
+            ],
+            'Ceremony' => [
+                'minister_name' => 'Minister', 'remarks' => 'Remarks',
+            ],
         ],
     ],
     'marriage' => [
@@ -75,15 +88,22 @@ $recordDefinitions = [
         'date' => 'marriage_date',
         'edit' => '/admin/records/marriage.php',
         'person_columns' => ['husband_person_id' => 'Husband identity', 'wife_person_id' => 'Wife identity'],
-        'fields' => [
-            'husband_full_name' => "Husband's name", 'wife_maiden_name' => "Wife's maiden name",
-            'husband_birthdate' => "Husband's birth date", 'husband_birthplace' => "Husband's birthplace", 'husband_civil_status' => 'Husband civil status',
-            'husband_age' => "Husband's age", 'husband_origin' => 'Husband origin', 'husband_residence' => 'Husband residence',
-            'husband_parents_name' => "Husband's parents", 'wife_birthdate' => "Wife's birth date",
-            'wife_birthplace' => "Wife's birthplace", 'wife_civil_status' => 'Wife civil status', 'wife_age' => "Wife's age", 'wife_origin' => 'Wife origin',
-            'wife_residence' => 'Wife residence', 'wife_parents_name' => "Wife's parents",
-            'officiating_minister' => 'Minister', 'remarks' => 'Remarks',
-            'marriage_date' => 'Marriage date',
+        'field_groups' => [
+            'Husband' => [
+                'husband_full_name' => "Husband's name", 'husband_birthdate' => "Husband's birth date",
+                'husband_birthplace' => "Husband's birthplace", 'husband_civil_status' => 'Husband civil status',
+                'husband_age' => "Husband's age", 'husband_origin' => 'Husband origin',
+                'husband_residence' => 'Husband residence', 'husband_parents_name' => "Husband's parents",
+            ],
+            'Wife' => [
+                'wife_maiden_name' => "Wife's maiden name", 'wife_birthdate' => "Wife's birth date",
+                'wife_birthplace' => "Wife's birthplace", 'wife_civil_status' => 'Wife civil status',
+                'wife_age' => "Wife's age", 'wife_origin' => 'Wife origin',
+                'wife_residence' => 'Wife residence', 'wife_parents_name' => "Wife's parents",
+            ],
+            'Ceremony' => [
+                'officiating_minister' => 'Minister', 'remarks' => 'Remarks',
+            ],
         ],
     ],
 ];
@@ -250,10 +270,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <div><dt>Record ID</dt><dd>#<?= (int) $record['id'] ?></dd></div>
                     <div><dt><?= e($definition['date_label']) ?></dt><dd><?= e(record_view_value($definition['date'], $record[$definition['date']] ?? null)) ?></dd></div>
                     <div><dt>Book / Page / Line</dt><dd><?= e(trim(($record['book_no'] ?? '') . ' / ' . ($record['page_no'] ?? '') . ' / ' . ($record['line_no'] ?? ''), ' /') ?: 'Not recorded') ?></dd></div>
-                    <?php foreach ($definition['fields'] as $field => $label): ?>
-                        <div><dt><?= e($label) ?></dt><dd><?= e(record_view_value($field, $record[$field] ?? null)) ?></dd></div>
-                    <?php endforeach; ?>
                 </dl>
+                <?php foreach ($definition['field_groups'] as $groupLabel => $groupFields): ?>
+                    <p class="record-detail-group-title"><?= e($groupLabel) ?></p>
+                    <dl class="record-detail-list">
+                        <?php foreach ($groupFields as $field => $label): ?>
+                            <div><dt><?= e($label) ?></dt><dd><?= e(record_view_value($field, $record[$field] ?? null)) ?></dd></div>
+                        <?php endforeach; ?>
+                    </dl>
+                <?php endforeach; ?>
             </section>
 
             <?php if ($relatedRecords): ?>
