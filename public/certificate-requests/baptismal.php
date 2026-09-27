@@ -517,15 +517,12 @@ require_once __DIR__ . '/../../includes/header.php';
                             <option value="">-- Select --</option>
                             <?php
                             $purposes = [
-                                'marriage'          => 'Marriage preparation or church requirement',
-                                'school'            => 'Catholic school or religious education',
-                                'godparent_sponsor' => 'Godparent or sponsor eligibility',
-                                'parish_transfer'   => 'Parish transfer or sacramental records',
-                                'seminary_ministry' => 'Seminary, religious life, or lay ministry',
-                                'government_civil'  => 'Government, civil registration, passport, or visa',
-                                'legal_tribunal'    => 'Legal, court, tribunal, annulment, or convalidation',
-                                'genealogy'         => 'Genealogy or family-history research',
-                                'other'             => 'Other',
+                                'marriage'         => 'Marriage requirement',
+                                'school'           => 'School or education',
+                                'employment'       => 'Employment',
+                                'government_civil' => 'Government ID, passport, or visa',
+                                'legal_tribunal'   => 'Legal or court matter',
+                                'other'            => 'Other',
                             ];
                             foreach ($purposes as $k => $label): ?>
                                 <option value="<?= $k ?>" <?= ($_POST['purpose'] ?? '') === $k ? 'selected' : '' ?>><?= e($label) ?></option>

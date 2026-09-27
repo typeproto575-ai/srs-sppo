@@ -111,20 +111,20 @@ $sacramentTypes  = ['baptismal', 'confirmation', 'first_communion', 'marriage'];
 $where  = [];
 $params = [];
 if ($filterStatus !== '' && in_array($filterStatus, $allStatuses, true)) {
-    $where[] = 'status = ?';
+    $where[] = 'sa.status = ?';
     $params[] = $filterStatus;
 }
 if ($filterSacrament !== '' && in_array($filterSacrament, $sacramentTypes, true)) {
-    $where[] = 'sacrament_type = ?';
+    $where[] = 'sa.sacrament_type = ?';
     $params[] = $filterSacrament;
 }
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 $selfUrl = $basePath . '/admin/requests/applications-queue.php';
 $rfConfig = [
-    'date_column'    => 'date_submitted',
-    'search_columns' => ['tracking_number', 'sacrament_type'],
-    'placeholder'    => 'Search tracking no. or sacrament...',
+    'date_column'    => 'sa.date_submitted',
+    'search_columns' => ['sa.tracking_number', 'sa.sacrament_type', 'ba.child_full_name', 'ca.applicant_full_name', 'fc.applicant_full_name', 'ma.groom_full_name', 'ma.bride_full_name'],
+    'placeholder'    => 'Search tracking no., sacrament, or applicant name...',
     'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
@@ -160,11 +160,11 @@ $sort = $_GET['sort'] ?? 'date_desc';
 $allowedSorts = ['tracking', 'tracking_desc', 'sacrament', 'sacrament_desc', 'channel', 'channel_desc', 'date_desc', 'date_asc', 'status', 'status_desc'];
 if (!in_array($sort, $allowedSorts, true)) $sort = 'date_desc';
 $orderClauses = [
-    'tracking' => 'tracking_number ASC, id ASC', 'tracking_desc' => 'tracking_number DESC, id DESC',
-    'sacrament' => 'sacrament_type ASC, id ASC', 'sacrament_desc' => 'sacrament_type DESC, id DESC',
-    'channel' => 'submission_channel ASC, id ASC', 'channel_desc' => 'submission_channel DESC, id DESC',
-    'date_desc' => 'date_submitted DESC, id DESC', 'date_asc' => 'date_submitted ASC, id ASC',
-    'status' => 'status ASC, id ASC', 'status_desc' => 'status DESC, id DESC',
+    'tracking' => 'sa.tracking_number ASC, sa.id ASC', 'tracking_desc' => 'sa.tracking_number DESC, sa.id DESC',
+    'sacrament' => 'sa.sacrament_type ASC, sa.id ASC', 'sacrament_desc' => 'sa.sacrament_type DESC, sa.id DESC',
+    'channel' => 'sa.submission_channel ASC, sa.id ASC', 'channel_desc' => 'sa.submission_channel DESC, sa.id DESC',
+    'date_desc' => 'sa.date_submitted DESC, sa.id DESC', 'date_asc' => 'sa.date_submitted ASC, sa.id ASC',
+    'status' => 'sa.status ASC, sa.id ASC', 'status_desc' => 'sa.status DESC, sa.id DESC',
 ];
 $orderClause = $orderClauses[$sort];
 
@@ -183,11 +183,21 @@ if ($where !== []) {
 
 $combinedWhere = $allClauses === [] ? '' : ' WHERE ' . implode(' AND ', $allClauses);
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications{$combinedWhere}");
+// Applicant names live in per-sacrament child tables (fetched per-row
+// below), so search JOINs all four: each child has UNIQUE(application_id),
+// i.e. at most one row per parent — the JOINs cannot duplicate rows or
+// inflate the count. SELECT sa.* (never *) so child `id` columns can't
+// collide with $app['id'] in the fetched assoc array.
+$queueJoins = ' FROM sacrament_applications sa'
+    . ' LEFT JOIN baptismal_applications ba ON ba.application_id = sa.id'
+    . ' LEFT JOIN confirmation_applications ca ON ca.application_id = sa.id'
+    . ' LEFT JOIN first_communion_applications fc ON fc.application_id = sa.id'
+    . ' LEFT JOIN marriage_applications ma ON ma.application_id = sa.id';
+$countStmt = $pdo->prepare("SELECT COUNT(*) {$queueJoins}{$combinedWhere}");
 $countStmt->execute($allParams);
 $totalRows = (int) $countStmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT * FROM sacrament_applications{$combinedWhere} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt = $pdo->prepare("SELECT sa.* {$queueJoins}{$combinedWhere} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
 $stmt->execute($allParams);
 $applications = $stmt->fetchAll();
 
@@ -268,12 +278,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'tracking') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'tracking', $sort)) ?>">Tracking No.<?= admin_sort_indicator('tracking', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'sacrament') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'sacrament', $sort)) ?>">Sacrament<?= admin_sort_indicator('sacrament', $sort) ?></a></th>
                     <th>Applicant(s)</th>
+                    <th>Channel</th>
                     <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
                     <th>Record link</th>
                     <th>Flags</th>
                     <th>Actions</th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th>
-                    <th>Update</th>
                 </tr>
             </thead>
             <tbody>
@@ -284,7 +294,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($app['subject_name'] ?? '—') ?></td>
                         <td><?= e(ucfirst($app['submission_channel'] ?? 'onsite')) ?></td>
                         <td><?= e(date('M j, Y', strtotime($app['date_submitted']))) ?></td>
-                        <td><?= e($app['record_status'] ?? 'Not applicable') ?></td>
+                        <td>
+                            <?php if (($app['record_status'] ?? '') === 'Baptismal record linked'): ?>
+                                <span title="Baptismal record linked to this application">Linked</span>
+                            <?php elseif (!empty($app['record_status'])): ?>
+                                <span title="Baptismal record not yet linked to this application">Not linked</span>
+                            <?php else: ?>
+                                Not applicable
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <?php if ($app['flagged']): ?>
                                 <span class="flag-badge" title="<?= e(implode('; ', $app['flag_reason'])) ?>">&#9873; For review</span>
@@ -305,12 +323,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <a href="<?= $basePath ?><?= $detailPages[$app['sacrament_type']] ?>?id=<?= (int) $app['id'] ?>" class="btn btn-secondary btn-small">Detail</a>
                             <?php endif; ?>
                         </td>
-                        <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(humanize_label($app['status'])) ?></span></td>
                         <td class="row-actions">
                             <form autocomplete="off" method="post" class="inline-fields">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                <select name="new_status">
+                                <select name="new_status" class="status-select status-<?= e($app['status']) ?>">
                                     <?php
                                     // Only this sacrament's stages are offered; the current
                                     // status is always kept as a choice (legacy rows may hold

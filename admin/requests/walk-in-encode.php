@@ -291,13 +291,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <label>Purpose *
                     <select name="purpose" required>
                         <option value="">-- Select --</option>
-                        <option value="marriage">Marriage</option>
-                        <option value="school">School Enrollment</option>
+                        <option value="marriage">Marriage requirement</option>
+                        <option value="school">School or education</option>
                         <option value="employment">Employment</option>
-                        <option value="travel">Travel/Passport</option>
-                        <option value="civil_registration">Civil Registration</option>
-                        <option value="immigration">Immigration</option>
-                        <option value="legal">Legal Matter</option>
+                        <option value="government_civil">Government ID, passport, or visa</option>
+                        <option value="legal_tribunal">Legal or court matter</option>
                         <option value="other">Other</option>
                     </select>
                 </label>

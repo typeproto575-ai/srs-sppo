@@ -78,8 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($data as $key => $value) $stmt->bindValue(':' . $key, $value);
             $stmt->execute();
             $marriageApplicationId = (int) $pdo->lastInsertId();
+            $sponsorNames = $_POST['sponsor_name'] ?? [];
+            if (!is_array($sponsorNames)) { $sponsorNames = []; }
+            $sponsorResidences = $_POST['sponsor_residence'] ?? [];
+            if (!is_array($sponsorResidences)) { $sponsorResidences = []; }
             $sponsorStmt = $pdo->prepare('INSERT INTO marriage_principal_sponsors (marriage_application_id, sponsor_name, sponsor_residence) VALUES (?, ?, ?)');
-            foreach (($_POST['sponsor_name'] ?? []) as $i => $name) { $name = trim($name); if ($name !== '') $sponsorStmt->execute([$marriageApplicationId, $name, trim($_POST['sponsor_residence'][$i] ?? '')]); }
+            foreach ($sponsorNames as $i => $name) { if (!is_string($name)) continue; $name = trim($name); if ($name !== '') $sponsorStmt->execute([$marriageApplicationId, $name, trim(isset($sponsorResidences[$i]) && is_string($sponsorResidences[$i]) ? $sponsorResidences[$i] : '')]); }
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony application submitted for ' . $data['groom_full_name'] . ' & ' . $data['bride_full_name']);
             notify($pdo, 'application_new', 'New sacrament application', "Holy Matrimony application ({$trackingNumber})", '/admin/requests/applications-queue.php');
             record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
@@ -93,8 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 require_once __DIR__ . '/../../includes/header.php';
-function mv(string $key): string { return e($_POST[$key] ?? ''); }
-function msel(string $key, string $value): string { return ($_POST[$key] ?? '') === $value ? 'selected' : ''; }
+function mv(string $key): string { $v = $_POST[$key] ?? ''; return e(is_string($v) ? $v : ''); }
+function msel(string $key, string $value): string { $v = $_POST[$key] ?? ''; return (is_string($v) ? $v : '') === $value ? 'selected' : ''; }
 ?>
 <section class="request-form">
 <div class="alert alert-info online-intake-notice"><strong>Pre-nuptial canonical application:</strong> The parish office will verify documents, interview both parties, publish banns, and approve the wedding separately.</div>
@@ -109,7 +113,28 @@ function msel(string $key, string $value): string { return ($_POST[$key] ?? '') 
 <fieldset><legend>Biographical Details — Bride</legend><label>Full Name * <input name="bride_full_name" value="<?= mv('bride_full_name') ?>" required></label><div class="inline-fields"><label>Date of Birth * <input type="date" name="bride_birthdate" value="<?= mv('bride_birthdate') ?>" required></label><label>Place of Birth * <input name="bride_birthplace" value="<?= mv('bride_birthplace') ?>" required></label></div><label>Current Address <input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><div class="inline-fields"><label>Length of Stay <input name="bride_address_length" value="<?= mv('bride_address_length') ?>"></label><label>Telephone / Mobile * <input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>" required></label></div><div class="inline-fields"><label>Religion / Sect <input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Occupation / Employment <input name="bride_occupation" value="<?= mv('bride_occupation') ?>"></label></div><label>Email * <input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><div class="inline-fields"><label>Father's Full Name <input name="bride_father_name" value="<?= mv('bride_father_name') ?>"></label><label>Mother's Full Maiden Name <input name="bride_mother_maiden_name" value="<?= mv('bride_mother_maiden_name') ?>"></label></div><div class="inline-fields"><label>Marital Status * <select name="bride_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('bride_marital_status','single') ?>>Single</option><option value="widowed" <?= msel('bride_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('bride_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="bride_previous_marriage"><option value="no">No</option><option value="church">Yes — Church</option><option value="civil">Yes — Civil</option></select></label></div></fieldset>
 <fieldset><legend>Canonical &amp; Legal Status</legend><div class="inline-fields"><label>Groom baptized Catholic? <select name="groom_baptized"><option value="">-- Select --</option><option value="yes">Yes</option><option value="no">No</option></select></label><label>Bride baptized Catholic? <select name="bride_baptized"><option value="">-- Select --</option><option value="yes">Yes</option><option value="no">No</option></select></label></div><div class="inline-fields"><label>Groom confirmed Catholic? <select name="groom_confirmed"><option value="">-- Select --</option><option value="yes">Yes</option><option value="no">No</option></select></label><label>Bride confirmed Catholic? <select name="bride_confirmed"><option value="">-- Select --</option><option value="yes">Yes</option><option value="no">No</option></select></label></div><label>Are you civilly married to each other? <select name="civilly_married"><option value="no">No</option><option value="yes">Yes</option></select></label><div class="inline-fields"><label>Date <input type="date" name="civil_marriage_date"></label><label>Place <input name="civil_marriage_place"></label></div></fieldset>
 
-<fieldset><legend>Principal Sponsors</legend><?php for ($i=0; $i<4; $i++): ?><div class="inline-fields"><label>Sponsor Name <input name="sponsor_name[]" value="<?= e($_POST['sponsor_name'][$i] ?? '') ?>"></label><label>Residence <input name="sponsor_residence[]" value="<?= e($_POST['sponsor_residence'][$i] ?? '') ?>"></label></div><?php endfor; ?></fieldset>
+<?php
+// Render one row per previously submitted non-blank sponsor (validation
+// re-render), otherwise a single blank row — max(1, non-blank count),
+// clamped to 4. New rows are cloned client-side — see main.js, section 9.
+$rawSponsorNames = $_POST['sponsor_name'] ?? [];
+if (!is_array($rawSponsorNames)) { $rawSponsorNames = []; }
+$rawSponsorNames = array_values($rawSponsorNames);
+$rawSponsorRes = $_POST['sponsor_residence'] ?? [];
+if (!is_array($rawSponsorRes)) { $rawSponsorRes = []; }
+$rawSponsorRes = array_values($rawSponsorRes);
+$sponsorRows = [];
+$sponsorRes = [];
+foreach ($rawSponsorNames as $i => $rawName) {
+    if (!is_string($rawName) || trim($rawName) === '') { continue; }
+    $rawR = $rawSponsorRes[$i] ?? '';
+    $sponsorRows[] = $rawName;
+    $sponsorRes[] = is_string($rawR) ? $rawR : '';
+    if (count($sponsorRows) >= 4) { break; }
+}
+if (count($sponsorRows) === 0) { $sponsorRows = ['']; $sponsorRes = ['']; }
+?>
+<fieldset><legend>Principal Sponsors</legend><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><div class="inline-fields"><label>Sponsor Name <input name="sponsor_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label><label>Residence <input name="sponsor_residence[]" value="<?= e(isset($sponsorRes[$i]) && is_string($sponsorRes[$i]) ? $sponsorRes[$i] : '') ?>"></label></div><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
 <button type="submit" class="btn">Review and Submit Application</button>
 </form>
 <?php endif; ?></section>

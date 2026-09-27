@@ -751,7 +751,6 @@ textarea {
     font-size: 0.72rem;
     font-weight: 800;
     line-height: 1.2;
-    white-space: nowrap;
 }
 
 .status-approved,
@@ -778,6 +777,28 @@ textarea {
     white-space: nowrap;
 }
 .flag-badge-ok { background: var(--admin-success-soft); color: #23613a; }
+
+/* Attention rows (applications queue + booking conflicts): amber left
+   accent plus warning tint. The tint is deeper than the row-hover color
+   (#faf8f3), and the hover state deepens further, so flagged rows stay
+   obviously "flagged" even on hover. */
+.admin-table tbody tr.row-flagged { background: var(--admin-warning-bg); box-shadow: inset 4px 0 0 var(--admin-amber); }
+.admin-table tbody tr.row-flagged:hover { background: #ffecc2; }
+.admin-table tbody tr.row-flagged td:first-child { border-left: 4px solid var(--admin-amber); }
+
+/* Compact status <select> used in the merged Status column of the
+   applications queue. Pill metrics mirror .status-badge; the
+   background/text color comes from whichever .status-<value> modifier
+   class is also present (no new color logic). */
+.status-select {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.22rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.2;
+    max-width: 11rem;
+}
 
 .filter-form,
 .audit-filter-form {
@@ -1966,12 +1987,6 @@ textarea {
     border: 1px solid var(--admin-border);
     border-radius: 12px;
 }
-/* The wrapper's overflow-x only has something to scroll if the table is
-   allowed to keep its natural (content) width instead of shrinking to fit
-   the wrapper -- width:100% on .admin-table would otherwise let columns
-   squeeze illegibly on narrow screens instead of triggering the scrollbar.
-   min-width:100% keeps it full-width on desktop where everything fits. */
-.table-scroll > .admin-table { width: max-content; min-width: 100%; }
 
 .unified-records-table { min-width: 720px; margin: 0; }
 .unified-records-table td,
@@ -2023,7 +2038,6 @@ textarea {
 .link-status-partial { background: #fdf1d8; color: #8a6d2f; }
 .link-status-unlinked { background: var(--admin-panel-weak); color: var(--admin-muted); border: 1px solid var(--admin-border); }
 .row-actions {
-    white-space: nowrap;
     text-align: right !important;
 }
 

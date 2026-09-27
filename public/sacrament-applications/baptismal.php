@@ -49,9 +49,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $preferredDate   = $_POST['preferred_date'] ?? null;
 
     $godfatherNames      = $_POST['godfather_name'] ?? [];
+    if (!is_array($godfatherNames)) { $godfatherNames = []; }
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
+    if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
     $godmotherNames      = $_POST['godmother_name'] ?? [];
+    if (!is_array($godmotherNames)) { $godmotherNames = []; }
     $godmotherResidences = $_POST['godmother_residence'] ?? [];
+    if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
 
     if ($childName === '')       $errors[] = "Child's full name is required.";
     if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
@@ -108,15 +112,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  VALUES (?, ?, ?, ?)"
             );
             foreach ($godfatherNames as $i => $name) { $gtype = 'godfather';
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $residence = trim($godfatherResidences[$i] ?? '');
+                $residence = trim(isset($godfatherResidences[$i]) && is_string($godfatherResidences[$i]) ? $godfatherResidences[$i] : '');
                 $godparentStmt->execute([$baptismalApplicationId, $name, $residence, $gtype]);
             }
             foreach ($godmotherNames as $i => $name) { $gtype = 'godmother';
+                if (!is_string($name)) continue;
                 $name = trim($name);
                 if ($name === '') continue;
-                $residence = trim($godmotherResidences[$i] ?? '');
+                $residence = trim(isset($godmotherResidences[$i]) && is_string($godmotherResidences[$i]) ? $godmotherResidences[$i] : '');
                 $godparentStmt->execute([$baptismalApplicationId, $name, $residence, $gtype]);
             }
 
@@ -206,32 +212,65 @@ require_once __DIR__ . '/../../includes/header.php';
 
             <fieldset>
                 <legend>Godparents — Godfathers (Ninong)</legend>
-                <p class="field-hint">Up to 8 godfathers. Leave blank any you haven't confirmed.</p>
-                <?php for ($i = 0; $i < 8; $i++): ?>
-                    <div class="inline-fields">
-                        <label>Godfather Name
-                            <input type="text" name="godfather_name[]" value="<?= e($_POST['godfather_name'][$i] ?? '') ?>">
-                        </label>
-                        <label>Residence
-                            <input type="text" name="godfather_residence[]" value="<?= e($_POST['godfather_residence'][$i] ?? '') ?>">
-                        </label>
-                    </div>
-                <?php endfor; ?>
+                <p class="field-hint">Up to 8 godfathers. Use “Add another godfather” for more rows; blank rows are ignored.</p>
+                <?php
+                // Render one row per previously submitted value (validation
+                // re-render), otherwise a single blank row. New rows are
+                // cloned client-side — see main.js, section 9.
+                $godfatherRows = $_POST['godfather_name'] ?? [];
+                if (!is_array($godfatherRows)) { $godfatherRows = []; }
+                $godfatherRows = array_values($godfatherRows);
+                $godfatherRes = $_POST['godfather_residence'] ?? [];
+                if (!is_array($godfatherRes)) { $godfatherRes = []; }
+                $godfatherRes = array_values($godfatherRes);
+                if (count($godfatherRows) === 0) { $godfatherRows = ['']; }
+                ?>
+                <div data-repeat-group="godfather" data-repeat-max="8">
+                    <?php foreach ($godfatherRows as $i => $rowName): ?>
+                        <div class="godparent-row">
+                            <div class="inline-fields">
+                                <label>Godfather Name
+                                    <input type="text" name="godfather_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>">
+                                </label>
+                                <label>Residence
+                                    <input type="text" name="godfather_residence[]" value="<?= e(isset($godfatherRes[$i]) && is_string($godfatherRes[$i]) ? $godfatherRes[$i] : '') ?>">
+                                </label>
+                            </div>
+                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
             </fieldset>
 
             <fieldset>
                 <legend>Godparents — Godmothers (Ninang)</legend>
-                <p class="field-hint">Up to 8 godmothers. Leave blank any you haven't confirmed.</p>
-                <?php for ($i = 0; $i < 8; $i++): ?>
-                    <div class="inline-fields">
-                        <label>Godmother Name
-                            <input type="text" name="godmother_name[]" value="<?= e($_POST['godmother_name'][$i] ?? '') ?>">
-                        </label>
-                        <label>Residence
-                            <input type="text" name="godmother_residence[]" value="<?= e($_POST['godmother_residence'][$i] ?? '') ?>">
-                        </label>
-                    </div>
-                <?php endfor; ?>
+                <p class="field-hint">Up to 8 godmothers. Use “Add another godmother” for more rows; blank rows are ignored.</p>
+                <?php
+                $godmotherRows = $_POST['godmother_name'] ?? [];
+                if (!is_array($godmotherRows)) { $godmotherRows = []; }
+                $godmotherRows = array_values($godmotherRows);
+                $godmotherRes = $_POST['godmother_residence'] ?? [];
+                if (!is_array($godmotherRes)) { $godmotherRes = []; }
+                $godmotherRes = array_values($godmotherRes);
+                if (count($godmotherRows) === 0) { $godmotherRows = ['']; }
+                ?>
+                <div data-repeat-group="godmother" data-repeat-max="8">
+                    <?php foreach ($godmotherRows as $i => $rowName): ?>
+                        <div class="godparent-row">
+                            <div class="inline-fields">
+                                <label>Godmother Name
+                                    <input type="text" name="godmother_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>">
+                                </label>
+                                <label>Residence
+                                    <input type="text" name="godmother_residence[]" value="<?= e(isset($godmotherRes[$i]) && is_string($godmotherRes[$i]) ? $godmotherRes[$i] : '') ?>">
+                                </label>
+                            </div>
+                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godmother">Add another godmother</button>
             </fieldset>
 
             <fieldset>

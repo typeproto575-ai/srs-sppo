@@ -415,7 +415,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ---- 7) Admin notification bell ----------------------------------------
     // Global notifications stream (see admin/api/notifications.php):
-    //   - badge shows unread notifications only;
+    //   - badge shows unread notifications only, and the element is added or
+    //     removed outright (never rendered as a zero);
     //   - reminders for today/tomorrow still appear in the panel but do not
     //     keep the red dot lit on their own;
     //   - the panel lists events first, then the 10 newest notifications;
@@ -429,11 +430,11 @@ document.addEventListener('DOMContentLoaded', function () {
         var csrf   = wrap.getAttribute('data-csrf') || '';
         var bell   = wrap.querySelector('[data-notif-bell]');
         var panel  = wrap.querySelector('[data-notif-panel]');
-        var badge  = wrap.querySelector('[data-notif-badge]');
+        var badge  = null; // created on demand; absent from the DOM at count 0
         var list   = wrap.querySelector('[data-notif-list]');
         var empty  = wrap.querySelector('[data-notif-empty]');
         var markAll = wrap.querySelector('[data-notif-mark-all]');
-        if (!bell || !panel || !badge || !list || !api) return;
+        if (!bell || !panel || !list || !api) return;
 
         // "3m ago"-style labels; falls back to the raw date for old items.
         function timeAgo(iso) {
@@ -448,9 +449,24 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function render(data) {
+            // The badge is added and removed, never merely hidden: it must not
+            // exist in the DOM at all while the count is zero. A `hidden`
+            // attribute alone cannot do this — .notif-badge sets
+            // `display: inline-flex`, and an author declaration overrides the
+            // UA stylesheet's [hidden] { display: none }.
             var count = data.unread_count || 0;
-            badge.textContent = count > 99 ? '99+' : String(count);
-            badge.hidden = count === 0;
+            if (count > 0) {
+                if (!badge || !badge.isConnected) {
+                    badge = document.createElement('span');
+                    badge.className = 'notif-badge';
+                    badge.setAttribute('data-notif-badge', '');
+                    bell.appendChild(badge);
+                }
+                badge.textContent = count > 99 ? '99+' : String(count);
+            } else if (badge) {
+                badge.remove();
+                badge = null;
+            }
 
             var items = data.items || [];
             list.innerHTML = '';
@@ -866,6 +882,56 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         control.addEventListener('change', sync);
         sync();
+    });
+
+    // ---- 9) Repeatable "Add another" rows (sponsor/witness sets) ------
+    // [data-repeat-group] wraps the .godparent-row rows of one repeatable
+    // set (baptismal godparents, marriage sponsors/witnesses, …); the
+    // [data-repeat-add] button (matched by data-repeat-add="id")
+    // clones a blanked copy of the group's first row, and the
+    // [data-repeat-remove] link on every row deletes it again. The first
+    // row can never be removed (its link stays hidden), and the Add button
+    // hides itself once the optional data-repeat-max row count is reached.
+    // Without JavaScript the server-rendered rows simply submit as before.
+    document.querySelectorAll('[data-repeat-group]').forEach(function (group) {
+        var template = group.querySelector('.godparent-row');
+        if (!template) return;
+        var addButton = document.querySelector('[data-repeat-add="' + group.getAttribute('data-repeat-group') + '"]');
+
+        function refresh() {
+            var rows = group.querySelectorAll('.godparent-row');
+            rows.forEach(function (row, idx) {
+                var removeBtn = row.querySelector('[data-repeat-remove]');
+                if (removeBtn) removeBtn.hidden = idx === 0;
+            });
+            if (addButton) {
+                var max = parseInt(group.getAttribute('data-repeat-max'), 10);
+                addButton.hidden = !isNaN(max) && rows.length >= max;
+            }
+        }
+
+        if (addButton) {
+            addButton.addEventListener('click', function () {
+                var clone = template.cloneNode(true);
+                clone.querySelectorAll('input, select, textarea').forEach(function (input) {
+                    input.value = '';
+                });
+                group.appendChild(clone);
+                refresh();
+                var firstInput = clone.querySelector('input, select, textarea');
+                if (firstInput) firstInput.focus();
+            });
+        }
+
+        group.addEventListener('click', function (ev) {
+            var removeBtn = ev.target.closest('[data-repeat-remove]');
+            if (!removeBtn) return;
+            var row = removeBtn.closest('.godparent-row');
+            if (row) row.remove();
+            refresh();
+        });
+
+        refresh();
     });
 
 });
