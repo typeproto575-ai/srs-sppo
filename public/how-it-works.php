@@ -98,6 +98,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Final calls-to-action -->
 <div class="workflow-cta">
+    <p>Already sent a request? Check its status with your tracking number.</p>
     <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
 </div>
 
