@@ -26,10 +26,12 @@ require_once __DIR__ . '/../includes/header.php';
 </section>
 <section class="option-group">
     <h2>Apply for a sacrament</h2>
-    <p>Online applications are currently available for Baptism and Marriage. Confirmation and First Communion are recorded by the secretary as received/not-received statuses on the parish record.</p>
+    <p>Online applications are available for Baptism, Confirmation, First Communion, and Marriage.</p>
     <div class="hub-cards">
         <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/baptismal.php"><h3>Baptism Application</h3><p>Start an application for a child or infant baptism.</p><strong>Apply online &rarr;</strong></a>
         <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/marriage.php"><h3>Marriage Application</h3><p>Start the parish review process for a marriage application.</p><strong>Apply online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/confirmation.php"><h3>Confirmation Application</h3><p>Start an application for Confirmation.</p><strong>Apply online &rarr;</strong></a>
+        <a class="hub-card" href="<?= $basePath ?>/public/sacrament-applications/first-communion.php"><h3>First Communion Application</h3><p>Start an application for First Communion.</p><strong>Apply online &rarr;</strong></a>
     </div>
 </section>
 <section class="option-group">
