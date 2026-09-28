@@ -939,4 +939,43 @@ document.addEventListener('DOMContentLoaded', function () {
         refresh();
     });
 
+    // ---- 10) "(?)" help toggles -------------------------------------------
+    // A button.help-btn shows/hides the .help-text panel named by its
+    // aria-controls (see the .help-btn rules in assets/css/style.css). A
+    // single setup block wires up every .help-btn on the page, so the
+    // component is reusable anywhere by dropping in the two elements.
+    var helpButtons = document.querySelectorAll('.help-btn[aria-controls]');
+    if (helpButtons.length) {
+        // The button usually lives inside the paragraph above the panel, so
+        // it is looked up by aria-controls instead of by sibling order.
+        var closeHelp = function (panel) {
+            panel.hidden = true;
+            var owner = document.querySelector('.help-btn[aria-controls="' + panel.id + '"]');
+            if (owner) owner.setAttribute('aria-expanded', 'false');
+            return owner;
+        };
+        helpButtons.forEach(function (btn) {
+            var panel = document.getElementById(btn.getAttribute('aria-controls'));
+            if (!panel) return;
+            btn.addEventListener('click', function () {
+                var willOpen = panel.hidden;
+                // Only one panel is open at a time, so long help text never
+                // stacks up and pushes the action buttons out of view.
+                document.querySelectorAll('.help-text:not([hidden])').forEach(function (open) {
+                    if (open !== panel) closeHelp(open);
+                });
+                panel.hidden = !willOpen;
+                btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            });
+        });
+        // Esc dismisses any open help panel and hands focus back to its button.
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key !== 'Escape') return;
+            document.querySelectorAll('.help-text:not([hidden])').forEach(function (panel) {
+                var owner = closeHelp(panel);
+                if (owner) owner.focus();
+            });
+        });
+    }
+
 });

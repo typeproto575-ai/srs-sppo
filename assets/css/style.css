@@ -1268,3 +1268,50 @@ html, body {
     .legal-document__footer { padding-left: 1.25rem; padding-right: 1.25rem; }
     .legal-clause__title { flex-wrap: wrap; }
 }
+
+/* =====================================================================
+   Reusable "(?)" help toggle
+   A small round "?" button (button.help-btn) reveals the .help-text panel
+   whose id it names in aria-controls — the button normally sits at the end
+   of the sentence it explains and the panel follows just below. The
+   open/close state and aria-expanded are handled by the shared setup block
+   in assets/js/main.js, so any page can reuse the component by dropping in
+   these two elements.
+   ===================================================================== */
+.help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3rem;
+    height: 1.3rem;
+    margin-left: 0.4rem;
+    padding: 0;
+    border: 1px solid var(--color-parish-green);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-parish-green);
+    font: 700 0.72rem/1 var(--font-body);
+    vertical-align: middle;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.help-btn:hover,
+.help-btn:focus-visible {
+    background: var(--color-parish-green);
+    color: #fff;
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+}
+.help-text {
+    max-width: 46rem;
+    margin: 0.65rem 0 0;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--color-rule);
+    border-left: 4px solid var(--color-brass);
+    border-radius: 6px;
+    background: #fff;
+    color: #4a4438;
+    font-size: 0.88rem;
+}
+.help-text p { margin: 0; }
+.help-text[hidden] { display: none; }
