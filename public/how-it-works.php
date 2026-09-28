@@ -81,26 +81,24 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="path-cards">
     <div class="path-card">
         <h3>Certificate Request</h3>
-        <p>You need proof of a sacrament that already took place — for school, employment, travel, or marriage requirements.</p>
+        <p>Need proof of a sacrament that already took place? Request a certified copy.</p>
         <a href="<?= $basePath ?>/public/certificate-request.php" class="btn btn-secondary">Request a Certificate</a>
     </div>
     <div class="path-card">
         <h3>Sacrament Application</h3>
-        <p>You're applying to receive a sacrament here — currently Baptism or Marriage. The secretary records Confirmation and First Communion as received/not-received statuses on the parish record.</p>
+        <p>Preparing to receive Baptism, Confirmation, First Communion, or Marriage? Send your details before your office visit.</p>
         <a href="<?= $basePath ?>/public/sacrament-application.php" class="btn btn-secondary">Start an Application</a>
     </div>
     <div class="path-card">
         <h3>Correction Request</h3>
-        <p>You already received a certificate and need to report an incorrect detail or ask for an amendment to the issued record.</p>
+        <p>Already received a certificate with a wrong detail? Report it here.</p>
         <a href="<?= $basePath ?>/public/correction-request.php" class="btn btn-secondary">Request a Correction</a>
     </div>
 </div>
 
 <!-- Final calls-to-action -->
 <div class="workflow-cta">
-    <a href="<?= $basePath ?>/public/certificate-request.php" class="btn">Start a Request</a>
     <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
-    <a href="<?= $basePath ?>/public/correction-request.php" class="btn btn-secondary">Request a Correction</a>
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
