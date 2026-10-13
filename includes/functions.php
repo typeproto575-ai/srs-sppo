@@ -1288,10 +1288,21 @@ function log_certificate_released(
         // Mark the generation log as released.
         $releaseStmt = $pdo->prepare(
             'UPDATE certificate_generation_log
-             SET print_status = "released", pickup_date = NOW()
+             SET print_status = "released",
+                 pickup_date = NOW(),
+                 claimant_name = ?,
+                 claimant_relationship = ?,
+                 claimant_notes = ?,
+                 id_verified = ?
              WHERE id = ? AND print_status = "printed" AND finalized_at IS NOT NULL AND superseded_at IS NULL'
         );
-        $releaseStmt->execute([$logId]);
+        $releaseStmt->execute([
+            $claimantName,
+            $claimantRelation,
+            $claimantNotes !== '' ? $claimantNotes : null,
+            $idVerified ? 1 : 0,
+            $logId,
+        ]);
         if ($releaseStmt->rowCount() !== 1) {
             throw new RuntimeException('The certificate changed before release could be recorded. Refresh and try again.');
         }

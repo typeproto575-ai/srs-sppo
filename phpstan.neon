@@ -1,0 +1,11 @@
+parameters:
+    level: 4
+    # The legacy application uses dynamic globals and untyped request data.
+    # Keep the initial gate focused on newly maintained automation code.
+    paths:
+        - includes/backup.php
+        - scripts/setup-test-db.php
+    excludePaths:
+        - %currentWorkingDirectory%/vendor/*
+        - %currentWorkingDirectory%/storage/*
+    tmpDir: .phpstan.cache

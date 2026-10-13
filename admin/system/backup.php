@@ -21,6 +21,7 @@
 // Load dependencies
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/backup.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 // SECURITY: Database exports contain all records and password hashes.
@@ -28,64 +29,6 @@ require_role('secretary');
 
 // Page title for header
 $pageTitle = 'Database Backup / Export';
-
-/**
- * ================================================================
- * FUNCTION: export_database_sql
- * ================================================================
- * PURPOSE: Export the full database to SQL format as a string
- * 
- * HOW IT WORKS:
- * 1. Gets list of all tables via SHOW TABLES
- * 2. For each table, gets CREATE TABLE statement
- * 3. For each table, gets all rows as INSERT statements
- * 4. Wraps everything in SET FOREIGN_KEY_CHECKS for safe import
- * 
- * @param PDO $pdo The database connection object
- * @return string The complete SQL dump ready for download
- */
-function export_database_sql(PDO $pdo): string
-{
-    // Header comment with timestamp
-    $output = "-- SRS-SPPO database export\n-- Generated " . date('Y-m-d H:i:s') . "\n\n";
-    $output .= "SET FOREIGN_KEY_CHECKS=0;\n\n";
-
-    // Get all table names in the database
-    $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-
-    // Loop through each table and export structure + data
-    foreach ($tables as $table) {
-        // Get the CREATE TABLE statement
-        $createRow = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch();
-        
-        // Add table header comment
-        $output .= "-- ----------------------------\n-- Table: {$table}\n-- ----------------------------\n";
-        
-        // Drop table if exists (for clean import)
-        $output .= "DROP TABLE IF EXISTS `{$table}`;\n";
-        
-        // Add CREATE TABLE statement
-        $output .= $createRow['Create Table'] . ";\n\n";
-
-        // Get all rows from this table
-        $rows = $pdo->query("SELECT * FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Convert each row to an INSERT statement
-        foreach ($rows as $row) {
-            $cols = array_map(fn($c) => "`{$c}`", array_keys($row));
-            $vals = array_map(function ($v) use ($pdo) {
-                if ($v === null) return 'NULL';
-                return $pdo->quote((string) $v);
-            }, array_values($row));
-            $output .= "INSERT INTO `{$table}` (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $vals) . ");\n";
-        }
-        $output .= "\n";
-    }
-
-    // Re-enable foreign key checks
-    $output .= "SET FOREIGN_KEY_CHECKS=1;\n";
-    return $output;
-}
 
 // ================================================================
 // HANDLE DOWNLOAD REQUEST (POST + CSRF only)

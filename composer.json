@@ -1,0 +1,21 @@
+{
+    "name": "codejul/srs-sppo",
+    "description": "Schedule and Record System of Saint Patrick's Parish Office",
+    "type": "project",
+    "require-dev": {
+        "phpunit/phpunit": "^11.5",
+        "phpstan/phpstan": "^2.1"
+    },
+    "autoload": {
+        "files": [
+            "includes/functions.php"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit --testdox",
+        "test:integration": "phpunit --testsuite \"SRS-SPPO database integration tests\" --testdox",
+        "test:setup-db": "php scripts/setup-test-db.php",
+        "static-analysis": "phpstan analyse",
+        "quality": "@test"
+    }
+}
