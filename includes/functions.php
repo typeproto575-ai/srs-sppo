@@ -487,6 +487,113 @@ function base_path(): string
 }
 
 /**
+ * Public base URL of this installation, e.g. 'http://localhost/srs-sppo'.
+ * Read from the SRS_APP_URL environment variable with the config/environment.php
+ * fallback. Returns '' when unset so callers show a warning instead of
+ * printing a broken QR.
+ */
+function app_url(): string
+{
+    $env = getenv('SRS_APP_URL');
+    if ($env !== false && trim((string) $env) !== '') {
+        return rtrim(trim((string) $env), '/');
+    }
+    if (defined('SRS_APP_URL') && trim((string) SRS_APP_URL) !== '') {
+        return rtrim(trim((string) SRS_APP_URL), '/');
+    }
+    return '';
+}
+
+/**
+ * True when a URL host is local-only (localhost / 127.0.0.1 / ::1) or the
+ * URL is empty. A QR encoding such a URL scans only on this computer, so
+ * the admin certificate preview warns in that case.
+ */
+function app_url_is_local(string $url = ''): bool
+{
+    if ($url === '') {
+        $url = app_url();
+    }
+    if ($url === '') {
+        return true;
+    }
+    $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?: ''));
+    return $host === '' || $host === 'localhost' || $host === '127.0.0.1' || $host === '::1';
+}
+
+/**
+ * Render a QR code as a local inline SVG data-URI (no network, no logging).
+ *
+ * Uses the vendored kazuhikoarase/qrcode-generator matrix (includes/vendor/qrcode.php,
+ * MIT) with error correction level M and a 4-module quiet zone, auto-selecting
+ * the smallest type number 1-10 that fits. Returns null only when the text
+ * cannot be encoded or the library is missing — callers show a warning.
+ * The encoded value (a verify URL) is never logged or sent anywhere.
+ */
+function qr_data_uri(string $text): ?string
+{
+    static $loaded = false;
+    if (!$loaded) {
+        $lib = __DIR__ . '/vendor/qrcode.php';
+        if (!is_file($lib)) {
+            return null;
+        }
+        require_once $lib;
+        $loaded = true;
+    }
+    if (!class_exists('QRCode') || !defined('QR_ERROR_CORRECT_LEVEL_M')) {
+        return null;
+    }
+    $text = trim($text);
+    if ($text === '' || strlen($text) > 800) {
+        return null;
+    }
+    // The vendored library signals "code length overflow" with
+    // trigger_error(E_USER_ERROR) — fatal unless we trap it. Convert errors
+    // during make() into an exception so we can try the next type number.
+    $handler = static function (int $errno, string $errstr): bool {
+        throw new RuntimeException('QR encode failed: ' . $errstr);
+    };
+    try {
+        $qr = null;
+        for ($type = 1; $type <= 10; $type++) {
+            $candidate = new QRCode();
+            $candidate->setTypeNumber($type);
+            $candidate->setErrorCorrectLevel(QR_ERROR_CORRECT_LEVEL_M);
+            $candidate->addData($text, QR_MODE_8BIT_BYTE);
+            set_error_handler($handler);
+            try {
+                $candidate->make();
+            } catch (Throwable $inner) {
+                restore_error_handler();
+                continue; // too much data for this type — try the next one
+            }
+            restore_error_handler();
+            $qr = $candidate;
+            break;
+        }
+        if ($qr === null) {
+            return null;
+        }
+        $count  = $qr->getModuleCount();
+        $quiet  = 4; // quiet zone, in modules
+        $size   = $count + ($quiet * 2);
+        $rects  = [];
+        for ($r = 0; $r < $count; $r++) {
+            for ($c = 0; $c < $count; $c++) {
+                if ($qr->isDark($r, $c)) {
+                    $rects[] = '<rect x="' . ($c + $quiet) . '" y="' . ($r + $quiet) . '" width="1" height="1"/>';
+                }
+            }
+        }
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $size . ' ' . $size . '" shape-rendering="crispEdges" role="img" aria-label="Verification QR code"><rect width="' . $size . '" height="' . $size . '" fill="#fff"/>' . implode('', $rects) . '</svg>';
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    } catch (Throwable $ex) {
+        return null;
+    }
+}
+
+/**
  * Validate a browser-supplied "return" URL, so a page can send the user back
  * to the list they actually came from instead of a hardcoded default.
  *
@@ -1131,12 +1238,13 @@ function notify_certificate_requester_status(PDO $pdo, int $requestId, string $s
 function cert_request_transition_valid(string $from, string $to): bool
 {
     static $map = [
-        'pending'                    => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
-        'submitted'                 => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
-        'under_review'              => ['requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
+        'pending'                    => ['under_review', 'awaiting_payment', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'submitted'                 => ['under_review', 'awaiting_payment', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'under_review'              => ['awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
         'requirements_pending'      => ['requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
         'requirements_incomplete'   => ['under_review', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
         'awaiting_onsite_verification' => ['approved', 'rejected', 'cancelled'],
+        'awaiting_payment'          => ['under_review', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
         'approved'                  => ['processing', 'ready_for_pickup', 'rejected', 'cancelled'],
         'processing'                => ['ready_for_pickup'],
         'ready_for_pickup'          => ['released'],
@@ -1145,6 +1253,38 @@ function cert_request_transition_valid(string $from, string $to): bool
         'cancelled'                 => [],
     ];
     return isset($map[$from]) && in_array($to, $map[$from], true);
+}
+
+/**
+ * Payment gate for ONLINE certificate requests.
+ *
+ * Online submissions pause at "awaiting payment" once a register match is
+ * found. Payment happens outside the system and is recorded by hand
+ * (paid_at / paid_by). Until the secretary marks the payment received, the
+ * request may not advance into review, approval, processing or pickup.
+ * Reject/cancel stay allowed at any time. Onsite rows and rows that never
+ * entered "awaiting payment" are never gated.
+ *
+ * @param array  $req The current certificate_requests row (needs status,
+ *                    submission_channel, paid_at).
+ * @param string $to  Target status being attempted.
+ * @return array      ['ok' => bool, 'reason' => string]
+ */
+function cert_request_payment_gate(array $req, string $to): array
+{
+    if (($req['submission_channel'] ?? 'onsite') !== 'online') {
+        return ['ok' => true];
+    }
+    if (($req['status'] ?? '') !== 'awaiting_payment') {
+        return ['ok' => true];
+    }
+    if (!empty($req['paid_at'])) {
+        return ['ok' => true];
+    }
+    if (in_array($to, ['rejected', 'cancelled'], true)) {
+        return ['ok' => true];
+    }
+    return ['ok' => false, 'reason' => 'This online request is awaiting payment. Record the payment (Mark as Paid) before it can move forward.'];
 }
 
 /**
@@ -1371,12 +1511,12 @@ function log_certificate_released(
 
 function sacrament_application_status_flow(): array
 {
-    $common = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
+    $common = ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
     return [
         'baptismal'       => $common,
         'confirmation'    => $common,
         'first_communion' => $common,
-        'marriage'       => ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'],
+        'marriage'       => ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'],
     ];
 }
 
@@ -1385,7 +1525,7 @@ function sacrament_application_transition_valid(string $from, string $to, ?strin
     if (in_array($from, ['completed', 'rejected', 'cancelled'], true) && $from !== $to) {
         return false;
     }
-    $all = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
+    $all = ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
     if (!in_array($to, $all, true)) {
         return false;
     }
@@ -1402,13 +1542,44 @@ function sacrament_application_transition_valid(string $from, string $to, ?strin
     if ($from === $to) {
         return true;
     }
-    $pipe = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed'];
+    $pipe = ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'banns_in_progress', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed'];
     $fp = array_search($from, $pipe, true);
     $tp = array_search($to, $pipe, true);
     if ($fp === false || $tp === false) {
         return false;
     }
     return $tp > $fp;
+}
+
+/**
+ * Payment gate for ONLINE sacrament applications.
+ *
+ * Online applications enter at "awaiting payment". Payment happens outside
+ * the system and is recorded by hand (paid_at / paid_by). Until the secretary
+ * marks the payment received, an online application stuck at "awaiting payment"
+ * may not advance through the workflow. Reject/cancel stay allowed. Onsite
+ * rows and rows past "awaiting payment" are never gated.
+ *
+ * @param array  $app The current sacrament_applications row (needs status,
+ *                    submission_channel, paid_at).
+ * @param string $to  Target status being attempted.
+ * @return array      ['ok' => bool, 'reason' => string]
+ */
+function sacrament_application_payment_gate(array $app, string $to): array
+{
+    if (($app['submission_channel'] ?? 'onsite') !== 'online') {
+        return ['ok' => true];
+    }
+    if (($app['status'] ?? '') !== 'awaiting_payment') {
+        return ['ok' => true];
+    }
+    if (!empty($app['paid_at'])) {
+        return ['ok' => true];
+    }
+    if (in_array($to, ['rejected', 'cancelled'], true)) {
+        return ['ok' => true];
+    }
+    return ['ok' => false, 'reason' => 'This online application is awaiting payment. Record the payment (Mark as Paid) before it can move forward.'];
 }
 
 function can_approve_sacrament_application(PDO $pdo, int $applicationId, string $sacramentType): array
@@ -1507,24 +1678,28 @@ function workflow_requirement_templates(string $entityType, string $sacramentTyp
                 'request_details' => 'Request details verified',
                 'subject_identity' => 'Subject identity and birth details verified',
                 'register_record' => 'Baptismal register record located',
+                'payment_received' => 'Payment received (recorded by hand; no amount stored)',
                 'supporting_document' => 'Supporting document received and reviewed',
             ],
             'confirmation' => [
                 'request_details' => 'Request details verified',
                 'subject_identity' => 'Subject identity and birth details verified',
                 'register_record' => 'Confirmation register record located',
+                'payment_received' => 'Payment received (recorded by hand; no amount stored)',
                 'supporting_document' => 'Supporting document received and reviewed',
             ],
             'first_communion' => [
                 'request_details' => 'Request details verified',
                 'subject_identity' => 'Subject identity and birth details verified',
                 'register_record' => 'First Communion register record located',
+                'payment_received' => 'Payment received (recorded by hand; no amount stored)',
                 'supporting_document' => 'Supporting document received and reviewed',
             ],
             'marriage' => [
                 'request_details' => 'Request details verified',
                 'party_identity' => 'Parties and marriage details verified',
                 'register_record' => 'Marriage register record located',
+                'payment_received' => 'Payment received (recorded by hand; no amount stored)',
                 'supporting_document' => 'Supporting document received and reviewed',
             ],
         ];
@@ -1534,6 +1709,7 @@ function workflow_requirement_templates(string $entityType, string $sacramentTyp
     return [
         'application_details' => 'Application details verified',
         'requirements' => 'Required documents received and reviewed',
+        'payment_received' => 'Payment received (recorded by hand; no amount stored)',
         'parish_review' => 'Parish review requirements completed',
     ];
 }
@@ -1580,7 +1756,7 @@ function certificate_timeline_definition(string $status): array
         ['key' => 'released', 'label' => 'Released'],
     ];
     $map = [
-        'pending' => 0, 'submitted' => 0, 'under_review' => 1, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'awaiting_onsite_verification' => 1, 'approved' => 2, 'processing' => 3,
+        'pending' => 0, 'submitted' => 0, 'awaiting_payment' => 1, 'under_review' => 1, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'awaiting_onsite_verification' => 1, 'approved' => 2, 'processing' => 3,
         'for_printing' => 2, 'finalizing' => 3,
         'ready_for_pickup' => 4, 'released' => 5,
         'rejected' => 1, 'correction_needed' => 1, 'unable_to_locate_record' => 1,

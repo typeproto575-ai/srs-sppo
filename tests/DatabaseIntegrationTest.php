@@ -277,7 +277,7 @@ final class DatabaseIntegrationTest extends TestCase
     public function testBaptismApplicationApprovalPrerequisites(): void
     {
         $applicationId = 0;
-        $tracking = 'TEST-BAPTISM-APP-' . bin2hex(random_bytes(8));
+        $tracking = 'TEST-BAPTISM-' . bin2hex(random_bytes(8));
 
         try {
             $this->pdo->beginTransaction();
@@ -376,7 +376,7 @@ final class DatabaseIntegrationTest extends TestCase
     public function testMarriageApplicationApprovalPrerequisites(): void
         {
             $applicationId = 0;
-            $tracking = 'TEST-MARRIAGE-APP-' . bin2hex(random_bytes(8));
+            $tracking = 'TEST-MARRIAGE-' . bin2hex(random_bytes(8));
 
             try {
                 $this->pdo->beginTransaction();
@@ -496,7 +496,7 @@ final class DatabaseIntegrationTest extends TestCase
                          VALUES (?, ?, ?, ?)'
                     );
                     $insertApplication->execute([
-                        'TEST-CONFIRMATION-' . bin2hex(random_bytes(8)),
+                        'TEST-CONFIRM-' . bin2hex(random_bytes(8)),
                         'online',
                         'confirmation',
                         'awaiting_payment',
@@ -555,7 +555,7 @@ final class DatabaseIntegrationTest extends TestCase
                     self::assertSame([], $readyConfirmation['missing']);
 
                     $insertApplication->execute([
-                        'TEST-COMMUNION-' . bin2hex(random_bytes(8)),
+                        'TEST-COMM-' . bin2hex(random_bytes(8)),
                         'online',
                         'first_communion',
                         'awaiting_payment',
@@ -806,7 +806,7 @@ final class DatabaseIntegrationTest extends TestCase
     public function testRetentionAnonymizesFinishedOldCertificateRequests(): void
     {
         $requestId = 0;
-        $tracking = 'TEST-RETENTION-' . bin2hex(random_bytes(8));
+        $tracking = 'TEST-RETAIN-' . bin2hex(random_bytes(8));
 
         try {
             $request = $this->pdo->prepare(

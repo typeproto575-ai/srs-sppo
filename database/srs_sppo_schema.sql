@@ -253,11 +253,15 @@ CREATE TABLE certificate_requests (
   purpose                     VARCHAR(40) NOT NULL,  -- values come from the public forms (see migration 030)
   purpose_other               VARCHAR(150),
   notes                       TEXT,
-  status                      ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  status                      ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','awaiting_payment','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending',
   date_submitted               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed               DATETIME,
   verification_code            VARCHAR(64) NULL UNIQUE,
   processed_by                 INT UNSIGNED,
+  paid_at                      DATETIME NULL,        -- secretary marks payment received by hand (migration 035); no amount stored
+  paid_by                      INT UNSIGNED NULL,
+  match_confirmed_at           DATETIME NULL,        -- secretary confirms the register match (migration 037); gates public payment prompt
+  match_confirmed_by           INT UNSIGNED NULL,
   FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -360,10 +364,12 @@ CREATE TABLE sacrament_applications (
   tracking_number VARCHAR(30) NOT NULL UNIQUE,
   submission_channel ENUM('online','onsite') NOT NULL DEFAULT 'onsite',
   sacrament_type  ENUM('baptismal', 'confirmation', 'first_communion', 'marriage') NOT NULL,
-  status          ENUM('submitted','requirements_pending','requirements_incomplete','awaiting_onsite_verification','documents_pending','interview_scheduled','banns_in_progress','seminar_pending','ready_for_approval','approved','scheduled','completed','rejected','cancelled') NOT NULL DEFAULT 'submitted',
+  status          ENUM('submitted','requirements_pending','requirements_incomplete','awaiting_onsite_verification','documents_pending','interview_scheduled','banns_in_progress','seminar_pending','ready_for_approval','awaiting_payment','approved','scheduled','completed','rejected','cancelled') NOT NULL DEFAULT 'submitted',
   date_submitted  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed  DATETIME,
   processed_by    INT UNSIGNED,
+  paid_at         DATETIME NULL,             -- secretary marks payment received by hand (migration 035); no amount stored
+  paid_by         INT UNSIGNED NULL,
   notes           TEXT,
   FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -710,7 +716,7 @@ CREATE TABLE notifications (
   id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   type        ENUM('request_new','application_new','request_ready','event_reminder','conflict',
                    'request_under_review','request_approved','request_rejected',
-                   'application_submitted','application_documents_pending','application_interview_scheduled',
+                   'application_submitted','application_awaiting_payment','application_documents_pending','application_interview_scheduled',
                    'application_banns_in_progress','application_seminar_pending','application_ready_for_approval',
                    'application_approved','application_scheduled','application_completed','application_rejected',
                    'certificate_picked_up') NOT NULL,
@@ -794,7 +800,7 @@ ALTER TABLE certificate_generation_log
   ADD COLUMN cancellation_reason VARCHAR(500) NULL,
   ADD COLUMN reprint_reason VARCHAR(500) NULL;
 ALTER TABLE certificate_requests
-  MODIFY status ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending';
+  MODIFY status ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','awaiting_payment','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending';
 ALTER TABLE baptismal_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
 ALTER TABLE confirmation_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
 ALTER TABLE first_communion_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
