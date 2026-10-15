@@ -232,8 +232,7 @@ if (!empty($linkedPersonIds)) {
 function record_view_value(string $field, $value): string
 {
     if ($value === null || $value === '') return 'Not recorded';
-    if ($field === 'is_deceased') return (int) $value === 1 ? 'Deceased' : 'Alive';
-    if (in_array($field, ['birth_date', 'birthdate', 'baptism_date', 'confirmation_date', 'communion_date', 'marriage_date', 'date_of_death', 'husband_birthdate', 'wife_birthdate'], true)) {
+    if (in_array($field, ['birth_date', 'birthdate', 'baptism_date', 'confirmation_date', 'communion_date', 'marriage_date', 'husband_birthdate', 'wife_birthdate'], true)) {
         return date('M j, Y', strtotime((string) $value));
     }
     return (string) $value;

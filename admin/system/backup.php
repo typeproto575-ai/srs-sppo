@@ -60,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download']) && csrf_v
 // Get row counts for each major table (for display purposes)
 $tableCounts = [];
 foreach (['users','baptismal_records','confirmation_records','first_communion_records','marriage_records',
-          'death_burial_records','certificate_requests','sacrament_applications','announcements','audit_logs'] as $t) {
-    $tableCounts[$t] = (int) $pdo->query("SELECT COUNT(*) c FROM `{$t}`")->fetch()['c'];
+          'certificate_requests','sacrament_applications','announcements','audit_logs'] as $table) {
+    $backupCounts[$table] = (int) $pdo->query("SELECT COUNT(*) c FROM `{$table}`")->fetch()['c'];
 }
 
 // No extra head content needed

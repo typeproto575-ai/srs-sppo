@@ -33,11 +33,6 @@ ALTER TABLE IF EXISTS marriage_records
   ADD COLUMN IF NOT EXISTS husband_person_id INT UNSIGNED NULL,
   ADD COLUMN IF NOT EXISTS wife_person_id INT UNSIGNED NULL;
 
--- Death / burial identity bridge. The register remains intentionally slim,
--- but its deceased person can still be linked to the shared identity table.
-ALTER TABLE IF EXISTS death_burial_records
-  ADD COLUMN IF NOT EXISTS person_id INT UNSIGNED NULL;
-
 -- Add foreign keys (can be enabled after population to avoid FK constraint issues)
 -- ALTER TABLE baptismal_records ADD CONSTRAINT fk_bap_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL;
 -- ALTER TABLE confirmation_records ADD CONSTRAINT fk_conf_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL;

@@ -52,7 +52,6 @@ check('person profile sections', function () use ($pdo) {
         ['first_communion_records', 'person_id', 'communicant_full_name', 'communion_date'],
         ['marriage_records', 'husband_person_id', 'husband_full_name', 'marriage_date'],
         ['marriage_records', 'wife_person_id', 'wife_maiden_name', 'marriage_date'],
-        ['death_burial_records', 'person_id', 'deceased_full_name', 'date_of_death'],
     ];
     $total = 0;
     foreach ($sections as [$t, $c, $n, $d]) {

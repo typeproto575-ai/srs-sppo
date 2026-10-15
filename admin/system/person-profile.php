@@ -8,9 +8,6 @@
  *          payoff of the person mapper: baptismal, confirmation, first
  *          communion and marriage entries united under one identity.
  *
- *          Death / Burial is deliberately NOT listed here yet: the
- *          deceased side has no working person link in practice
- *          (death_burial_records.person_id is never populated on
  *          insert), so there would be nothing to show.
  *
  * Access: Secretary only (require_role('secretary')).

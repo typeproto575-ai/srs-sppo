@@ -30,11 +30,5 @@ JOIN persons p ON TRIM(m.wife_maiden_name) = TRIM(p.first_name)
 SET m.wife_person_id = p.id
 WHERE m.wife_maiden_name IS NOT NULL AND TRIM(m.wife_maiden_name) <> '';
 
--- Death / burial (handled by migration runner if table exists)
--- UPDATE death_burial_records d
--- JOIN persons p ON TRIM(d.deceased_full_name) = TRIM(p.first_name)
--- SET d.person_id = p.id
--- WHERE d.deceased_full_name IS NOT NULL AND TRIM(d.deceased_full_name) <> '';
-
 -- After running, generate reports of unmatched rows (see scripts/export_unmatched_queries.sql)
 COMMIT;

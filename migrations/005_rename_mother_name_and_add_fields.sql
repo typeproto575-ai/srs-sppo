@@ -35,7 +35,6 @@ ALTER TABLE marriage_applications
 --   - marriage_certificate_requests.party_a_mother_name / party_b_mother_name
 --     are requester-entered fields on a request form, not verified maiden names.
 --   - No monetary/fee columns added.
---   - death_burial_records untouched (deliberately simplified).
 --   - No new tables, no banns automation, no canonical dispensation tracking.
 -- =====================================================================
 

@@ -60,34 +60,6 @@ ALTER TABLE marriage_applications
   ADD COLUMN IF NOT EXISTS marriage_license_ref VARCHAR(100) NULL AFTER preferred_wedding_venue,
   ADD COLUMN IF NOT EXISTS assigned_priest_name VARCHAR(150) NULL;
 
--- 5) Death / Burial: slimmed to a 7-column status table
---    (id, deceased_full_name, date_of_death, is_deceased, date_encoded,
---     encoded_by, person_id).
---    Idempotent with the slimmed canonical schema (all no-ops on fresh installs).
-ALTER TABLE death_burial_records
-  ADD COLUMN IF NOT EXISTS is_deceased TINYINT(1) NOT NULL DEFAULT 0;
-
-ALTER TABLE death_burial_records
-  DROP COLUMN IF EXISTS entry_no,
-  DROP COLUMN IF EXISTS date_of_burial,
-  DROP COLUMN IF EXISTS age_at_death,
-  DROP COLUMN IF EXISTS civil_status,
-  DROP COLUMN IF EXISTS spouse_name,
-  DROP COLUMN IF EXISTS father_name,
-  DROP COLUMN IF EXISTS mother_name,
-  DROP COLUMN IF EXISTS cause_of_death,
-  DROP COLUMN IF EXISTS place_of_burial,
-  DROP COLUMN IF EXISTS blessing_date,
-  DROP COLUMN IF EXISTS blessing_time,
-  DROP COLUMN IF EXISTS minister_name,
-  DROP COLUMN IF EXISTS remarks,
-  DROP COLUMN IF EXISTS contact_number,
-  DROP COLUMN IF EXISTS sacrament_baptism,
-  DROP COLUMN IF EXISTS sacrament_confirmation,
-  DROP COLUMN IF EXISTS sacrament_marriage,
-  DROP COLUMN IF EXISTS sacrament_anointing,
-  DROP COLUMN IF EXISTS book_no,
-  DROP COLUMN IF EXISTS page_no,
   DROP COLUMN IF EXISTS line_no,
   DROP COLUMN IF EXISTS person_id;
 
@@ -256,22 +228,6 @@ INSERT IGNORE INTO marriage_witnesses (id, marriage_record_id, witness_name, wit
   (9, 8, 'Eduardo M. Delgado', 'Brgy. Caragsakan, Dingalan, Aurora'),
   (10, 10, 'Felicidad V. Enrile', 'Brgy. Tanawan, Dingalan, Aurora');
 
--- =====================================================================
--- 7. DEATH / BURIAL RECORDS (10 total; 7-column status table)
--- =====================================================================
-INSERT IGNORE INTO death_burial_records
-  (id, deceased_full_name, date_of_death, is_deceased, encoded_by)
-VALUES
-  (1, 'Lorenzo B. Villamor', '2025-02-10', 1, 1),
-  (2, 'Concepcion M. Rivas', '2025-04-18', 1, 1),
-  (3, 'Anastacio D. Bulaong', '2025-06-05', 1, 1),
-  (4, 'Perlita S. Arcilla', '2025-08-22', 1, 1),
-  (5, 'Rodolfo T. Escobar', '2025-11-03', 1, 1),
-  (6, 'Esperanza L. Villena', '2026-01-15', 1, 1),
-  (7, 'Buenaventura R. Salazar', '2026-03-09', 1, 1),
-  (8, 'Immaculada C. Deveza', '2026-05-27', 1, 1),
-  (9, 'Vicente A. Granada', '2026-07-14', 1, 1),
-  (10, 'Maxima J. Ocampo', '2026-08-30', 1, 1);
 
 -- =====================================================================
 -- 8. CERTIFICATE REQUESTS (10 total; one extension row per request)
@@ -504,10 +460,8 @@ INSERT IGNORE INTO announcements (id, title, content, event_date, is_published, 
 -- 13. AUDIT LOG (10 total)
 -- =====================================================================
 INSERT IGNORE INTO audit_logs (id, user_id, action, target_table, target_id, description, created_at) VALUES
-  (4, 1, 'login', NULL, NULL, 'Demo seed: secretary login.', '2026-09-05 08:00:00'),
-  (5, 1, 'certificate_request_status_updated', 'certificate_requests', 3, 'Status changed to approved.', '2026-08-22 11:00:00'),
-  (6, 1, 'baptismal_record_encoded', 'baptismal_records', 6, 'Baptismal record encoded for Diego Andrea S. Manalo.', '2026-04-12 17:00:00'),
-  (7, 1, 'marriage_application_status_updated', 'sacrament_applications', 9, 'Status changed to banns_in_progress.', '2026-07-01 09:05:00'),
-  (8, 1, 'schedule_event_added', 'schedule_events', 7, 'Added: Gonzales-Panganiban Wedding.', '2026-09-10 10:00:00'),
-  (9, 1, 'announcement_posted', 'announcements', 3, 'Posted: October Baptism Seminar.', '2026-09-11 09:30:00'),
-  (10, 1, 'death_record_encoded', 'death_burial_records', 9, 'Death record encoded for Vicente A. Granada.', '2026-07-14 16:20:00');
+  (5, NULL, 'certificate_request_status_updated', 'certificate_requests', 3, 'Status changed to approved.', '2026-08-22 11:00:00'),
+  (6, NULL, 'baptismal_record_encoded', 'baptismal_records', 6, 'Baptismal record encoded for Diego Andrea S. Manalo.', '2026-04-12 17:00:00'),
+  (7, NULL, 'marriage_application_status_updated', 'sacrament_applications', 9, 'Status changed to banns_in_progress.', '2026-07-01 09:05:00'),
+  (8, NULL, 'schedule_event_added', 'schedule_events', 7, 'Added: Gonzales-Panganiban Wedding.', '2026-09-10 10:00:00'),
+  (9, NULL, 'announcement_posted', 'announcements', 3, 'Posted: October Baptism Seminar.', '2026-09-11 09:30:00'),

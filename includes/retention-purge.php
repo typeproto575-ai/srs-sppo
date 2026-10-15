@@ -5,7 +5,7 @@
  * =====================================================================
  * Rules:
  *   - Sacramental register entries (persons, *_records, witnesses,
- *     death/burial) are permanent. They are never read, changed or
+ *     marriage witnesses) are permanent. They are never read, changed or
  *     flagged here; retention_guard() throws if one is ever passed in.
  *     is_archived does not trigger anything.
  *   - Submissions: only FINISHED rows older than
@@ -46,7 +46,6 @@ function retention_protected_tables(): array
         'first_communion_records',
         'marriage_records',
         'marriage_witnesses',
-        'death_burial_records',
         'users',
     ];
 }

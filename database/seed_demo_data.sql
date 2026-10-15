@@ -4,8 +4,7 @@
 -- Rebuilds a coherent local demo dataset with 21 rows for every supported
 -- sacrament type. Each numbered person is linked across Baptismal,
 -- Confirmation, and First Communion records, requests, and applications.
--- Marriage and Death/Burial are included; Death/Burial has no request or
--- application table in the current schema.
+-- Marriage records are included; all supported workflows are seeded.
 --
 -- Demo login:
 --   username: secretary    password: SPPOsecretary2026
@@ -36,7 +35,6 @@ DELETE FROM marriage_witnesses;
 DELETE FROM confirmation_records;
 DELETE FROM first_communion_records;
 DELETE FROM marriage_records;
-DELETE FROM death_burial_records;
 DELETE FROM baptismal_records;
 DELETE FROM persons;
 DELETE FROM audit_logs WHERE action = 'demo_seed';
@@ -75,13 +73,11 @@ BEGIN
   DECLARE parent_name VARCHAR(150);
   DECLARE husband_name VARCHAR(150);
   DECLARE wife_name VARCHAR(150);
-  DECLARE deceased_name VARCHAR(150);
   DECLARE person_birthdate DATE;
   DECLARE baptism_date DATE;
   DECLARE communion_date DATE;
   DECLARE confirmation_date DATE;
   DECLARE marriage_date DATE;
-  DECLARE death_date DATE;
 
   WHILE i <= 21 DO
     SET person_name = ELT(i,
@@ -115,19 +111,11 @@ BEGIN
       'Diana Nicole Castillo', 'Lourdes Anne Herrera', 'Teresa Joy Lim',
       'Marissa Claire Santos', 'Andrea Mae Dela Rosa', 'Catherine Rose Aquino',
       'Bianca Faith Navarro', 'Michelle Anne Santiago', 'Laura Isabel Bautista');
-    SET deceased_name = ELT(i,
-      'Alfonso Dela Cruz', 'Beatriz Reyes', 'Cesar Fernandez', 'Dolores Santos',
-      'Emilio Aquino', 'Felisa Navarro', 'Gregorio Bautista', 'Hilaria Villanueva',
-      'Isidro Ramos', 'Josefina Flores', 'Leandro Mercado', 'Marcela Torres',
-      'Nicanor Castillo', 'Olivita Herrera', 'Pedro Lim', 'Rosario Santiago',
-      'Salvador Gatchalian', 'Teodora Mendoza', 'Urbano Garcia', 'Vicenta Lopez',
-      'Wenceslao Aquino');
     SET person_birthdate = DATE_ADD('2014-01-15', INTERVAL i MONTH);
     SET baptism_date = DATE_ADD('2015-02-15', INTERVAL i MONTH);
     SET communion_date = DATE_ADD('2026-03-14', INTERVAL i DAY);
     SET confirmation_date = DATE_ADD('2026-05-25', INTERVAL i DAY);
     SET marriage_date = DATE_ADD('2025-12-01', INTERVAL i DAY);
-    SET death_date = DATE_ADD('2026-01-05', INTERVAL i DAY);
 
     INSERT INTO persons
       (id, first_name, middle_name, last_name, sex, birth_date, birth_place,
@@ -142,8 +130,7 @@ BEGIN
       (21 + i, husband_name, NULL, 'male', DATE_ADD('1990-03-15', INTERVAL i MONTH),
        'Gapan, Nueva Ecija', 'baptized_catholic'),
       (42 + i, wife_name, NULL, 'female', DATE_ADD('1993-01-07', INTERVAL i MONTH),
-       'Dingalan, Aurora', 'baptized_catholic'),
-      (63 + i, deceased_name, NULL, NULL, NULL, 'Dingalan, Aurora', 'unbaptized');
+       'Dingalan, Aurora', 'baptized_catholic');
 
     INSERT INTO baptismal_records
       (id, entry_no, baptism_date, child_full_name, birth_date, legitimacy,
@@ -199,11 +186,6 @@ BEGIN
       (id, marriage_record_id, witness_name, witness_residence)
     VALUES
       (i, i, CONCAT('Ramon Witness ', LPAD(i, 2, '0')), 'Dingalan, Aurora');
-
-    INSERT INTO death_burial_records
-      (id, deceased_full_name, date_of_death, is_deceased, encoded_by, person_id)
-    VALUES
-      (i, deceased_name, death_date, 1, NULL, 63 + i);
 
     SET baptism_request_id = i;
     SET confirmation_request_id = 21 + i;
@@ -370,8 +352,7 @@ DELIMITER ;
 CALL seed_demo_rows();
 DROP PROCEDURE seed_demo_rows;
 
--- All supported record types are seeded. Death/Burial has no request or
--- application table in the schema, so only its records are generated.
+-- All supported record types are seeded.
 
 -- =====================================================================
 -- 4. AUDIT CONTEXT

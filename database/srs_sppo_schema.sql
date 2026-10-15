@@ -218,24 +218,6 @@ CREATE TABLE marriage_witnesses (
   FOREIGN KEY (marriage_record_id) REFERENCES marriage_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- --- Death / Burial (simplified per scope: alive/deceased status only) ----
--- 7-column status table: name + date of death + alive/deceased flag, plus the
--- nullable person_id bridge linking the deceased to a shared identity row.
--- The full Liber Defunctorum register fields are documented in the paper
--- but intentionally NOT implemented (dropped from the live DB 2026-09-10).
-CREATE TABLE death_burial_records (
-  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  deceased_full_name VARCHAR(150) NOT NULL,
-  date_of_death      DATE,
-  is_deceased        TINYINT(1) NOT NULL DEFAULT 0,  -- 0=alive, 1=deceased
-  date_encoded       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  encoded_by         INT UNSIGNED,
-  person_id          INT UNSIGNED,
-  FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL
-) ENGINE=InnoDB;
-
-
 -- =====================================================================
 -- 3. CERTIFICATE REQUESTS (shared table + one extension table per type)
 -- =====================================================================
@@ -805,7 +787,6 @@ ALTER TABLE baptismal_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT
 ALTER TABLE confirmation_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
 ALTER TABLE first_communion_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
 ALTER TABLE marriage_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
-ALTER TABLE death_burial_records ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archived_at DATETIME NULL, ADD COLUMN archived_by INT UNSIGNED NULL, ADD COLUMN archive_reason VARCHAR(500) NULL;
 
 -- --- Secretary password recovery --------------------------------------
 CREATE TABLE password_reset_tokens (

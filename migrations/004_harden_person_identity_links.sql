@@ -2,9 +2,6 @@
 -- Run after migrations 001-003. Existing links remain nullable so records
 -- from an external parish can be stored before a local person match exists.
 
-ALTER TABLE death_burial_records
-  ADD COLUMN IF NOT EXISTS person_id INT UNSIGNED NULL AFTER encoded_by;
-
 ALTER TABLE baptismal_records
   ADD CONSTRAINT fk_baptismal_person
   FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL;
@@ -23,17 +20,10 @@ ALTER TABLE marriage_records
   ADD CONSTRAINT fk_marriage_wife_person
   FOREIGN KEY (wife_person_id) REFERENCES persons(id) ON DELETE SET NULL;
 
-ALTER TABLE death_burial_records
-  ADD CONSTRAINT fk_death_burial_person
-  FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL;
-
 CREATE INDEX idx_persons_name_birth
   ON persons (last_name, first_name, birth_date);
 CREATE INDEX idx_persons_maiden_name
   ON persons (maiden_name);
-CREATE INDEX idx_death_burial_person
-  ON death_burial_records (person_id);
-
 -- Review these before assigning them. Do not force ambiguous matches.
 SELECT 'unmatched_baptismal' AS issue, COUNT(*) AS total
 FROM baptismal_records WHERE person_id IS NULL
@@ -49,6 +39,3 @@ FROM marriage_records WHERE husband_person_id IS NULL
 UNION ALL
 SELECT 'unmatched_marriage_wife', COUNT(*)
 FROM marriage_records WHERE wife_person_id IS NULL
-UNION ALL
-SELECT 'unmatched_death_burial', COUNT(*)
-FROM death_burial_records WHERE person_id IS NULL;

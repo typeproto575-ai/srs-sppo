@@ -30,10 +30,4 @@ SELECT DISTINCT TRIM(wife_maiden_name), NOW()
 FROM marriage_records
 WHERE wife_maiden_name IS NOT NULL AND TRIM(wife_maiden_name) <> '';
 
--- Death / burial (if present)
-INSERT IGNORE INTO persons (first_name, created_at)
-SELECT DISTINCT TRIM(deceased_full_name), NOW()
-FROM death_burial_records
-WHERE deceased_full_name IS NOT NULL AND TRIM(deceased_full_name) <> '';
-
 COMMIT;

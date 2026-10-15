@@ -19,10 +19,6 @@ require_once __DIR__ . '/../includes/auth.php'; // session + role guard
 require_role('secretary');                      // dashboard is secretary-only
 
 $pageTitle = 'Admin Dashboard';
-$featureDisabledNotice = null;
-if (isset($_GET['disabled']) && $_GET['disabled'] === 'death-burial') {
-    $featureDisabledNotice = 'Death/Burial records are not currently available.';
-}
 
 // ---- Quick stats -----------------------------------------------------------
 // Count of certificate requests still awaiting processing.
@@ -51,7 +47,7 @@ $underReviewCount = (int) $pdo->query(
 )->fetch()['c'];
 
 // ---- Archive registry totals ------------------------------------------------
-// Live COUNT(*) per digitised logbook for the registry grid below. Death/Burial
+// Live COUNT(*) per digitised logbook for the registry grid below.
 // is intentionally excluded from the active admin dashboard while the feature
 // remains disabled, but the data remains in the database unchanged.
 // Table names come from a hardcoded list (never user input), so no

@@ -394,7 +394,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <div class="panel-card">
             <h2>What this page is for</h2>
             <p class="field-hint">
-                Each registry row (baptismal, confirmation, first communion, marriage, death) can be
+                Each registry row (baptismal, confirmation, first communion, and marriage) can be
                 <strong>linked to a person</strong>. The link lets the system recognise that the child
                 baptised in one register and the adult confirmed in another are the <em>same person</em>.
                 Nothing is linked automatically — you confirm every assignment below.

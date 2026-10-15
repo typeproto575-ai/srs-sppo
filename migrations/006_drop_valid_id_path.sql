@@ -15,7 +15,6 @@ ALTER TABLE certificate_requests
 -- =====================================================================
 -- No other schema changes in this migration.
 --   - No monetary/fee columns added.
---   - death_burial_records untouched.
 --   - No new tables or features.
 -- =====================================================================
 

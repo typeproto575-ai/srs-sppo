@@ -11,7 +11,6 @@ $allowed = [
     'confirmation_records' => 'Confirmation record',
     'first_communion_records' => 'First Communion record',
     'marriage_records' => 'Marriage record',
-    'death_burial_records' => 'Death/Burial status record',
 ];
 
 $message = '';
@@ -102,7 +101,7 @@ if ($table !== '' && isset($allowed[$table]) && $id > 0) {
                 $recordName = 'Marriage record';
             }
         }
-        $recordDate = $record['baptism_date'] ?? $record['confirmation_date'] ?? $record['communion_date'] ?? $record['marriage_date'] ?? $record['date_of_death'] ?? null;
+        $recordDate = $record['baptism_date'] ?? $record['confirmation_date'] ?? $record['communion_date'] ?? $record['marriage_date'] ?? null;
         if ($recordDate && is_string($recordDate)) {
             $recordDate = date('F j, Y', strtotime($recordDate));
         }

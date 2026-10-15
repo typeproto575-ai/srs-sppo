@@ -86,7 +86,6 @@ $rfConfig = [
                 'confirmation'   => 'Confirmation',
                 'first_communion'=> 'First Communion',
                 'marriage'       => 'Marriage',
-                'death_burial'   => 'Death / Burial',
             ]],
     ],
 ];
