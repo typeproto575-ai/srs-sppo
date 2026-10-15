@@ -298,7 +298,7 @@ function public_submission_allowed(PDO $pdo, array $emails, ?string $ip = null):
         if ($ip !== '' && $ip !== 'unknown') {
             $stmt = $pdo->prepare(
                 'SELECT COUNT(*) AS c FROM submission_rate_limits
-                  WHERE ip_address = ? AND form_type <> \'record_search\'
+                  WHERE ip_address = ? AND form_type <> \'record_search\' AND form_type NOT LIKE \'lookup%\'
                     AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 DAY)'
             );
             $stmt->execute([$ip]);
@@ -646,7 +646,7 @@ function redirect_to(string $appPath): void
  * Always prefer this to a raw session_start() call. It sets:
  *   - HttpOnly     : the session id stays out of client-side JavaScript
  *   - SameSite=Lax : blocks most cross-site cookie-sending CSRF attempts
- *   - Secure       : enabled automatically when the site is served over HTTPS
+ *   - Secure       : enabled when HTTPS is active or SRS_FORCE_HTTPS is on
  *   - scoped path  : the app's base path (or / when installed at the root)
  */
 function secure_session_start(): void
@@ -660,7 +660,7 @@ function secure_session_start(): void
         'lifetime' => 0,                                  // browser-session cookie
         'path'     => base_path() ?: '/',                 // scope to this app
         'domain'   => '',
-        'secure'   => !empty($_SERVER['HTTPS']),          // HTTPS-only when available
+        'secure'   => is_https_request() || (defined('SRS_FORCE_HTTPS') && SRS_FORCE_HTTPS),
         'httponly' => true,                               // JS cannot read the session id
         'samesite' => 'Lax',                              // mitigates CSRF via the cookie
     ]);
@@ -988,6 +988,78 @@ function client_ip(): string
     return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 }
 
+/* =====================================================================
+ * LOOKUP / GUESSING THROTTLE (tracking lookup, certificate verification,
+ * correction form)
+ * =====================================================================
+ * Failed or repeated lookups are counted in submission_rate_limits with
+ * form_type 'lookup_*' and a HASHED key in the email column, so:
+ *   - nothing personal (tracking|email, plain IP lists) is written to
+ *     audit_logs, and the audit trail cannot be flooded by outsiders;
+ *   - these rows never count toward the 3-per-email / 20-per-IP daily
+ *     SUBMISSION caps above;
+ *   - the existing retention purge deletes them after
+ *     SRS_RETENTION_RATELIMIT_DAYS.
+ * Fail-open: if the table is missing, lookups still work.
+ * ===================================================================== */
+
+/** Hashed throttle key. Not reversible and never a real email address. */
+function lookup_throttle_key(string $key): string
+{
+    return 'lookup:' . substr(hash('sha256', strtolower($key)), 0, 40);
+}
+
+/**
+ * Is this visitor (or this key) over the limit for the given lookup form?
+ * @param string $form         e.g. 'lookup_track', 'lookup_verify', 'lookup_correction'
+ * @param string $key          Optional identifier such as "tracking|email"; '' = IP only
+ * @param int    $maxPerKey    Attempts allowed per key in the window (ignored when $key is '')
+ * @param int    $maxPerIp     Attempts allowed per client IP in the window
+ */
+function lookup_is_throttled(PDO $pdo, string $form, string $key = '', int $maxPerKey = 8, int $maxPerIp = 20, int $windowMinutes = 15): bool
+{
+    try {
+        if ($key !== '') {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM submission_rate_limits
+                  WHERE form_type = ? AND email = ?
+                    AND submitted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+            );
+            $stmt->execute([$form, lookup_throttle_key($key), $windowMinutes]);
+            if ((int) $stmt->fetchColumn() >= $maxPerKey) {
+                return true;
+            }
+        }
+        $ip = client_ip();
+        if ($ip !== '' && $ip !== 'unknown') {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM submission_rate_limits
+                  WHERE form_type = ? AND ip_address = ?
+                    AND submitted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+            );
+            $stmt->execute([$form, $ip, $windowMinutes]);
+            if ((int) $stmt->fetchColumn() >= $maxPerIp) {
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        return false; // fail open
+    }
+    return false;
+}
+
+/** Count one attempt (call for failures, or for every attempt on forms that send data). */
+function lookup_record_attempt(PDO $pdo, string $form, string $key = ''): void
+{
+    $ip = client_ip();
+    try {
+        $stmt = $pdo->prepare('INSERT INTO submission_rate_limits (email, ip_address, form_type) VALUES (?, ?, ?)');
+        $stmt->execute([lookup_throttle_key($key !== '' ? $key : 'ip:' . $ip), substr($ip, 0, 45), $form]);
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO: could not record lookup attempt: ' . $e->getMessage());
+    }
+}
+
 /**
  * Validate password strength for staff accounts.
  * Returns NULL when the password is acceptable, otherwise a human-readable
@@ -1024,10 +1096,10 @@ function validate_password_strength(string $password): ?string
  * it still blocks scripts/styles from any other origin. Tighten by moving
  * the inline scripts to .js files and dropping 'unsafe-inline' later.
  *
- * HTTPS: when APP_FORCE_HTTPS is enabled (config/environment.php), plain
- * HTTP GET/HEAD requests are 301-redirected to HTTPS and a one-year HSTS
- * header is sent. Off by default so the local XAMPP HTTP setup keeps
- * working unchanged.
+ * HTTPS: SRS_FORCE_HTTPS is enabled automatically for non-local deployments
+ * (or explicitly with SRS_FORCE_HTTPS=true). Plain HTTP requests are
+ * redirected to HTTPS and a one-year HSTS header is sent. Local XAMPP HTTP
+ * remains available unless explicitly forced.
  */
 function security_headers(): void
 {
@@ -1036,16 +1108,20 @@ function security_headers(): void
     }
 
     // Optional HTTPS enforcement — see config/environment.php.
-    if (defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS && PHP_SAPI !== 'cli') {
-        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-            || (($_SERVER['SERVER_PORT'] ?? 0) == 443);
-        if (!$isHttps && in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true)) {
-            // 301 + exit before any DB work or output happens.
-            header('Location: https://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '/'), true, 301);
+    if (defined('SRS_FORCE_HTTPS') && SRS_FORCE_HTTPS && PHP_SAPI !== 'cli') {
+        $isHttps = is_https_request();
+        if (!$isHttps) {
+            // Preserve the request method while redirecting before any DB work or output.
+            $secureHost = parse_url(SRS_APP_URL, PHP_URL_HOST);
+            $securePort = parse_url(SRS_APP_URL, PHP_URL_PORT);
+            $secureAuthority = $secureHost;
+            if ($securePort !== null && (int) $securePort !== 443) {
+                $secureAuthority .= ':' . (int) $securePort;
+            }
+            header('Location: https://' . $secureAuthority . ($_SERVER['REQUEST_URI'] ?? '/'), true, 307);
             exit;
         }
-        // Sent only once the connection is (forced to be) HTTPS.
+        // Sent only once the connection is HTTPS.
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
 
@@ -1059,6 +1135,13 @@ function security_headers(): void
         . "font-src 'self' https://fonts.gstatic.com; "
         . "img-src 'self' data:; "
         . "connect-src 'self'");
+}
+
+function is_https_request(): bool
+{
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (($_SERVER['SERVER_PORT'] ?? 0) == 443);
 }
 
 // Fire-and-forget: applied to every request that loads this file (which is
