@@ -31,6 +31,8 @@
 
 * { box-sizing: border-box; }
 
+html { scroll-behavior: smooth; }
+
 body {
     margin: 0;
     font-family: var(--font-body);
@@ -38,6 +40,20 @@ body {
     background: var(--color-parchment);
     line-height: 1.55;
 }
+
+.skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 1000;
+    padding: 0.65rem 0.9rem;
+    border-radius: 5px;
+    color: #fff;
+    background: var(--color-ledger-dark);
+    transform: translateY(-180%);
+    transition: transform 0.15s ease;
+}
+.skip-link:focus-visible { transform: translateY(0); }
 
 .required-marker {
     color: #b23a2e;
@@ -87,6 +103,9 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
     .review-dialog[open] { animation: review-dialog-in 160ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
 }
 
 @keyframes review-dialog-in {
@@ -172,6 +191,13 @@ input:focus, select:focus, textarea:focus {
     transition: background 0.15s ease;
 }
 .btn:hover { background: var(--color-ledger-dark); }
+.btn:focus-visible,
+.site-header a:focus-visible,
+.text-link:focus-visible,
+.nav-toggle:focus-visible {
+    outline: 3px solid var(--color-brass);
+    outline-offset: 3px;
+}
 .btn-secondary {
     background: #edf3ec;
     color: var(--color-ledger-dark);

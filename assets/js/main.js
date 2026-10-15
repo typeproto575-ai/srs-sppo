@@ -15,6 +15,12 @@
    ===================================================================== */
 
 document.addEventListener('DOMContentLoaded', function () {
+    // Surface server-rendered errors to assistive technology.
+    document.querySelectorAll('.alert-error').forEach(function (alert) {
+        alert.setAttribute('role', 'alert');
+        alert.setAttribute('aria-live', 'polite');
+    });
+
     // ---- 1) Flash messages fade away on their own -----------------------
     // Add data-auto-dismiss to an .alert element to enable; the value
     // (if any) is the delay in milliseconds.
@@ -35,6 +41,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 ev.preventDefault(); // user cancelled — stop the submission
             }
         });
+    });
+
+    // Avoid duplicate submissions while leaving the review modal's two-step
+    // flow in control of its own submit handling. This runs after confirmation
+    // handlers so cancelling a confirmation never disables the button.
+    document.querySelectorAll('form:not([data-review])').forEach(function (form) {
+        form.addEventListener('submit', function (ev) {
+            var button = ev.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+            if (!button || button.disabled) return;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            if (button.tagName === 'INPUT') button.value = 'Submitting…';
+            else button.textContent = 'Submitting…';
+        }, { once: true });
     });
 
     // ---- 3) Modal dialogs for the records encode forms -------------------

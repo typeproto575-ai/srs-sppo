@@ -20,6 +20,17 @@
 $pageTitle = $pageTitle ?? "St. Patrick's Parish Office";
 // Subfolder-safe URL prefix used for every asset and internal link.
 $basePath  = $basePath ?? base_path();
+$pageDescriptions = [
+    'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and track its status.",
+    'Requirements' => 'Review parish office requirements before requesting a sacramental certificate or applying for a sacrament.',
+    'Parish Office Services' => 'Request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick Parish Office.',
+    'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, First Communion, or Marriage preparation for parish review.',
+    'Track My Request' => 'Check the processing status of a St. Patrick Parish Office request using your tracking number and email address.',
+    'How It Works' => 'Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick Parish Office.',
+    'Privacy Notice' => 'Read how St. Patrick Parish Office handles information submitted through this parish records system.',
+    'Terms and Conditions' => 'Review the terms for using the St. Patrick Parish Office online request system.',
+];
+$pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDescriptions['Home']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -28,6 +39,10 @@ $basePath  = $basePath ?? base_path();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($pageTitle) ?> | SRS-SPPO</title>
+    <meta name="description" content="<?= e($pageDescription) ?>">
+    <meta name="theme-color" content="#2F5E3F">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Circular parish logo as the browser favicon (transparent corners) -->
     <link rel="icon" type="image/png" href="<?= $basePath ?>/assets/images/logo-circle.png">
     <?php
@@ -35,12 +50,14 @@ $basePath  = $basePath ?? base_path();
     ?>
     <!-- Main stylesheet for the public site -->
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $publicStyleVersion ?>">
-    <meta name="description" content="St. Patrick's Parish Office, Dingalan, Aurora - prepare requirements, visit the parish office, and track a reference number issued by the secretary.">
-    <meta property="og:title" content="St. Patrick's Parish Office">
-    <meta property="og:description" content="Sacramental certificates and applications for the Parish of St. Patrick, Dingalan, Aurora.">
+    <meta property="og:title" content="<?= e($pageTitle) ?> | St. Patrick's Parish Office">
+    <meta property="og:description" content="<?= e($pageDescription) ?>">
     <meta property="og:type" content="website">
+    <meta property="og:image" content="<?= $basePath ?>/assets/images/logo-circle.png">
+    <meta property="og:image:alt" content="St. Patrick Parish logo">
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <!-- Top navigation bar -->
 <header class="site-header">
     <!-- Brand doubles as the home link; shows the parish logo image + name -->
@@ -71,4 +88,4 @@ $basePath  = $basePath ?? base_path();
     });
 })();
 </script>
-<main class="site-main">
+<main class="site-main" id="main-content">
