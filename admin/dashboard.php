@@ -62,32 +62,8 @@ foreach (['baptismal_records', 'confirmation_records', 'first_communion_records'
 // Shared top bar + sidebar + opening layout markup.
 require_once __DIR__ . '/../includes/admin-header.php';
 
-// ---- Demo password warning ------------------------------------------------
-// If the logged-in user still uses the known default demo password, show a
-// persistent (non-blocking) banner urging them to change it under Account Management.
-$showDemoPasswordWarning = false;
-if ((current_user()['username'] ?? null) === 'secretary') {
-    $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ?');
-    $stmt->execute([current_user()['id']]);
-    $hash = $stmt->fetchColumn();
-    if ($hash && password_verify('SPPOsecretary2026', $hash)) {
-        $showDemoPasswordWarning = true;
-    }
-}
 ?>
 
-<?php if ($showDemoPasswordWarning): ?>
-            <!-- Persistent warning banner for accounts still using the demo password -->
-            <div class="alert alert-warning demo-password-warning" role="alert">
-                <strong>Security notice:</strong> Your account is still using the default demo password.
-                <a href="<?= $basePath ?>/admin/system/accounts.php">Change your password now</a> to protect parish records.
-            </div>
-<?php endif; ?>
-<?php if ($featureDisabledNotice): ?>
-            <div class="alert alert-warning" role="alert">
-                <p><?= e($featureDisabledNotice) ?></p>
-            </div>
-<?php endif; ?>
         <section class="dashboard-shell">
             <div class="dashboard-hero">
                 <div>

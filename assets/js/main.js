@@ -705,7 +705,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeof HTMLDialogElement === 'undefined') return;
 
         // Controls that are never shown in the summary.
-        var SKIP_NAMES = { terms_accepted: true };
+        var SKIP_NAMES = { terms_accepted: true, privacy_consent: true };
 
         function cleanLabel(text) {
             return text.replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').trim();
@@ -764,7 +764,15 @@ document.addEventListener('DOMContentLoaded', function () {
             } else {
                 value = control.value.trim();
             }
-            if (value === '') return null;
+            if (value === '') {
+                // Soft nudge: inputs the admin marked data-nudge are shown as
+                // an em-dash row instead of being skipped. Everything else
+                // keeps the old behavior (omitted when empty).
+                if (control.hasAttribute && control.hasAttribute('data-nudge')) {
+                    return { label: label, value: '\u2014', empty: true };
+                }
+                return null;
+            }
             // Repeated fields (e.g. godfather_name[]) get their row number so
             // "Godfather Name 3" and "Residence 3" stay matched up.
             if (control.name.slice(-2) === '[]') {
@@ -842,6 +850,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 dt.textContent = item.label;
                 var dd = document.createElement('dd');
                 dd.textContent = item.value; // textContent only: never inject user input as HTML
+                if (item.empty) dd.className = 'is-empty-nudge';
                 list.appendChild(dt);
                 list.appendChild(dd);
             });

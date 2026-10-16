@@ -214,6 +214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                         $messageType = 'error';
                     }
                 }
+                if ($isActive === 0 && $action === 'edit' && $id === (int) current_user()['id']) {
+                    // Mirror the toggle/delete guard: a staff member cannot
+                    // deactivate their own account from the edit form either.
+                    $message = 'You cannot deactivate your own account from this form.';
+                    $messageType = 'error';
+                }
                 if ($messageType !== 'error') {
                 if ($action === 'edit' && $id) {
                     if ($password !== '') {

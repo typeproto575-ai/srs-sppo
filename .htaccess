@@ -15,7 +15,7 @@
     <FilesMatch "^_">
         Require all denied
     </FilesMatch>
-    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md)$">
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md|patch|log)$">
         Require all denied
     </FilesMatch>
     # Dev/debug script stems (check_*, list_*, create_*, audit_*, fix*)
@@ -34,7 +34,7 @@
         Order deny,allow
         Deny from all
     </FilesMatch>
-    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md)$">
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md|patch|log)$">
         Order deny,allow
         Deny from all
     </FilesMatch>
@@ -44,15 +44,35 @@
     </FilesMatch>
 </IfModule>
 
+# Project metadata files (any folder)
+<IfModule mod_authz_core.c>
+    <FilesMatch "^(composer\.(json|lock)|phpunit\.xml(\.dist)?|phpstan\.neon)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^(composer\.(json|lock)|phpunit\.xml(\.dist)?|phpstan\.neon)$">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
 # Block .git directory and all contents
 RedirectMatch 403 (^|/)\.git(/|$)
 
+# Block the optional local database credential file
+RedirectMatch 403 (^|/)config/local\.php$
+
+# Block direct access to dependency, test, and storage folders and project metadata
+RedirectMatch 403 (^|/)(vendor|tests|storage)(/|$)
+RedirectMatch 403 (^|/)(composer\.json|composer\.lock|phpunit\.xml)$
+
 # Redirect any direct request to the devtools folder to 403 as well
-RedirectMatch 403 ^/devtools(/|$)
+RedirectMatch 403 (^|/)devtools(/|$)
 
 # Block temp/debug scripts in project root
-RedirectMatch 403 ^/(temp_|fix_|scan_|_tmp_).*\.(php|ps1|py|vbs)$
-RedirectMatch 403 ^/scripts/document_project\.php$
+RedirectMatch 403 (^|/)(temp_|fix_|scan_|_tmp_)[^/]*\.(php|ps1|py|vbs)$
+RedirectMatch 403 (^|/)scripts/document_project\.php$
 
 # Disable directory listings
 Options -Indexes

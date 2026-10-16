@@ -7,9 +7,9 @@
  *          when a parishioner visits the office instead of using the
  *          public online form.
  *
-  * Supports: Baptismal and Marriage.
- * (Confirmation / First Communion are legacy-only status flags in the
- *  current design — no new applications are encoded for them.)
+  * Supports: Baptismal, Confirmation, First Communion, and Marriage.
+  * (Each type writes the shared sacrament_applications row plus its
+  *  extension table; walk-ins are recorded with submission_channel 'onsite'.)
  * Note: No ID uploads are collected — per the updated design doc,
  *       identity is verified in person; ID-related columns stay NULL.
  *
@@ -40,6 +40,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $sacramentType = $_POST['sacrament_type'] ?? '';
     $validTypes = ['baptismal', 'confirmation', 'first_communion', 'marriage'];
 
+    // Walk-in counter flow: apply -> pay -> process. If the fee was already
+    // paid at the counter, record that fact now (paid_at + paid_by). No amount
+    // is stored; the system never takes money. Defaults to not-paid.
+    $markPaid = ($_POST['payment_received'] ?? '') === '1';
+
     // Validate the sacrament type
     if (!in_array($sacramentType, $validTypes, true)) {
         $errors[] = 'Select a sacrament type.';
@@ -48,13 +53,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     // Retry the whole transaction when a concurrent submission collides with
     // our generated tracking number (retry_on_duplicate regenerates + retries).
     try {
-        $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType): string {
+        $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType, $markPaid): string {
         // Generate a unique tracking number for this application
         $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
 
+        // Record the counter payment fact if marked (no amount stored).
+        $paidAt = $markPaid ? date('Y-m-d H:i:s') : null;
+        $paidBy = $markPaid ? current_user()['id'] : null;
+
         // Insert into the shared sacrament_applications table
-        $stmt = $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, notes) VALUES (?, 'onsite', ?, ?)");
-        $stmt->execute([$trackingNumber, $sacramentType, trim($_POST['notes'] ?? '')]);
+        $stmt = $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, notes, paid_at, paid_by) VALUES (?, 'onsite', ?, ?, ?, ?)");
+        $stmt->execute([$trackingNumber, $sacramentType, trim($_POST['notes'] ?? ''), $paidAt, $paidBy]);
         $applicationId = (int) $pdo->lastInsertId();
 
         // --- Handle type-specific insertion and file uploads -------------
@@ -187,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         }
 
         // Log the walk-in application encoding to the audit trail
-        log_activity($pdo, current_user()['id'], 'walk_in_application_encoded', 'sacrament_applications', $applicationId, "Walk-in {$sacramentType} application encoded.");
+        log_activity($pdo, current_user()['id'], 'walk_in_application_encoded', 'sacrament_applications', $applicationId, "Walk-in {$sacramentType} application encoded." . ($markPaid ? ' (payment recorded)' : ''));
         notify($pdo, 'application_new', 'New walk-in application',
             "Walk-in {$sacramentType} application ({$trackingNumber})",
             '/admin/requests/applications-queue.php');
@@ -212,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <!-- Success message with the generated tracking number -->
             <div class="alert alert-success">
                 <p>Application recorded. Tracking number: <strong><?= e($trackingNumber) ?></strong></p>
+                <p class="field-hint">Payment: <?= (($_POST['payment_received'] ?? '') === '1') ? 'received at the counter and recorded' : 'not yet recorded' ?>. The system records no amount &mdash; only that payment was received and by whom.</p>
             </div>
         <?php endif; ?>
         <?php if (!empty($errors)): ?>
@@ -226,7 +236,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 <label>Type *
                     <select name="sacrament_type" id="sacrament_type" required onchange="showSection(this.value)">
                         <option value="">-- Select --</option>
-                                                                                                <option value="baptismal">Baptismal</option>
+                        <option value="baptismal">Baptismal</option>
+                        <option value="confirmation">Confirmation</option>
+                        <option value="first_communion">First Communion</option>
                         <option value="marriage">Marriage</option>
                     </select>
                 </label>
@@ -328,6 +340,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <fieldset>
                 <legend>Notes</legend>
                 <label>Notes <textarea autocomplete="off" name="notes"><?= e($_POST['notes'] ?? '') ?></textarea></label>
+            </fieldset>
+
+            <fieldset>
+                <legend>Payment (in person)</legend>
+                <label class="checkbox-label"><input type="checkbox" name="payment_received" value="1" <?= (($_POST['payment_received'] ?? '') === '1') ? 'checked' : '' ?>> Payment received at the counter &mdash; mark as paid</label>
+                <p class="field-hint">Optional. Payment is collected in person at the office; the system records no amount, only that it was received and by whom.</p>
             </fieldset>
 
             <button type="submit" class="btn">Encode Application</button>

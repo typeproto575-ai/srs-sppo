@@ -32,9 +32,8 @@ These are *deliberate removals/choices* — good defense talking points, not gap
 | Decision | Reason |
 |---|---|
 | **No priest system user / portal** | The parish priest is not a login user. Canonical clearance (banns, pre-Cana, interview) is recorded by the Secretary after confirming with the priest in person. Keeps the model to one trained operator. |
-| **Death/Burial = status flag only** | Kept as a simplified alive/deceased status page for the secretary (admin/records/death-burial.php). No certificate issuance, no public form, and none of the full Liber Defunctorum register fields (cause of death, burial place, spouse, etc.) - an intentional, documented scope limitation. |
-| **No online ID upload** | Identity is verified in person at pickup. Avoids collecting sensitive ID scans, simplifying **RA 10173 (Data Privacy Act)** compliance. |
-| **No payment/fees anywhere** | Fees are paid in person at pickup. No monetary fields or logic exist by design. |
+| **No online ID upload** | Identity is verified in person at pickup. The system does not store ID scans, but **RA 10173 (Data Privacy Act)** still applies to all personal data processed. |
+| **No payment feature / no money in the system** | The system never takes money and stores no amounts. Payment is made **before processing, outside the system** (at the parish office, by contacting the parish, or through someone near the parish) and is recorded only as a **manual status** (`awaiting_payment`, then the secretary marks it paid by hand: `paid_at`/`paid_by`). No monetary fields or payment logic exist by design. |
 | **No parishioner accounts** | Tracking is via tracking number + email, not a login. Only the Secretary has an account. |
 | **Eligibility checks flag, never auto-block** | Age/prerequisite checks set a warning flag for the Secretary's review; they never silently reject a submission. |
 | **Email is disabled by default** | `MAIL_ENABLED` is `false` in `config/mail.php`. The workflow remains usable through the tracking number and email lookup, while delivery attempts are logged when configured. |
@@ -66,9 +65,12 @@ assets/css + assets/js      plain CSS/JS, responsive to device size
 
 1. Start Apache + MySQL in XAMPP.
 2. Import `database/srs_sppo_schema.sql` (creates `srs_sppo_db`).
-3. Import `database/seed_demo_data.sql` (idempotent demo dataset).
-4. Open `http://localhost/srs-sppo/admin/login.php`.
-5. Log in with **`secretary` / `SPPOsecretary2026`** (change it afterwards).
+3. Create `config/local.php` with the local database username and password, or
+   set `SRS_DB_USER` and `SRS_DB_PASS`.
+4. Import `database/seed_demo_data.sql` (idempotent sample dataset; it creates no login).
+5. From the project root, run `php scripts/create-admin.php` and enter an
+   administrator password of at least 12 characters.
+6. Open `http://localhost/srs-sppo/admin/login.php`.
 
 ## 5. Demo walkthrough (≈7 minutes)
 
@@ -84,7 +86,7 @@ loaded, follow this order:
    on Track My Request (status `pending`).
 
 **B. Log in — 30 sec**
-4. `admin/login.php` → **`secretary` / `SPPOsecretary2026`**.
+4. `admin/login.php` → the administrator account created by the CLI.
    Mention the security details: generic failure message, CSRF, session
    regeneration on login.
 
@@ -121,15 +123,24 @@ loaded, follow this order:
 
 ## 6. Likely defense questions (with short answers)
 
-**Q: Why didn't you include the priest / a Death/Burial module?**
-The updated design (`PROJECT_CONTEXT.md`) removed the priest role and
-Death/Burial. The priest's canonical steps are recorded as data by the
-Secretary (banns, pre-Cana, interview) instead of a priest login. Death/Burial
-has no module, no UI, and no tables in the canonical schema.
+**Q: Why didn't you include the priest?**
+The updated design (`PROJECT_CONTEXT.md`) removed the priest login. The
+priest's canonical steps are recorded as data by the Secretary (banns,
+pre-Cana, interview) instead of a priest login.
 
 **Q: Why no ID upload on the forms?**
 Data privacy (RA 10173). Identity is verified **in person** at pickup; the
-system never stores a copy of a valid ID, so it holds less sensitive data.
+system never stores a copy of a valid ID, while the Act still applies to all
+personal data processed by the system.
+
+**Q: How is payment handled?**
+The system has no payment feature and never takes money. Payment is made
+**before processing, outside the system** — at the parish office, by contacting
+the parish (email, phone, or Facebook/Messenger), or through someone near the
+parish. The secretary records it only as a manual status: an online
+request/application pauses at `awaiting_payment` until the secretary marks it
+paid by hand (`paid_at` / `paid_by`; no amount stored). Walk-ins pay at the
+counter and can be marked paid when the transaction is encoded.
 
 **Q: How is security handled?**
 CSRF tokens on every POST (checked server-side), password hashes
@@ -171,7 +182,7 @@ submission is never silently blocked.
 ## 8. Pre-defense checklist
 
 - [ ] Import schema + seed into a fresh `srs_sppo_db`.
-- [ ] Log in as `secretary` / `SPPOsecretary2026`.
+- [ ] Log in with the administrator account created by `scripts/create-admin.php`.
 - [ ] Run the sections A–G of the walkthrough above.
 - [ ] Check the app on a phone / responsive DevTools mode (dashboard, tables
       scroll internally, sidebar becomes a swipe strip).

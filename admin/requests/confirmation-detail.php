@@ -37,12 +37,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['save
 // can_approve_sacrament_application(). Rejections/blocked approvals are logged.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['update_status'])) {
     $newStatus = $_POST['new_status'] ?? '';
-    $allowed = in_array($newStatus, ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'], true);
+    $allowed = in_array($newStatus, ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'], true);
     if (!$allowed) {
         $notice = 'Invalid status value.';
     } elseif (!sacrament_application_transition_valid($app['status'], $newStatus, 'confirmation')) {
         $notice = 'Status change refused: ' . humanize_label($app['status']) . ' to ' . humanize_label($newStatus) . ' is not a valid transition.';
         log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change refused: {$app['status']} -> {$newStatus}.");
+    } elseif (!sacrament_application_payment_gate($app, $newStatus)['ok']) {
+        // Online application still awaiting payment: block until marked paid.
+        $notice = sacrament_application_payment_gate($app, $newStatus)['reason'];
+        log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change blocked by payment gate: {$app['status']} -> {$newStatus}.");
     } elseif ($newStatus === 'approved') {
         $gate = can_approve_sacrament_application($pdo, $applicationId, 'confirmation');
         if (!$gate['ok']) {
@@ -77,7 +81,27 @@ function humanize_label(?string $s): string {
     }
     return ucwords(str_replace('_', ' ', $s));
 }
-$statusOptions = ['submitted', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
+
+// Mark an online application's payment as received (by hand). Records only
+// WHO and WHEN -- never an amount. Only valid while awaiting payment and not
+// yet recorded. This unblocks the payment gate in the status handler above.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify() && isset($_POST['mark_paid'])) {
+    if (($app['status'] ?? '') !== 'awaiting_payment') {
+        $notice = "Only an application that is awaiting payment can be marked paid.";
+    } elseif (!empty($app['paid_at'])) {
+        $notice = 'Payment has already been recorded for this application.';
+    } else {
+        $up = $pdo->prepare("UPDATE sacrament_applications SET paid_at = NOW(), paid_by = ? WHERE id = ?");
+        $up->execute([current_user()['id'], $applicationId]);
+        log_activity($pdo, current_user()['id'], 'sacrament_application_payment_recorded', 'sacrament_applications', $applicationId, 'Payment recorded by hand (no amount stored).');
+        $notice = 'Payment recorded. The application can now move forward.';
+        $stmt = $pdo->prepare("SELECT sa.*, ca.* FROM sacrament_applications sa JOIN confirmation_applications ca ON ca.application_id = sa.id WHERE sa.id = ?");
+        $stmt->execute([$applicationId]);
+        $app = $stmt->fetch();
+    }
+}
+
+$statusOptions = ['submitted', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'documents_pending', 'interview_scheduled', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected', 'cancelled'];
 $workflowEntityType = 'sacrament_application';
 $workflowEntityId = $applicationId;
 $workflowSacramentType = 'confirmation';
@@ -153,7 +177,17 @@ $confGate = can_approve_sacrament_application($pdo, $applicationId, 'confirmatio
 </form>
 
 <h2>Update Status</h2>
-<form autocomplete="off" method="post" class="inline-fields">
+<?php if (($app['status'] ?? '') === 'awaiting_payment' && empty($app['paid_at'])): ?>
+<form autocomplete="off" method="post" style="margin-bottom:0.75rem;" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">
+    <?= csrf_field() ?>
+    <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+    <button type="submit" name="mark_paid" value="1" class="btn btn-small" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">Mark as Paid</button>
+    <span class="field-hint">Payment is collected outside the system. This records only that it was received, and by whom.</span>
+</form>
+<?php elseif (!empty($app['paid_at'])): ?>
+<p class="field-hint" style="margin-bottom:0.75rem;">Payment recorded on <?= e(date('F j, Y g:i A', strtotime($app['paid_at']))) ?> (no amount stored).</p>
+<?php endif; ?>
+<form autocomplete="off" method="post" class="inline-fields" data-confirm="Update this application's status?">
 <?= csrf_field() ?>
 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
 <select name="new_status">
@@ -161,6 +195,6 @@ $confGate = can_approve_sacrament_application($pdo, $applicationId, 'confirmatio
 <option value="<?= e($s) ?>" <?= $app['status'] === $s ? 'selected' : '' ?>><?= e(humanize_label($s)) ?></option>
 <?php endforeach; ?>
 </select>
-<button type="submit" name="update_status" value="1" class="btn btn-small">Update</button>
+<button type="submit" name="update_status" value="1" class="btn btn-small" data-confirm="Update this application's status?">Update</button>
 </form>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

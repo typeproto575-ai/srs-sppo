@@ -57,7 +57,16 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <!-- Step 4: notification -->
+    <!-- Step 4: payment (before processing; made outside the system) -->
+    <div class="ledger-row">
+        <span class="ledger-no"></span>
+        <div>
+<h3>Payment (outside this website)</h3>
+            <p>Once your details match a parish record, your request or application is marked <strong>awaiting payment</strong>. Payment is never taken on this website. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. The office records your payment by hand, and processing continues.</p>
+        </div>
+    </div>
+
+    <!-- Step 5: notification -->
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
@@ -66,12 +75,12 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <!-- Step 5: pickup (identity verified here — no online uploads) -->
+    <!-- Step 6: pickup (identity verified here — no online uploads) -->
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
 <h3>Verify and complete onsite</h3>
-            <p>If documents are needed, the parish office will tell you whether to send them to the parish's official email address or bring them to the office. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
+            <p>If documents are needed, the parish office will tell you whether to bring them to the office or how to send them. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
         </div>
     </div>
 

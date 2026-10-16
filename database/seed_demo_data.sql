@@ -6,8 +6,7 @@
 -- Confirmation, and First Communion records, requests, and applications.
 -- Marriage records are included; all supported workflows are seeded.
 --
--- Demo login:
---   username: secretary    password: SPPOsecretary2026
+-- Create the first administrator separately with scripts/create-admin.php.
 -- =====================================================================
 
 USE srs_sppo_db;
@@ -40,21 +39,7 @@ DELETE FROM persons;
 DELETE FROM audit_logs WHERE action = 'demo_seed';
 
 -- =====================================================================
--- 2. DEMO SECRETARY ACCOUNT
--- =====================================================================
-INSERT INTO users (id, full_name, username, email, password_hash, role, is_active)
-VALUES (1, 'Rosario D. Santos', 'secretary', 'secretary@srs-sppo.local',
-        '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq',
-        'secretary', 1)
-ON DUPLICATE KEY UPDATE
-  full_name = VALUES(full_name),
-  email = VALUES(email),
-  password_hash = VALUES(password_hash),
-  role = VALUES(role),
-  is_active = VALUES(is_active);
-
--- =====================================================================
--- 3. GENERATE 21 ROWS FOR EVERY SACRAMENT TYPE
+-- 2. GENERATE 21 ROWS FOR EVERY SACRAMENT TYPE
 -- =====================================================================
 DELIMITER $$
 

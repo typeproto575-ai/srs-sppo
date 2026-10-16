@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) $errors[] = 'Please enter a valid contact number (at least 10 digits).';
     if ($email === '')           $errors[] = 'Email address is required.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
+    if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
 
     // Abuse guard: rolling 24h cap per email address and per client IP.
     // Runs only after field validation passes, so re-submitting an invalid
@@ -83,10 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
 
+            // Online pre-application pauses at "awaiting payment": payment is
+            // handled outside the system and marked paid by hand later.
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_applications
                     (tracking_number, submission_channel, sacrament_type, status)
-                 VALUES (?, 'online', 'baptismal', 'submitted')"
+                 VALUES (?, 'online', 'baptismal', 'awaiting_payment')"
             );
             $stmt->execute([$trackingNumber]);
             $applicationId = (int) $pdo->lastInsertId();
@@ -157,7 +160,7 @@ require_once __DIR__ . '/../../includes/header.php';
 ?>
 
 <section class="request-form">
-    <div class="alert alert-info online-intake-notice"><strong>Online application for parish review:</strong> Submitting this form does not mean the application is approved. If documents are needed, the parish office will tell you whether to email them or bring them onsite.</div>
+    <div class="alert alert-info online-intake-notice"><strong>Online application for parish review:</strong> Submitting this form does not mean the application is approved. If documents are needed, show them in person at the Parish Office (originals or photocopies, as the office requires). The system never receives or stores documents — please do not email or message them.</div>
 
     <h1>Baptismal Application</h1>
     <p>Use this form to apply to have an infant or child baptized at this parish. There is no age-eligibility check for Baptism — the parish office will follow up directly with any scheduling requirements.</p>
@@ -279,6 +282,8 @@ require_once __DIR__ . '/../../includes/header.php';
                     <input type="date" name="preferred_date" value="<?= e($_POST['preferred_date'] ?? '') ?>">
                 </label>
             </fieldset>
+
+            <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>
 
             <button type="submit" class="btn">Review Application</button>
         </form>

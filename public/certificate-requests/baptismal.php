@@ -164,16 +164,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ---- Step 2: confirm the found record, or ask for a manual search -----
+    // ---- Step 2: details recorded (NEUTRAL RESULT) ---------------------------
+    // The visitor is NEVER shown whether a record exists: the register search
+    // must not act as an existence oracle. Exactly one match is taken as the
+    // request's claim; zero or several fall back to a manual register search by
+    // the secretary.
     if ($action === 'choose' && $flow) {
-        $rid = (int) ($_POST['record_id'] ?? 0);
-        if ($rid > 0 && in_array($rid, $flow['record_ids'], true)) {
-            $flow['selected_id'] = $rid;
+        $ids = array_values(array_map('intval', $flow['record_ids'] ?? []));
+        if (count($ids) === 1) {
+            $flow['selected_id'] = $ids[0];
             $flow['path']        = 'match';
-            $_SESSION[$flowKey]  = $flow;
-            $goto('contact');
+        } else {
+            $flow['selected_id'] = null;
+            $flow['path']        = 'manual';
         }
-        $errors[] = 'Please select the record to continue.';
+        $_SESSION[$flowKey]  = $flow;
+        $goto('contact');
     }
     if ($action === 'manual' && $flow) {
         $flow['selected_id'] = null;
@@ -260,16 +266,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $trackingNumber = generate_tracking_number($pdo, 'certificate_requests');
 
+                // Online pre-application: when a register match was found the
+                // requester pauses at "awaiting payment" (payment is handled
+                // outside the system and marked paid by hand later). A no-match
+                // submission keeps the manual-search flow and stays 'pending'.
+                $initialStatus = $matchedId ? 'awaiting_payment' : 'pending';
+
                 $stmt = $pdo->prepare(
                     "INSERT INTO certificate_requests
                         (tracking_number, submission_channel, sacrament_type, requester_name, requester_relationship,
                          requester_relationship_other, requester_email, requester_contact_number,
                          purpose, purpose_other, status)
-                     VALUES (?, 'online', 'baptismal', ?, ?, ?, ?, ?, ?, ?, 'pending')"
+                     VALUES (?, 'online', 'baptismal', ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $trackingNumber, $requesterName, $requesterRelationship, '',
-                    $requesterEmail, $requesterContact, $purpose, $purposeOther,
+                    $requesterEmail, $requesterContact, $purpose, $purposeOther, $initialStatus,
                 ]);
                 $requestId = (int) $pdo->lastInsertId();
 

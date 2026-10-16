@@ -8,9 +8,9 @@ The SRS accepts online pre-applications, not unrestricted public record transact
 
 ## Public capabilities
 
-The public service selector links to the four certificate request forms and the Baptism and Marriage application forms. Each form uses the existing CSRF-protected, prepared-statement, transaction-safe pattern and records `submission_channel = online`. The shared confirmation panel displays the tracking number and points the requester to public tracking by tracking number plus recorded email.
+The public service selector links to the four certificate request forms and all four sacrament application forms: Baptism, Confirmation, First Communion, and Marriage. Each form uses the existing CSRF-protected, prepared-statement, transaction-safe pattern and records `submission_channel = online`. The shared confirmation panel displays the tracking number and points the requester to public tracking by tracking number plus recorded email.
 
-Requirements are not uploaded through the public site. The requester is instructed to follow the official parish Gmail process after secretary review or provide requirements onsite. Identity documents are not stored by the system; identity is verified in person when required.
+Requirements are not uploaded through the public site. The requester is instructed to show them in person at the Parish Office. Identity documents are not stored by the system; identity is verified in person when required.
 
 ## Secretary capabilities
 

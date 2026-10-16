@@ -158,10 +158,16 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <summary class="sidebar-group-title">System</summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?>>Accounts</a></li>
-                <li><a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?>>Backup</a></li>
+                <?php if ($isParishAdmin): ?>
+                    <li><a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?>>Backup</a></li>
+                <?php endif; ?>
                 <li><a href="<?= $basePath ?>/admin/system/archive-record.php"<?= $isActive('/admin/system/archive-record.php') ?>>Archive / Restore</a></li>
                 <li><a href="<?= $basePath ?>/admin/email-delivery.php"<?= $isActive('/admin/email-delivery.php') ?>>Email Log</a></li>
                 <li><a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?>>Audit Log</a></li>
+<?php if ($isParishAdmin): ?>
+    <li><a href="<?= $basePath ?>/admin/system/retention-purge.php"<?= $isActive('/admin/system/retention-purge.php') ?>>Retention & Purge</a></li>
+<?php endif; ?>
+</ul>
             </ul>
         </details>
         <?php endif; ?>

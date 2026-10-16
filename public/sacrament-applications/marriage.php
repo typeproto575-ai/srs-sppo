@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($venue, ['church', 'barangay_chapel'], true)) $errors[] = 'Please select a valid wedding venue.';
     if (!in_array($g('groom_baptized'), ['yes', 'no'], true) || !in_array($g('bride_baptized'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are baptized Catholic.';
     if (!in_array($g('groom_confirmed'), ['yes', 'no'], true) || !in_array($g('bride_confirmed'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are confirmed Catholic.';
+    if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
 
     if ($weddingDate !== '') {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM schedule_events WHERE event_date = ? AND event_type IN ('wedding','mass')");
@@ -50,7 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
             $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-            $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, status) VALUES (?, 'online', 'marriage', 'submitted')")->execute([$trackingNumber]);
+            // Online pre-application pauses at "awaiting payment": payment is
+            // handled outside the system and marked paid by hand later.
+            $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, status) VALUES (?, 'online', 'marriage', 'awaiting_payment')")->execute([$trackingNumber]);
             $applicationId = (int) $pdo->lastInsertId();
             $data = [
                 'application_id' => $applicationId,
@@ -135,6 +138,7 @@ foreach ($rawSponsorNames as $i => $rawName) {
 if (count($sponsorRows) === 0) { $sponsorRows = ['']; $sponsorRes = ['']; }
 ?>
 <fieldset><legend>Principal Sponsors</legend><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><div class="inline-fields"><label>Sponsor Name <input name="sponsor_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label><label>Residence <input name="sponsor_residence[]" value="<?= e(isset($sponsorRes[$i]) && is_string($sponsorRes[$i]) ? $sponsorRes[$i] : '') ?>"></label></div><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
+<label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>
 <button type="submit" class="btn">Review and Submit Application</button>
 </form>
 <?php endif; ?></section>

@@ -546,10 +546,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="field-hint">Review the possible matches and select a person only when you are sure. Leave blank if this record is not linked yet.</p>
                 </div>
                 <div class="inline-fields">
-                    <label>Birth Date <input autocomplete="off" type="date" name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
+                    <label>Birth Date <input autocomplete="off" type="date" data-nudge name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
                     <label>Birthplace <input autocomplete="off" type="text" name="child_birthplace" value="<?= e($_POST['child_birthplace'] ?? $editRecord['child_birthplace'] ?? '') ?>"></label>
                     <label>Baptism Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? $editRecord['baptism_date'] ?? '') ?>" required></label>
-                    <label>Place of Baptism <input autocomplete="off" type="text" name="baptism_place" value="<?= e($_POST['baptism_place'] ?? $editRecord['baptism_place'] ?? '') ?>"></label>
+                    <label>Place of Baptism <input autocomplete="off" type="text" data-nudge name="baptism_place" value="<?= e($_POST['baptism_place'] ?? $editRecord['baptism_place'] ?? '') ?>"></label>
                 </div>
                 
             </fieldset>
@@ -557,11 +557,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Parents</legend>
                 <div class="inline-fields">
-                    <label>Father's Name <input autocomplete="off" type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
+                    <label>Father's Name <input autocomplete="off" type="text" data-nudge name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
                     <label>Father's Birthplace <input autocomplete="off" type="text" name="father_birthplace" value="<?= e($_POST['father_birthplace'] ?? $editRecord['father_birthplace'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
-                    <label>Mother's Maiden Name <input autocomplete="off" type="text" name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <label>Mother's Maiden Name <input autocomplete="off" type="text" data-nudge name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
                     <label>Mother's Birthplace <input autocomplete="off" type="text" name="mother_birthplace" value="<?= e($_POST['mother_birthplace'] ?? $editRecord['mother_birthplace'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
@@ -636,7 +636,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <label>Officiating Minister <input autocomplete="off" type="text" name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
+                <label>Officiating Minister <input autocomplete="off" type="text" data-nudge name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
                 <label>Remarks / Observanda <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 

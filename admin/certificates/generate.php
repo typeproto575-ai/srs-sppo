@@ -31,8 +31,6 @@ if (!in_array($printMode, $allowedPrintModes, true)) {
 // the canonical records table (for the authoritative register entry).
 // Used for certificate preview and record matching. The *_name columns let us
 // auto-suggest and validate record matches without hardcoding 4 queries.
-// (death_burial is intentionally absent: certificate_requests.sacrament_type
-// is an ENUM without death_burial, so no such request can exist.)
 const CERT_EXT = [
     'baptismal'      => ['ext' => 'baptismal_certificate_requests',       'record' => 'baptismal_records',        'ext_name' => 'child_full_name',      'record_name' => 'child_full_name'],
     'confirmation'   => ['ext' => 'confirmation_certificate_requests',    'record' => 'confirmation_records',     'ext_name' => 'confirmand_full_name',  'record_name' => 'confirmand_full_name'],
@@ -673,10 +671,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php endforeach; ?>
                         </table>
                         <?php if (!empty($req['verification_code'])): ?>
+                            <?php
+                            // Local verification QR: absolute URL to verify.php with the token,
+                            // rendered on this server (no external QR service, no token logging).
+                            $certVerifyUrl = rtrim(app_url(), '/') . '/public/verify.php?token=' . rawurlencode((string) $req['verification_code']);
+                            $certQrUri = qr_data_uri($certVerifyUrl);
+                            ?>
+                            <?php if ($certQrUri === null || app_url_is_local()): ?>
+                                <div class="alert alert-warning" style="margin-bottom:0.5rem;">QR warning: the verification link <?= $certQrUri === null ? 'could not be encoded' : 'points at <strong>' . e(app_url() === '' ? '(APP_URL not set)' : app_url()) . '</strong>' ?>. A QR that points to localhost / 127.0.0.1 only works on this computer. Set <code>SRS_APP_URL</code> to the parish public address before printing.</div>
+                            <?php endif; ?>
                             <div class="cert-verification" style="margin-top: 1rem; font-size: 0.8rem; color: #555; border-top: 1px solid #ccc; padding-top: 0.5rem; display: flex; align-items: center; gap: 1rem;">
+                                <?php if ($certQrUri !== null): ?>
                                 <div class="cert-qr-code">
-                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=<?= urlencode($basePath . '/public/verify.php?token=' . $req['verification_code']) ?>" alt="Verification QR Code" style="width: 60px; height: 60px;">
+                                    <img src="<?= e($certQrUri) ?>" alt="Verification QR Code" style="width: 25mm; height: 25mm;">
                                 </div>
+                                <?php endif; ?>
                                 <div class="cert-token-text">
                                     <strong>Verify this certificate:</strong><br>
                                     Visit: <?= e($basePath . '/public/verify.php') ?><br>

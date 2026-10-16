@@ -3,7 +3,7 @@
  * Session guard. Include at the top of any /admin page.
  * Usage:
  *   require_once __DIR__ . '/../includes/auth.php';
- *   require_role('secretary');            // the only staff role in the system
+ *   require_role('secretary');            // secretary access; parish_admin inherits it
  */
 
 // Make sure helper functions (secure_session_start, redirect_to, e, ...)

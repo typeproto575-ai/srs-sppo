@@ -26,7 +26,7 @@ $pageTitle = 'Sacrament Applications Queue';
 // Every status that exists on sacrament_applications (used when no
 // sacrament filter is chosen).
 $allStatuses = [
-    'submitted', 'documents_pending', 'interview_scheduled', 'banns_in_progress',
+    'submitted', 'awaiting_payment', 'documents_pending', 'interview_scheduled', 'banns_in_progress',
     'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected',
 ];
 
@@ -35,9 +35,9 @@ $allStatuses = [
 // uses the interview + banns (Tawag sa Kasal) stages; Baptismal,
 // Confirmation and First Communion go through their seminar then approval.
 $statusFlow = [
-    'baptismal'       => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
-    'confirmation'    => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
-    'first_communion' => ['submitted', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'baptismal'       => ['submitted', 'awaiting_payment', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'confirmation'    => ['submitted', 'awaiting_payment', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
+    'first_communion' => ['submitted', 'awaiting_payment', 'documents_pending', 'seminar_pending', 'ready_for_approval', 'approved', 'scheduled', 'completed', 'rejected'],
     'marriage'        => $allStatuses,
 ];
 
@@ -80,7 +80,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
         } elseif (!sacrament_application_transition_valid($curStatus, $newStatus, $appType)) {
             log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change refused: {$curStatus} -> {$newStatus} for {$appType}.");
             $proceed = false;
-        } elseif ($newStatus === 'approved') {
+        } else {
+            // Payment gate: an online application still awaiting payment cannot
+            // advance until the secretary records the payment by hand.
+            $gateRowStmt = $pdo->prepare('SELECT submission_channel, paid_at FROM sacrament_applications WHERE id = ?');
+            $gateRowStmt->execute([$applicationId]);
+            $gateRow = $gateRowStmt->fetch() ?: [];
+            $payGate = sacrament_application_payment_gate(
+                ['status' => $curStatus, 'submission_channel' => $gateRow['submission_channel'] ?? 'onsite', 'paid_at' => $gateRow['paid_at'] ?? null],
+                $newStatus
+            );
+            if (!$payGate['ok']) {
+                log_activity($pdo, current_user()['id'], 'sacrament_application_status_rejected', 'sacrament_applications', $applicationId, "Status change blocked by payment gate: {$curStatus} -> {$newStatus}.");
+                $proceed = false;
+            }
+        }
+        if ($proceed && $newStatus === 'approved') {
             // Approval is the hard gate: every prerequisite must be met.
             $gate = can_approve_sacrament_application($pdo, $applicationId, $appType);
             if (!$gate['ok']) {
@@ -97,6 +112,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && c
             log_activity($pdo, current_user()['id'], 'sacrament_application_status_updated', 'sacrament_applications', $applicationId,
                 "Status changed to {$newStatus}");
         }
+    }
+    redirect_to('/admin/requests/applications-queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
+    exit;
+}
+
+// --- Mark payment received (by hand) for an awaiting-payment application ----
+// Records only WHO and WHEN -- never an amount. Valid only while the online
+// application is awaiting payment and not yet recorded. This unblocks the
+// payment gate in the status-update flow above.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_paid']) && ctype_digit((string) ($_POST['application_id'] ?? '')) && csrf_verify()) {
+    $applicationId = (int) $_POST['application_id'];
+    $rowStmt = $pdo->prepare('SELECT status, paid_at FROM sacrament_applications WHERE id = ?');
+    $rowStmt->execute([$applicationId]);
+    $row = $rowStmt->fetch();
+    if ($row && $row['status'] === 'awaiting_payment' && empty($row['paid_at'])) {
+        $up = $pdo->prepare('UPDATE sacrament_applications SET paid_at = NOW(), paid_by = ? WHERE id = ?');
+        $up->execute([current_user()['id'], $applicationId]);
+        log_activity($pdo, current_user()['id'], 'sacrament_application_payment_recorded', 'sacrament_applications', $applicationId, 'Payment recorded by hand (no amount stored).');
     }
     redirect_to('/admin/requests/applications-queue.php' . (isset($_GET['status']) ? '?status=' . urlencode($_GET['status']) : ''));
     exit;
@@ -130,6 +163,7 @@ $rfConfig = [
         'status'    => ['label' => 'Status',
             'options' => [
                 'submitted'          => 'Submitted',
+                'awaiting_payment'   => 'Awaiting payment',
                 'requirements_pending' => 'Requirements pending',
                 'requirements_incomplete' => 'Requirements incomplete',
                 'awaiting_onsite_verification' => 'Awaiting onsite verification',
@@ -321,6 +355,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             ];
                             if (isset($detailPages[$app['sacrament_type']])): ?>
                                 <a href="<?= $basePath ?><?= $detailPages[$app['sacrament_type']] ?>?id=<?= (int) $app['id'] ?>" class="btn btn-secondary btn-small">Detail</a>
+                            <?php endif; ?>
+                            <?php if (($app['status'] ?? '') === 'awaiting_payment' && empty($app['paid_at'])): ?>
+                                <form autocomplete="off" method="post" class="inline-fields" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                                    <button type="submit" name="mark_paid" value="1" class="btn btn-small" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">Mark as Paid</button>
+                                </form>
                             <?php endif; ?>
                         </td>
                         <td class="row-actions">

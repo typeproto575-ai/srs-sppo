@@ -29,7 +29,7 @@ The system shall:
 1. Provide the secretary with a reliable workspace for encoding and managing onsite requests and applications.
 2. Provide fast, searchable access to digitized sacramental records while preserving physical-register references.
 3. Support certificate processing, printing, finalization, notification, pickup, and release tracking.
-4. Track requirements received physically or through the official parish Gmail.
+4. Track requirements shown in person at the office.
 5. Provide public information pages for parish procedures and documentary requirements.
 6. Provide optional public status tracking for reference numbers issued by the parish office, without requiring a parishioner account.
 7. Preserve an append-only audit history of security, account, record, certificate, and workflow actions.
@@ -82,7 +82,7 @@ A Master Account transfer shall require explicit confirmation and shall create a
 The Secretary account is the operational role. A secretary shall be able to:
 
 - Encode onsite certificate requests.
-- Encode onsite Baptism and Marriage applications.
+- Encode onsite Baptism, Confirmation, First Communion, and Marriage applications.
 - Search, view, and update approved record fields.
 - Record whether requirements were received physically, through Gmail, or through both channels.
 - Record requirements as not received, received, under review, incomplete, or verified.
@@ -177,19 +177,19 @@ Legacy database values may be retained during migration, but the user interface 
 
 ### 4.2 Sacrament application workflow
 
-Baptism and Marriage applications are encoded by the secretary after an onsite interview or after the secretary reviews requirements received through the official Gmail. Confirmation and First Holy Communion are handled according to the parish's approved record-status process rather than through new public application forms.
+All four sacrament applications are encoded by the secretary after an onsite interview or after the secretary verifies requirements shown in person at the office.
 
 The application workflow shall record:
 
 - Applicant or subject information.
 - Email address or email addresses required by the official parish forms.
-- Requirements source: physical submission, official Gmail, or both.
+- Requirements source: shown in person at the office.
 - Requirements status: not received, received, under review, incomplete, or verified.
 - Missing-requirement notes.
 - Interview, seminar, banns, clearance, and schedule information where applicable.
 - Secretary notes and status history.
 
-Submitting requirements through Gmail shall not automatically create an application. The secretary must review the email and encode the application.
+Showing requirements at the office shall not automatically create an application. The secretary must verify them in person and encode the application.
 
 ### 4.3 Certificate pickup and release
 
@@ -197,17 +197,17 @@ When a certificate is ready, the secretary shall mark it `ready_for_pickup` and 
 
 At pickup, the secretary shall verify the claimant in person, confirm the correct request, and then mark the request `released`. The system shall record the release date, time, staff account, and relevant claimant note without storing a copy of an identity document.
 
-### 4.4 Requirements sent through Gmail
+### 4.4 Requirements shown in person
 
-The official Gmail inbox remains outside the application. The system shall store only workflow metadata, such as:
+Supporting documents are shown in person at the Parish Office only (originals or photocopies, as the office requires). Gmail stays only as the outgoing notification relay for status emails — staff never ask for documents by email or Messenger, and the system never receives or stores documents. The system shall store only workflow metadata, such as:
 
-- Submission source: physical, Gmail, or both.
+- Submission source: in person at the office.
 - Requirements status.
 - Date reviewed.
 - Secretary who reviewed the requirements.
 - Missing-document or correction notes.
 
-The application shall not silently copy Gmail attachments into public web storage. Any future document-storage feature requires a separate privacy and retention design.
+The application shall not receive or store document contents. Any future document-storage feature requires a separate privacy and retention design.
 
 ---
 
@@ -235,7 +235,7 @@ Contact information collected by the system shall be email-only unless the paris
 
 ### 6.1 Sacramental records
 
-The system shall support searchable and filterable records for Baptism, Confirmation, First Holy Communion, Marriage, and the parish-approved Death/Burial status record. Records shall retain physical register references where applicable.
+The system shall support searchable and filterable records for Baptism, Confirmation, First Holy Communion, and Marriage. Records shall retain physical register references where applicable.
 
 The secretary shall be able to create, view, search, filter, update, archive, and restore records according to role permissions. Permanent deletion shall not be the normal correction method.
 
@@ -335,16 +335,16 @@ The database shall support, at minimum:
 
 - `users` with individual account identity, role, password hash, active status, and timestamps.
 - `persons` or an equivalent shared identity index.
-- Sacramental record tables for Baptism, Confirmation, First Communion, Marriage, and the approved Death/Burial status record.
+- Sacramental record tables for Baptism, Confirmation, First Communion, and Marriage.
 - `certificate_requests` and sacrament-specific extension tables.
-- `sacrament_applications` and approved extension tables for Baptism and Marriage.
+- `sacrament_applications` and approved extension tables for Baptism, Confirmation, First Communion, and Marriage.
 - Requirements-source, requirements-status, review-date, and review-note data for requests/applications.
 - Schedules and announcements.
 - Notifications.
 - Append-only `audit_logs`.
 - Migration/version tracking.
 
-There shall be no payment, fee, amount, currency, receipt, or online-payment columns or tables. Existing contact-number columns may be retained temporarily for historical database compatibility, but new application code shall use email only and shall not require or write contact numbers. Removal of legacy columns shall occur through a controlled migration after historical-data review.
+There shall be no payment, fee, amount, currency, receipt, or online-payment columns or tables. Existing contact-number columns are retained for contact and historical compatibility, and current public application forms require a contact number. No payment data is stored.
 
 The database shall enforce the rule that at least one active Parish Administrator remains available. Account-management operations must not leave the system without a recoverable Master Account.
 
@@ -399,7 +399,7 @@ The system shall be tested with at least these scenarios:
 
 ---
 
-**Document status:** Updated to reflect the Parish Administrator/Master Account role, secretary account continuity, append-only audit logging, onsite processing, Gmail-based requirements handling, email-only contact, and the explicit exclusion of payment functionality.
+**Document status:** Updated to reflect the Parish Administrator/Master Account role, secretary account continuity, append-only audit logging, onsite processing, in-person requirements handling with Gmail as outgoing notification relay only, email-first contact, and the explicit exclusion of payment functionality.
 
 **Author:** Manus AI
 **Last updated:** September 2026
@@ -444,6 +444,6 @@ Audit entries remain append-only through the application. New entries record the
 
 The public website now presents requests and sacrament applications as onsite parish-office services. Legacy direct submission routes redirect to the requirements and office-process information page, while public tracking remains available for secretary-issued references. The public website does not create accounts, accept payments, collect identity-document uploads, or submit online transactions.
 
-Secretary-side requirements review now records the source of documentary requirements as not yet received, physical submission, official parish Gmail, or both physical and official Gmail. The reviewer can also preserve a missing-requirements or review note with the reviewing account and timestamp. The database includes non-destructive archive metadata for sacramental records and lifecycle fields for certificate finalization and cancellation.
+Secretary-side requirements review now records whether documentary requirements were received (not yet received, or shown in person at the office). The reviewer can also preserve a missing-requirements or review note with the reviewing account and timestamp. The database includes non-destructive archive metadata for sacramental records and lifecycle fields for certificate finalization and cancellation.
 
 Certificate generation now supports an explicit finalization confirmation after physical printing and signature/seal review. Cancellation requires a reason, changes the request to a preserved cancelled state, records the responsible staff member and timestamp, and writes an append-only audit event. Existing regeneration and physical-printing history remain available.

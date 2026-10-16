@@ -8,7 +8,6 @@
    HTML structure in includes/admin-header.php and the login pages.
    ===================================================================== */
 
-/* SRS-SPPO admin (secretary) dashboard layout */
 :root {
     --admin-bg: #f4f1ea;
     --admin-panel: #ffffff;
@@ -166,47 +165,6 @@ textarea {
     justify-content: flex-end;
 }
 
-.master-utilities a {
-    color: rgba(255,255,255,0.9);
-    text-decoration: none;
-    font-size: 0.72rem;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-}
-
-.master-utilities a:hover { color: #fff; }
-
-.master-utilities a.active,
-.master-utilities a.active:hover {
-    color: #e7d7ab;
-    text-decoration: underline;
-    text-underline-offset: 4px;
-}
-
-.btn-header-logout {
-    margin-left: 0.25rem;
-}
-
-/* Log Out is a POST form (CSRF-protected) styled to look like the other
-   utility links in the dark header bar. */
-.logout-form { display: inline-flex; align-items: center; margin-left: 0.25rem; }
-.logout-form .logout-link-btn {
-    background: none;
-    border: 0;
-    padding: 0;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 0.72rem;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    cursor: pointer;
-    font-family: inherit;
-}
-.logout-form .logout-link-btn:hover { color: #fff; }
-
-.mapper-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.4rem 0 0.6rem; }
-.mapper-suggestion { display: inline-flex; margin: 0; }
-
-/* ---- Notification bell (dark header context) --------------------------- */
 .notif-wrap {
     position: relative;
 }
@@ -457,7 +415,7 @@ textarea {
 .sidebar-menu a.active {
     background: rgba(246, 200, 95, 0.16);
     color: #fff;
-    box-shadow: inset 3px 0 3px var(--admin-amber);
+    box-shadow: inset 3px  3px var(--admin-amber);
 }
 
 .admin-content {
@@ -507,16 +465,6 @@ textarea {
 
 .record-detail-card h2 {
     margin-top: 0;
-}
-
-/* This grid fills row-wise, so with three or four panels the later asides
-   wrap back under the main card in the wide left column. Pin the main card to
-   column 1 and let every aside stack down the right rail. Row count is a
-   span, not "1 / -1": these rows are implicit, where -1 has no line to
-   resolve against. Unused rows collapse to zero height, and align-items:
-   start keeps the card from stretching. */
-.record-detail-grid > section.record-detail-card {
-    grid-row: 1 / span 3;
 }
 
 .baptismal-finder-results {
@@ -678,19 +626,6 @@ textarea {
     margin: 1rem 0 0;
 }
 
-/* Quiet heading above each grouped block of fields. Sentence case to match
-   the other labels in this panel; no border, because .record-detail-list > div
-   already draws the rule on its own first row. Every group title follows a
-   .record-detail-list, so one margin value governs them all -- there is no
-   workable "first group only" selector here, since the panel's first <p> is
-   the "Read-only view" hint and :first-of-type would never match a title. */
-.record-detail-group-title {
-    margin: 1.1rem 0 0.15rem;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--admin-muted);
-}
-
 .record-detail-list > div {
     display: grid;
     grid-template-columns: minmax(9rem, 0.45fr) minmax(0, 1fr);
@@ -726,17 +661,6 @@ textarea {
     color: var(--admin-green);
     font-size: 0.85rem;
     font-weight: 700;
-}
-
-/* The Related records and Record history panels both markup their list with
-   this class, but no rule ever existed for it and neither stylesheet has a
-   global ul reset (only * { box-sizing: border-box; }), so the list inherited
-   the browser default: disc bullets and ~40px of start padding. The
-   .record-person-link divider/spacing below already shapes these lists. */
-.record-person-link-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
 }
 
 @media (max-width: 760px) {
@@ -785,6 +709,7 @@ textarea {
     font-size: 0.72rem;
     font-weight: 800;
     line-height: 1.2;
+    white-space: nowrap;
 }
 
 .status-approved,
@@ -811,28 +736,6 @@ textarea {
     white-space: nowrap;
 }
 .flag-badge-ok { background: var(--admin-success-soft); color: #23613a; }
-
-/* Attention rows (applications queue + booking conflicts): amber left
-   accent plus warning tint. The tint is deeper than the row-hover color
-   (#faf8f3), and the hover state deepens further, so flagged rows stay
-   obviously "flagged" even on hover. */
-.admin-table tbody tr.row-flagged { background: var(--admin-warning-bg); box-shadow: inset 4px 0 0 var(--admin-amber); }
-.admin-table tbody tr.row-flagged:hover { background: #ffecc2; }
-.admin-table tbody tr.row-flagged td:first-child { border-left: 4px solid var(--admin-amber); }
-
-/* Compact status <select> used in the merged Status column of the
-   applications queue. Pill metrics mirror .status-badge; the
-   background/text color comes from whichever .status-<value> modifier
-   class is also present (no new color logic). */
-.status-select {
-    border: 1px solid transparent;
-    border-radius: 999px;
-    padding: 0.22rem 0.55rem;
-    font-size: 0.72rem;
-    font-weight: 800;
-    line-height: 1.2;
-    max-width: 11rem;
-}
 
 .filter-form,
 .audit-filter-form {
@@ -943,15 +846,11 @@ textarea {
 
 .request-summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 0 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.75rem 1rem;
     margin: 0;
 }
-.request-summary-item {
-    min-width: 0;
-    padding: 0.6rem 0;
-    border-bottom: 1px solid var(--admin-border);
-}
+.request-summary-item { min-width: 0; }
 .request-summary-item dt {
     color: var(--admin-muted); font-size: 0.76rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.04em;
@@ -967,34 +866,8 @@ textarea {
 
 .request-action-panel form { margin: 0 0 0.65rem; }
 .request-action-panel form:last-of-type { margin-bottom: 0; }
-.request-action-panel .btn { width: auto; min-width: 160px; }
+.request-action-panel .btn { width: 100%; }
 .request-action-panel textarea { min-height: 80px; }
-
-
-.reject-disclosure > summary {
-    list-style: none;
-    cursor: pointer;
-    position: relative;
-    padding-right: 2rem;
-}
-.reject-disclosure > summary::-webkit-details-marker {
-    display: none;
-}
-.reject-disclosure > summary::marker {
-    content: "";
-}
-.reject-disclosure > summary::after {
-    content: "▸";
-    position: absolute;
-    right: 0.9rem;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 0.8em;
-    line-height: 1;
-}
-.reject-disclosure[open] > summary::after {
-    content: "▾";
-}
 
 @media (max-width: 820px) {
     .request-detail-grid { grid-template-columns: 1fr; }
@@ -2021,6 +1894,12 @@ textarea {
     border: 1px solid var(--admin-border);
     border-radius: 12px;
 }
+/* The wrapper's overflow-x only has something to scroll if the table is
+   allowed to keep its natural (content) width instead of shrinking to fit
+   the wrapper -- width:100% on .admin-table would otherwise let columns
+   squeeze illegibly on narrow screens instead of triggering the scrollbar.
+   min-width:100% keeps it full-width on desktop where everything fits. */
+.table-scroll > .admin-table { width: max-content; min-width: 100%; }
 
 .unified-records-table { min-width: 720px; margin: 0; }
 .unified-records-table td,
@@ -2071,6 +1950,7 @@ textarea {
 .link-status-partial { background: #fdf1d8; color: #8a6d2f; }
 .link-status-unlinked { background: var(--admin-panel-weak); color: var(--admin-muted); border: 1px solid var(--admin-border); }
 .row-actions {
+    white-space: nowrap;
     text-align: right !important;
 }
 
@@ -2147,14 +2027,3 @@ textarea {
 .sacramental-certificate .sacramental-cert-rule { border-top: 2px solid #2c5a46; width: 82%; }
 .sacramental-certificate .sacramental-cert-kicker { color: #2c5a46; font-weight: 700; }
 .sacramental-certificate .sacramental-cert-subject { border-bottom: 1px solid #b9a37b; padding-bottom: .45rem; }
-.checklist-bulk-apply {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 0.75rem;
-    flex-wrap: wrap;
-}
-.checklist-bulk-apply label { margin: 0; }
-.checklist-bulk-apply select { width: auto; margin-top: 0; }
-.checklist-bulk-apply .field-hint { margin-bottom: 0; }
-

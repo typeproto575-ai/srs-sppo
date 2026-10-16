@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Invalid CSRF token. Please try again.';
         $messageType = 'error';
     } else {
-        $trackingNumber = trim($_POST['tracking_number'] ?? '');
+        $trackingNumber = strtoupper(trim($_POST['tracking_number'] ?? ''));
         $requesterName  = trim($_POST['requester_name'] ?? '');
         $requesterEmail = trim($_POST['requester_email'] ?? '');
         $requestedChanges = trim($_POST['requested_changes'] ?? '');
@@ -24,16 +24,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$trackingNumber || !$requesterName || !$requesterEmail || !$requestedChanges) {
             $message = 'Please fill in all required fields.';
             $messageType = 'error';
+        } elseif (!filter_var($requesterEmail, FILTER_VALIDATE_EMAIL)) {
+            $message = 'Please enter a valid email address.';
+            $messageType = 'error';
+        } elseif (($_POST['privacy_consent'] ?? '') !== '1') {
+            $message = 'You must accept the Privacy Notice before submitting.';
+            $messageType = 'error';
+        } elseif (lookup_is_throttled($pdo, 'lookup_correction', $trackingNumber . '|' . $requesterEmail, 3, 10, 60)) {
+            $message = 'Too many correction requests were sent from your connection. Please wait an hour, or visit the parish office.';
+            $messageType = 'error';
         } else {
             try {
-                $stmt = $pdo->prepare('SELECT id FROM certificate_requests WHERE tracking_number = ?');
-                $stmt->execute([$trackingNumber]);
+                // Every attempt counts, so tracking numbers cannot be probed one by one.
+                lookup_record_attempt($pdo, 'lookup_correction', $trackingNumber . '|' . $requesterEmail);
+
+                // The tracking number AND the email used at submission must both match.
+                $stmt = $pdo->prepare('SELECT id FROM certificate_requests WHERE tracking_number = ? AND LOWER(requester_email) = LOWER(?) AND anonymized_at IS NULL');
+                $stmt->execute([$trackingNumber, $requesterEmail]);
                 $request = $stmt->fetch();
 
-                if (!$request) {
-                    $message = 'Invalid tracking number. Please check and try again.';
-                    $messageType = 'error';
-                } else {
+                if ($request) {
                     $stmt = $pdo->prepare('SELECT id FROM certificate_generation_log WHERE certificate_request_id = ? ORDER BY id DESC LIMIT 1');
                     $stmt->execute([$request['id']]);
                     $certLog = $stmt->fetch();
@@ -41,10 +51,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmt = $pdo->prepare('INSERT INTO correction_requests (tracking_number, requester_name, requester_email, certificate_id, requested_changes, document_path) VALUES (?, ?, ?, ?, ?, ?)');
                     $stmt->execute([$trackingNumber, $requesterName, $requesterEmail, $certificateId, $requestedChanges, null]);
-
-                    $message = 'Your correction request has been submitted successfully. Our office will review it and contact you via email.';
-                    $messageType = 'success';
                 }
+
+                // Same answer whether or not anything matched, so this form cannot be
+                // used to find out which tracking numbers exist.
+                $message = 'Thank you. If the tracking number and email match a request on file, your correction was sent to the parish office. We will contact you by email.';
+                $messageType = 'success';
             } catch (Throwable $e) {
                 error_log('Correction request submission error: ' . $e->getMessage());
                 $message = 'A system error occurred. Please try again later.';
@@ -94,7 +106,11 @@ require_once __DIR__ . '/../includes/header.php';
                 <textarea id="requested_changes" name="requested_changes" rows="5" placeholder="Please describe the error and the correct information..." required><?= e($_POST['requested_changes'] ?? '') ?></textarea>
             </div>
 
-            <p class="field-hint">Do not upload IDs or certificates here. If the secretary needs supporting documents, the parish office will provide the approved submission instructions.</p>
+            <p class="field-hint">Do not upload IDs or certificates here. If the secretary needs supporting documents, show them in person at the Parish Office. The system never receives or stores documents — please do not email or message them.</p>
+
+            <div class="form-group">
+                <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>
+            </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Submit Request</button>

@@ -22,6 +22,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/retention-purge.php';
 
 // SECURITY: parish administrator only (secretaries are deliberately
 // excluded — this is the highest-control admin action).
@@ -39,9 +40,11 @@ $csrf = $_SESSION['csrf_token'];
 
 // --- Handle the confirmed purge (POST only).
 $flash = '';
+$flashIsError = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed'])) {
     if (!csrf_verify()) {
         $flash = 'Your session timed out. Please refresh the page and try again.';
+        $flashIsError = true;
     } else {
         try {
             $affected = retention_execute($pdo, current_user()['id']);
@@ -50,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
                    . '.';
         } catch (Throwable $t) {
             $flash = 'Purge failed: ' . $t->getMessage();
+            $flashIsError = true;
         }
     }
 }
@@ -63,7 +67,7 @@ $dry = retention_dry_run($pdo);
 <p class="field-hint">Anonymizes old finished submissions, scrubs old audit rows, and deletes old disposable rows (rate limits, mail log, notifications, expired reset tokens). <strong>Sacramental register entries are permanent and are never touched.</strong></p>
 
 <?php if ($flash !== ''): ?>
-    <div class="flash flash-<?= $flash instanceof Throwable ? 'error' : 'success' ?>"><?= e($flash) ?></div>
+    <div class="flash flash-<?= $flashIsError ? 'error' : 'success' ?>"><?= e($flash) ?></div>
 <?php endif; ?>
 
 <h2>1. Dry Run — How Much Would Be Affected?</h2>

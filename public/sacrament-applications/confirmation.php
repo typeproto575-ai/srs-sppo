@@ -77,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($baptizedHereAnswer, ['this_parish', 'elsewhere', 'not_sure'], true)) {
         $errors[] = 'Please answer where the applicant was baptized.';
     }
+    if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
 
     // Abuse guard: rolling 24h cap per email address and per client IP.
     // Runs only after field validation passes, so re-submitting an invalid
@@ -94,10 +95,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
 
+            // Online pre-application pauses at "awaiting payment": payment is
+            // handled outside the system and marked paid by hand later.
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_applications
                     (tracking_number, submission_channel, sacrament_type, status)
-                 VALUES (?, 'online', 'confirmation', 'submitted')"
+                 VALUES (?, 'online', 'confirmation', 'awaiting_payment')"
             );
             $stmt->execute([$trackingNumber]);
             $applicationId = (int) $pdo->lastInsertId();
@@ -213,6 +216,8 @@ require_once __DIR__ . '/../../includes/header.php';
                     <input type="text" name="preferred_batch" autocomplete="off" placeholder="e.g. Grade 6, or a specific date" value="<?= e($_POST['preferred_batch'] ?? '') ?>">
                 </label>
             </fieldset>
+
+            <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>
 
             <button type="submit" class="btn">Review Application</button>
         </form>

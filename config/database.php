@@ -21,11 +21,12 @@
  *     which protects against SQL injection for every parameterized query.
  *   - charset=utf8mb4: full Unicode support (handles names with accents, special chars).
  *
- * CONFIGURATION (change for production):
+ * CONFIGURATION:
  *   $DB_HOST  — MySQL server address (localhost for XAMPP).
  *   $DB_NAME  — Database name to connect to.
  *   $DB_USER  — MySQL username.
  *   $DB_PASS  — MySQL password.
+ *   Credentials may come from SRS_DB_USER/SRS_DB_PASS or config/local.php.
  *
  * ERROR HANDLING:
  *   On connection failure, the script dies with the error message.
@@ -44,17 +45,29 @@
 // Database server hostname — 'localhost' means the DB runs on the same machine.
 // Each value can be overridden by an environment variable so real deployments
 // never need credentials inside the code (set SRS_DB_USER/SRS_DB_PASS etc. in
-// the server environment). Falls back to the XAMPP defaults when unset.
+// the server environment).
 $DB_HOST = getenv('SRS_DB_HOST') ?: 'localhost';
 
 // Name of the MySQL database that holds all SRS-SPPO tables
 $DB_NAME = getenv('SRS_DB_NAME') ?: 'srs_sppo_db';
 
-// MySQL username — 'root' is the default XAMPP admin account (no password)
-$DB_USER = getenv('SRS_DB_USER') ?: 'root';
+$localConfig = [];
+$localConfigPath = __DIR__ . DIRECTORY_SEPARATOR . 'local.php';
+if (is_file($localConfigPath)) {
+    $localConfig = require $localConfigPath;
+    if (!is_array($localConfig)) {
+        die('Database setup error: config/local.php must return an array.');
+    }
+}
 
-// MySQL password — empty by default in XAMPP; set a strong password in production
-$DB_PASS = getenv('SRS_DB_PASS') !== false ? getenv('SRS_DB_PASS') : '';
+$DB_USER = getenv('SRS_DB_USER');
+$DB_USER = $DB_USER !== false ? $DB_USER : ($localConfig['DB_USER'] ?? null);
+$DB_PASS = getenv('SRS_DB_PASS');
+$DB_PASS = $DB_PASS !== false ? $DB_PASS : ($localConfig['DB_PASS'] ?? null);
+if ($DB_USER === null || $DB_USER === '' || $DB_PASS === null) {
+    http_response_code(503);
+    die('Database setup error: set SRS_DB_USER and SRS_DB_PASS in the environment or config/local.php.');
+}
 
 // ---------------------------------------------------------------------------
 // CREATE THE PDO INSTANCE

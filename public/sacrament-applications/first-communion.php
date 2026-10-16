@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($parentsMarried, ['yes', 'no', 'civil_only'], true)) $errors[] = 'Please answer the parents Catholic-marriage question.';
     if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
     if (!$consent) $errors[] = 'Parent/Guardian consent is required.';
+    if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
 
     if (!$errors) {
         $cap = public_submission_allowed($pdo, [$email]);
@@ -58,7 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $pdo->beginTransaction();
             $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-            $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, status) VALUES (?, 'online', 'first_communion', 'submitted')")->execute([$trackingNumber]);
+            // Online pre-application pauses at "awaiting payment": payment is
+            // handled outside the system and marked paid by hand later.
+            $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, status) VALUES (?, 'online', 'first_communion', 'awaiting_payment')")->execute([$trackingNumber]);
             $applicationId = (int) $pdo->lastInsertId();
             $stmt = $pdo->prepare("INSERT INTO first_communion_applications
                 (application_id, applicant_full_name, applicant_birthdate, applicant_gender, applicant_birthplace,
@@ -119,6 +122,7 @@ function oldv(string $key): string { return e($_POST[$key] ?? ''); }
                 <label class="checkbox-label"><input type="checkbox" name="parental_consent" value="1" required> I request admission for my child and commit to guiding them in the Catholic faith.</label>
                 <label>Suggested Batch or Date <input type="text" name="preferred_batch" value="<?= oldv('preferred_batch') ?>"></label>
             </fieldset>
+            <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> As the child's parent/guardian, I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a> covering the processing of my child's personal data.</label>
             <button type="submit" class="btn">Review and Submit Application</button>
         </form>
     <?php endif; ?>

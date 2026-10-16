@@ -39,7 +39,7 @@ const CERT_EXT = [
 $filterStatus = $_GET['status'] ?? '';
 $filterSacrament = $_GET['sacrament'] ?? '';
 $filterChannel = $_GET['channel'] ?? '';
-$allowedRequestStatuses = ['pending', 'under_review', 'approved', 'ready_for_pickup', 'released', 'rejected'];
+$allowedRequestStatuses = ['pending', 'submitted', 'under_review', 'awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'processing', 'ready_for_pickup', 'released', 'rejected', 'cancelled'];
 
 $where  = [];
 $params = [];
@@ -69,6 +69,7 @@ $rfConfig = [
             'options' => [
                 'pending'         => 'Pending',
                 'submitted'      => 'Submitted',
+                'awaiting_payment' => 'Awaiting payment',
                 'under_review'    => 'Under review',
                 'requirements_pending' => 'Requirements pending',
                 'requirements_incomplete' => 'Requirements incomplete',

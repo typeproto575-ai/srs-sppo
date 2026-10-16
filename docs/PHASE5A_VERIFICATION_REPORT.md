@@ -18,9 +18,9 @@ Phase 5A has been implemented in the extracted Phase 4 project. The system now s
 |---|---:|---|
 | Public service selection | Complete | Reworked `public/certificate-request.php` with four certificate routes and Baptism/Marriage application routes. |
 | Public online certificate requests | Complete | Reactivated all four existing transaction-safe forms and marked rows with `submission_channel = online`. |
-| Public sacrament applications | Complete | Reactivated Baptism and Marriage application forms and marked rows with `submission_channel = online`. |
+| Public sacrament applications | Complete | Reactivated all four Baptism, Confirmation, First Communion, and Marriage application forms and marked rows with `submission_channel = online`. |
 | Confirmation and tracking | Complete | Retained shared confirmation component, tracking number generation, status lookup, generic failure messaging, and tracking-plus-email verification. |
-| Email-only requirements workflow | Complete | Public forms state that requirements are provided through official parish Gmail after review or onsite; no upload path was added. |
+| In-person requirements workflow | Complete | Public forms state that requirements are shown in person at the Parish Office; no upload path was added. |
 | Admin online queue | Complete | Added `admin/requests/online-requests.php` and a navigation link. |
 | Existing admin queues | Complete | Added online/onsite filters, channel columns, and extended status filters. |
 | Secretary detail review | Complete | Added submission-channel provenance to detail pages and retained requirements checklist, internal notes, audit history, and secretary-only status controls. |
@@ -41,7 +41,7 @@ Before using the online forms against a Phase 4 database, apply `migrations/023_
 The sandbox did not contain the parish staging database or its connection credentials, so a live insert-and-track scenario could not be executed here. The deployment team should run the following acceptance scenarios on the isolated staging database before production use:
 
 1. Submit one valid online Baptismal Certificate request and confirm the shared row, extension row, tracking reference, audit entry, notification, online channel, and rate-limit row.
-2. Submit one valid online Baptism application and confirm the same channel, tracking, audit, and notification behavior.
+2. Submit one valid online application for each of Baptism, Confirmation, First Communion, and Marriage and confirm the same channel, tracking, audit, and notification behavior.
 3. Open the online-submissions queue and verify both records appear with the correct type and channel.
 4. Verify that a wrong email cannot retrieve either record and that the public message does not reveal whether the tracking number exists.
 5. Move a certificate through secretary review, requirements, onsite verification, approval, generation, pickup readiness, and release using the existing secretary controls.

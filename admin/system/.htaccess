@@ -1,0 +1,65 @@
+# SPPO-IS root protection
+# 1. Deny direct web access to dotfiles/dot-directories (.git/, .env, .htaccess)
+# 2. Block throwaway/migration helper scripts (any filename starting with "_")
+#    and markdown docs/metadata that must never be served
+#
+# Migration helpers like migrations/_run007.php and migrations/_test_suggest.php
+# execute DB writes/queries when browsed — the "^_" rule below refuses any file
+# whose name starts with an underscore, anywhere under the web root.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "^_">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md|patch|log)$">
+        Require all denied
+    </FilesMatch>
+    # Dev/debug script stems (check_*, list_*, create_*, audit_*, fix*)
+    <FilesMatch "^(check_|list_|create_|audit_|fix\d*)[^/]*\.(php|py|ps1|bat|txt)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 fallback
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^\.">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "^_">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "\.(bak|ps1|py|vbs|sql|bat|txt|md|patch|log)$">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "^(check_|list_|create_|audit_|fix\d*)[^/]*\.(php|py|ps1|bat|txt)$">
+        Order deny,allow
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Block .git directory and all contents
+RedirectMatch 403 (^|/)\.git(/|$)
+
+# Block the optional local database credential file
+RedirectMatch 403 (^|/)config/local\.php$
+
+# Block direct access to dependency, test, and storage folders and project metadata
+RedirectMatch 403 (^|/)(vendor|tests|storage)(/|$)
+RedirectMatch 403 (^|/)(composer\.json|composer\.lock|phpunit\.xml)$
+
+# Redirect any direct request to the devtools folder to 403 as well
+RedirectMatch 403 (^|/)devtools(/|$)
+
+# Block temp/debug scripts in project root
+RedirectMatch 403 (^|/)(temp_|fix_|scan_|_tmp_)[^/]*\.(php|ps1|py|vbs)$
+RedirectMatch 403 (^|/)scripts/document_project\.php$
+
+# Disable directory listings
+Options -Indexes

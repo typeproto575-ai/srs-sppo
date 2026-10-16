@@ -59,6 +59,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <li>Contact details supplied through this website are used to process the submission, issue a tracking number, communicate status updates, request clarification, and coordinate pickup.</li>
                 <li>Where a submission includes a record search, the name, birthdate, and parents' names entered are used solely to locate the corresponding entry in the parish register. The volume of searches originating from a given network is monitored to prevent misuse. A search result discloses no more than the recorded name and sacrament date.</li>
                 <li>Personal data collected through this website is handled in a manner consistent with the general principles of the Data Privacy Act of 2012 (Republic Act No. 10173) and is not sold, rented, or disclosed to third parties for marketing purposes.</li>
+                <li>For the full notice on what we collect, why, who receives it, how long we keep it, and your rights, see our <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</li>
             </ol>
         </section>
 

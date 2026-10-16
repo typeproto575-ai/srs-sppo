@@ -227,16 +227,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $trackingNumber = generate_tracking_number($pdo, 'certificate_requests');
 
+                // Online pre-application: matched -> "awaiting payment"; no-match
+                // keeps the manual-search flow and stays 'pending'.
+                $initialStatus = $matchedId ? 'awaiting_payment' : 'pending';
+
                 $stmt = $pdo->prepare(
                     "INSERT INTO certificate_requests
                         (tracking_number, submission_channel, sacrament_type, requester_name, requester_relationship,
                          requester_relationship_other, requester_email, requester_contact_number,
                          purpose, purpose_other, status)
-                     VALUES (?, 'online', 'confirmation', ?, ?, ?, ?, ?, ?, ?, 'pending')"
+                     VALUES (?, 'online', 'confirmation', ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $trackingNumber, $requesterName, $requesterRelationship, '',
-                    $requesterEmail, $requesterContact, $purpose, $purposeOther,
+                    $requesterEmail, $requesterContact, $purpose, $purposeOther, $initialStatus,
                 ]);
                 $requestId = (int) $pdo->lastInsertId();
 

@@ -28,7 +28,11 @@ if (!$req) {
 }
 
 // Handle status updates
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$csrfError = false;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
+    $csrfError = true;
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$csrfError) {
     $action = $_POST['action'] ?? '';
     $status = '';
     $note = $_POST['admin_note'] ?? '';
@@ -103,15 +107,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
 <div class="detail-card" style="margin-top: 20px;">
     <h3>Admin Action</h3>
-    <form method="POST">
+    <?php if ($csrfError): ?><div class="alert alert-error">Security token expired or invalid - please reload the page and try again.</div><?php endif; ?>
+    <form method="POST" data-confirm="Save this update?">
+        <?= csrf_field() ?>
         <div class="form-group">
             <label>Admin Review Note:</label>
-            <textarea name="admin_note" class="form-control" rows="4" placeholder="Enter outcome, record update confirmation, or reason for rejection..."><?= e($req['admin_note'] ?? '') ?></textarea>
+            <textarea name="admin_note" class="form-control" rows="4" placeholder="Enter outcome, record update confirmation, or reason for rejection..."><?= e($_POST['admin_note'] ?? $req['admin_note'] ?? '') ?></textarea>
         </div>
         <div class="action-buttons">
-            <button type="submit" name="action" value="review" class="btn btn-small">Mark as Processing</button>
-            <button type="submit" name="action" value="approve" class="btn btn-success btn-small">Mark as Completed</button>
-            <button type="submit" name="action" value="reject" class="btn btn-danger btn-small">Reject Request</button>
+            <button type="submit" name="action" value="review" class="btn btn-small" data-confirm="Mark this correction request as Processing?">Mark as Processing</button>
+            <button type="submit" name="action" value="approve" class="btn btn-success btn-small" data-confirm="Mark this correction request as Completed? Make sure the record has already been corrected.">Mark as Completed</button>
+            <button type="submit" name="action" value="reject" class="btn btn-danger btn-small" data-confirm="Reject this correction request?">Reject Request</button>
         </div>
     </form>
 </div>

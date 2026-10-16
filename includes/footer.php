@@ -14,6 +14,11 @@ $basePath = $basePath ?? base_path();
 </main>
 <!-- Parish contact / attribution line -->
 <footer class="site-footer">
+    <p class="footer-links">
+        <a href="<?= $basePath ?>/public/terms.php">Terms and Conditions</a>
+        &middot;
+        <a href="<?= $basePath ?>/public/privacy.php">Privacy Notice</a>
+    </p>
     <p>&copy; <?= date('Y') ?> St. Patrick's Parish Office, Dingalan, Aurora.</p>
 </footer>
 <?php $mainJsVersion = file_exists(__DIR__ . '/../assets/js/main.js') ? filemtime(__DIR__ . '/../assets/js/main.js') : time(); ?>

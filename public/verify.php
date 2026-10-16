@@ -12,31 +12,48 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 $basePath = base_path();
-$token = $_GET['token'] ?? '';
+$token = trim((string) ($_GET['token'] ?? ''));
 $notice = null;
 $verifiedData = null;
 
 if (!empty($token)) {
-    // We only want to verify certificates that have actually been finalized/released
-    // or at least marked as printed.
-    $stmt = $pdo->prepare('
-        SELECT cr.tracking_number, cr.sacrament_type, cr.requester_name, cr.status,
-               ext.matched_record_id
-        FROM certificate_requests cr
-        LEFT JOIN (
-            SELECT request_id, matched_record_id FROM baptismal_certificate_requests
-            UNION ALL SELECT request_id, matched_record_id FROM confirmation_certificate_requests
-            UNION ALL SELECT request_id, matched_record_id FROM first_communion_certificate_requests
-            UNION ALL SELECT request_id, matched_record_id FROM marriage_certificate_requests
-        ) ext ON ext.request_id = cr.id
-        WHERE cr.verification_code = ?
-    ');
-    $stmt->execute([$token]);
-    $verifiedData = $stmt->fetch();
+    $tokenKey = 'verify_token:' . hash('sha256', $token);
+    $rateLimited = lookup_is_throttled($pdo, 'lookup_verify', $tokenKey, 8, 15, 15);
+    $tokenPattern = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i';
 
-    if (!$verifiedData) {
+    if ($rateLimited) {
+        $notice = 'Too many verification attempts. Please try again later.';
+    } elseif (!preg_match($tokenPattern, $token)) {
+        lookup_record_attempt($pdo, 'lookup_verify', $tokenKey);
         $notice = 'Invalid verification token. The certificate could not be found in our records.';
+    } else {
+        // Only printed certificates that are ready for pickup or released can verify.
+        $stmt = $pdo->prepare("
+            SELECT cr.tracking_number, cr.sacrament_type, cr.requester_name, cr.status, cr.anonymized_at,
+                   ext.matched_record_id
+            FROM certificate_requests cr
+            LEFT JOIN (
+                SELECT request_id, matched_record_id FROM baptismal_certificate_requests
+                UNION ALL SELECT request_id, matched_record_id FROM confirmation_certificate_requests
+                UNION ALL SELECT request_id, matched_record_id FROM first_communion_certificate_requests
+                UNION ALL SELECT request_id, matched_record_id FROM marriage_certificate_requests
+            ) ext ON ext.request_id = cr.id
+            WHERE cr.verification_code = ?
+              AND cr.status IN ('ready_for_pickup', 'released')
+        ");
+        $stmt->execute([$token]);
+        $verifiedData = $stmt->fetch();
+
+        if (!$verifiedData) {
+            lookup_record_attempt($pdo, 'lookup_verify', $tokenKey);
+            $notice = 'Invalid verification token. The certificate could not be found in our records.';
+        } elseif (!empty($verifiedData['anonymized_at'])) {
+            // Retention purge already anonymized this request: show nothing personal.
+            $verifiedData = null;
+            $notice = 'This record has been archived.';
+        }
     }
+
 } else {
     $notice = 'No verification token provided.';
 }
@@ -66,7 +83,8 @@ if (!empty($token)) {
         <h2 style="text-align:center; margin-top:0;">Certificate Verification</h2>
         
         <?php if ($notice): ?>
-            <div class="<?= strpos($notice, 'Invalid') !== false ? 'status-invalid' : 'status-valid' ?>">
+            <?php $noticeIsError = (strpos($notice, 'Invalid') !== false || strpos($notice, 'Too many') !== false); ?>
+            <div class="<?= $noticeIsError ? 'status-invalid' : 'status-valid' ?>"<?= $noticeIsError ? '' : ' style="background:#eef1f4;color:#3c4a57;border:1px solid #d5dbe1;"' ?>>
                 <?= e($notice) ?>
             </div>
         <?php endif; ?>

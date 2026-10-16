@@ -123,7 +123,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'start_review') {
-        if (cert_request_transition_valid($req['status'], 'under_review')) {
+        $payGate = cert_request_payment_gate($req, 'under_review');
+        if (!$payGate['ok']) {
+            $notice = $payGate['reason'];
+        } elseif (cert_request_transition_valid($req['status'], 'under_review')) {
             $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'under_review', date_processed = NOW(), processed_by = ? WHERE id = ?");
             $stmt->execute([current_user()['id'], $requestId]);
             log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId, 'Status: pending -> under_review');
@@ -138,7 +141,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     }
 
     if ($action === 'approve') {
-        if (cert_request_transition_valid($req['status'], 'approved')) {
+        $payGate = cert_request_payment_gate($req, 'approved');
+        if (!$payGate['ok']) {
+            $notice = $payGate['reason'];
+        } elseif (cert_request_transition_valid($req['status'], 'approved')) {
             $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'approved', date_processed = NOW(), processed_by = ? WHERE id = ?");
             $stmt->execute([current_user()['id'], $requestId]);
             log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId, 'Status: under_review -> approved');
@@ -149,6 +155,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $notice = 'Request approved.';
         } else {
             $notice = "Cannot approve from status '{$req['status']}'.";
+        }
+    }
+
+    // Mark an online request's payment as received (by hand). Records only
+    // WHO and WHEN -- never an amount. Only valid while awaiting payment and
+    // not yet recorded. This is what unblocks the payment gate above.
+    if ($action === 'mark_paid') {
+        if (($req['status'] ?? '') !== 'awaiting_payment') {
+            $notice = "Only a request that is awaiting payment can be marked paid.";
+        } elseif (!empty($req['paid_at'])) {
+            $notice = 'Payment has already been recorded for this request.';
+        } else {
+            $stmt = $pdo->prepare("UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ?");
+            $stmt->execute([current_user()['id'], $requestId]);
+            log_activity($pdo, current_user()['id'], 'certificate_request_payment_recorded', 'certificate_requests', $requestId, 'Payment recorded by hand (no amount stored).');
+            $notice = 'Payment recorded. The request can now move forward.';
         }
     }
 
@@ -186,13 +208,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         foreach ($workflowRequirements as $item) {
             $id = (int) $item['id'];
             $status = (string) ($posted[$id] ?? $item['status']);
-            if (!in_array($status, $statuses, true)) continue;
+            $allowed = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received', 'received', 'not_applicable'] : $statuses;
+            if (!in_array($status, $allowed, true)) continue;
             $note = trim((string) ($notes[$id] ?? ''));
             $update->execute([$status, $note !== '' ? $note : null, current_user()['id'], $id, 'certificate_request', $requestId]);
         }
         log_activity($pdo, current_user()['id'], 'certificate_request_requirements_updated', 'certificate_requests', $requestId, 'Requirements checklist updated.');
         $workflowRequirements = workflow_requirements_for($pdo, 'certificate_request', $requestId);
         $notice = 'Requirements checklist saved.';
+    }
+
+    // Confirm the online register match (staff only). The public flow never
+    // tells the visitor whether a record exists; the tracking page reveals the
+    // payment step only after this is recorded. Valid only while awaiting
+    // payment, with a matched record, and not yet confirmed.
+    if ($action === 'confirm_match') {
+        if (($req['status'] ?? '') !== 'awaiting_payment') {
+            $notice = 'Only a request that is awaiting payment can have its match confirmed.';
+        } elseif (!empty($req['match_confirmed_at'])) {
+            $notice = 'The register match has already been confirmed.';
+        } elseif (empty($extRow['matched_record_id'])) {
+            $notice = 'This request has no register match to confirm.';
+        } else {
+            $stmt = $pdo->prepare("UPDATE certificate_requests SET match_confirmed_at = NOW(), match_confirmed_by = ? WHERE id = ?");
+            $stmt->execute([current_user()['id'], $requestId]);
+            log_activity($pdo, current_user()['id'], 'certificate_request_match_confirmed', 'certificate_requests', $requestId, 'Register match confirmed; requester can now see payment instructions.');
+            notify_certificate_requester_status($pdo, $requestId, 'awaiting_payment');
+            $notice = 'Register match confirmed. The tracking page now shows the requester how to pay.';
+        }
     }
 
     $stmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
@@ -225,6 +268,25 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <div class="request-summary-item">
         <dt>Submission Channel</dt>
         <dd><?= e(ucfirst($req['submission_channel'] ?? 'onsite')) ?><?= ($req['submission_channel'] ?? 'onsite') === 'online' ? ' — public pre-application; not yet an official parish record' : '' ?></dd>
+    </div>
+    <div class="request-summary-item">
+        <dt>Payment</dt>
+        <dd>
+            <?php if (!empty($req['paid_at'])): ?>
+                Recorded on <?= e(date('F j, Y g:i A', strtotime($req['paid_at']))) ?><?php
+                    $paidByUser = null;
+                    if (!empty($req['paid_by'])) {
+                        $pb = $pdo->prepare('SELECT full_name FROM users WHERE id = ?');
+                        $pb->execute([(int) $req['paid_by']]);
+                        $paidByUser = $pb->fetchColumn();
+                    }
+                    ?><?= $paidByUser ? ' by ' . e($paidByUser) : '' ?> <span class="field-hint">(no amount stored)</span>
+            <?php elseif (($req['status'] ?? '') === 'awaiting_payment'): ?>
+                <strong>Awaiting payment</strong> <span class="field-hint">— payment is made outside the system and recorded by hand.</span>
+            <?php else: ?>
+                Not applicable
+            <?php endif; ?>
+        </dd>
     </div>
     <div class="request-summary-item">
         <dt>Sacrament</dt>
@@ -380,7 +442,7 @@ if ($notProvided): ?>
             <?php else: ?>
             <tr>
                 <td><?= e($item['requirement_label']) ?></td>
-                <td><select name="requirement_status[<?= (int) $item['id'] ?>]"><?php foreach (['not_received','received','under_review','incomplete','verified','not_applicable'] as $status): ?><option value="<?= e($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>><?= e(workflow_requirement_status_label($status)) ?></option><?php endforeach; ?></select></td>
+                <td><select name="requirement_status[<?= (int) $item['id'] ?>]"><?php $rowStatuses = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received','received','not_applicable'] : ['not_received','received','under_review','incomplete','verified','not_applicable']; foreach ($rowStatuses as $status): ?><option value="<?= e($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>><?= e(workflow_requirement_status_label($status)) ?></option><?php endforeach; ?></select></td>
                 <td><input type="text" name="requirement_notes[<?= (int) $item['id'] ?>]" value="<?= e($item['notes'] ?? '') ?>" placeholder="Optional note"></td>
             </tr>
             <?php endif; ?>
@@ -415,11 +477,30 @@ if ($notProvided): ?>
 
 <section class="request-action-panel">
 <h2>Next Action</h2>
+<?php if (($req['status'] ?? '') === 'awaiting_payment' && empty($req['match_confirmed_at']) && !empty($extRow['matched_record_id'])): ?>
+<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Confirm that this request matches the register entry shown above? The requester will then see the payment instructions.">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="confirm_match">
+    <button type="submit" class="btn btn-small">Confirm Register Match</button>
+    <span class="field-hint">Until this is confirmed, the tracking page stays neutral and does not show the payment step.</span>
+</form>
+<?php endif; ?>
+<?php if (!empty($req['match_confirmed_at'])): ?>
+<p class="field-hint">Register match confirmed on <?= e(date('F j, Y g:i A', strtotime($req['match_confirmed_at']))) ?>.</p>
+<?php endif; ?>
+<?php if (($req['status'] ?? '') === 'awaiting_payment' && empty($req['paid_at'])): ?>
+<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Record that payment for this request has been received (by hand)? No amount is stored.">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="mark_paid">
+    <button type="submit" class="btn btn-small" data-confirm="Record that payment for this request has been received (by hand)? No amount is stored.">Mark as Paid</button>
+    <span class="field-hint">Payment is collected outside the system. This records only that it was received, and by whom.</span>
+</form>
+<?php endif; ?>
 <?php if (cert_request_transition_valid($req['status'], 'under_review')): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;">
+<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Start review of this certificate request?">
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="start_review">
-    <button type="submit" class="btn btn-small">Start Review</button>
+    <button type="submit" class="btn btn-small" data-confirm="Start review of this certificate request?">Start Review</button>
 </form>
 <?php endif; ?>
 

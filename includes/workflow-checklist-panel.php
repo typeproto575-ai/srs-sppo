@@ -20,11 +20,12 @@ if ($workflowEntityType !== '' && $workflowEntityId > 0) {
         foreach ($workflowRequirements as $item) {
             $id = (int) $item['id'];
             $status = (string) ($posted[$id] ?? $item['status']);
-            if (!in_array($status, $statuses, true)) continue;
+            $allowed = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received', 'received', 'not_applicable'] : $statuses;
+            if (!in_array($status, $allowed, true)) $status = (string) $item['status'];
             $note = trim((string) ($notes[$id] ?? ''));
             $update->execute([$status, $note !== '' ? $note : null, current_user()['id'], $id, $workflowEntityType, $workflowEntityId]);
         }
-        $sourceOptions = ['not_yet_received', 'physical', 'official_gmail', 'physical_and_gmail'];
+        $sourceOptions = ['not_yet_received', 'physical'];
         $source = (string) ($_POST['requirements_source'] ?? 'not_yet_received');
         if (!in_array($source, $sourceOptions, true)) $source = 'not_yet_received';
         $missing = trim((string) ($_POST['missing_requirements_note'] ?? ''));
@@ -44,12 +45,12 @@ if ($workflowEntityType !== '' && $workflowEntityId > 0) {
     <form autocomplete="off" method="post">
         <?= csrf_field() ?><input type="hidden" name="action" value="save_requirements">
         <div class="inline-fields workflow-meta-fields">
-            <label>Requirements source <select name="requirements_source"><?php foreach (['not_yet_received' => 'Not yet received', 'physical' => 'Submitted physically', 'official_gmail' => 'Official parish Gmail', 'physical_and_gmail' => 'Physical + official Gmail'] as $value => $label): ?><option value="<?= e($value) ?>" <?= ($workflowMeta['requirements_source'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+            <label>Requirements source <select name="requirements_source"><?php foreach (['not_yet_received' => 'Not yet received', 'physical' => 'Submitted in person at the office'] as $value => $label): ?><option value="<?= e($value) ?>" <?= ($workflowMeta['requirements_source'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
             <label>Missing requirements / review note <input type="text" name="missing_requirements_note" value="<?= e($workflowMeta['missing_requirements_note'] ?? '') ?>" maxlength="500" placeholder="Optional note"></label>
         </div>
         <table class="admin-table checklist-table"><thead><tr><th>Requirement</th><th>Status</th><th>Notes</th></tr></thead><tbody>
         <?php foreach ($workflowRequirements as $item): ?>
-            <tr><td><?= e($item['requirement_label']) ?></td><td><select name="requirement_status[<?= (int) $item['id'] ?>]"><?php foreach (['not_received','received','under_review','incomplete','verified','not_applicable'] as $status): ?><option value="<?= e($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>><?= e(workflow_requirement_status_label($status)) ?></option><?php endforeach; ?></select></td><td><input type="text" name="requirement_notes[<?= (int) $item['id'] ?>]" value="<?= e($item['notes'] ?? '') ?>" placeholder="Optional note"></td></tr>
+            <tr><td><?= e($item['requirement_label']) ?></td><td><select name="requirement_status[<?= (int) $item['id'] ?>]"><?php $rowStatuses = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received','received','not_applicable'] : ['not_received','received','under_review','incomplete','verified','not_applicable']; foreach ($rowStatuses as $status): ?><option value="<?= e($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>><?= e(workflow_requirement_status_label($status)) ?></option><?php endforeach; ?></select></td><td><input type="text" name="requirement_notes[<?= (int) $item['id'] ?>]" value="<?= e($item['notes'] ?? '') ?>" placeholder="Optional note"></td></tr>
         <?php endforeach; ?>
         </tbody></table><button type="submit" class="btn btn-small">Save Checklist</button>
     </form>

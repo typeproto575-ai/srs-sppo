@@ -93,6 +93,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $errors[] = 'This application is not in an approvable workflow state.';
             }
 
+            // Payment gate: an online application still awaiting payment cannot
+            // be advanced until the secretary records the payment by hand.
+            if ($decision === 'approved' && !sacrament_application_payment_gate($app, 'approved')['ok']) {
+                $errors[] = sacrament_application_payment_gate($app, 'approved')['reason'];
+            }
+
             if ($decision === 'approved') {
                 $gate = can_approve_sacrament_application($pdo, $applicationId, 'marriage');
                 if (!$gate['ok']) {
@@ -115,6 +121,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $stmt->execute([$applicationId]);
                 $app = $stmt->fetch();
             }
+        }
+    }
+
+    // Mark an online application's payment as received (by hand). Records only
+    // WHO and WHEN -- never an amount. Only valid while awaiting payment and
+    // not yet recorded. This unblocks the payment gate in the decision handler.
+    if (isset($_POST['mark_paid'])) {
+        if (($app['status'] ?? '') !== 'awaiting_payment') {
+            $errors[] = "Only an application that is awaiting payment can be marked paid.";
+        } elseif (!empty($app['paid_at'])) {
+            $errors[] = 'Payment has already been recorded for this application.';
+        } else {
+            $up = $pdo->prepare("UPDATE sacrament_applications SET paid_at = NOW(), paid_by = ? WHERE id = ?");
+            $up->execute([current_user()['id'], $applicationId]);
+            log_activity($pdo, current_user()['id'], 'sacrament_application_payment_recorded', 'sacrament_applications', $applicationId, 'Payment recorded by hand (no amount stored).');
+            $notice = 'Payment recorded. The application can now move forward.';
+            $stmt = $pdo->prepare("SELECT sa.*, ma.* FROM sacrament_applications sa JOIN marriage_applications ma ON ma.application_id = sa.id WHERE sa.id = ?");
+            $stmt->execute([$applicationId]);
+            $app = $stmt->fetch();
         }
     }
 }
@@ -231,12 +256,22 @@ require __DIR__ . '/../../includes/workflow-checklist-panel.php';
         </form>
 
         <h2>Approval</h2>
+        <?php if (($app['status'] ?? '') === 'awaiting_payment' && empty($app['paid_at'])): ?>
+        <form autocomplete="off" method="post" class="inline-fields" style="margin-top:0.75rem;" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">
+            <?= csrf_field() ?>
+            <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+            <button type="submit" name="mark_paid" value="1" class="btn btn-small" data-confirm="Record that payment for this application has been received (by hand)? No amount is stored.">Mark as Paid</button>
+            <span class="field-hint">Payment is collected outside the system. This records only that it was received, and by whom.</span>
+        </form>
+        <?php elseif (!empty($app['paid_at'])): ?>
+        <p class="field-hint" style="margin-top:0.75rem;">Payment recorded on <?= e(date('F j, Y g:i A', strtotime($app['paid_at']))) ?> (no amount stored).</p>
+        <?php endif; ?>
         <?php if ($app['status'] === 'ready_for_approval' || $app['status'] === 'submitted' || $app['status'] === 'documents_pending'): ?>
-        <form autocomplete="off" method="post" class="inline-fields" style="margin-top:0.75rem;">
+        <form autocomplete="off" method="post" class="inline-fields" style="margin-top:0.75rem;" data-confirm="Update this application's status?">
             <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
             <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-            <button type="submit" name="decision" value="approved" class="btn btn-small">Approve</button>
-            <button type="submit" name="decision" value="rejected" class="btn btn-secondary btn-small">Reject</button>
+            <button type="submit" name="decision" value="approved" class="btn btn-small" data-confirm="Approve this marriage application?">Approve</button>
+            <button type="submit" name="decision" value="rejected" class="btn btn-secondary btn-small" data-confirm="Reject this marriage application?">Reject</button>
         </form>
         <?php else: ?>
         <p class="field-hint">This application is currently <?= e(humanize_label($app['status'])) ?>. Only applications with status "Submitted", "Documents Pending", or "Ready for Approval" can be approved/rejected from here.</p>

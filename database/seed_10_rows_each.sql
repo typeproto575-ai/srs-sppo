@@ -65,22 +65,7 @@ ALTER TABLE marriage_applications
 
 -- 6) Legacy ID columns: the live database already dropped them; nothing to relax.
 -- =====================================================================
--- 1. USERS (10 secretary accounts; same demo password for all)
---    Demo login for every account: SPPOsecretary2026
--- =====================================================================
-INSERT IGNORE INTO users (id, full_name, username, email, password_hash, role, is_active) VALUES
-  (2, 'Marilou B. Cruz', 'm.cruz', 'm.cruz@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (3, 'Josefa R. Mendoza', 'j.mendoza', 'j.mendoza@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (4, 'Antonia S. Reyes', 'a.reyes', 'a.reyes@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (5, 'Corazon M. Aquino', 'c.aquino', 'c.aquino@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (6, 'Teresita L. Garcia', 't.garcia', 't.garcia@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (7, 'Remedios P. Flores', 'r.flores', 'r.flores@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (8, 'Lourdes V. Ramos', 'l.ramos', 'l.ramos@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (9, 'Estrella D. Navarro', 'e.navarro', 'e.navarro@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1),
-  (10, 'Imelda C. Bautista', 'i.bautista', 'i.bautista@srs-sppo.local', '$2y$10$XgX59160n.YF7NHJsxU8Tuzu9g/nfQusXolEsIidwfV.iA4JwKcFq', 'secretary', 1);
-
--- =====================================================================
--- 2. PERSONS (10 total)
+-- 1. PERSONS (10 total)
 -- =====================================================================
 INSERT IGNORE INTO persons (id, first_name, middle_name, last_name, suffix, maiden_name, sex, birth_date, birth_place, address, contact_number, email, baptismal_status) VALUES
   (9, 'Rafael', 'Domingo', 'Mendoza', NULL, NULL, 'male', '2010-04-12', 'Dingalan, Aurora', 'Brgy. Poblacion, Dingalan, Aurora', '0917 555 0101', 'rafael.mendoza@example.com', 'baptized_catholic'),

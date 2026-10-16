@@ -628,7 +628,7 @@ CREATE TABLE correction_requests (
 CREATE TABLE audit_logs (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id      INT UNSIGNED,
-  role_snapshot ENUM('secretary','priest','parish_admin') DEFAULT NULL,
+  role_snapshot ENUM('secretary','parish_admin') DEFAULT NULL,
   action       VARCHAR(150) NOT NULL,
   target_table VARCHAR(100),
   target_id    INT UNSIGNED,

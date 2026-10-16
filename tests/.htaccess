@@ -1,0 +1,8 @@
+# This folder is never opened directly in a browser. PHP loads its files internally.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>

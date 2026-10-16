@@ -55,14 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // The check runs BEFORE format validation so that hammering garbage-
             // formatted tracking numbers is blocked by the same limit too.
             $rateKey       = $trackingNumber . '|' . $email;
-            $ipRateKey     = 'ip:' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-            if (too_many_attempts($pdo, $rateKey, 8, 15) || too_many_attempts($pdo, $ipRateKey, 8, 15)) {
+            if (lookup_is_throttled($pdo, 'lookup_track', $rateKey, 8, 20, 15)) {
                 $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
-                log_activity($pdo, null, 'track_rate_limited', null, null, "Rate limited: {$trackingNumber}");
             } elseif (!preg_match($trackingPattern, $trackingNumber)) {
                 // Malformed format counts as a failed attempt (rate-limit bypass fix).
-                record_attempt($pdo, $rateKey);
-                record_attempt($pdo, $ipRateKey);
+                lookup_record_attempt($pdo, 'lookup_track', $rateKey);
                 $error = 'We couldn\'t find a request matching that tracking number and email combination.';
             } else {
                 // 1. Look in certificate_requests first -- email lives directly on the shared table.
@@ -79,8 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $result = ['kind' => 'certificate', 'row' => $row];
                         } else {
                             // Record failed attempt (wrong email for this tracking number).
-                            record_attempt($pdo, $rateKey);
-                            record_attempt($pdo, $ipRateKey);
+                            lookup_record_attempt($pdo, 'lookup_track', $rateKey);
                             $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                         }
                     } else {
@@ -125,14 +121,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $result = ['kind' => 'application', 'row' => $appRow];
                         } else {
                             // Record failed attempt (no matching email in extension table).
-                            record_attempt($pdo, $rateKey);
-                            record_attempt($pdo, $ipRateKey);
+                            lookup_record_attempt($pdo, 'lookup_track', $rateKey);
                             $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                         }
                     } else {
                         // Record failed attempt (tracking number not found at all).
-                        record_attempt($pdo, $rateKey);
-                        record_attempt($pdo, $ipRateKey);
+                        lookup_record_attempt($pdo, 'lookup_track', $rateKey);
                         $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                     }
                 }
@@ -161,7 +155,7 @@ require_once __DIR__ . '/../includes/header.php';
             $stageIndex = $timeline['index'];
         } else {
             $stageLabels = ['Application Received', 'Secretary Review', 'Requirements / Onsite Verification', 'Approved', 'Scheduled', 'Completed'];
-            $stageMap = ['submitted' => 0, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'documents_pending' => 1, 'interview_scheduled' => 2, 'banns_in_progress' => 2, 'seminar_pending' => 2, 'awaiting_onsite_verification' => 2, 'ready_for_approval' => 2, 'approved' => 3, 'scheduled' => 4, 'completed' => 5];
+            $stageMap = ['submitted' => 0, 'awaiting_payment' => 1, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'documents_pending' => 1, 'interview_scheduled' => 2, 'banns_in_progress' => 2, 'seminar_pending' => 2, 'awaiting_onsite_verification' => 2, 'ready_for_approval' => 2, 'approved' => 3, 'scheduled' => 4, 'completed' => 5];
             $stageIndex = $stageMap[$status] ?? 0;
         }
         ?>
@@ -186,7 +180,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </ol>
                 <p class="field-hint">
-                    <?php if ($status === 'ready_for_pickup'): ?>
+                    <?php if ($status === 'awaiting_payment'): ?>
+                        <strong>Awaiting payment.</strong> Your request has been received and matched. Payment is made <strong>outside this website</strong> — the office never takes money online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once the office records your payment.
+                    <?php elseif ($status === 'ready_for_pickup'): ?>
                         Your certificate is ready. Please visit the parish office with your tracking number and valid identification. Certificates are released in person.
                     <?php elseif ($status === 'released'): ?>
                         This transaction was released at the parish office.

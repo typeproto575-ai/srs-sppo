@@ -26,7 +26,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="hub-cards">
         <div class="hub-card">
             <h3>No document uploads</h3>
-            <p>Online forms do not ask you to upload an ID, certificate, or other personal document. If the parish needs a document, staff will tell you whether to email it to the official parish address or bring it to the office.</p>
+            <p>Online forms do not ask you to upload an ID, certificate, or other personal document. If the parish needs a document, show it in person at the Parish Office (originals or photocopies, as the office requires). The system never receives or stores documents — please do not email or message them.</p>
         </div>
         <div class="hub-card">
             <h3>Submission is not approval</h3>
@@ -41,7 +41,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="option-group" aria-labelledby="application-preparation-heading">
     <h2 id="application-preparation-heading">If you are applying to receive a sacrament</h2>
-    <p>These applications are for a future Baptism or Church Wedding. The public site currently accepts online applications for Baptism and Marriage only; Confirmation and First Communion are handled as existing-record and certificate workflows. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
+    <p>These applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
 
     <div class="ledger">
         <div class="ledger-row">
@@ -78,6 +78,35 @@ require_once __DIR__ . '/../includes/header.php';
                 </ul>
                 <p class="field-hint"><strong>Important:</strong> the parish must review the documents and canonical circumstances before a date is approved. The online form only starts that review.</p>
                 <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Open Marriage Application</a>
+            </div>
+        </div>
+        <div class="ledger-row">
+            <span class="ledger-no"></span>
+            <div>
+                <h3>Confirmation application</h3>
+                <ul class="req-list">
+                    <li>Applicant's full name and birthdate.</li>
+                    <li>Parent or guardian's name, contact number, and email address.</li>
+                    <li>Whether the applicant was baptized at this parish, at another parish or church, or you are not sure. Bring a copy of the Baptismal Certificate when the parish office asks for it.</li>
+                    <li>Sponsor's name, if you have one, and a suggested batch or date. The parish office confirms the actual schedule.</li>
+                </ul>
+                <p class="field-hint">The parish office will tell you which documents and preparation steps apply.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Open Confirmation Application</a>
+            </div>
+        </div>
+        <div class="ledger-row">
+            <span class="ledger-no"></span>
+            <div>
+                <h3>First Communion application</h3>
+                <ul class="req-list">
+                    <li>Applicant's full name, birthdate, gender, birthplace, and current address.</li>
+                    <li>School currently attending, grade level and section, and adviser.</li>
+                    <li>Father's full name, mother's full maiden name, and parent or guardian's name, contact number, and email address.</li>
+                    <li>Baptism details: where the applicant was baptized, and the baptism date, parish church, and church address if known.</li>
+                    <li>Suggested batch or date. The parish office confirms the actual schedule.</li>
+                </ul>
+                <p class="field-hint">The parish office will tell you which documents and preparation steps apply.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Open First Communion Application</a>
             </div>
         </div>
     </div>
