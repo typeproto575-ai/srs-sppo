@@ -957,8 +957,8 @@ final class DatabaseIntegrationTest extends TestCase
 
             $sourceCount = (int) $this->pdo->query('SELECT COUNT(*) FROM announcements')->fetchColumn();
             $dump = export_database_sql($this->pdo);
-            self::assertStringContainsString('CREATE TABLE `announcements`', $dump);
-            self::assertStringContainsString($this->pdo->quote($marker), $dump);
+            self::assertStringContainsString('CREATE TABLE `announcements`', $dump['sql']);
+            self::assertStringContainsString($this->pdo->quote($marker), $dump['sql']);
 
             $server->exec("DROP DATABASE IF EXISTS {$quotedRestore}");
             $server->exec("CREATE DATABASE {$quotedRestore} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -971,7 +971,7 @@ final class DatabaseIntegrationTest extends TestCase
                     PDO::MYSQL_ATTR_MULTI_STATEMENTS => true,
                 ]
             );
-            $restored->exec($dump);
+            $restored->exec($dump['sql']);
 
             self::assertSame(
                 $sourceCount,
