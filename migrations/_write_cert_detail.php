@@ -1,4 +1,9 @@
 <?php
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit('This script can only be run from the command line.');
+}
+
 // Writes the complete certificate-detail.php file.
 // Run: php migrations/_write_cert_detail.php && php -l admin/requests/certificate-detail.php
 $dest = __DIR__ . '/../admin/requests/certificate-detail.php';
