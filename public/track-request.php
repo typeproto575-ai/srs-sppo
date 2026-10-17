@@ -46,9 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please enter a valid email address.';
         } else {
             // ---- Validate tracking-number format before hitting the DB ----
-            // generate_tracking_number() produces e.g. SPPO-2026-000123.
-            // Reject anything that doesn't match so malformed input never reaches SQL.
-            $trackingPattern = '/^SPPO(-[A-Z]+)?-\d{4}-\d{6}$/';
+            // Current tracking numbers use the SPPO format. Older baptismal
+            // submissions used BAP- plus eight hexadecimal characters.
+            // Reject anything else before it reaches the database lookup.
+            $trackingPattern = '/^(?:SPPO(-[A-Z]+)?-\d{4}-\d{6}|BAP-[A-F0-9]{8})$/';
             // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
             // Keyed on tracking+email (existing key) AND on IP (new, to prevent
             // rotating one against the other to route around the per-key limit).
@@ -201,7 +202,7 @@ require_once __DIR__ . '/../includes/header.php';
         <fieldset>
             <legend>Look Up Your Office Transaction</legend>
             <label>Tracking Number *
-                <input type="text" name="tracking_number" placeholder="SPPO-2026-000123" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
+                <input type="text" name="tracking_number" placeholder="SPPO-2026-000123 or BAP-XXXXXXXX" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
             </label>
             <label>Email Address *
                 <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required>

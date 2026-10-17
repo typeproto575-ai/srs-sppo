@@ -28,7 +28,7 @@ $success = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     $errors[] = 'Security token expired or invalid - please reload the page and try again.';
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_announcement']) && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_announcement' && csrf_verify()) {
     require_role('secretary');
 
     $title     = trim($_POST['title'] ?? '');
@@ -47,6 +47,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_announcement']) &
         $id = (int) $pdo->lastInsertId();
         log_activity($pdo, current_user()['id'], 'announcement_posted', 'announcements', $id, "Posted: {$title}");
         redirect_to('/admin/schedule/announcements.php?added=1');
+        exit;
+    }
+}
+
+// --- Update announcement --------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_announcement' && csrf_verify()) {
+    require_role('secretary');
+
+    $editId   = (int) ($_POST['edit_id'] ?? 0);
+    $updTitle = trim($_POST['title'] ?? '');
+    $updContent = trim($_POST['content'] ?? '');
+    $updDate  = $_POST['event_date'] ?: null;
+    $updPublished = isset($_POST['is_published']) ? 1 : 0;
+
+    if ($updTitle === '')   $errors[] = 'Title is required.';
+    if ($updContent === '') $errors[] = 'Content is required.';
+
+    if ($editId && empty($errors)) {
+        $checkStmt = $pdo->prepare("SELECT COUNT(*) FROM announcements WHERE id = ?");
+        $checkStmt->execute([$editId]);
+        if ((int) $checkStmt->fetchColumn() === 0) $errors[] = 'That announcement no longer exists.';
+    }
+
+    if ($editId && empty($errors)) {
+        $stmt = $pdo->prepare(
+            "UPDATE announcements SET title = ?, content = ?, event_date = ?, is_published = ? WHERE id = ?"
+        );
+        $stmt->execute([$updTitle, $updContent, $updDate, $updPublished, $editId]);
+        log_activity($pdo, current_user()['id'], 'announcement_updated', 'announcements', $editId, "Updated: {$updTitle}");
+        redirect_to('/admin/schedule/announcements.php?updated=1');
         exit;
     }
 }
@@ -207,7 +237,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <!-- Add/Edit announcement dialog (same records encode-dialog style) -->
         <?php if ($isSecretary): ?>
-        <dialog id="announcement-dialog" class="encode-dialog"<?= $isEdit ? ' data-autoshow' : '' ?>>
+        <dialog id="announcement-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit announcement — ' . e($editAnnouncement['title']) : 'Post new announcement' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -215,6 +245,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="dialog-body">
                 <form autocomplete="off" method="post" action="">
                     <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="<?= $isEdit ? 'update_announcement' : 'add_announcement' ?>">
                     <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editAnnouncement['id'] ?>"><?php endif; ?>
                     <label>Title * <input autocomplete="off" type="text" name="title" value="<?= e($_POST['title'] ?? ($editAnnouncement['title'] ?? '')) ?>" required></label>
                     <label>Content * <textarea autocomplete="off" name="content" required><?= e($_POST['content'] ?? ($editAnnouncement['content'] ?? '')) ?></textarea></label>
@@ -224,7 +255,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         Publish immediately (visible on the public landing page)
                     </label>
                     <div class="form-actions">
-                        <button type="submit" name="<?= $isEdit ? 'update_announcement' : 'add_announcement' ?>" value="1" class="btn"><?= $isEdit ? 'Save changes' : 'Post Announcement' ?></button>
+                        <button type="submit" value="1" class="btn"><?= $isEdit ? 'Save changes' : 'Post Announcement' ?></button>
                         <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
                     </div>
                 </form>

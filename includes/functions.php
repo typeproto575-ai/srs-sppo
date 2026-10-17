@@ -240,7 +240,7 @@ function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, i
  * ===================================================================== */
 
 // Tunable caps — change here only; every public form reads these constants.
-define('PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY', 3);
+define('PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY', 5);
 define('PUBLIC_SUBMISSIONS_PER_IP_PER_DAY', 20);
 
 /**

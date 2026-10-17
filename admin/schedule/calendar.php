@@ -43,8 +43,9 @@ $isEdit = $editEvent !== null;
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     $errors[] = 'Security token expired or invalid - please reload the page and submit again.';
+    error_log('CALENDAR DEBUG: CSRF verification failed');
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_event']) && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_event' && csrf_verify()) {
     require_role('secretary');
 
     $postedEventType = $_POST['event_type'] ?? '';
@@ -99,7 +100,7 @@ if (isset($_GET['deleted'])) $success = 'Event deleted.';
 
 // --- Update / delete handlers (placed after the edit loader so the shared
 // edit dialog can re-render with validation errors and sticky values) -------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_event']) && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_event' && csrf_verify()) {
     require_role('secretary');
 
     $editId   = (int) ($_POST['edit_id'] ?? 0);
@@ -365,7 +366,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <!-- Add/Edit event dialog (same records encode-dialog style).
              Pre-filled when ?edit=ID was opened; sticky POST values survive
              validation errors so nothing typed is lost. -->
-        <dialog id="event-dialog" class="encode-dialog"<?= $isEdit ? ' data-autoshow' : '' ?>>
+        <dialog id="event-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit event — ' . e($editEvent['title']) : 'Add new event' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -373,6 +374,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="dialog-body">
                 <form autocomplete="off" method="post" action="">
                     <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="<?= $isEdit ? 'update_event' : 'add_event' ?>">
                     <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editEvent['id'] ?>"><?php endif; ?>
                     <label>Type *
                         <select name="event_type" required>

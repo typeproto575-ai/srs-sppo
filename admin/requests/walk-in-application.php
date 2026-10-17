@@ -236,10 +236,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 <label>Type *
                     <select name="sacrament_type" id="sacrament_type" required onchange="showSection(this.value)">
                         <option value="">-- Select --</option>
-                        <option value="baptismal">Baptismal</option>
-                        <option value="confirmation">Confirmation</option>
-                        <option value="first_communion">First Communion</option>
-                        <option value="marriage">Marriage</option>
+                        <option value="baptismal" <?= (($_POST['sacrament_type'] ?? '') === 'baptismal') ? 'selected' : '' ?>>Baptismal</option>
+                        <option value="confirmation" <?= (($_POST['sacrament_type'] ?? '') === 'confirmation') ? 'selected' : '' ?>>Confirmation</option>
+                        <option value="first_communion" <?= (($_POST['sacrament_type'] ?? '') === 'first_communion') ? 'selected' : '' ?>>First Communion</option>
+                        <option value="marriage" <?= (($_POST['sacrament_type'] ?? '') === 'marriage') ? 'selected' : '' ?>>Marriage</option>
                     </select>
                 </label>
             </fieldset>
@@ -354,10 +354,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         <script>
         // Show/hide the sacrament-specific section based on the selected type
         function showSection(type) {
-            document.querySelectorAll('.sacrament-section').forEach(function (el) { el.style.display = 'none'; });
-            var target = document.getElementById('section-' + type);
-            if (target) target.style.display = 'block';
+            document.querySelectorAll('.sacrament-section').forEach(function (el) {
+                var active = el.id === 'section-' + type;
+                el.style.display = active ? 'block' : 'none';
+                el.querySelectorAll('input, select, textarea').forEach(function (field) {
+                    field.disabled = !active;
+                });
+            });
         }
+        showSection(document.getElementById('sacrament_type').value);
 
         // Add a new godparent input row
         function addGodparent() {
