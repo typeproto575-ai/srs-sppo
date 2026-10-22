@@ -95,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childBirthplace = fd('child_birthplace',      $_POST);
 
                 if ($childName === '')       $errors[] = "Child's full name is required.";
+                if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
                 if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
                 if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
                 if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
@@ -103,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($currentStep === STEP_FAMILY_REQS) {
                 $parentGuardian = fd('parent_guardian_name', $_POST);
                 if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
+                if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
             }
 
             if ($currentStep === STEP_CONTACT_CONSENT) {

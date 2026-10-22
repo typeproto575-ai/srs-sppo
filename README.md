@@ -27,12 +27,11 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    `http://localhost/srs-sppo/admin/login.php` for staff login.
 7. Set `SRS_FORCE_HTTPS=true` in production. Leave it unset or false for local
    XAMPP HTTP development. When enabled, HTTP requests redirect to HTTPS and
-   HSTS is sent. Set the public base URL used inside the certificate QR code: in
-   `config/environment.php`, `SRS_APP_URL` defaults to
-   `http://localhost/srs-sppo` for XAMPP. On the real parish server, set the
-   `SRS_APP_URL` environment variable to the public address (e.g.
-   `https://parish.example.org`). A QR that points to localhost scans only
-   on that same computer — the admin preview warns in that case.
+   HSTS is sent. The public base URL is set in `config/environment.php` via
+   `SRS_APP_URL`, which defaults to `http://localhost/srs-sppo` for XAMPP. On
+   the real parish server, set the `SRS_APP_URL` environment variable to the
+   public address (e.g. `https://parish.example.org`); a non-local host also
+   enables HTTPS enforcement automatically.
 
 ## Folder structure
 
@@ -73,10 +72,13 @@ srs-sppo/
     └── js/main.js
 ```
 
+The current ERD, normalization analysis, use-case diagram, and actor-based
+DFD are documented in [docs/SYSTEM_ANALYSIS_DIAGRAMS.md](docs/SYSTEM_ANALYSIS_DIAGRAMS.md).
+
 ## What's built
 
 - **Live public intake:** Four certificate-request forms and four sacrament-application forms: Baptismal, Confirmation, First Communion, and Marriage.
-- **Live office workflow:** Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, tracking/status lookup, correction requests, and the shared System tools. Parish Administrators retain the additional role protections for Parish Administrator account changes.
+- **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, tracking/status lookup, correction requests, and the shared System tools. All staff accounts use the same parish secretary access level.
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application records delivery attempts and safely continues when mail is unavailable. To enable it, configure the server's SMTP/sendmail relay, `MAIL_FROM_ADDRESS`, and `MAIL_SITE_URL` in the environment; never commit credentials.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 

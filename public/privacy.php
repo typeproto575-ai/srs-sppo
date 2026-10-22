@@ -82,7 +82,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <li><span class="legal-term">Diocese or other parishes:</span> <span class="legal-term">[STATE WHETHER RECORDS ARE SHARED, AND WHEN]</span>.</li>
                 <li>Government agencies or courts, only when required by law.</li>
             </ol>
-            <p>Some service providers may be hosted outside the Philippines. Your data may therefore be transferred across borders only for the limited purposes listed above. The certificate verification QR code is generated on this parish server using the local QR helper — the token never leaves it.</p>
+            <p>Some service providers may be hosted outside the Philippines. Your data may therefore be transferred across borders only for the limited purposes listed above.</p>
         </section>
 
         <section class="legal-clause" id="retention">

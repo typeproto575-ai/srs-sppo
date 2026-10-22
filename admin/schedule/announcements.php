@@ -180,7 +180,7 @@ foreach ($announcements as &$annRow) {
 }
 unset($annRow);
 $isEdit = $editAnnouncement !== null;
-$isSecretary = in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
+$isSecretary = (current_user()['role'] ?? '') === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>

@@ -3,7 +3,7 @@
  * Session guard. Include at the top of any /admin page.
  * Usage:
  *   require_once __DIR__ . '/../includes/auth.php';
- *   require_role('secretary');            // secretary access; parish_admin inherits it
+ *   require_role('secretary');            // all authenticated staff access
  */
 
 // Make sure helper functions (secure_session_start, redirect_to, e, ...)
@@ -17,11 +17,6 @@ secure_session_start();
 function current_user(): ?array
 {
     return $_SESSION['user'] ?? null;
-}
-
-function is_parish_admin(): bool
-{
-    return (current_user()['role'] ?? null) === 'parish_admin';
 }
 
 function require_login(): void
@@ -97,8 +92,7 @@ function require_role($roles): void
     require_login();
     $roles = is_array($roles) ? $roles : [$roles];
     $role = current_user()['role'];
-    $allowed = in_array($role, $roles, true)
-        || ($role === 'parish_admin' && in_array('secretary', $roles, true));
+    $allowed = in_array($role, $roles, true);
     if (!$allowed) {
         http_response_code(403);
         die('You do not have access to this page.');

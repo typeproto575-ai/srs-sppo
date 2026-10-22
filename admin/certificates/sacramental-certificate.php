@@ -118,19 +118,6 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $out[] = sc_svg_text('Valid only with the signature of the Parish Priest and the parish seal.', 50, 91.5, 2.2, 77, ['fill' => $muted, 'anchor' => 'middle']);
     $out[] = sc_svg_rule(57.667, 103, 35.667, $ink);
     $out[] = sc_svg_text('PARISH PRIEST', 75.5, 106, 2.1, 27, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle', 'letter_spacing' => .08]);
-    if (!empty($req['verification_code'])) {
-        $out[] = sc_svg_text('Verification token: ' . (string) $req['verification_code'], 50, 119, 1.65, 66, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle']);
-        $out[] = sc_svg_text('Verify at the parish verification page', 50, 122, 1.65, 52, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle']);
-        // Local verification QR (same qr_data_uri() helper as the baptismal
-        // branch): absolute verify URL, rendered on this server, ~25mm wide
-        // with a quiet zone baked into the image. Error level M.
-        $scVerifyUrl = rtrim(app_url(), '/') . '/public/verify.php?token=' . rawurlencode((string) $req['verification_code']);
-        $scQrUri = function_exists('qr_data_uri') ? qr_data_uri($scVerifyUrl) : null;
-        if ($scQrUri !== null) {
-            // 25mm wide at 96dpi ~= 94 user units; SVG canvas is 100 wide.
-            $out[] = '<image href="' . sc_svg_escape($scQrUri) . '" x="37.5" y="124" width="25" height="25" preserveAspectRatio="xMidYMid meet"><title>Verification QR code</title></image>';
-        }
-    }
     $out[] = '</svg>';
     return implode("\n", $out);
 }

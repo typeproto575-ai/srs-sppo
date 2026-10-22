@@ -670,29 +670,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <tr><th><?= e($label) ?></th><td><?= e((string) $value) ?></td></tr>
                             <?php endforeach; ?>
                         </table>
-                        <?php if (!empty($req['verification_code'])): ?>
-                            <?php
-                            // Local verification QR: absolute URL to verify.php with the token,
-                            // rendered on this server (no external QR service, no token logging).
-                            $certVerifyUrl = rtrim(app_url(), '/') . '/public/verify.php?token=' . rawurlencode((string) $req['verification_code']);
-                            $certQrUri = qr_data_uri($certVerifyUrl);
-                            ?>
-                            <?php if ($certQrUri === null || app_url_is_local()): ?>
-                                <div class="alert alert-warning" style="margin-bottom:0.5rem;">QR warning: the verification link <?= $certQrUri === null ? 'could not be encoded' : 'points at <strong>' . e(app_url() === '' ? '(APP_URL not set)' : app_url()) . '</strong>' ?>. A QR that points to localhost / 127.0.0.1 only works on this computer. Set <code>SRS_APP_URL</code> to the parish public address before printing.</div>
-                            <?php endif; ?>
-                            <div class="cert-verification" style="margin-top: 1rem; font-size: 0.8rem; color: #555; border-top: 1px solid #ccc; padding-top: 0.5rem; display: flex; align-items: center; gap: 1rem;">
-                                <?php if ($certQrUri !== null): ?>
-                                <div class="cert-qr-code">
-                                    <img src="<?= e($certQrUri) ?>" alt="Verification QR Code" style="width: 25mm; height: 25mm;">
-                                </div>
-                                <?php endif; ?>
-                                <div class="cert-token-text">
-                                    <strong>Verify this certificate:</strong><br>
-                                    Visit: <?= e($basePath . '/public/verify.php') ?><br>
-                                    Token: <code><?= e($req['verification_code']) ?></code>
-                                </div>
-                            </div>
-                        <?php endif; ?>
                         <p class="cert-issued">Issued this <?= date('j F Y') ?> at St. Patrick Parish Office, Dingalan, Aurora. This certificate is not valid without the signature of the Parish Secretary and the parish seal.</p>
                         <div class="cert-signature">
                             <span class="sign-line">Parish Secretary</span>

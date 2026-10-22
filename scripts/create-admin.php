@@ -54,7 +54,7 @@ $stmt->execute([
     $username,
     $email,
     password_hash($password, PASSWORD_DEFAULT),
-    'parish_admin',
+    'secretary',
 ]);
 
-fwrite(STDOUT, "Parish administrator account created.\n");
+fwrite(STDOUT, "Parish secretary account created.\n");

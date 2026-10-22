@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SRS-SPPO RETENTION & PURGE (parish administrator only)
+ * SRS-SPPO RETENTION & PURGE (parish secretary only)
  * =====================================================================
  * Two-step retention purge:
  *   1. DRY RUN  — counts what would be touched (zero data changes).
@@ -24,9 +24,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/retention-purge.php';
 
-// SECURITY: parish administrator only (secretaries are deliberately
-// excluded — this is the highest-control admin action).
-require_role('parish_admin');
+require_role('secretary');
 
 $basePath = $basePath ?? base_path();
 $pageTitle = 'Retention & Purge';

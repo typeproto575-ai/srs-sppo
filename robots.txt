@@ -8,4 +8,3 @@ Disallow: /storage/
 Disallow: /tests/
 Disallow: /vendor/
 Disallow: /public/track-request.php
-Disallow: /public/verify.php

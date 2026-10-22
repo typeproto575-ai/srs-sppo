@@ -2014,8 +2014,6 @@ textarea {
 .sacramental-cert-details { display: grid; grid-template-columns: 180px 1fr; gap: .35rem .8rem; max-width: 680px; margin: 1rem auto; font-size: .9rem; }
 .sacramental-cert-details dt { font-weight: 700; color: #66502b; }
 .sacramental-cert-details dd { margin: 0; }
-.sacramental-cert-verification { display: flex; align-items: center; justify-content: center; gap: .8rem; margin: 1.4rem auto; padding-top: .8rem; border-top: 1px solid #d8ccb4; font-family: system-ui, sans-serif; font-size: .72rem; color: #665d50; }
-.sacramental-cert-verification img { width: 72px; height: 72px; }
 .sacramental-cert-issued { margin-top: 1.4rem; text-align: center; font-size: .75rem; color: #665d50; }
 .sacramental-cert-signatures { display: flex; justify-content: space-around; gap: 3rem; margin-top: 2.2rem; padding-top: 1.8rem; text-align: center; font-size: .8rem; }
 .sacramental-cert-signatures span { min-width: 180px; padding-top: .35rem; border-top: 1px solid #493b29; }

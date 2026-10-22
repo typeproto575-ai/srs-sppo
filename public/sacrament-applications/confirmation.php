@@ -84,9 +84,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             if ($currentStep === CONF_STEP_DETAILS) {
                 if ($formData['applicant_full_name'] === '') $errors[] = "Applicant's full name is required.";
+                if (($e = validate_full_name($formData['applicant_full_name'])) !== null) $errors[] = $e;
                 if ($formData['applicant_birthdate'] === '') $errors[] = "Applicant's birthdate is required.";
                 if ($formData['applicant_birthdate'] !== '' && is_future_date($formData['applicant_birthdate'])) $errors[] = "Applicant's birthdate cannot be in the future.";
                 if ($formData['parent_guardian_name'] === '') $errors[] = 'Parent/Guardian name is required.';
+                if (($e = validate_full_name($formData['parent_guardian_name'])) !== null) $errors[] = $e;
             } elseif ($currentStep === CONF_STEP_BAPTISM) {
                 if (!in_array($formData['baptized_here'], ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
                 if (!in_array($formData['baptismal_certificate_status'], ['ready', 'not_ready'], true)) $errors[] = 'Please indicate whether the applicant has a baptismal certificate ready.';
@@ -131,24 +133,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (($formData['privacy_consent'] ?? '') !== '1') $errors[] = 'Please agree to the Privacy Notice before submitting.';
 
         if (!$errors) {
+            $submissionCap = public_submission_allowed($pdo, [$email]);
+            if (!$submissionCap['ok']) {
+                $errors[] = 'You have reached the submission limit for this email address. Please try again later.';
+            }
+        }
+
+        if (!$errors) {
             try {
-                $pdo = get_db();
-                $submissionCap = public_submission_allowed($pdo, [$email]);
-                if (!$submissionCap['ok']) {
-                    $errors[] = 'You have reached the submission limit for this email address. Please try again later.';
-                }
-                if (!$errors) {
-                    $trackingNumber = 'CFM-' . bin2hex(random_bytes(4));
+                // All inserts run inside ONE transaction owned by retry_on_duplicate,
+                // which regenerates the tracking number and retries on a duplicate-key
+                // race (tracking_number is UNIQUE). New online confirmation
+                // applications always start with the baptismal certificate not yet
+                // physically received ('pending') — the form's ready/not_ready answer
+                // is reviewed by the secretary in person at the office.
+                $applicationId = null;
+                $trackingNumber = retry_on_duplicate($pdo, function () use (
+                    $pdo,
+                    $applicantName,
+                    $applicantBirthdate,
+                    $parentGuardian,
+                    $contactNumber,
+                    $email,
+                    $baptizedHere,
+                    $preferredBatch,
+                    $sponsorName,
+                    &$applicationId
+                ): string {
+                    $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
+
                     $stmt = $pdo->prepare("INSERT INTO sacrament_applications
-                        (tracking_number, submission_channel, sacrament_type, status, created_at)
-                        VALUES (?, 'online', 'confirmation', 'awaiting_payment', NOW())");
+                        (tracking_number, submission_channel, sacrament_type, status)
+                        VALUES (?, 'online', 'confirmation', 'awaiting_payment')");
                     $stmt->execute([$trackingNumber]);
                     $applicationId = (int) $pdo->lastInsertId();
 
                     $stmt2 = $pdo->prepare("INSERT INTO confirmation_applications
                         (application_id, applicant_full_name, applicant_birthdate,
                          parent_guardian_name, contact_number, email, baptized_here,
-                         baptismal_certificate_status, preferred_batch, sponsor_name)
+                         baptismal_cert_status, preferred_batch, sponsor_name)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     $stmt2->execute([
                         $applicationId,
@@ -158,22 +181,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $contactNumber,
                         $email,
                         ($baptizedHere === 'this_parish') ? 1 : 0,
-                        $baptismalCert,
+                        'pending',
                         $preferredBatch,
                         $sponsorName,
                     ]);
-                }
-            } catch (PDOException $e) {
-                $errors[] = 'We could not save your application right now. Please try again later.';
-            }
-        }
 
-        if (!$errors) {
-            $_SESSION['confirmation_success'] = $trackingNumber;
-            unset($_SESSION['confirmation_app']);
-            session_write_close();
-            header('Location: confirmation.php?submitted=1');
-            exit;
+                    return $trackingNumber;
+                });
+
+                log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation application submitted for {$applicantName}");
+                notify($pdo, 'application_new', 'New sacrament application', "Confirmation application for {$applicantName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+                record_public_submission($pdo, [$email], 'application_confirmation');
+
+                try {
+                    if (mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId)) {
+                        log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
+                    }
+                } catch (Throwable $e) {
+                    error_log('Confirmation application confirmation email failed: ' . $e->getMessage());
+                }
+
+                $_SESSION['confirmation_success'] = $trackingNumber;
+                unset($_SESSION['confirmation_app']);
+                session_write_close();
+                header('Location: confirmation.php?submitted=1');
+                exit;
+            } catch (Throwable $e) {
+                error_log('Confirmation application failed: ' . $e->getMessage());
+                $errors[] = 'Something went wrong while submitting your application. Please try again.';
+            }
         }
     }
 }

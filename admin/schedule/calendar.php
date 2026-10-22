@@ -244,7 +244,7 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
     ];
 }, $allEvents);
 
-$isSecretary = in_array(current_user()['role'] ?? '', ['secretary', 'parish_admin'], true);
+$isSecretary = (current_user()['role'] ?? '') === 'secretary';
 // FullCalendar must load in <head>; pass it to the shared shell via $extraHead.
 $extraHead = '<script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.11/index.global.min.js"></script>';
 

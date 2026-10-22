@@ -27,6 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!filter_var($requesterEmail, FILTER_VALIDATE_EMAIL)) {
             $message = 'Please enter a valid email address.';
             $messageType = 'error';
+        } elseif (($e = validate_full_name($requesterName)) !== null) {
+            $message = $e;
+            $messageType = 'error';
         } elseif (($_POST['privacy_consent'] ?? '') !== '1') {
             $message = 'You must accept the Privacy Notice before submitting.';
             $messageType = 'error';

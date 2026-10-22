@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SRS-SPPO PUBLIC PAGE CONTENT EDITOR (secretary and Parish Administrator)
+ * SRS-SPPO PUBLIC PAGE CONTENT EDITOR (parish secretary)
  * =====================================================================
  * Purpose: Let the secretary edit the text shown on the public home page
  *          (hero heading/eyebrow/subtitle, office hours, location) without

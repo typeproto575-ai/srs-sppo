@@ -726,11 +726,10 @@ final class DatabaseIntegrationTest extends TestCase
                     }
         }
 
-    public function testPublicTrackingAndCertificateVerificationData(): void
+    public function testPublicTrackingAndCertificateRequestData(): void
     {
         $requestId = 0;
         $tracking = 'SPPO-2027-' . bin2hex(random_bytes(3));
-        $token = 'verification-' . bin2hex(random_bytes(16));
         $email = 'public-tracking-' . bin2hex(random_bytes(4)) . '@example.invalid';
 
         try {
@@ -738,12 +737,12 @@ final class DatabaseIntegrationTest extends TestCase
             $request = $this->pdo->prepare(
                 'INSERT INTO certificate_requests
                     (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose, status, verification_code)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                     requester_relationship, requester_email, purpose, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $request->execute([
                 $tracking, 'online', 'baptismal', 'Public Integration', 'self',
-                $email, 'personal', 'ready_for_pickup', $token,
+                $email, 'personal', 'ready_for_pickup',
             ]);
             $requestId = (int) $this->pdo->lastInsertId();
 
@@ -768,7 +767,7 @@ final class DatabaseIntegrationTest extends TestCase
             self::assertSame(0, strcasecmp($email, $tracked['requester_email']));
             self::assertNotSame(0, strcasecmp('wrong@example.invalid', $tracked['requester_email']));
 
-            $verification = $this->pdo->prepare(
+            $detailLookup = $this->pdo->prepare(
                 'SELECT cr.tracking_number, cr.sacrament_type, cr.requester_name,
                         cr.status, cr.anonymized_at, ext.matched_record_id
                  FROM certificate_requests cr
@@ -778,19 +777,19 @@ final class DatabaseIntegrationTest extends TestCase
                      UNION ALL SELECT request_id, matched_record_id FROM first_communion_certificate_requests
                      UNION ALL SELECT request_id, matched_record_id FROM marriage_certificate_requests
                  ) ext ON ext.request_id = cr.id
-                 WHERE cr.verification_code = ?'
+                 WHERE cr.tracking_number = ?'
             );
-            $verification->execute([$token]);
-            $verified = $verification->fetch();
-            self::assertSame($tracking, $verified['tracking_number']);
-            self::assertSame('baptismal', $verified['sacrament_type']);
-            self::assertSame('Public Integration', $verified['requester_name']);
-            self::assertSame('ready_for_pickup', $verified['status']);
-            self::assertNull($verified['anonymized_at']);
-            self::assertNull($verified['matched_record_id']);
+            $detailLookup->execute([$tracking]);
+            $found = $detailLookup->fetch();
+            self::assertSame($tracking, $found['tracking_number']);
+            self::assertSame('baptismal', $found['sacrament_type']);
+            self::assertSame('Public Integration', $found['requester_name']);
+            self::assertSame('ready_for_pickup', $found['status']);
+            self::assertNull($found['anonymized_at']);
+            self::assertNull($found['matched_record_id']);
 
-            $verification->execute(['invalid-' . bin2hex(random_bytes(8))]);
-            self::assertFalse($verification->fetch());
+            $detailLookup->execute(['missing-' . bin2hex(random_bytes(8))]);
+            self::assertFalse($detailLookup->fetch());
             $this->pdo->commit();
         } finally {
             if ($this->pdo->inTransaction()) {

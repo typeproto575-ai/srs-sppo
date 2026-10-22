@@ -1,12 +1,11 @@
 <?php
 /**
  * =====================================================================
- * SRS-SPPO ACCOUNT MANAGEMENT (secretary and Parish Administrator)
+ * SRS-SPPO ACCOUNT MANAGEMENT (parish secretary)
  * =====================================================================
  * Purpose: Create/edit/deactivate secretary accounts (full name, username,
  *          email, active flag). Passwords are stored as modern hashes
- *          (password_hash()). Parish Administrator account changes remain
- *          protected by the role checks below.
+ *          (password_hash()).
  * =====================================================================
  */
 
@@ -56,12 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $check->execute([$userId]);
         return (int) $check->fetch()['c'] === 0;
     };
-    $isLastActiveAdmin = function (int $userId) use ($pdo): bool {
-        $check = $pdo->prepare("SELECT COUNT(*) c FROM users WHERE role = 'parish_admin' AND is_active = 1 AND id != ?");
-        $check->execute([$userId]);
-        return (int) $check->fetch()['c'] === 0;
-    };
-
     if ($action === 'toggle' || $action === 'delete') {
         // Quick single-card actions from the account cards.
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
@@ -74,12 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $messageType = 'error';
         } elseif ($id === $currentUserId) {
             $message = 'You cannot delete or deactivate your own account while signed in.';
-            $messageType = 'error';
-        } elseif ($target['role'] === 'parish_admin' && !is_parish_admin()) {
-            $message = 'Only a Parish Administrator may change another Parish Administrator account.';
-            $messageType = 'error';
-        } elseif ($target['role'] === 'parish_admin' && (int) $target['is_active'] === 1 && $isLastActiveAdmin($id)) {
-            $message = 'Cannot remove this account — it is the last active Parish Administrator. Assign another administrator first.';
             $messageType = 'error';
         } elseif ((int) $target['is_active'] === 1 && $isLastActive($id)) {
             $message = 'Cannot remove this account — it is the last active staff account. Create or activate another first.';
@@ -123,15 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $target = $stmt->fetch();
                 if (!$target) { $skipped++; continue; }
 
-                if ($target['role'] === 'parish_admin' && !is_parish_admin()) { $skipped++; continue; }
                 if ($bulkAction === 'activate') {
                     if ((int) $target['is_active'] === 1) { $skipped++; continue; }
                     $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = ?')->execute([$uid]);
                 } elseif ($bulkAction === 'deactivate') {
-                    if ((int) $target['is_active'] === 0 || ($target['role'] === 'parish_admin' && $isLastActiveAdmin($uid)) || $isLastActive($uid)) { $skipped++; continue; }
+                    if ((int) $target['is_active'] === 0 || $isLastActive($uid)) { $skipped++; continue; }
                     $pdo->prepare('UPDATE users SET is_active = 0 WHERE id = ?')->execute([$uid]);
                 } else {
-                    if (($target['role'] === 'parish_admin' && (int) $target['is_active'] === 1 && $isLastActiveAdmin($uid)) || ((int) $target['is_active'] === 1 && $isLastActive($uid))) { $skipped++; continue; }
+                    if ((int) $target['is_active'] === 1 && $isLastActive($uid)) { $skipped++; continue; }
                     try {
                         $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$uid]);
                     } catch (PDOException $ex) { $skipped++; continue; }
@@ -149,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $fullName = trim($_POST['full_name'] ?? '');
     $username = trim($_POST['username'] ?? '');
     $email = strtolower(trim($_POST['email'] ?? ''));
-    $role = $_POST['role'] ?? 'secretary';
+    $role = 'secretary';
     $isActive = isset($_POST['is_active']) ? 1 : 0;
     $password = trim($_POST['password'] ?? '');
 
@@ -158,10 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $messageType = 'error';
     }
 
-    $adminCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'parish_admin'")->fetchColumn();
-    $canManageAdminRole = is_parish_admin() || ($adminCount === 0 && $id && (int) $id === $currentUserId);
-    // Only an existing administrator may assign the administrator role. For
-    // first-time setup, the current staff account may promote itself once.
     // When a new or replacement password is supplied it must pass the staff
     // password policy (12+ chars, upper + lower + digit — see
     // validate_password_strength() in functions.php; matches the minlength
@@ -172,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     } elseif ($passwordIssue !== null) {
         $message = $passwordIssue;
         $messageType = 'error';
-    } elseif ($fullName === '' || $username === '' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($role, ['secretary', 'parish_admin'], true) || ($role === 'parish_admin' && !$canManageAdminRole)) {
+    } elseif ($fullName === '' || $username === '' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $message = 'Please complete all required fields.';
         $messageType = 'error';
     } else {
@@ -188,20 +170,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 $message = 'That email address is already in use.';
                 $messageType = 'error';
             } else {
-                $existingRole = null;
                 if ($action === 'edit' && $id) {
-                    $old = $pdo->prepare('SELECT role, is_active FROM users WHERE id = ?');
+                    $old = $pdo->prepare('SELECT id, is_active FROM users WHERE id = ?');
                     $old->execute([$id]);
                     $oldRow = $old->fetch();
-                    $existingRole = $oldRow['role'] ?? null;
                     if (!$oldRow) {
                         $message = 'That account no longer exists.';
-                        $messageType = 'error';
-                    } elseif ($existingRole === 'parish_admin' && !is_parish_admin()) {
-                        $message = 'Only a Parish Administrator may edit another Parish Administrator account.';
-                        $messageType = 'error';
-                    } elseif ($existingRole === 'parish_admin' && $isLastActiveAdmin($id) && ($isActive === 0 || $role !== 'parish_admin')) {
-                        $message = 'Cannot deactivate or demote the last active Parish Administrator. Assign another administrator first.';
                         $messageType = 'error';
                     }
                 }
@@ -265,7 +239,7 @@ if (isset($_GET['saved']) && !isset($_GET['edit'])) {
 }
 
 $selfUrl = $basePath . '/admin/system/accounts.php';
-$filterRole = in_array(($_GET['role'] ?? ''), ['secretary', 'parish_admin'], true) ? $_GET['role'] : '';
+$filterRole = ($_GET['role'] ?? '') === 'secretary' ? 'secretary' : '';
 $filterStatus = in_array(($_GET['status'] ?? ''), ['1', '0'], true) ? $_GET['status'] : '';
 
 $rfConfig = [
@@ -273,7 +247,7 @@ $rfConfig = [
     'search_columns' => ['full_name', 'username', 'email'],
     'placeholder' => 'Search name, username, or email...',
     'filters' => [
-        'role' => ['label' => 'Role', 'options' => ['secretary' => 'Secretary', 'parish_admin' => 'Parish Administrator']],
+        'role' => ['label' => 'Role', 'options' => ['secretary' => 'Secretary']],
         'status' => ['label' => 'Status', 'options' => ['1' => 'Active', '0' => 'Inactive']],
     ],
 ];
@@ -309,8 +283,6 @@ $dialogAutoshow = $editingUser !== null
 $activeChecked = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? isset($_POST['is_active'])
     : (($editingUser['is_active'] ?? 1) == 1);
-$selectedRole = $_POST['role'] ?? ($editingUser['role'] ?? 'secretary');
-
 $extraHead = '';
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
@@ -356,7 +328,7 @@ $extraHead = '';
                         <span class="status-badge <?= $user['is_active'] ? 'status-approved' : 'status-rejected' ?>"><?= $user['is_active'] ? 'Active' : 'Inactive' ?></span>
                     </div>
                     <p class="account-email"><?= e($user['email']) ?></p>
-                    <p class="account-meta"><?= e($user['role'] === 'parish_admin' ? 'Parish Administrator' : 'Secretary') ?> &middot; added <?= e(date('M j, Y', strtotime($user['created_at']))) ?></p>
+                    <p class="account-meta">Parish Secretary &middot; added <?= e(date('M j, Y', strtotime($user['created_at']))) ?></p>
                     <div class="account-actions">
                         <?php if (!$isSelf): ?>
                             <label class="account-select"><input autocomplete="off" type="checkbox" name="bulk_ids[]" value="<?= (int) $user['id'] ?>" form="bulk-form"> Select</label>
@@ -410,15 +382,6 @@ $extraHead = '';
                     <label>
                         Email
                         <input autocomplete="off" type="email" name="email" value="<?= e($_POST['email'] ?? $editingUser['email'] ?? '') ?>" required>
-                    </label>
-                    <label>
-                        Role
-                        <select name="role">
-                            <option value="secretary" <?= $selectedRole === 'secretary' ? 'selected' : '' ?>>Secretary</option>
-                            <?php if (is_parish_admin() || ((int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'parish_admin'")->fetchColumn() === 0 && $editingUser && (int) $editingUser['id'] === (int) current_user()['id'] )): ?>
-                            <option value="parish_admin" <?= $selectedRole === 'parish_admin' ? 'selected' : '' ?>>Parish Administrator</option>
-                            <?php endif; ?>
-                        </select>
                     </label>
                     <label class="checkbox-row">
                         <input autocomplete="off" type="checkbox" name="is_active" value="1" <?= $activeChecked ? 'checked' : '' ?>>

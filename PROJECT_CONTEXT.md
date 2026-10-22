@@ -25,7 +25,7 @@ It is a **digital index and office workflow** for sacramental records that still
 3. **Eligibility/prerequisite checks flag, never auto-block.** Age ranges and prior-sacrament checks warn the secretary. They must not silently reject a submission. See `is_outside_eligibility()` in `includes/functions.php`.
 4. **No parishioner accounts.** Visitors never log in. They receive a tracking number and use that **plus the recorded email** on `public/track-request.php`.
 5. **No priest login.** Canonical clearance (banns, pre-Cana, interview) is data the secretary records after confirming with the priest outside the system. There is no `/priest/` app. (`audit_logs.role_snapshot` may still contain a leftover `'priest'` enum value from older rows; do not revive a priest user role.)
-6. **Certificates are printed and picked up in person.** No public download of the finished certificate. A public **verification** page (`public/verify.php`) may confirm that a printed token/QR is known to the parish; that is not a download of the certificate.
+6. **Certificates are printed and picked up in person.** No public download of the finished certificate, and no public certificate-verification page: a certificate carries no QR code or verification token.
 7. **`legitimacy` on `baptismal_records` is internal-only.** Never put it on public queries, certificates, or reports. New encodes store `NULL`; legacy rows may still have a value, editable only in the baptismal record form.
 8. **Physical logbooks remain canonical.** Digital rows must keep `book_no` / `page_no` / `line_no` on Baptism, Confirmation, First Communion, and Marriage.
 9. **An online submission is not an official record.** Public forms write `submission_channel = 'online'`. Walk-in encoders write `'onsite'`. The secretary still verifies requirements and identity before processing or release.
@@ -86,17 +86,16 @@ Every sacrament type uses **shared table + extension table**. New sacrament-spec
 
 ## Roles (staff only)
 
-`users.role` is `secretary` or `parish_admin`. There is no priest role in login.
+`users.role` is `secretary`. There is no priest or separate administrator role in login.
 
 - **Secretary** — day-to-day operator: queues, records, certificates, schedule, reports, walk-in encode, own password.
-- **Parish Administrator** — same operational pages (`require_role('secretary')` also allows `parish_admin`) plus the ability to manage staff accounts and protected account-role changes. Secretaries and Parish Administrators both have access to the System section, including accounts, backup/export, archive/restore, email delivery log, audit log, and public-page content settings.
+- **Parish Secretary** — the single staff role with access to operational pages and the complete System section, including accounts, backup/export, archive/restore, email delivery log, audit log, retention/purge, and public-page content settings.
 
 Rules already in `admin/system/accounts.php`:
 
 - You cannot deactivate or delete your own signed-in account.
 - You cannot remove the last active staff account.
-- You cannot remove the last active `parish_admin`.
-- Only a parish admin (or a one-time first-setup self-promotion when zero admins exist) may assign `parish_admin`.
+- You cannot remove the last active staff account.
 - Prefer deactivate over delete when history still references the user.
 - Staff passwords: `validate_password_strength()` — 12+ characters, upper, lower, digit.
 
@@ -123,7 +122,6 @@ Password recovery: `admin/forgot-password.php` + `admin/reset-password.php`. Tok
 | `public/sacrament-applications/first-communion.php` | Online First Communion application |
 | `public/track-request.php` | Status by tracking number + email |
 | `public/correction-request.php` | Report an error on an issued certificate |
-| `public/verify.php` | Verify a printed certificate token |
 
 Public nav: Home, How It Works, Requirements, Office Services, Track My Request, Request Correction.
 
@@ -197,7 +195,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 - Root `.htaccess` blocks dotfiles, `_*` helpers, `.sql` / `.md` / `.txt` / `.bat`, and common debug script names. `Options -Indexes`. Do not deploy `.git/` inside a public `htdocs` copy.
 - The seed data contains no login. Create the first administrator with `scripts/create-admin.php`.
 - Backup (`admin/system/backup.php`) dumps **all tables including password hashes**. Store exports offline. Never email the dump or leave it in the web root.
-- Certificate QR is generated **locally on this server** (inline SVG data-URI via the vendored MIT library in `includes/vendor/`; see `qr_data_uri()` in `includes/functions.php`). The verification token never leaves the server — no external QR service is used.
+- Certificates carry **no QR code and no verification token**. There is no public certificate-verification page; authenticity is confirmed in person at the counter against the parish register.
 
 ---
 
@@ -207,7 +205,7 @@ Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that
 
 `migrations/` is the historical path for existing databases. Some numbers were reused (`017_*` twice, `025_*` twice) — apply by filename, not by assuming a clean 001–029 sequence. Helper scripts `migrations/_run007.php` and `migrations/_test_suggest.php` are not part of the product UI.
 
-The canonical schema already includes `certificate_requests.verification_code`, used by certificate generation, print history, and public verification. Keep that column aligned with the existing migration `032_add_certificate_verification_code.sql`.
+The canonical schema already includes `certificate_requests.verification_code`. The column is retained for schema continuity with the historical migration `032_add_certificate_verification_code.sql`, but it is no longer populated or used: certificates carry no verification token.
 
 Migration files `026` through `029` contain parallel historical changes with duplicate numeric prefixes. Do not reorder or rename them in place; apply them in the documented deployment order and preserve both branches for existing installations.
 

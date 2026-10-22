@@ -64,6 +64,7 @@ if ($isWizardNavigation && csrf_verify()) {
         };
         if ($currentStep === 1) {
             if ($value('applicant_full_name') === '') $errors[] = "Applicant's full name is required.";
+            if (($e = validate_full_name($value('applicant_full_name'))) !== null) $errors[] = $e;
             if ($value('applicant_birthdate') === '') $errors[] = "Applicant's birthdate is required.";
             if ($value('applicant_birthdate') !== '' && is_future_date($value('applicant_birthdate'))) $errors[] = "Applicant's birthdate cannot be in the future.";
             if (!in_array($value('applicant_gender'), ['male', 'female'], true)) $errors[] = 'Please select the applicant gender.';
@@ -130,9 +131,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     $preferredBatch = trim($_POST['preferred_batch'] ?? '');
 
     if ($name === '') $errors[] = "Applicant's full name is required.";
+    if (($e = validate_full_name($name)) !== null) $errors[] = $e;
     if ($birthdate === '') $errors[] = "Applicant's birthdate is required.";
     if ($birthdate !== '' && is_future_date($birthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
     if ($parent === '') $errors[] = 'Parent/Guardian name is required.';
+    if (($e = validate_full_name($parent)) !== null) $errors[] = $e;
     if ($contact === '' || !is_valid_phone_number($contact)) $errors[] = 'A valid contact number is required.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
     if (!in_array($gender, ['male', 'female'], true)) $errors[] = 'Please select the applicant gender.';

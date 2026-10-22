@@ -1,6 +1,6 @@
 # Secretary Password Recovery
 
-The staff login now includes a password-recovery flow restricted to active `secretary` and `parish_admin` accounts.
+The staff login now includes a password-recovery flow restricted to active `secretary` accounts.
 
 The request response does not disclose whether an email matches an account. Matching requests create a cryptographically random one-time token; only its SHA-256 hash is stored, and the raw token is sent through the existing mail helper. Tokens expire after 30 minutes and are consumed once. Resetting a password increments `users.auth_version`, invalidating existing sessions.
 

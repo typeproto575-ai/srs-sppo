@@ -14,15 +14,11 @@
  */
 
 // Public base URL of this installation, WITHOUT trailing slash.
-// It is encoded into the certificate verification QR (absolute URL to
-// public/verify.php?token=...). A phone that scans the QR opens that URL,
-// so this must be reachable from the phone, not just from this computer.
-//   XAMPP dev : 'http://localhost/srs-sppo' (QR scans only on this computer)
+// It is also used to decide whether HTTPS is enforced (see below).
+//   XAMPP dev : 'http://localhost/srs-sppo'
 //   Parish    : set SRS_APP_URL in the server environment to the real public
 //               address, e.g. 'https://parish.example.org' (no subfolder) or
 //               'https://example.org/srs-sppo' (subfolder install).
-// The admin certificate preview warns whenever this host is localhost,
-// 127.0.0.1, ::1, or unset.
 define(
     'SRS_APP_URL',
     rtrim(getenv('SRS_APP_URL') ?: 'http://localhost/srs-sppo', '/')

@@ -197,6 +197,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $requesterName = $confirmandName;
             }
             if ($requesterMode === 'other' && $requesterName === '') $errors[] = 'Your full name is required.';
+            if ($requesterMode === 'other' && $requesterName !== '') {
+                if (($e = validate_full_name($requesterName)) !== null) $errors[] = $e;
+            }
             if ($requesterMode === 'other' && !certificate_requester_is_relative($requesterRelationship)) {
                 $errors[] = 'Please select your relationship to the person named on the certificate.';
             }

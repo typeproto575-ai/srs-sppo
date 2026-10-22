@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- * SRS-SPPO AUDIT LOG VIEWER (secretary and Parish Administrator)
+ * SRS-SPPO AUDIT LOG VIEWER (parish secretary)
  * =====================================================================
  * Purpose: Read-only trail of who did what (login, record encodes,
  *          status changes, backups) with filters by user, action, and
@@ -21,7 +21,7 @@ $pageTitle = 'Audit Log';
 
 // --- Search / filter / pagination ---
 $selfUrl = $basePath . '/admin/system/audit-log.php';
-$filterRole = in_array(($_GET['role'] ?? ''), ['secretary', 'parish_admin'], true) ? $_GET['role'] : '';
+$filterRole = ($_GET['role'] ?? '') === 'secretary' ? 'secretary' : '';
 $filterUser = max(0, (int) ($_GET['user_id'] ?? 0));
 $filterAction = trim((string) ($_GET['action_name'] ?? ''));
 $filterModule = trim((string) ($_GET['module'] ?? ''));
@@ -35,7 +35,7 @@ $rfConfig = [
     'placeholder' => 'Search action or description...',
     'ranges' => ['today', 'week', 'month', 'year'],
     'filters' => [
-        'role' => ['label' => 'Role', 'options' => ['secretary' => 'Secretary', 'parish_admin' => 'Parish Administrator']],
+        'role' => ['label' => 'Role', 'options' => ['secretary' => 'Secretary']],
         'user_id' => ['label' => 'User', 'options' => array_column($userOptions, 'full_name', 'id')],
         'action_name' => ['label' => 'Action', 'options' => array_combine($actionOptions, $actionOptions)],
         'module' => ['label' => 'Module', 'options' => array_combine($moduleOptions, $moduleOptions)],

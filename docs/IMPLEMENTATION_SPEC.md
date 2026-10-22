@@ -33,7 +33,7 @@ The system shall:
 5. Provide public information pages for parish procedures and documentary requirements.
 6. Provide optional public status tracking for reference numbers issued by the parish office, without requiring a parishioner account.
 7. Preserve an append-only audit history of security, account, record, certificate, and workflow actions.
-8. Ensure the parish can recover from secretary turnover, forgotten passwords, and staff changes through a protected Master Account.
+8. Ensure the parish can recover from secretary turnover, forgotten passwords, and staff changes through individual parish secretary accounts.
 
 ### 2.2 Out of scope
 
@@ -54,11 +54,9 @@ The system shall not provide:
 
 The system shall use individual accounts. Users must not share credentials because the audit trail must identify the person who performed each action.
 
-### 3.1 Parish Administrator / Master Account
+### 3.1 Parish Secretary
 
-The **Parish Administrator** is the system's Master Account role. The account is normally assigned to the parish priest or another formally designated parish authority. It exists to preserve system continuity when a secretary leaves, forgets a password, or becomes unavailable.
-
-The Parish Administrator shall have full system access, including:
+The **Parish Secretary** is the system's only staff role and has full administrative access, including:
 
 - All sacramental records and person profiles.
 - All certificate requests and sacrament applications.
@@ -66,20 +64,14 @@ The Parish Administrator shall have full system access, including:
 - Certificate generation, printing, finalization, pickup, and release history.
 - Scheduling, announcements, reports, backups, and system settings.
 - All security, account-management, and audit-log pages.
-- Creation of new secretary accounts.
-- Password reset for secretary accounts.
-- Activation and deactivation of secretary accounts.
+- Creation of new parish secretary accounts.
+- Password reset for parish secretary accounts.
+- Activation and deactivation of parish secretary accounts.
 - Restoration of access after secretary turnover.
 - Export and review of audit logs.
-- Transfer of the Master Account role to a new parish priest or authorized administrator.
+- Manage all staff account lifecycle actions while preserving at least one active staff account.
 
-The Master Account shall not be permanently removable through the normal application interface. The last active Master Account shall not be deleted, deactivated, or demoted unless another active Master Account is assigned in the same controlled operation.
-
-A Master Account transfer shall require explicit confirmation and shall create an immutable audit entry containing the previous master, new master, initiating user, date, time, and reason.
-
-### 3.2 Secretary Account
-
-The Secretary account is the operational role. A secretary shall be able to:
+A parish secretary shall be able to:
 
 - Encode onsite certificate requests.
 - Encode onsite Baptism, Confirmation, First Communion, and Marriage applications.
@@ -92,17 +84,11 @@ The Secretary account is the operational role. A secretary shall be able to:
 - View operational request and record history.
 - Change the secretary's own password and log out.
 
-A Secretary shall not be able to:
+A parish secretary shall not be able to:
 
-- Delete, deactivate, demote, or change the password of the last Master Account.
-- Create or assign another Master Account.
-- Transfer the Master Account role.
 - Delete or edit audit-log entries.
 - Remove audit history.
-- Change security settings reserved for the Parish Administrator.
 - Permanently delete historical records through ordinary workflow actions.
-
-Secretaries may view operational history needed for their work. Sensitive security events relating to Master Accounts, role transfers, and security configuration shall be restricted to the Parish Administrator.
 
 ### 3.3 Parishioner / Public Visitor
 
@@ -117,7 +103,7 @@ A public visitor may not access records, create a transaction directly, upload d
 
 ### 3.4 Account lifecycle
 
-Secretary accounts shall be deactivated rather than permanently deleted when a staff member leaves. Deactivation preserves the identity attached to historical audit records. The Parish Administrator may later reactivate an account or create a replacement account.
+Parish secretary accounts shall be deactivated rather than permanently deleted when a staff member leaves. Deactivation preserves the identity attached to historical audit records. Another parish secretary may later reactivate an account or create a replacement account.
 
 The first login using a temporary password shall require a password change. Passwords shall be stored using a current password-hashing algorithm and shall never appear in logs or source-code comments.
 
@@ -255,7 +241,7 @@ The secretary shall be able to manage baptisms, marriages, interviews, seminars,
 
 ### 6.5 Reports and backup
 
-Reports shall support approved operational summaries without exposing restricted fields. Database backups shall be restricted to the Parish Administrator and authorized secretary accounts as approved by the parish. Backup files shall not be stored in a publicly accessible web directory.
+Reports shall support approved operational summaries without exposing restricted fields. Database backups shall be restricted to authorized parish secretary accounts. Backup files shall not be stored in a publicly accessible web directory.
 
 ---
 
@@ -263,7 +249,7 @@ Reports shall support approved operational summaries without exposing restricted
 
 ### 7.1 Audit-log principle
 
-The system shall maintain an append-only audit log. An audit entry, once written, shall not be editable or deletable through the application interface. The Parish Administrator shall have complete viewing, searching, filtering, and export access, but shall not silently alter or remove historical entries.
+The system shall maintain an append-only audit log. An audit entry, once written, shall not be editable or deletable through the application interface. The parish secretary shall have complete viewing, searching, filtering, and export access, but shall not silently alter or remove historical entries.
 
 This protects the reliability of the history when investigating mistakes, staff turnover, unauthorized access, or record corrections.
 
@@ -271,7 +257,7 @@ This protects the reliability of the history when investigating mistakes, staff 
 
 The system shall log the following events where applicable:
 
-**Security and account events:** successful login, failed login, logout, session timeout, password change, password reset, secretary account creation, account deactivation, account reactivation, role change, Master Account transfer, security-setting change, and rate-limited access attempts.
+**Security and account events:** successful login, failed login, logout, session timeout, password change, password reset, secretary account creation, account deactivation, account reactivation, and rate-limited access attempts.
 
 **Workflow events:** certificate request encoded, sacrament application encoded, requirements marked received, requirements marked incomplete, requirements marked verified, request or application status changed, record matched, certificate generated, certificate printed, certificate finalized, certificate marked ready for pickup, notification attempted, notification failed, notification resent, certificate released, certificate reprinted, certificate cancelled, schedule created or changed, and announcement created or changed.
 
@@ -287,7 +273,7 @@ Each audit entry should contain:
 |---|---|
 | Timestamp | Date and time in the configured parish timezone. |
 | User ID and name | The account that performed the action, or system/anonymous where appropriate. |
-| Role | Master Account or Secretary when an authenticated user performed the action. |
+| Role | Secretary when an authenticated user performed the action. |
 | Action | A stable machine-readable action name. |
 | Module or target table | The affected system area or data entity. |
 | Target ID | The affected request, application, record, account, or schedule ID where applicable. |
@@ -300,9 +286,9 @@ The log shall never store passwords, password-reset tokens, Gmail passwords, ide
 
 ### 7.4 Audit-log access
 
-The Parish Administrator shall have full visibility of all logs, including security events, Master Account actions, account actions, record changes, certificate lifecycle events, and system operations. The Parish Administrator may filter by date range, user, role, action, module, target record, or security category and may export a report.
+The parish secretary shall have full visibility of all logs, including security events, account actions, record changes, certificate lifecycle events, and system operations. The parish secretary may filter by date range, user, role, action, module, target record, or security category and may export a report.
 
-The Secretary may view operational history needed to process parish work. Security events specifically relating to Master Accounts, role transfers, and protected configuration changes may be restricted to the Parish Administrator.
+The parish secretary may view operational history needed to process parish work and protected configuration changes.
 
 ### 7.5 Audit-log integrity
 
@@ -346,7 +332,7 @@ The database shall support, at minimum:
 
 There shall be no payment, fee, amount, currency, receipt, or online-payment columns or tables. Existing contact-number columns are retained for contact and historical compatibility, and current public application forms require a contact number. No payment data is stored.
 
-The database shall enforce the rule that at least one active Parish Administrator remains available. Account-management operations must not leave the system without a recoverable Master Account.
+The database and account-management operations must not leave the system without at least one active parish secretary account.
 
 ---
 
@@ -363,10 +349,10 @@ The completed system must:
 7. Support searchable sacramental records and physical-register references.
 8. Support certificate processing, printing, finalization, pickup readiness, and onsite release.
 9. Provide optional tracking using a secretary-issued reference number and recorded email.
-10. Provide individual Parish Administrator and Secretary accounts.
-11. Prevent removal or deactivation of the last active Parish Administrator.
-12. Allow the Parish Administrator to create, reset, activate, deactivate, and replace Secretary accounts.
-13. Provide complete Parish Administrator visibility into append-only audit logs.
+10. Provide individual parish secretary accounts.
+11. Prevent removal or deactivation of the last active parish secretary.
+12. Allow parish secretaries to create, reset, activate, deactivate, and replace staff accounts.
+13. Provide complete parish secretary visibility into append-only audit logs.
 14. Prevent normal users from editing or deleting audit history.
 15. Preserve security, privacy, backup, migration, and recovery controls.
 
@@ -380,10 +366,10 @@ The system shall be tested with at least these scenarios:
 2. A secretary records requirements received through Gmail without creating a public account.
 3. A certificate moves from received through processing, printing, finalizing, ready for pickup, and released.
 4. A parishioner tracks a secretary-created request using the issued reference number and email.
-5. A secretary leaves, and the Parish Administrator creates a replacement secretary account without deleting historical actions.
-6. The Parish Administrator resets a secretary password and the action appears in the audit log.
-7. The system refuses to delete or deactivate the last active Parish Administrator.
-8. The Parish Administrator views and exports security and workflow logs.
+5. A secretary leaves, and another parish secretary creates a replacement account without deleting historical actions.
+6. A parish secretary resets a staff password and the action appears in the audit log.
+7. The system refuses to delete or deactivate the last active parish secretary.
+8. The parish secretary views and exports security and workflow logs.
 9. An attempted audit-log edit or deletion is unavailable through the normal interface.
 10. A request or record correction retains the previous action history and records the reason.
 11. A public visitor cannot create an online request or application through the public website.
@@ -399,7 +385,7 @@ The system shall be tested with at least these scenarios:
 
 ---
 
-**Document status:** Updated to reflect the Parish Administrator/Master Account role, secretary account continuity, append-only audit logging, onsite processing, in-person requirements handling with Gmail as outgoing notification relay only, email-first contact, and the explicit exclusion of payment functionality.
+**Document status:** Updated to reflect the single parish secretary role, secretary account continuity, append-only audit logging, onsite processing, in-person requirements handling with Gmail as outgoing notification relay only, email-first contact, and the explicit exclusion of payment functionality.
 
 **Author:** Manus AI
 **Last updated:** September 2026
@@ -410,14 +396,14 @@ The system shall be tested with at least these scenarios:
 
 The current implementation should be reviewed against this specification in the following order:
 
-1. Confirm the database schema and migrations support the Parish Administrator role and active-account safeguards.
-2. Confirm the account-management interface supports secretary creation, password reset, activation, deactivation, and controlled Master Account transfer.
+1. Confirm the database schema and migrations support the single secretary role and active-account safeguards.
+2. Confirm the account-management interface supports staff creation, password reset, activation, and deactivation.
 3. Convert public request/application routes to information-only pages or disable them.
 4. Remove contact-number requirements from admin encoding and all approved workflows.
 5. Add requirements source and requirements status fields and controls.
 6. Align certificate statuses and dashboard labels with the onsite workflow.
 7. Verify that all security and workflow events write append-only audit entries.
-8. Verify the Parish Administrator audit-log filters and export function.
+8. Verify the parish secretary audit-log filters and export function.
 9. Remove temporary files and resolve duplicate migration numbering before production deployment.
 10. Execute the acceptance scenarios above using anonymized test records.
 
@@ -435,7 +421,7 @@ Every email attempt is recorded in `email_delivery_log` with the recipient, subj
 
 ## Phase 3 — Account Continuity and Audit Accountability
 
-The system supports two staff roles: Secretary and Parish Administrator. Parish Administrators inherit the operational workspace and are additionally responsible for account continuity, administrator safeguards, and protected system oversight. The account-management interface prevents the last active Parish Administrator from being deactivated, demoted, or deleted. Non-administrator secretaries cannot change Parish Administrator accounts. During first-time setup, when no Parish Administrator exists, the currently signed-in staff account may promote itself through the account-management form; subsequent administrator assignment is restricted to an existing Parish Administrator.
+The system supports one staff role: Parish Secretary. Each secretary has the complete operational workspace and system oversight needed for account continuity, backups, retention, and audit review. The account-management interface prevents the last active parish secretary from being deactivated or deleted.
 
 Audit entries remain append-only through the application. New entries record the authenticated role snapshot, client IP address, user-agent summary, and optional reason in addition to the action, target, description, and timestamp. The Audit Log page supports date and text search together with role, user, action, and module filters. The filtered audit history can be exported as CSV; exporting itself creates an audit entry. No edit, delete, clear, or hide operation is provided.
 

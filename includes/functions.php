@@ -489,8 +489,7 @@ function base_path(): string
 /**
  * Public base URL of this installation, e.g. 'http://localhost/srs-sppo'.
  * Read from the SRS_APP_URL environment variable with the config/environment.php
- * fallback. Returns '' when unset so callers show a warning instead of
- * printing a broken QR.
+ * fallback. Returns '' when unset.
  */
 function app_url(): string
 {
@@ -502,95 +501,6 @@ function app_url(): string
         return rtrim(trim((string) SRS_APP_URL), '/');
     }
     return '';
-}
-
-/**
- * True when a URL host is local-only (localhost / 127.0.0.1 / ::1) or the
- * URL is empty. A QR encoding such a URL scans only on this computer, so
- * the admin certificate preview warns in that case.
- */
-function app_url_is_local(string $url = ''): bool
-{
-    if ($url === '') {
-        $url = app_url();
-    }
-    if ($url === '') {
-        return true;
-    }
-    $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?: ''));
-    return $host === '' || $host === 'localhost' || $host === '127.0.0.1' || $host === '::1';
-}
-
-/**
- * Render a QR code as a local inline SVG data-URI (no network, no logging).
- *
- * Uses the vendored kazuhikoarase/qrcode-generator matrix (includes/vendor/qrcode.php,
- * MIT) with error correction level M and a 4-module quiet zone, auto-selecting
- * the smallest type number 1-10 that fits. Returns null only when the text
- * cannot be encoded or the library is missing — callers show a warning.
- * The encoded value (a verify URL) is never logged or sent anywhere.
- */
-function qr_data_uri(string $text): ?string
-{
-    static $loaded = false;
-    if (!$loaded) {
-        $lib = __DIR__ . '/vendor/qrcode.php';
-        if (!is_file($lib)) {
-            return null;
-        }
-        require_once $lib;
-        $loaded = true;
-    }
-    if (!class_exists('QRCode') || !defined('QR_ERROR_CORRECT_LEVEL_M')) {
-        return null;
-    }
-    $text = trim($text);
-    if ($text === '' || strlen($text) > 800) {
-        return null;
-    }
-    // The vendored library signals "code length overflow" with
-    // trigger_error(E_USER_ERROR) — fatal unless we trap it. Convert errors
-    // during make() into an exception so we can try the next type number.
-    $handler = static function (int $errno, string $errstr): bool {
-        throw new RuntimeException('QR encode failed: ' . $errstr);
-    };
-    try {
-        $qr = null;
-        for ($type = 1; $type <= 10; $type++) {
-            $candidate = new QRCode();
-            $candidate->setTypeNumber($type);
-            $candidate->setErrorCorrectLevel(QR_ERROR_CORRECT_LEVEL_M);
-            $candidate->addData($text, QR_MODE_8BIT_BYTE);
-            set_error_handler($handler);
-            try {
-                $candidate->make();
-            } catch (Throwable $inner) {
-                restore_error_handler();
-                continue; // too much data for this type — try the next one
-            }
-            restore_error_handler();
-            $qr = $candidate;
-            break;
-        }
-        if ($qr === null) {
-            return null;
-        }
-        $count  = $qr->getModuleCount();
-        $quiet  = 4; // quiet zone, in modules
-        $size   = $count + ($quiet * 2);
-        $rects  = [];
-        for ($r = 0; $r < $count; $r++) {
-            for ($c = 0; $c < $count; $c++) {
-                if ($qr->isDark($r, $c)) {
-                    $rects[] = '<rect x="' . ($c + $quiet) . '" y="' . ($r + $quiet) . '" width="1" height="1"/>';
-                }
-            }
-        }
-        $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $size . ' ' . $size . '" shape-rendering="crispEdges" role="img" aria-label="Verification QR code"><rect width="' . $size . '" height="' . $size . '" fill="#fff"/>' . implode('', $rects) . '</svg>';
-        return 'data:image/svg+xml;base64,' . base64_encode($svg);
-    } catch (Throwable $ex) {
-        return null;
-    }
 }
 
 /**
@@ -868,6 +778,38 @@ function structured_name_parts(string $fullName): array
 function compose_structured_name(string $first, string $middle, string $last, string $suffix = ''): string
 {
     return trim(implode(' ', array_filter([trim($first), trim($middle), trim($last), trim($suffix)])));
+}
+
+/**
+ * Validate a "full name" free-text field.
+ *
+ * The parish form requires the complete first, middle and last name spelled
+ * out — initials (e.g. "J.", "D") or a two-part name are rejected because the
+ * certificate/register needs the exact full name.
+ *
+ * Returns NULL when acceptable, otherwise a human-readable error message.
+ * Empty strings return NULL (the field's own `required` rule handles that).
+ */
+function validate_full_name(string $name): ?string
+{
+    $name = trim($name);
+    if ($name === '') {
+        return null;
+    }
+
+    $parts = preg_split('/\s+/', $name);
+    $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
+    if (count($parts) < 3) {
+        return 'Please enter the full name (First Name Middle Name Last Name).';
+    }
+
+    foreach ($parts as $part) {
+        if (preg_match('/^[A-Za-z]\.?$/', $part)) {
+            return 'Please spell out every name in full — initials (e.g. "J.", "D") are not allowed.';
+        }
+    }
+
+    return null;
 }
 
 function display_name_with_middle_initial(string $fullName): string

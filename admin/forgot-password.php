@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = strtolower(trim($_POST['email'] ?? ''));
         record_attempt($pdo, 'password-reset-ip:' . client_ip());
         if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare("SELECT id, email FROM users WHERE email = ? AND is_active = 1 AND role IN ('secretary','parish_admin') LIMIT 1");
+            $stmt = $pdo->prepare("SELECT id, email FROM users WHERE email = ? AND is_active = 1 AND role = 'secretary' LIMIT 1");
             $stmt->execute([$email]);
             $user = $stmt->fetch();
             if ($user) {

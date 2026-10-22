@@ -10,7 +10,7 @@ CREATE DATABASE IF NOT EXISTS srs_sppo_db
 USE srs_sppo_db;
 
 -- =====================================================================
--- 1. USERS (Parish Administrator and Secretary staff accounts)
+-- 1. USERS (Parish Secretary staff accounts)
 -- =====================================================================
 
 CREATE TABLE users (
@@ -19,7 +19,7 @@ CREATE TABLE users (
   username        VARCHAR(50)  NOT NULL UNIQUE,
   email           VARCHAR(150) NOT NULL UNIQUE,
   password_hash   VARCHAR(255) NOT NULL,
-  role            ENUM('secretary','parish_admin') NOT NULL DEFAULT 'secretary',
+  role            ENUM('secretary') NOT NULL DEFAULT 'secretary',
   is_active       TINYINT(1) NOT NULL DEFAULT 1,
   auth_version    INT UNSIGNED NOT NULL DEFAULT 1,
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -628,7 +628,7 @@ CREATE TABLE correction_requests (
 CREATE TABLE audit_logs (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id      INT UNSIGNED,
-  role_snapshot ENUM('secretary','parish_admin') DEFAULT NULL,
+  role_snapshot ENUM('secretary') DEFAULT NULL,
   action       VARCHAR(150) NOT NULL,
   target_table VARCHAR(100),
   target_id    INT UNSIGNED,

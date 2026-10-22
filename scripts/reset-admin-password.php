@@ -44,13 +44,13 @@ if ($password !== $confirm) {
 // 3️⃣ Verify the admin account exists and is active
 // -----------------------------------------------------------------
 $stmt = $pdo->prepare(
-    'SELECT id, username, is_active FROM users WHERE username = ? AND role = "parish_admin" LIMIT 1'
+    'SELECT id, username, is_active FROM users WHERE username = ? AND role = "secretary" LIMIT 1'
 );
 $stmt->execute([$username]);
 $admin = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$admin) {
-    fwrite(STDERR, "Admin (parish_admin) account not found or is inactive.\n");
+    fwrite(STDERR, "Parish secretary account not found or is inactive.\n");
     exit(1);
 }
 
@@ -92,7 +92,7 @@ $hash = password_hash($password, PASSWORD_DEFAULT);
 $stmt = $pdo->prepare(
     'UPDATE users
      SET password_hash = ?, updated_at = NOW()
-     WHERE username = ? AND role = "parish_admin"'
+     WHERE username = ? AND role = "secretary"'
 );
 $stmt->execute([$hash, $username]);
 

@@ -27,12 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_printed']) && cs
     if ($requestId) {
         $result = log_certificate_printed($pdo, $requestId, current_user()['id']);
         if ($result['ok']) {
-            $verificationToken = generate_uuidv4();
-            $stmt = $pdo->prepare('UPDATE certificate_requests SET verification_code = ? WHERE id = ?');
-            $stmt->execute([$verificationToken, $requestId]);
             log_activity($pdo, current_user()['id'], 'certificate_printed',
                 'certificate_requests', $requestId,
-                'Certificate marked as printed (physical copy confirmed) and verification token generated.');
+                'Certificate marked as printed (physical copy confirmed).');
             $notice = 'Marked as printed. The certificate has been physically printed and confirmed.';
         } else {
             $notice = $result['reason'];

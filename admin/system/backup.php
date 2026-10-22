@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/backup.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
-require_role('parish_admin');
+require_role('secretary');
 
 $pageTitle = 'Database Backup / Export';
 $error = null;
@@ -26,12 +26,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
             $password = (string) ($_POST['password'] ?? '');
             $backupPassphrase = (string) ($_POST['backup_passphrase'] ?? '');
             $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ? AND role = ? AND is_active = 1 LIMIT 1');
-            $stmt->execute([(int) $user['id'], 'parish_admin']);
+            $stmt->execute([(int) $user['id'], 'secretary']);
             $authRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$authRow || !password_verify($password, (string) $authRow['password_hash'])) {
                 record_attempt($pdo, $attemptKey);
-                $error = 'The administrator password is incorrect.';
+                $error = 'Your staff password is incorrect.';
             } elseif (mb_strlen($backupPassphrase) < 12) {
                 $error = 'Use a backup passphrase of at least 12 characters.';
             } elseif (!function_exists('openssl_encrypt') || !function_exists('openssl_cipher_iv_length')) {
