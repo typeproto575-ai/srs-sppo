@@ -17,5 +17,8 @@
         "test:setup-db": "php scripts/setup-test-db.php",
         "static-analysis": "phpstan analyse",
         "quality": "@test"
+    },
+    "require": {
+        "phpmailer/phpmailer": "^6.9"
     }
 }

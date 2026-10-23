@@ -47,7 +47,7 @@ CREATE TABLE persons (
   address          VARCHAR(255) DEFAULT NULL,
   contact_number   VARCHAR(30) DEFAULT NULL,
   email            VARCHAR(150) DEFAULT NULL,
-  baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') DEFAULT 'unbaptized',
+  baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') DEFAULT NULL,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -111,8 +111,11 @@ CREATE TABLE confirmation_records (
   confirmand_last_name VARCHAR(100),
   confirmand_suffix VARCHAR(20),
   birthdate           DATE,
+  birthdate_not_recorded TINYINT(1) NOT NULL DEFAULT 0,
   father_name         VARCHAR(150),
+  father_name_not_recorded TINYINT(1) NOT NULL DEFAULT 0,
   mother_maiden_name  VARCHAR(150),          -- renamed from mother_name for consistency with baptismal_records
+  mother_maiden_name_not_recorded TINYINT(1) NOT NULL DEFAULT 0,
   sponsor_name        VARCHAR(150),
   minister_name       VARCHAR(150),
   baptismal_record_id INT UNSIGNED,          -- prerequisite link

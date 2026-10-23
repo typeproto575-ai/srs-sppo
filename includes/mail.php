@@ -26,20 +26,59 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
         if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'disabled', 'Email is disabled.', $entityType, $entityId, $trackingNumber);
         return false;
     }
-    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
-        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'invalid', 'Recipient email is invalid.', $entityType, $entityId, $trackingNumber);
+    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)
+        || !filter_var(MAIL_FROM_ADDRESS, FILTER_VALIDATE_EMAIL)) {
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'invalid', 'Recipient or sender email is invalid.', $entityType, $entityId, $trackingNumber);
         return false;
     }
-    $headers = implode("\r\n", [
-        'From: ' . MAIL_FROM_NAME . ' <' . MAIL_FROM_ADDRESS . '>',
-        'Reply-To: ' . MAIL_FROM_ADDRESS,
-        'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 8bit',
-    ]);
-    $sent = @mail($to, $fullSubject, $bodyText, $headers);
-    if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, $sent ? 'sent' : 'failed', $sent ? null : 'The configured mail transport did not accept the message.', $entityType, $entityId, $trackingNumber);
-    return $sent;
+    if (MAIL_SMTP_HOST === '' || MAIL_SMTP_USER === '' || MAIL_SMTP_PASS === ''
+        || MAIL_SMTP_PORT < 1 || MAIL_SMTP_PORT > 65535
+        || !in_array(MAIL_SMTP_ENCRYPT, ['tls', 'ssl'], true)) {
+        $error = 'SMTP settings are incomplete or invalid.';
+        error_log('SRS-SPPO email delivery failed: ' . $error);
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'failed', $error, $entityType, $entityId, $trackingNumber);
+        return false;
+    }
+
+    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
+    if (!is_file($autoloadPath)) {
+        $error = 'PHPMailer dependency is missing.';
+        error_log('SRS-SPPO email delivery failed: ' . $error);
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'failed', $error, $entityType, $entityId, $trackingNumber);
+        return false;
+    }
+
+    try {
+        require_once $autoloadPath;
+        $mailer = new \PHPMailer\PHPMailer\PHPMailer(true);
+        $mailer->isSMTP();
+        $mailer->Host = MAIL_SMTP_HOST;
+        $mailer->SMTPAuth = true;
+        $mailer->Username = MAIL_SMTP_USER;
+        $mailer->Password = MAIL_SMTP_PASS;
+        $mailer->Port = MAIL_SMTP_PORT;
+        $mailer->CharSet = \PHPMailer\PHPMailer\PHPMailer::CHARSET_UTF8;
+        $mailer->SMTPSecure = match (MAIL_SMTP_ENCRYPT) {
+            'tls' => \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS,
+            'ssl' => \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS,
+            default => throw new RuntimeException('Unsupported SMTP encryption mode.'),
+        };
+        $mailer->SMTPAutoTLS = true;
+        $mailer->setFrom(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
+        $mailer->addReplyTo(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
+        $mailer->addAddress($to);
+        $mailer->Subject = $fullSubject;
+        $mailer->Body = $bodyText;
+        $mailer->isHTML(false);
+        $mailer->send();
+    } catch (Throwable $e) {
+        error_log('SRS-SPPO SMTP delivery failed: ' . $e->getMessage());
+        if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'failed', $e->getMessage(), $entityType, $entityId, $trackingNumber);
+        return false;
+    }
+
+    if ($pdo instanceof PDO) email_delivery_log($pdo, $to, $fullSubject, $eventType, 'sent', null, $entityType, $entityId, $trackingNumber);
+    return true;
 }
 
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool

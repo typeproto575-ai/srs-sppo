@@ -25,6 +25,9 @@ as the live database); referential integrity is managed by the application.
 
 ## Current workflow migrations
 
+- `039_person_identity_profile.sql` — clears the incorrect default `unbaptized` status for people without a linked baptismal register row and marks linked people as baptized Catholic. Apply to existing databases to align the Persons directory with the register. New installs get a nullable status from the canonical schema; the directory derives status from linked records.
+- `040_confirmation_required_source_fields.sql` — records when the Confirmation register does not contain a birth date, father's name, or mother's maiden name. New entries must provide each detail or explicitly mark it as not recorded. Existing blank values are preserved and marked as not recorded.
+
 - `019_add_workflow_requirements_checklist.sql` — creates the `workflow_requirements` table used by the secretary-side requirements checklist for certificate requests and sacrament applications. It stores only checklist status and notes; it does not store uploaded documents. Apply this migration before using the checklist in an existing database.
 - `020_add_email_delivery_logs.sql` — adds `email_delivery_log` for sent/failed/disabled/invalid delivery attempts and expands the notification event enum so all certificate and application status alerts are preserved.
 Migration `021_admin_role_audit_metadata.sql` originally added the retired `parish_admin` role and enriched append-only audit entries with role, IP, user-agent, and reason fields. Migration `038_consolidate_staff_role.sql` converts legacy administrator accounts and audit snapshots to the single `secretary` role.

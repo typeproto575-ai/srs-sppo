@@ -195,8 +195,9 @@ function record_lookup_parent_matches(string $input, array $candidates): bool
  * Find baptismal register entries that match what the visitor typed.
  *
  * Required in $input: first_name, last_name, birthdate (YYYY-MM-DD),
- * mother_name. Optional: father_name (only checked when the register lists a
- * father; a blank answer against a listed father is a mismatch).
+ * father_name, mother_name. The father's name is checked when the register
+ * lists one; if it is absent from the source register, matching uses the
+ * remaining required identity details.
  *
  * @return array[] Up to 5 rows: id, child_full_name, baptism_date
  */

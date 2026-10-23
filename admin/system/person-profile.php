@@ -44,6 +44,71 @@ if (!empty($person['maiden_name'])) $personLabel .= ' (maiden: ' . $person['maid
 $sections = person_bridge_sections();
 $marriageRoles = person_bridge_marriage_roles();
 
+$birthDateSourceStmt = $pdo->prepare(
+    'SELECT source.birth_date
+     FROM (
+         SELECT birth_date, 1 AS priority, id
+         FROM baptismal_records
+         WHERE person_id = ? AND birth_date IS NOT NULL
+         UNION ALL
+         SELECT birthdate AS birth_date, 2 AS priority, id
+         FROM confirmation_records
+         WHERE person_id = ? AND birthdate IS NOT NULL
+         UNION ALL
+         SELECT husband_birthdate AS birth_date, 3 AS priority, id
+         FROM marriage_records
+         WHERE husband_person_id = ? AND husband_birthdate IS NOT NULL
+         UNION ALL
+         SELECT wife_birthdate AS birth_date, 3 AS priority, id
+         FROM marriage_records
+         WHERE wife_person_id = ? AND wife_birthdate IS NOT NULL
+     ) AS source
+     ORDER BY source.priority, source.id
+     LIMIT 1'
+);
+$birthDateSourceStmt->execute([$personId, $personId, $personId, $personId]);
+$recordBirthDate = $birthDateSourceStmt->fetchColumn();
+$recordBirthDate = is_string($recordBirthDate) && $recordBirthDate !== '' ? $recordBirthDate : null;
+
+$actionError = '';
+$profileSex = (string) ($person['sex'] ?? '');
+$profileBirthDate = (string) ($recordBirthDate ?? $person['birth_date'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
+    $profileSex = trim((string) ($_POST['sex'] ?? ''));
+    if ($recordBirthDate === null) {
+        $profileBirthDate = trim((string) ($_POST['birth_date'] ?? ''));
+    }
+
+    if (!csrf_verify()) {
+        $actionError = 'Your session expired. Please try again.';
+    } elseif (!in_array($profileSex, ['', 'male', 'female'], true)) {
+        $actionError = 'Choose a valid sex or leave it unspecified.';
+    } elseif ($recordBirthDate === null && $profileBirthDate !== ''
+        && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $profileBirthDate)
+            || !checkdate(
+                (int) substr($profileBirthDate, 5, 2),
+                (int) substr($profileBirthDate, 8, 2),
+                (int) substr($profileBirthDate, 0, 4)
+            ))) {
+        $actionError = 'Enter a valid birth date.';
+    } else {
+        if ($recordBirthDate !== null) {
+            $stmt = $pdo->prepare('UPDATE persons SET sex = ?, birth_date = ? WHERE id = ?');
+            $stmt->execute([$profileSex !== '' ? $profileSex : null, $recordBirthDate, $personId]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE persons SET sex = ?, birth_date = ? WHERE id = ?');
+            $stmt->execute([
+                $profileSex !== '' ? $profileSex : null,
+                $profileBirthDate !== '' ? $profileBirthDate : null,
+                $personId,
+            ]);
+        }
+        log_activity($pdo, current_user()['id'], 'update_person_profile', 'persons', $personId,
+            'Updated sex and/or birth date for ' . person_identity_label($person) . '.');
+        redirect_to('/admin/system/person-profile.php?id=' . $personId . '&updated=1');
+    }
+}
+
 // --- Unlink a wrong link, or delete an unlinked person -------------------
 // Unlink clears one *_person_id bridge cell (the same bridge the person
 // mapper fills in). Table and column names are looked up in the $sections /
@@ -54,7 +119,6 @@ $marriageRoles = person_bridge_marriage_roles();
 //
 // Delete never touches a register row: it removes the persons row only, and
 // only when person_delete_if_unlinked() recounts every bridge on the spot.
-$actionError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unlink') {
     if (!csrf_verify()) {
         $actionError = 'Your session expired. Please try again.';
@@ -108,13 +172,38 @@ foreach (array_merge($sections, $marriageRoles) as $label => $sec) {
 }
 
 $pageTitle = 'Person Profile';
+$baptismalStatus = !empty($linked['Baptismal']) ? 'Baptized Catholic' : 'Unknown';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <p><a href="<?= $basePath ?>/admin/system/person-mapper.php">&larr; Back to Person Mapper</a></p>
 <h1><?= e($personLabel) ?></h1>
 <?php if ($actionError): ?><p class="alert alert-error"><?= e($actionError) ?></p><?php endif; ?>
 <?php if (isset($_GET['unlinked'])): ?><p class="alert alert-success">Link removed. The record is back in the mapping queue.</p><?php endif; ?>
-<p class="field-hint">Person #<?= (int) $person['id'] ?><?= !empty($person['birth_date']) ? ' &middot; born ' . e(date('F j, Y', strtotime($person['birth_date']))) : '' ?> &middot; <?= (int) $totalLinked ?> linked register row<?= $totalLinked === 1 ? '' : 's' ?></p>
+<?php if (isset($_GET['updated'])): ?><p class="alert alert-success">Person details saved.</p><?php endif; ?>
+<p class="field-hint">Person #<?= (int) $person['id'] ?><?= $profileBirthDate !== '' ? ' &middot; born ' . e(date('F j, Y', strtotime($profileBirthDate))) : '' ?> &middot; <?= (int) $totalLinked ?> linked register row<?= $totalLinked === 1 ? '' : 's' ?></p>
+<section class="panel-card">
+    <h2>Person details</h2>
+    <p class="field-hint">Baptismal status: <strong><?= e($baptismalStatus) ?></strong>. This is based on a linked baptismal register entry; no linked entry means unknown, not unbaptized.</p>
+    <form method="post" class="form-grid">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="update_profile">
+        <label>Sex
+            <select name="sex">
+                <option value=""<?= $profileSex === '' ? ' selected' : '' ?>>Not specified</option>
+                <option value="female"<?= $profileSex === 'female' ? ' selected' : '' ?>>Female</option>
+                <option value="male"<?= $profileSex === 'male' ? ' selected' : '' ?>>Male</option>
+            </select>
+        </label>
+        <?php if ($recordBirthDate !== null): ?>
+            <p class="field-hint">Birth date: <strong><?= e(date('F j, Y', strtotime($recordBirthDate))) ?></strong> — from linked register record.</p>
+        <?php else: ?>
+            <label>Birth date
+                <input type="date" name="birth_date" value="<?= e($profileBirthDate) ?>">
+            </label>
+        <?php endif; ?>
+        <button type="submit" class="btn btn-primary btn-small">Save details</button>
+    </form>
+</section>
 <?php if ($totalLinked === 0): ?>
     <form method="post" data-confirm="Delete this person? This cannot be undone.">
         <?= csrf_field() ?>

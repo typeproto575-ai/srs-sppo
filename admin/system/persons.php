@@ -66,7 +66,12 @@ $stmt->execute($rf['params']);
 $rfTotal = (int) $stmt->fetchColumn();
 
 $stmt = $pdo->prepare(
-    "SELECT * FROM persons WHERE 1=1 {$rf['where']} ORDER BY last_name ASC, first_name ASC, id ASC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
+    "SELECT p.*,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM baptismal_records br WHERE br.person_id = p.id
+            ) THEN 'baptized_catholic' ELSE NULL END AS derived_baptismal_status
+     FROM persons p WHERE 1=1 {$rf['where']}
+     ORDER BY last_name ASC, first_name ASC, id ASC LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
 );
 $stmt->execute($rf['params']);
 $persons = $stmt->fetchAll();
@@ -140,7 +145,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <td><strong><?= e($personName) ?></strong></td>
                     <td><?= $person['sex'] ? e(ucfirst((string) $person['sex'])) : '—' ?></td>
                     <td><?= $person['birth_date'] ? e(date('M j, Y', strtotime($person['birth_date']))) : '—' ?></td>
-                    <td><?php $bStatus = (string) ($person['baptismal_status'] ?? ''); ?><?= $bStatus !== '' ? e(ucwords(str_replace('_', ' ', $bStatus))) : '—' ?></td>
+                    <td><?php $bStatus = (string) ($person['derived_baptismal_status'] ?? ''); ?><?= $bStatus !== '' ? e(ucwords(str_replace('_', ' ', $bStatus))) : 'Unknown' ?></td>
                     <td>
                         <?php if ($linkedCount > 0): ?>
                             <span class="link-status-badge link-status-linked"><?= (int) $linkedCount ?></span>

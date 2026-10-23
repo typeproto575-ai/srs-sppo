@@ -32,6 +32,29 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    the real parish server, set the `SRS_APP_URL` environment variable to the
    public address (e.g. `https://parish.example.org`); a non-local host also
    enables HTTPS enforcement automatically.
+8. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
+   enable 2-Step Verification on the sending account and create an App Password.
+   Add the settings below to the server-only `config/local.php`; do not commit
+   that file or share the App Password. The displayed App Password spaces should
+   be omitted. The app URL should use HTTPS, and the deployment must include
+   `vendor/` because PHPMailer is a runtime dependency.
+
+   ```php
+   'MAIL_ENABLED' => true,
+   'MAIL_FROM_ADDRESS' => 'julyanworking@gmail.com',
+   'MAIL_FROM_NAME' => "St. Patrick's Parish Office",
+   'MAIL_SITE_URL' => 'https://stpatricksparish.me',
+   'MAIL_SMTP_HOST' => 'smtp.gmail.com',
+   'MAIL_SMTP_PORT' => 587,
+   'MAIL_SMTP_USER' => 'julyanworking@gmail.com',
+   'MAIL_SMTP_PASS' => 'YOUR_GOOGLE_APP_PASSWORD',
+   'MAIL_SMTP_ENCRYPT' => 'tls',
+   ```
+
+   Keep the existing database settings in `config/local.php` when adding these
+   values. On InfinityFree, external SMTP is supported; outgoing PHP `mail()`
+   is restricted. Test delivery to an address you control and check
+   **System → Email Log** before relying on notifications.
 
 ## Folder structure
 
@@ -79,7 +102,7 @@ DFD are documented in [docs/SYSTEM_ANALYSIS_DIAGRAMS.md](docs/SYSTEM_ANALYSIS_DI
 
 - **Live public intake:** Four certificate-request forms and four sacrament-application forms: Baptismal, Confirmation, First Communion, and Marriage.
 - **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, tracking/status lookup, correction requests, and the shared System tools. All staff accounts use the same parish secretary access level.
-- **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application records delivery attempts and safely continues when mail is unavailable. To enable it, configure the server's SMTP/sendmail relay, `MAIL_FROM_ADDRESS`, and `MAIL_SITE_URL` in the environment; never commit credentials.
+- **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 
 ## Design decisions (see PROJECT_CONTEXT.md for full details)

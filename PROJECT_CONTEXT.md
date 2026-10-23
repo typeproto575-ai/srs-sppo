@@ -153,6 +153,8 @@ Also: dashboard, notifications, login/logout, forgot/reset password. `admin/syst
 
 Register tables have nullable `person_id` (marriage: `husband_person_id` / `wife_person_id`). Encoding a record does **not** auto-create or auto-link a person. The secretary uses `admin/system/person-mapper.php`. Until mapped, the same human can exist as duplicate name strings across tables. Do not assume a connected “person timeline” unless `person_id` is set.
 
+When a register row is linked, its birth date fills the person profile only if that profile has no birth date yet. Confirmation encoding also fills a blank birth date from the selected person or linked Baptismal register row. Confirmation birth date and parent-name fields must be entered or explicitly marked “not recorded in the source register”; migration `040_confirmation_required_source_fields.sql` preserves historical blanks with those markers. Baptismal certificate lookup requires the father's first and last name as a search detail. If the source register has no father name, matching still relies on the other required identity details.
+
 Structured name parts (`child_first_name`, etc.) were added for records; keep `*_full_name` in sync when you change either.
 
 ---
@@ -184,7 +186,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 - **Calendar:** `schedule_events` is source of truth. Preferred dates on applications are checked for conflicts; the secretary resolves them manually (no automatic lock).
 - **Archive:** registers have `is_archived` / `archived_at` / `archived_by` / `archive_reason`. Lists exclude archived rows. Use `admin/system/archive-record.php` rather than hard-deleting history.
 - **Rate limits (public):** 3 successful submissions per email / 24h and 20 per IP / 24h (`submission_rate_limits`). Fail **open** if the table is missing. This is spam control, not eligibility. `client_ip()` uses `REMOTE_ADDR` only.
-- **Mail:** `includes/mail.php` + `config/mail.php`. Failed send must never block a form. **`MAIL_ENABLED` is currently `false`** (silent no-op). Credentials stay in the server environment / XAMPP `sendmail.ini`, never in the repo. Set `MAIL_FROM_ADDRESS` and `MAIL_SITE_URL` when enabling. Delivery attempts log to `email_delivery_log`.
+- **Mail:** `includes/mail.php` + `config/mail.php` uses PHPMailer SMTP. Failed send must never block a form. **`MAIL_ENABLED` defaults to `false`** until explicitly set in server environment or ignored `config/local.php`. SMTP credentials stay out of tracked files. Set sender, SMTP settings, and HTTPS `MAIL_SITE_URL` when enabling. Delivery attempts log to `email_delivery_log`.
 
 ---
 
@@ -230,4 +232,4 @@ Leftover files that are **not** the live path: `includes/public-office-only.php`
 - Confirm First Communion and Confirmation age ranges with the parish priest (placeholders 7–12 and 12–18).
 - Whether to enforce a 6-month validity window on “for marriage purposes” certificates.
 - Whether `site-settings.php` should be linked in System nav.
-- Production mail relay, `MAIL_SITE_URL`, and HTTPS when leaving localhost.
+- Production SMTP settings, `MAIL_SITE_URL`, and HTTPS when leaving localhost.

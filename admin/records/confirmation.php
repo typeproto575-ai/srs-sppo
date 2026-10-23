@@ -27,6 +27,33 @@ $pageTitle = 'Confirmation Records';
 $errors  = [];
 $success = null;
 
+function confirmation_resolve_birthdate(PDO $pdo, string $birthdate, int $personId, int $baptismalRecordId): string
+{
+    if ($birthdate !== '') return $birthdate;
+
+    if ($personId > 0) {
+        $stmt = $pdo->prepare('SELECT birth_date FROM persons WHERE id = ?');
+        $stmt->execute([$personId]);
+        $personBirthdate = $stmt->fetchColumn();
+        if (is_string($personBirthdate) && $personBirthdate !== '') return $personBirthdate;
+    }
+
+    if ($baptismalRecordId > 0) {
+        $stmt = $pdo->prepare('SELECT birth_date FROM baptismal_records WHERE id = ? AND is_archived = 0');
+        $stmt->execute([$baptismalRecordId]);
+        $baptismBirthdate = $stmt->fetchColumn();
+        if (is_string($baptismBirthdate) && $baptismBirthdate !== '') return $baptismBirthdate;
+    }
+
+    return '';
+}
+
+function confirmation_birthdate_is_valid(string $birthdate): bool
+{
+    $date = DateTime::createFromFormat('!Y-m-d', $birthdate);
+    return $date !== false && $date->format('Y-m-d') === $birthdate && !is_future_date($birthdate);
+}
+
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -45,9 +72,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     if ($confirmandFirst !== '' || $confirmandMiddle !== '' || $confirmandLast !== '') {
         $confirmandName = compose_structured_name($confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix);
     }
-    $birthdate         = $_POST['birthdate'] ?: null;
+    $birthdate         = trim((string) ($_POST['birthdate'] ?? ''));
     $fatherName        = trim($_POST['father_name'] ?? '');
     $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
+    $personIdInput     = (int) ($_POST['person_id'] ?? 0);
+    $baptismalRecordIdInput = (int) ($_POST['baptismal_record_id'] ?? 0);
+    $birthdate = confirmation_resolve_birthdate($pdo, $birthdate, $personIdInput, $baptismalRecordIdInput);
+    $birthdateNotRecorded = $birthdate === '' && isset($_POST['birthdate_not_recorded']) ? 1 : 0;
+    $fatherNotRecorded = $fatherName === '' && isset($_POST['father_name_not_recorded']) ? 1 : 0;
+    $motherNotRecorded = $motherMaidenName === '' && isset($_POST['mother_maiden_name_not_recorded']) ? 1 : 0;
     $sponsorName       = trim($_POST['sponsor_name'] ?? '');
     $ministerName      = trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
@@ -58,6 +91,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if ($confirmationDate === '') $errors[] = 'Confirmation date is required.';
     if ($confirmandName === '')   $errors[] = "Confirmand's full name is required.";
+    if ($birthdate === '' && !$birthdateNotRecorded) $errors[] = 'Enter the birth date or mark it as not recorded in the source register.';
+    if ($birthdate !== '' && !confirmation_birthdate_is_valid($birthdate)) $errors[] = 'Enter a valid birth date that is not in the future.';
+    if ($fatherName === '' && !$fatherNotRecorded) $errors[] = "Enter the father's name or mark it as not recorded in the source register.";
+    if ($motherMaidenName === '' && !$motherNotRecorded) $errors[] = "Enter the mother's maiden name or mark it as not recorded in the source register.";
 
     if (empty($errors)) {
         try {
@@ -77,18 +114,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
             $stmt = $pdo->prepare(
                 "INSERT INTO confirmation_records
-                    (entry_no, confirmation_date, confirmand_full_name, confirmand_first_name, confirmand_middle_name, confirmand_last_name, confirmand_suffix, birthdate, father_name, mother_maiden_name,
+                    (entry_no, confirmation_date, confirmand_full_name, confirmand_first_name, confirmand_middle_name, confirmand_last_name, confirmand_suffix, birthdate, birthdate_not_recorded, father_name, father_name_not_recorded, mother_maiden_name, mother_maiden_name_not_recorded,
                      sponsor_name, minister_name, baptismal_record_id, remarks, book_no, page_no, line_no, encoded_by, person_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
-                $entryNo, $confirmationDate, $confirmandName, $confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix, $birthdate, $fatherName, $motherMaidenName,
+                $entryNo, $confirmationDate, $confirmandName, $confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix,
+                $birthdate !== '' ? $birthdate : null, $birthdateNotRecorded,
+                $fatherName !== '' ? $fatherName : null, $fatherNotRecorded,
+                $motherMaidenName !== '' ? $motherMaidenName : null, $motherNotRecorded,
                 $sponsorName, $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo,
                 current_user()['id'], $personId,
             ]);
             $recordId = (int) $pdo->lastInsertId();
             $pdo->prepare('UPDATE confirmation_records SET confirmand_first_name = ?, confirmand_middle_name = ?, confirmand_last_name = ?, confirmand_suffix = ? WHERE id = ?')
                 ->execute([$confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix, $recordId]);
+            if ($personId !== null && $birthdate !== '') {
+                $pdo->prepare('UPDATE persons SET birth_date = ? WHERE id = ? AND birth_date IS NULL')
+                    ->execute([$birthdate, $personId]);
+            }
 
             log_activity($pdo, current_user()['id'], 'confirmation_record_encoded', 'confirmation_records', $recordId,
                 "Confirmation record encoded for {$confirmandName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
@@ -114,9 +158,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $confirmandName  = trim($_POST['confirmand_full_name'] ?? '');
     $confirmandFirst = trim($_POST['confirmand_first_name'] ?? ''); $confirmandMiddle = trim($_POST['confirmand_middle_name'] ?? ''); $confirmandLast = trim($_POST['confirmand_last_name'] ?? ''); $confirmandSuffix = trim($_POST['confirmand_suffix'] ?? '');
     if ($confirmandFirst !== '' || $confirmandMiddle !== '' || $confirmandLast !== '') $confirmandName = compose_structured_name($confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix);
-    $birthdate       = $_POST['birthdate'] ?: null;
+    $birthdate       = trim((string) ($_POST['birthdate'] ?? ''));
     $fatherName      = trim($_POST['father_name'] ?? '');
     $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
+    $personIdInput = (int) ($_POST['person_id'] ?? 0);
+    $baptismalRecordIdInput = (int) ($_POST['baptismal_record_id'] ?? 0);
+    $birthdate = confirmation_resolve_birthdate($pdo, $birthdate, $personIdInput, $baptismalRecordIdInput);
+    $birthdateNotRecorded = $birthdate === '' && isset($_POST['birthdate_not_recorded']) ? 1 : 0;
+    $fatherNotRecorded = $fatherName === '' && isset($_POST['father_name_not_recorded']) ? 1 : 0;
+    $motherNotRecorded = $motherMaidenName === '' && isset($_POST['mother_maiden_name_not_recorded']) ? 1 : 0;
     $sponsorName     = trim($_POST['sponsor_name'] ?? '');
     $ministerName    = trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
@@ -127,6 +177,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     if ($confirmationDate === '') $errors[] = 'Confirmation date is required.';
     if ($confirmandName === '')   $errors[] = "Confirmand's full name is required.";
+    if ($birthdate === '' && !$birthdateNotRecorded) $errors[] = 'Enter the birth date or mark it as not recorded in the source register.';
+    if ($birthdate !== '' && !confirmation_birthdate_is_valid($birthdate)) $errors[] = 'Enter a valid birth date that is not in the future.';
+    if ($fatherName === '' && !$fatherNotRecorded) $errors[] = "Enter the father's name or mark it as not recorded in the source register.";
+    if ($motherMaidenName === '' && !$motherNotRecorded) $errors[] = "Enter the mother's maiden name or mark it as not recorded in the source register.";
     if ($editId <= 0)             $errors[] = 'Invalid record selected for update.';
 
     if (empty($errors)) {
@@ -135,17 +189,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
             $baptismalRecordId = posted_baptismal_record_id($pdo);
             $stmt = $pdo->prepare(
                 "UPDATE confirmation_records
-                    SET entry_no = ?, confirmation_date = ?, confirmand_full_name = ?, birthdate = ?,
-                        father_name = ?, mother_maiden_name = ?, sponsor_name = ?, minister_name = ?,
+                    SET entry_no = ?, confirmation_date = ?, confirmand_full_name = ?, birthdate = ?, birthdate_not_recorded = ?,
+                        father_name = ?, father_name_not_recorded = ?, mother_maiden_name = ?, mother_maiden_name_not_recorded = ?, sponsor_name = ?, minister_name = ?,
                         baptismal_record_id = ?, remarks = ?, book_no = ?, page_no = ?, line_no = ?, person_id = ?
                   WHERE id = ?"
             );
             $stmt->execute([
-                $entryNo, $confirmationDate, $confirmandName, $birthdate, $fatherName, $motherMaidenName,
+                $entryNo, $confirmationDate, $confirmandName, $birthdate !== '' ? $birthdate : null, $birthdateNotRecorded,
+                $fatherName !== '' ? $fatherName : null, $fatherNotRecorded,
+                $motherMaidenName !== '' ? $motherMaidenName : null, $motherNotRecorded,
                 $sponsorName, $ministerName, $baptismalRecordId, $remarks, $bookNo, $pageNo, $lineNo, $personId,
                 $editId,
             ]);
             $pdo->prepare('UPDATE confirmation_records SET confirmand_first_name = ?, confirmand_middle_name = ?, confirmand_last_name = ?, confirmand_suffix = ? WHERE id = ?')->execute([$confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix, $editId]);
+            if ($personId !== null && $birthdate !== '') {
+                $pdo->prepare('UPDATE persons SET birth_date = ? WHERE id = ? AND birth_date IS NULL')
+                    ->execute([$birthdate, $personId]);
+            }
 
             log_activity($pdo, current_user()['id'], 'confirmation_record_updated', 'confirmation_records', $editId,
                 "Confirmation record updated for {$confirmandName}");
@@ -379,12 +439,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="field-hint">Review the possible matches and select a person only when you are sure. Leave blank if this record is not linked yet.</p>
                 </div>
                 <div class="inline-fields">
-                    <label>Birthdate <input autocomplete="off" type="date" name="birthdate" value="<?= e($_POST['birthdate'] ?? $editRecord['birthdate'] ?? '') ?>"></label>
+                    <label>Birthdate <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="birthdate" value="<?= e($_POST['birthdate'] ?? $editRecord['birthdate'] ?? '') ?>"></label>
                     <label>Confirmation Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="confirmation_date" value="<?= e($_POST['confirmation_date'] ?? $editRecord['confirmation_date'] ?? '') ?>" required></label>
                 </div>
+                <label class="field-hint"><input type="checkbox" name="birthdate_not_recorded" value="1"<?= !empty($_POST['birthdate_not_recorded'] ?? $editRecord['birthdate_not_recorded'] ?? false) ? ' checked' : '' ?>> Birth date is not recorded in the source register</label>
                 <div class="inline-fields">
-                    <label>Father's Name <input autocomplete="off" type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Maiden Name <input autocomplete="off" type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
+                    <label>Father's Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
+                    <label>Mother's Maiden Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
+                </div>
+                <div class="inline-fields">
+                    <label class="field-hint"><input type="checkbox" name="father_name_not_recorded" value="1"<?= !empty($_POST['father_name_not_recorded'] ?? $editRecord['father_name_not_recorded'] ?? false) ? ' checked' : '' ?>> Father's name is not recorded in the source register</label>
+                    <label class="field-hint"><input type="checkbox" name="mother_maiden_name_not_recorded" value="1"<?= !empty($_POST['mother_maiden_name_not_recorded'] ?? $editRecord['mother_maiden_name_not_recorded'] ?? false) ? ' checked' : '' ?>> Mother's maiden name is not recorded in the source register</label>
                 </div>
                 <label>Sponsor <input autocomplete="off" type="text" name="sponsor_name" value="<?= e($_POST['sponsor_name'] ?? $editRecord['sponsor_name'] ?? '') ?>"></label>
             </fieldset>

@@ -298,7 +298,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="record-detail-group-title"><?= e($groupLabel) ?></p>
                     <dl class="record-detail-list">
                         <?php foreach ($groupFields as $field => $label): ?>
-                            <div><dt><?= e($label) ?></dt><dd><?= e(record_view_value($field, $record[$field] ?? null)) ?></dd></div>
+                            <?php
+                                $fieldValue = $record[$field] ?? null;
+                                $notRecordedField = $field . '_not_recorded';
+                                if ($recordType === 'confirmation' && ($fieldValue === null || $fieldValue === '')
+                                    && !empty($record[$notRecordedField])) {
+                                    $fieldValue = 'Not recorded in source register';
+                                }
+                            ?>
+                            <div><dt><?= e($label) ?></dt><dd><?= e(record_view_value($field, $fieldValue)) ?></dd></div>
                         <?php endforeach; ?>
                     </dl>
                 <?php endforeach; ?>

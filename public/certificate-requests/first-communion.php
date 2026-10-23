@@ -99,8 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (count(record_lookup_tokens($search['mother_name'])) < 2) {
             $errors[] = "Please enter the mother's maiden name (first and last name).";
         }
-        if ($search['father_name'] !== '' && count(record_lookup_tokens($search['father_name'])) < 2) {
-            $errors[] = "Please enter the father's first and last name, or leave it blank.";
+        if (count(record_lookup_tokens($search['father_name'])) < 2) {
+            $errors[] = "Please enter the father's first and last name.";
         }
 
         if (empty($errors)) {
@@ -390,10 +390,10 @@ require_once __DIR__ . '/../../includes/header.php';
                     <label>Birthdate *
                         <input type="date" name="birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $searchVal('birthdate') ?>" required>
                     </label>
-                    <label>Father's full name <span class="field-hint">(first and last name)</span>
-                        <input type="text" name="father_name" autocomplete="off" value="<?= $searchVal('father_name') ?>">
+                    <label>Father's full name *
+                        <input type="text" name="father_name" autocomplete="off" value="<?= $searchVal('father_name') ?>" required>
                     </label>
-                    <label>Mother's maiden name * <span class="field-hint">(first and last name)</span>
+                    <label>Mother's maiden full name *
                         <input type="text" name="mother_name" autocomplete="off" value="<?= $searchVal('mother_name') ?>" required>
                     </label>
                 </fieldset>

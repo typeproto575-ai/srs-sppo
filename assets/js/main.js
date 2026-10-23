@@ -167,6 +167,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.addEventListener('click', function () {
                     hiddenId.value = record.id;
                     search.value = record.child_full_name || '';
+                    var birthdateInput = form.querySelector('[name="birthdate"]');
+                    var birthdateUnknown = form.querySelector('[name="birthdate_not_recorded"]');
+                    if (birthdateInput && !birthdateInput.value && record.birth_date) {
+                        birthdateInput.value = record.birth_date;
+                        if (birthdateUnknown) birthdateUnknown.checked = false;
+                    }
                     renderSelection(record.child_full_name);
                     resultsBox.textContent = 'Record selected. Review the details above before saving.';
                 });
@@ -265,6 +271,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.addEventListener('click', function () {
                     hiddenId.value = record.id;
                     search.value = name.textContent;
+                    var birthdateInput = form.querySelector('[name="birthdate"]');
+                    var birthdateUnknown = form.querySelector('[name="birthdate_not_recorded"]');
+                    if (birthdateInput && !birthdateInput.value && record.birth_date) {
+                        birthdateInput.value = record.birth_date;
+                        if (birthdateUnknown) birthdateUnknown.checked = false;
+                    }
                     renderSelection();
                     resultsBox.textContent = 'Person selected. Review the identity before saving.';
                 });

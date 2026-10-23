@@ -26,6 +26,7 @@ require_role('secretary');
 $basePath = base_path();
 $notice = null;
 $errors = [];
+$newPersonSex = '';
 
 // Set when create_and_assign hits an exact-name match in `persons`. Holds
 // record_id/full_name/matches so the warning renders on the row that was
@@ -38,27 +39,32 @@ $mappings = [
     'baptismal' => [
         'label' => 'Baptismal record',
         'table' => 'baptismal_records', 'column' => 'person_id', 'name' => 'child_full_name',
-        'date_sql' => 'COALESCE(birth_date, baptism_date)', 'skip_column' => 'mapper_skipped_at',
+        'date_sql' => 'COALESCE(birth_date, baptism_date)', 'birth_date_sql' => 'birth_date',
+        'skip_column' => 'mapper_skipped_at',
     ],
     'confirmation' => [
         'label' => 'Confirmation record',
         'table' => 'confirmation_records', 'column' => 'person_id', 'name' => 'confirmand_full_name',
-        'date_sql' => 'birthdate', 'skip_column' => 'mapper_skipped_at',
+        'date_sql' => 'birthdate', 'birth_date_sql' => 'birthdate',
+        'skip_column' => 'mapper_skipped_at',
     ],
     'first_communion' => [
         'label' => 'First Communion record',
         'table' => 'first_communion_records', 'column' => 'person_id', 'name' => 'communicant_full_name',
-        'date_sql' => 'NULL', 'skip_column' => 'mapper_skipped_at',
+        'date_sql' => 'NULL', 'birth_date_sql' => 'NULL',
+        'skip_column' => 'mapper_skipped_at',
     ],
     'marriage_husband' => [
         'label' => 'Marriage record (husband)',
         'table' => 'marriage_records', 'column' => 'husband_person_id', 'name' => 'husband_full_name',
-        'date_sql' => 'husband_birthdate', 'skip_column' => 'husband_mapper_skipped_at',
+        'date_sql' => 'husband_birthdate', 'birth_date_sql' => 'husband_birthdate',
+        'skip_column' => 'husband_mapper_skipped_at',
     ],
     'marriage_wife' => [
         'label' => 'Marriage record (wife)',
         'table' => 'marriage_records', 'column' => 'wife_person_id', 'name' => 'wife_maiden_name',
-        'date_sql' => 'wife_birthdate', 'skip_column' => 'wife_mapper_skipped_at',
+        'date_sql' => 'wife_birthdate', 'birth_date_sql' => 'wife_birthdate',
+        'skip_column' => 'wife_mapper_skipped_at',
     ],
 ];
 
@@ -154,7 +160,8 @@ function mapper_row_sql(array $mapping, bool $skipped): string
     $skipClause = $skipped
         ? "{$mapping['skip_column']} IS NOT NULL"
         : "{$mapping['skip_column']} IS NULL";
-    return "SELECT id, {$mapping['name']} AS display_name, {$mapping['date_sql']} AS mapper_date
+    return "SELECT id, {$mapping['name']} AS display_name, {$mapping['date_sql']} AS mapper_date,
+                   {$mapping['birth_date_sql']} AS source_birth_date
             FROM {$mapping['table']}
             WHERE ({$mapping['column']} IS NULL OR {$mapping['column']} = 0)
               AND {$skipClause}";
@@ -169,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $recordId = (int) ($_POST['record_id'] ?? 0);
         $personId = (int) ($_POST['person_id'] ?? 0);
         $fullName = trim($_POST['new_person_name'] ?? '');
+        $newPersonSex = trim((string) ($_POST['new_person_sex'] ?? ''));
         $mapping = $mappings[$section] ?? null;
 
         if ($action === 'bulk_confirm_high_confidence') {
@@ -194,9 +202,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           AND (`{$mapping['column']}` IS NULL OR `{$mapping['column']}` = 0)
                           AND `{$mapping['skip_column']}` IS NULL"
                     );
+                    $updateBirthDate = $pdo->prepare(
+                        'UPDATE persons SET birth_date = ? WHERE id = ? AND birth_date IS NULL'
+                    );
                     foreach ($eligible as [$bulkRow, $person]) {
                         $update->execute([(int) $person['id'], (int) $bulkRow['id']]);
                         if ($update->rowCount() === 1) {
+                            if (!empty($bulkRow['source_birth_date'])) {
+                                $updateBirthDate->execute([$bulkRow['source_birth_date'], (int) $person['id']]);
+                            }
                             log_activity($pdo, current_user()['id'], 'map_person', $mapping['table'], (int) $bulkRow['id'],
                                 "{$mapping['label']} #{$bulkRow['id']} linked to person #{$person['id']} in the system.");
                         }
@@ -228,7 +242,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'The selected person does not exist.';
             }
         } elseif ($action === 'create_and_assign') {
-            if ($fullName === '') {
+            if (!in_array($newPersonSex, ['', 'male', 'female'], true)) {
+                $errors[] = 'Choose a valid sex or leave it unspecified.';
+            } elseif ($fullName === '') {
                 $errors[] = 'A full name is required.';
             } elseif (($_POST['confirm_create_duplicate'] ?? '') !== '1') {
                 // No reliable birth date exists yet for a typed name, so pass
@@ -260,6 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $duplicateWarning = [
                         'record_id' => $recordId,
                         'full_name' => $fullName,
+                        'sex' => $newPersonSex,
                         'matches' => $duplicateMatches,
                     ];
                     $errors[] = 'A person with this exact name already exists. See the warning below to confirm creating a separate person anyway, or assign to the existing one instead.';
@@ -274,12 +291,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->beginTransaction();
                 if ($action === 'create_and_assign') {
                     [$first, $middle, $last, $suffix] = mapper_name_parts($fullName);
+                    $sourceStmt = $pdo->prepare(
+                        "SELECT {$mapping['birth_date_sql']} FROM {$mapping['table']} WHERE id = ?"
+                    );
+                    $sourceStmt->execute([$recordId]);
+                    $sourceBirthDate = $sourceStmt->fetchColumn() ?: null;
                     $stmt = $pdo->prepare(
-                        'INSERT INTO persons (first_name, middle_name, last_name, suffix, maiden_name, created_at)
-                         VALUES (?, ?, ?, ?, ?, NOW())'
+                        'INSERT INTO persons
+                            (first_name, middle_name, last_name, suffix, maiden_name, sex, birth_date, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())'
                     );
                     $stmt->execute([$first, $middle ?: null, $last ?: null, $suffix ?: null,
-                        $section === 'marriage_wife' ? $last : null]);
+                        $section === 'marriage_wife' ? $last : null,
+                        $newPersonSex !== '' ? $newPersonSex : null, $sourceBirthDate]);
                     $personId = (int) $pdo->lastInsertId();
                     $actionName = 'create_person_and_map';
                 } else {
@@ -290,6 +314,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([$personId, $recordId]);
                 if ($stmt->rowCount() < 1) throw new RuntimeException('Record was not found or was not changed.');
+
+                if ($action !== 'create_and_assign') {
+                    $sourceStmt = $pdo->prepare(
+                        "SELECT {$mapping['birth_date_sql']} FROM {$mapping['table']} WHERE id = ?"
+                    );
+                    $sourceStmt->execute([$recordId]);
+                    $sourceBirthDate = $sourceStmt->fetchColumn() ?: null;
+                    if ($sourceBirthDate !== null) {
+                        $birthDateStmt = $pdo->prepare(
+                            'UPDATE persons SET birth_date = ? WHERE id = ? AND birth_date IS NULL'
+                        );
+                        $birthDateStmt->execute([$sourceBirthDate, $personId]);
+                    }
+                }
 
                 log_activity($pdo, current_user()['id'], $actionName, $mapping['table'], $recordId,
                     "{$mapping['label']} #{$recordId} linked to person #{$personId} in the system.");
@@ -374,6 +412,7 @@ function mapper_duplicate_warning(array $warn, string $section, int $recordId): 
             <input type="hidden" name="section" value="<?= e($section) ?>">
             <input type="hidden" name="record_id" value="<?= $recordId ?>">
             <input type="hidden" name="new_person_name" value="<?= e($warn['full_name']) ?>">
+            <input type="hidden" name="new_person_sex" value="<?= e($warn['sex'] ?? '') ?>">
             <input type="hidden" name="confirm_create_duplicate" value="1">
             <button class="btn btn-small" type="submit" onclick="return confirm('Create a separate new person anyway? This will not merge with the existing match.');">Create separate person anyway</button>
         </form>
@@ -454,6 +493,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php foreach ($rows as $r): ?>
                 <?php $suggestions = mapper_suggestions((string) $r['display_name'], $r['mapper_date'], $allPersons); ?>
                 <?php $isHighConfidence = !empty($suggestions) && $suggestions[0]['dist'] === 0 && (!$r['mapper_date'] || mapper_date_match($r['mapper_date'], $suggestions[0]['p']['birth_date'] ?? null)); ?>
+                <?php $formSex = $_SERVER['REQUEST_METHOD'] === 'POST' && $recordId === (int) $r['id'] ? $newPersonSex : ''; ?>
                 <div class="panel-card<?= $isHighConfidence ? ' mapper-high-confidence' : '' ?>" style="margin-bottom:0.5rem;">
                     <div>
                         <strong>#<?= (int)$r['id'] ?></strong>
@@ -509,6 +549,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <input type="hidden" name="section" value="<?= e($activeSection) ?>">
                             <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
                             <input autocomplete="off" type="text" name="new_person_name" value="<?= e($r['display_name']) ?>" aria-label="Person name" required>
+                            <label class="field-hint">Sex (optional)
+                                <select name="new_person_sex">
+                                    <option value="">Not specified</option>
+                                    <option value="female"<?= $formSex === 'female' ? ' selected' : '' ?>>Female</option>
+                                    <option value="male"<?= $formSex === 'male' ? ' selected' : '' ?>>Male</option>
+                                </select>
+                            </label>
+                            <?php if (!empty($r['source_birth_date'])): ?>
+                                <span class="field-hint">Birth date from register: <?= e($r['source_birth_date']) ?></span>
+                            <?php endif; ?>
                             <button class="btn btn-secondary btn-small" type="submit">Create Person &amp; Assign</button>
                         </form>
                         <form autocomplete="off" method="post" class="mapper-action-form">
