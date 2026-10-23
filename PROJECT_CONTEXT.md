@@ -205,7 +205,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that, then seed if needed (`database/seed_demo_data.sql`).
 
-Existing databases can review supported compatibility updates at **System → Database Upgrades**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page currently handles public page settings (007), certificate request review fields (012), and data-retention support (038), checking existing tables/columns before applying changes.
+Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page currently handles public page settings (007), certificate request review fields (012), and data-retention support (038), checking existing tables/columns before applying changes.
 
 `migrations/` remains the historical record for older database versions and is not replayed wholesale by the application. Numeric prefixes are not unique (`017_*`, `023_*`, `025_*`, `026_*`, `027_*`, `028_*`, and `038_*` are reused); identify historical scripts by their full filename and inspect the target database before applying any of them.
 

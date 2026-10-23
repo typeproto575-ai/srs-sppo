@@ -42,15 +42,6 @@
  * @filesource  config/database.php
  */
 
-// Database server hostname — 'localhost' means the DB runs on the same machine.
-// Each value can be overridden by an environment variable so real deployments
-// never need credentials inside the code (set SRS_DB_USER/SRS_DB_PASS etc. in
-// the server environment).
-$DB_HOST = getenv('SRS_DB_HOST') ?: 'localhost';
-
-// Name of the MySQL database that holds all SRS-SPPO tables
-$DB_NAME = getenv('SRS_DB_NAME') ?: 'srs_sppo_db';
-
 $localConfig = [];
 $localConfigPath = __DIR__ . DIRECTORY_SEPARATOR . 'local.php';
 if (is_file($localConfigPath)) {
@@ -60,6 +51,10 @@ if (is_file($localConfigPath)) {
     }
 }
 
+$DB_HOST = getenv('SRS_DB_HOST');
+$DB_HOST = $DB_HOST !== false ? $DB_HOST : ($localConfig['DB_HOST'] ?? 'localhost');
+$DB_NAME = getenv('SRS_DB_NAME');
+$DB_NAME = $DB_NAME !== false ? $DB_NAME : ($localConfig['DB_NAME'] ?? 'srs_sppo_db');
 $DB_USER = getenv('SRS_DB_USER');
 $DB_USER = $DB_USER !== false ? $DB_USER : ($localConfig['DB_USER'] ?? null);
 $DB_PASS = getenv('SRS_DB_PASS');

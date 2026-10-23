@@ -12,13 +12,20 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    ```php
    <?php
    return [
+       'DB_HOST' => 'localhost',
+       'DB_NAME' => 'srs_sppo_db',
        'DB_USER' => 'root',
        'DB_PASS' => '', // Explicit XAMPP-local choice only; use a real password outside local development.
+       'SRS_APP_URL' => 'http://localhost/srs-sppo',
    ];
    ```
+   Environment variables (`SRS_DB_HOST`, `SRS_DB_NAME`, `SRS_DB_USER`,
+   `SRS_DB_PASS`, `SRS_APP_URL`) take precedence over these local settings.
    The application refuses to connect when `DB_USER` is missing or when
-   `DB_PASS` is not present in the environment or this file. For production,
-   use `SRS_DB_USER` and `SRS_DB_PASS` environment variables instead.
+   `DB_PASS` is not present in the environment or this file. On shared hosting,
+   use the database host, database name, username, and password shown in that
+   host's database panel. Never commit or upload your local `config/local.php`;
+   create a separate server-only copy on the host.
 5. Only for a **disposable local database**, import
    `database/seed_demo_data.sql` if you want sample records. It deletes all
    rows from the sacramental-record, request, application, and persons tables
@@ -29,17 +36,15 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 6. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
 7. For an existing database, sign in as secretary and open
-   **System → Database Upgrades** to review supported compatibility changes.
+   **System → Database Setup** to review supported compatibility changes.
    The app does not run schema changes automatically on normal requests. Back
    up the database before applying any update; the page checks schema objects
    but cannot guarantee a backup or undo MySQL DDL.
-8. Set `SRS_FORCE_HTTPS=true` in production. Leave it unset or false for local
-   XAMPP HTTP development. When enabled, HTTP requests redirect to HTTPS and
-   HSTS is sent. The public base URL is set in `config/environment.php` via
-   `SRS_APP_URL`, which defaults to `http://localhost/srs-sppo` for XAMPP. On
-   the real parish server, set the `SRS_APP_URL` environment variable to the
-   public address (e.g. `https://parish.example.org`); a non-local host also
-   enables HTTPS enforcement automatically.
+8. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
+   example, `https://parish.example.org` or
+   `https://example.org/srs-sppo`). It can be set in the server environment or
+   in server-only `config/local.php`. A non-local host automatically enables
+   HTTPS enforcement.
 9. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
    enable 2-Step Verification on the sending account and create an App Password.
    Add the settings below to the server-only `config/local.php`; do not commit
@@ -59,10 +64,10 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    'MAIL_SMTP_ENCRYPT' => 'tls',
    ```
 
-   Keep the existing database settings in `config/local.php` when adding these
-   values. On InfinityFree, external SMTP is supported; outgoing PHP `mail()`
-   is restricted. Test delivery to an address you control and check
-   **System → Email Log** before relying on notifications.
+   Add these entries to the array in the server-only `config/local.php`, keeping
+   its database settings. On InfinityFree, external SMTP is supported; outgoing
+   PHP `mail()` is restricted. Test delivery to an address you control and
+   check **System → Email Log** before relying on notifications.
 
 ## Folder structure
 

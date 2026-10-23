@@ -13,15 +13,26 @@
  * ============================================================================
  */
 
-// Public base URL of this installation, WITHOUT trailing slash.
-// It is also used to decide whether HTTPS is enforced (see below).
-//   XAMPP dev : 'http://localhost/srs-sppo'
-//   Parish    : set SRS_APP_URL in the server environment to the real public
-//               address, e.g. 'https://parish.example.org' (no subfolder) or
-//               'https://example.org/srs-sppo' (subfolder install).
+// The server-only local config is useful on shared hosts without environment
+// variable controls. Environment variables take precedence when both exist.
+$environmentLocalConfig = [];
+$environmentLocalConfigPath = __DIR__ . DIRECTORY_SEPARATOR . 'local.php';
+if (is_file($environmentLocalConfigPath)) {
+    $environmentLocalConfig = require $environmentLocalConfigPath;
+    if (!is_array($environmentLocalConfig)) {
+        throw new RuntimeException('Setup error: config/local.php must return an array.');
+    }
+}
+
+// Public base URL of this installation, WITHOUT trailing slash. It is also
+// used to decide whether HTTPS is enforced.
+$configuredAppUrl = getenv('SRS_APP_URL');
+$configuredAppUrl = $configuredAppUrl !== false && $configuredAppUrl !== ''
+    ? $configuredAppUrl
+    : ($environmentLocalConfig['SRS_APP_URL'] ?? 'http://localhost/srs-sppo');
 define(
     'SRS_APP_URL',
-    rtrim(getenv('SRS_APP_URL') ?: 'http://localhost/srs-sppo', '/')
+    rtrim((string) $configuredAppUrl, '/')
 );
 
 $appHost = strtolower((string) parse_url(SRS_APP_URL, PHP_URL_HOST));

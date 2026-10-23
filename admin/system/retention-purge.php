@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
         $flash = 'Your session timed out. Please refresh the page and try again.';
         $flashIsError = true;
     } elseif ($dry === null) {
-        $flash = 'The purge was not run because the database readiness check failed. Check System → Database Upgrades, then reload this page.';
+        $flash = 'The cleanup was not run because the database readiness check failed. Check System → Database Setup, then reload this page.';
         $flashIsError = true;
     } else {
         try {
