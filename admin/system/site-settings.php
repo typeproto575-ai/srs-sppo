@@ -30,7 +30,7 @@ try {
 }
 
 if (!$tableExists) {
-    $message     = 'The site settings table does not exist yet. Run migration 007 first.';
+    $message     = 'The site settings table does not exist yet. Apply the Public page settings update from System → Database Upgrades.';
     $messageType = 'error';
 }
 
@@ -99,7 +99,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <?php if (!$tableExists): ?>
             <div class="alert alert-error">
-                <strong>The site settings table is missing.</strong> Run <code>migrations/007_site_settings.sql</code> against the database first.
+                <strong>The site settings table is missing.</strong> Apply the Public page settings update from System → Database Upgrades.
             </div>
         <?php elseif ($tableExists): ?>
         <form method="post" class="settings-form" data-confirm="Save these settings? They apply to the whole system immediately.">

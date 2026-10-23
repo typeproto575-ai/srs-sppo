@@ -1,38 +1,105 @@
-# Migrations — historical record
+# Database setup, upgrades, and historical migrations
 
-These scripts were one-time database migrations applied when the Person
-Registry (`persons`) was introduced. They are kept for documentation and
-history only.
+## The short version
 
-- `001_add_persons_and_person_id.sql` — created the `persons` table and added
-  the nullable `person_id` / `husband_person_id` / `wife_person_id` bridge
-  columns to the record tables.
-- `002_populate_persons.sql` — inserted one best-effort name stub per distinct
-  person name found in the existing record tables.
-- `003_map_person_ids.sql` — linked existing records to `persons` rows by
-  exact name match; leftovers were reconciled manually through the Person
-  Mapper (admin/system/person-mapper.php).
+- **New, empty installation:** import `database/srs_sppo_schema.sql`. This is
+  the canonical schema for a fresh database. Do not import every file in
+  `migrations/`.
+- **Existing installation:** do not guess which SQL files to run. First back
+  up the database, inspect its current schema, and apply only the upgrade
+  scripts required to bring that specific database to the version expected by
+  the application. For the supported compatibility updates, use the
+  authenticated **System → Database Upgrades** page; it checks the actual
+  schema and records completed updates.
+- **Demo data:** `database/seed_demo_data.sql` is only for a disposable local
+  database. It deletes existing sacramental, request, application, and person
+  rows before inserting demo data. Never run it against a real parish or
+  hosted database.
 
-**Fresh installs do not need any of these.** The equivalent of migration 001
-is now part of the canonical schema (`database/srs_sppo_schema.sql`), and the
-demo dataset (`database/seed_demo_data.sql`) populates `persons` for
-demonstration. Migrations 002 and 003 were one-time data operations against
-the pre-existing parish database and have already been applied there.
+The application does not run updates automatically during ordinary requests.
+The protected upgrade page supports only the named compatibility updates
+shown there; it does not replay every historical file. Uploading the
+application does not itself update the database, and filenames do not provide
+a safe universal run order. Some numeric prefixes are reused
+(including 017, 023, 025, 026, 027, 028, and 038); identify scripts by their
+full filenames and purpose, not by number alone.
 
-Note: the bridge columns intentionally have no foreign-key constraints (same
-as the live database); referential integrity is managed by the application.
+## What the SQL files are for
 
+### Canonical fresh-install schema
 
-## Current workflow migrations
+`database/srs_sppo_schema.sql` defines the current tables and columns for a
+fresh installation, including the person registry, workflow features,
+retention fields, and the upgrade-history table. This schema—not the
+collection of historical migrations—is the starting point for a new database.
 
-- `039_person_identity_profile.sql` — clears the incorrect default `unbaptized` status for people without a linked baptismal register row and marks linked people as baptized Catholic. Apply to existing databases to align the Persons directory with the register. New installs get a nullable status from the canonical schema; the directory derives status from linked records.
-- `040_confirmation_required_source_fields.sql` — records when the Confirmation register does not contain a birth date, father's name, or mother's maiden name. New entries must provide each detail or explicitly mark it as not recorded. Existing blank values are preserved and marked as not recorded.
+`database/srs_sppo_workbench_erd.sql` is an optional Workbench-oriented DDL
+reference for reverse engineering an ER diagram. It is not a migration or seed
+file; `database/srs_sppo_schema.sql` is authoritative if the copies differ.
 
-- `019_add_workflow_requirements_checklist.sql` — creates the `workflow_requirements` table used by the secretary-side requirements checklist for certificate requests and sacrament applications. It stores only checklist status and notes; it does not store uploaded documents. Apply this migration before using the checklist in an existing database.
-- `020_add_email_delivery_logs.sql` — adds `email_delivery_log` for sent/failed/disabled/invalid delivery attempts and expands the notification event enum so all certificate and application status alerts are preserved.
-Migration `021_admin_role_audit_metadata.sql` originally added the retired `parish_admin` role and enriched append-only audit entries with role, IP, user-agent, and reason fields. Migration `038_consolidate_staff_role.sql` converts legacy administrator accounts and audit snapshots to the single `secretary` role.
+### Historical and incremental migrations
 
-- `022_phase4_workflow_controls.sql` — adds requirements source/review metadata, certificate cancellation/finalization fields, and archive metadata for sacramental records. Existing direct public submission routes now redirect to the onsite requirements workflow through `includes/public-office-only.php`.
-- `023_phase5a_online_intake.sql` — adds the online certificate intake fields and submission-channel metadata used by the public certificate request flow.
-- `024_secretary_password_recovery.sql` — adds account authentication versions and one-time password-reset tokens for active secretary and parish administrator accounts.
-- `028_make_baptismal_certificate_birthplace_optional.sql` — allows certificate requesters to leave birthplace blank when the child’s name, birthdate, and parent names are available for lookup.
+Files in `migrations/` record changes made as the application evolved. Some
+are one-time data operations; others upgrade an existing database for a
+feature. They are not all intended to be run on every installation.
+
+The person-registry sequence documents the original rollout:
+
+1. `001_add_persons_and_person_id.sql` created `persons`, nullable links, and
+   link lookup indexes.
+2. `002_populate_persons.sql` created best-effort person stubs from existing
+   sacramental-record names.
+3. `003_map_person_ids.sql` attempted to link records by exact name. A name
+   match alone is not reliable proof of identity.
+4. `003a_validate_person_identity_links.sql` is a read-only report for
+   repeated names, missing links, and orphan links.
+5. `004_harden_person_identity_links.sql` adds foreign keys. This is optional
+   hardening, not part of the current canonical/live database design described
+   here, which keeps the links nullable and relies on application-managed
+   integrity. Do not run it without reviewing the target database and
+   confirming that the application is ready for the changed behavior.
+
+The protected upgrade page handles the supported compatibility updates for
+public page settings (007), request review fields (012), and retention support
+(038). Other files remain as historical upgrade records; an older database
+may need them, but they are not blindly executed by the application. For an
+existing database, compare its schema with the required application version;
+do not rerun historical scripts just because their files are present.
+
+`database/migration_notifications.sql` is a legacy one-off copy of a table
+definition already present in the canonical schema. It is not needed for a
+fresh installation.
+
+`database/alter_live_db_sync.sql` is an older compatibility bundle for a
+particular live-schema state. It overlaps individual migrations and the
+canonical schema; it is not a general upgrade script. Do not run it without
+first checking every statement against the target database.
+
+### Seed and test data
+
+- `database/seed_demo_data.sql` intentionally clears existing demo-related
+  rows and repopulates a larger coherent sample dataset. Use only with a
+  disposable local database after importing the canonical schema.
+- `scripts/setup-test-db.php` creates and drops a specifically configured
+  integration-test database, then loads the canonical schema. It is test
+  tooling, not a production deployment command. Never point its test database
+  setting at application data.
+
+## Safe upgrade checklist
+
+1. Identify whether this is a new database, a disposable test database, or an
+   existing database containing parish records.
+2. Make a verified backup before changing an existing database.
+3. Compare the existing schema with `database/srs_sppo_schema.sql` and the
+   application features being deployed.
+4. For updates supported by the protected upgrade page, review its preflight
+   status. Older, unsupported migration files require separate schema review;
+   do not run them from a bulk import.
+5. Test on a staging copy and verify the application before applying to
+   production.
+6. The application records updates applied through its upgrade page. Keep a
+   separate deployment record for any older manual migration.
+
+If the current hosted database's history is unknown, stop and inspect it
+before running any migration or seed script. Never use the demo seeds to
+"synchronize" a production database.

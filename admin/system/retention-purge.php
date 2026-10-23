@@ -27,7 +27,7 @@ require_once __DIR__ . '/../../includes/retention-purge.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
-$pageTitle = 'Retention & Purge';
+$pageTitle = 'Clean Up Old Data';
 $selfUrl = $basePath . '/admin/system/retention-purge.php';
 
 // CSRF token (idempotent; csrf_field() would also work).
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
         $flash = 'Your session timed out. Please refresh the page and try again.';
         $flashIsError = true;
     } elseif ($dry === null) {
-        $flash = 'The purge was not run because the database readiness check failed. Check that migration 038_data_retention_support.sql is applied, then reload this page.';
+        $flash = 'The purge was not run because the database readiness check failed. Check System → Database Upgrades, then reload this page.';
         $flashIsError = true;
     } else {
         try {
@@ -78,8 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
 
-<h1>Retention & Purge</h1>
-<p class="field-hint">Anonymizes old finished submissions, scrubs old audit rows, and deletes old disposable rows (rate limits, mail log, notifications, expired reset tokens). <strong>Sacramental register entries are permanent and are never touched.</strong></p>
+<h1>Clean Up Old Data</h1>
+<p class="field-hint">
+    This tool removes or hides some old system data based on the retention periods set
+    for this installation. It only handles completed submissions and temporary system
+    data. <strong>Church register records and person records are permanent and are never changed here.</strong>
+</p>
 
 <?php if ($flash !== ''): ?>
     <div class="flash flash-<?= $flashIsError ? 'error' : 'success' ?>"><?= e($flash) ?></div>
@@ -87,17 +91,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
 
 <?php if ($dry === null): ?>
     <div class="flash flash-error">
-        Retention tools could not read the required database data. The hosted database may be missing required tables or columns.
-        Apply <code>migrations/038_data_retention_support.sql</code> to the hosted database, then reload this page.
-        If the migration is already applied, check the server error log for the exact database error.
+        The system could not check whether cleanup is available. Ask your system administrator
+        to review <a href="<?= e($basePath) ?>/admin/system/database-upgrades.php">System &gt; Database Setup</a>,
+        then try again. Do not continue if this warning remains.
     </div>
 <?php else: ?>
-    <h2>1. Dry Run — How Much Would Be Affected?</h2>
-    <p class="field-hint">Counts only. <strong>Nothing is changed.</strong> Run a dry run first, then confirm.</p>
+    <h2>Preview the cleanup</h2>
+    <p class="field-hint">
+        This preview only counts items. <strong>Nothing is changed yet.</strong>
+        Review the counts before choosing whether to continue.
+    </p>
     <div class="table-scroll">
         <table class="admin-table" style="max-width:420px;">
             <thead>
-                <tr><th>Bucket</th><th>Rows Touched</th></tr>
+                <tr><th>Type of data</th><th>Items that may change</th></tr>
             </thead>
             <tbody>
                 <?php foreach ($dry as $bucket => $count): ?>
@@ -110,12 +117,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
         </table>
     </div>
 
-    <h2>2. Confirm Purge</h2>
-    <p class="field-hint">This writes <strong>one</strong> audit_logs row with counts only (no personal data). After purging, the same dry run should show <strong>0</strong> affected rows.</p>
+    <h2>Run the cleanup</h2>
+    <p class="field-hint">
+        Continuing will anonymize some old system history and remove temporary data.
+        It will not delete church register or person records. This action cannot be undone.
+    </p>
 
     <form autocomplete="off" method="post" style="margin-top:1rem;">
         <?= csrf_field() ?>
-        <button type="submit" name="retention_confirmed" value="1" class="btn btn-danger">Execute Retention Purge</button>
+        <button type="submit" name="retention_confirmed" value="1" class="btn btn-danger"
+                data-confirm="Run the cleanup now? Old system data will be removed or anonymized. Church register and person records will not be changed. This action cannot be undone.">
+            Run cleanup now
+        </button>
     </form>
 <?php endif; ?>
 

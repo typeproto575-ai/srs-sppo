@@ -9,7 +9,7 @@
         button (a button-level message overrides the form's).
       3. Modal encode dialogs ([data-open-dialog], [data-autoshow]).
       4. Record-list filter panel sync + click-outside close.
-      5. Admin sidebar dropdown open/closed memory (localStorage).
+      5. Admin sidebar collapse preference (localStorage).
    Every enhancement is opt-in via HTML attributes, so pages without
    the attributes are unaffected.
    ===================================================================== */
@@ -406,15 +406,47 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.textContent = '';
         });
     });
-    // ---- 6) Admin sidebar dropdowns ----------------------------------------
-    // No persistence: every page load is server-driven (see $groupIsOpen in
-    // includes/admin-header.php). Refreshing therefore always resets the
-    // menus — dashboard loads with all groups closed, inner pages load with
-    // only their own group open. Any stale saved state from the old
-    // memory feature is cleared once so it can never stick a group open.
+    // ---- 6) Admin sidebar ---------------------------------------------------
+    // Group open state remains server-driven; only the compact rail preference
+    // is saved. On narrow layouts the full-width menu is always shown.
     (function () {
         try { window.localStorage.removeItem('sppo-sidebar-open'); }
         catch (err) { /* storage unavailable — nothing to clear */ }
+
+        var layout = document.querySelector('.admin-layout');
+        var toggle = document.querySelector('[data-sidebar-toggle]');
+        if (!layout || !toggle) return;
+
+        var label = toggle.querySelector('[data-sidebar-toggle-label]');
+        var storageKey = 'sppo-sidebar-collapsed';
+        var collapsed = false;
+        try {
+            collapsed = window.localStorage.getItem(storageKey) === 'true';
+        } catch (err) {
+            // Keep the menu usable when browser storage is disabled.
+        }
+
+        function renderSidebar() {
+            var compact = collapsed && window.innerWidth > 980;
+            layout.classList.toggle('is-sidebar-collapsed', compact);
+            toggle.setAttribute('aria-expanded', compact ? 'false' : 'true');
+            toggle.setAttribute('aria-label', compact ? 'Show full menu' : 'Hide menu');
+            toggle.title = compact ? 'Show full menu' : 'Hide menu';
+            if (label) label.textContent = compact ? 'Show menu' : 'Hide menu';
+        }
+
+        toggle.addEventListener('click', function () {
+            collapsed = !collapsed;
+            try {
+                window.localStorage.setItem(storageKey, collapsed ? 'true' : 'false');
+            } catch (err) {
+                // The preference still applies until the page is reloaded.
+            }
+            renderSidebar();
+        });
+
+        window.addEventListener('resize', renderSidebar);
+        renderSidebar();
     })();
 
     // ---- 6) Password show/peek toggles --------------------------------------

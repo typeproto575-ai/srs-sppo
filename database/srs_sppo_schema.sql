@@ -238,15 +238,19 @@ CREATE TABLE certificate_requests (
   purpose                     VARCHAR(40) NOT NULL,  -- values come from the public forms (see migration 030)
   purpose_other               VARCHAR(150),
   notes                       TEXT,
+  review_notes                TEXT NULL,
+  rejection_reason            TEXT NULL,
   status                      ENUM('pending','submitted','under_review','requirements_pending','requirements_incomplete','awaiting_onsite_verification','awaiting_payment','approved','processing','ready_for_pickup','released','rejected','cancelled') NOT NULL DEFAULT 'pending',
   date_submitted               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed               DATETIME,
+  anonymized_at                DATETIME NULL,
   verification_code            VARCHAR(64) NULL UNIQUE,
   processed_by                 INT UNSIGNED,
   paid_at                      DATETIME NULL,        -- secretary marks payment received by hand (migration 035); no amount stored
   paid_by                      INT UNSIGNED NULL,
   match_confirmed_at           DATETIME NULL,        -- secretary confirms the register match (migration 037); gates public payment prompt
   match_confirmed_by           INT UNSIGNED NULL,
+  KEY idx_cert_purge (status, date_processed, date_submitted, anonymized_at),
   FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -352,10 +356,12 @@ CREATE TABLE sacrament_applications (
   status          ENUM('submitted','requirements_pending','requirements_incomplete','awaiting_onsite_verification','documents_pending','interview_scheduled','banns_in_progress','seminar_pending','ready_for_approval','awaiting_payment','approved','scheduled','completed','rejected','cancelled') NOT NULL DEFAULT 'submitted',
   date_submitted  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   date_processed  DATETIME,
+  anonymized_at   DATETIME NULL,
   processed_by    INT UNSIGNED,
   paid_at         DATETIME NULL,             -- secretary marks payment received by hand (migration 035); no amount stored
   paid_by         INT UNSIGNED NULL,
   notes           TEXT,
+  KEY idx_sacr_purge (status, date_processed, date_submitted, anonymized_at),
   FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -620,8 +626,10 @@ CREATE TABLE correction_requests (
   status             ENUM('pending','processing','completed','rejected') NOT NULL DEFAULT 'pending',
   created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  anonymized_at      DATETIME NULL,
   KEY idx_correction_tracking (tracking_number),
-  KEY idx_correction_status_created (status, created_at)
+  KEY idx_correction_status_created (status, created_at),
+  KEY idx_corr_purge (status, updated_at, anonymized_at)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -660,7 +668,8 @@ CREATE TABLE submission_rate_limits (
   form_type    VARCHAR(50) NOT NULL,
   submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_email_time (email, submitted_at),
-  KEY idx_ip_time    (ip_address, submitted_at)
+  KEY idx_ip_time    (ip_address, submitted_at),
+  KEY idx_ratelimit_purge (submitted_at)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -711,7 +720,8 @@ CREATE TABLE notifications (
   is_read     TINYINT(1) NOT NULL DEFAULT 0,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at     DATETIME NULL,
-  INDEX idx_notif_unread (is_read, created_at)
+  INDEX idx_notif_unread (is_read, created_at),
+  INDEX idx_notif_purge (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================
@@ -733,6 +743,7 @@ CREATE TABLE email_delivery_log (
   KEY idx_email_delivery_entity (entity_type, entity_id),
   KEY idx_email_delivery_status (delivery_status, created_at),
   KEY idx_email_delivery_recipient (recipient, created_at),
+  KEY idx_delivery_purge (created_at),
   FOREIGN KEY (sent_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -805,3 +816,15 @@ CREATE TABLE password_reset_tokens (
   INDEX idx_password_reset_expiry (expires_at),
   CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- Applied upgrade history for the protected System > Database Upgrades page.
+CREATE TABLE srs_schema_migrations (
+  migration_key VARCHAR(80) PRIMARY KEY,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  applied_by INT UNSIGNED NULL
+) ENGINE=InnoDB;
+
+INSERT INTO srs_schema_migrations (migration_key) VALUES
+  ('007_site_settings'),
+  ('012_request_review_fields'),
+  ('038_data_retention_support');

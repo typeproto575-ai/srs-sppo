@@ -1,5 +1,8 @@
 -- =====================================================================
 -- SRS-SPPO LIVE-DATABASE SYNC (run once in phpMyAdmin on srs_sppo_db)
+-- LEGACY / UNSUPPORTED: this bundle targets a particular older schema state
+-- and overlaps individual migrations. Do not run without checking every
+-- statement against the exact target database and backing it up first.
 -- Idempotent: every statement is safe to re-run.
 -- Brings your existing database in line with the updated
 -- database/srs_sppo_schema.sql (no data is lost).

@@ -205,11 +205,13 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that, then seed if needed (`database/seed_demo_data.sql`).
 
-`migrations/` is the historical path for existing databases. Some numbers were reused (`017_*` twice, `025_*` twice) — apply by filename, not by assuming a clean 001–029 sequence. Helper scripts `migrations/_run007.php` and `migrations/_test_suggest.php` are not part of the product UI.
+Existing databases can review supported compatibility updates at **System → Database Upgrades**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page currently handles public page settings (007), certificate request review fields (012), and data-retention support (038), checking existing tables/columns before applying changes.
+
+`migrations/` remains the historical record for older database versions and is not replayed wholesale by the application. Numeric prefixes are not unique (`017_*`, `023_*`, `025_*`, `026_*`, `027_*`, `028_*`, and `038_*` are reused); identify historical scripts by their full filename and inspect the target database before applying any of them.
 
 The canonical schema already includes `certificate_requests.verification_code`. The column is retained for schema continuity with the historical migration `032_add_certificate_verification_code.sql`, but it is no longer populated or used: certificates carry no verification token.
 
-Migration files `026` through `029` contain parallel historical changes with duplicate numeric prefixes. Do not reorder or rename them in place; apply them in the documented deployment order and preserve both branches for existing installations.
+Historical migration files include parallel changes with duplicate numeric prefixes. Do not reorder or rename them in place; preserve them as upgrade history for older installations.
 
 ---
 

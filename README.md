@@ -19,20 +19,28 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    The application refuses to connect when `DB_USER` is missing or when
    `DB_PASS` is not present in the environment or this file. For production,
    use `SRS_DB_USER` and `SRS_DB_PASS` environment variables instead.
-5. Import `database/seed_demo_data.sql` only if you want sample records. It
-   does not create a login. Create the first administrator from the project
-   root with `php scripts/create-admin.php`; the CLI requires a password of at
-   least 12 characters.
+5. Only for a **disposable local database**, import
+   `database/seed_demo_data.sql` if you want sample records. It deletes all
+   rows from the sacramental-record, request, application, and persons tables
+   it targets before reseeding; never run it on a populated, real, or hosted
+   database. It does not create a login. Create the first administrator from
+   the project root with `php scripts/create-admin.php`; the CLI requires a
+   password of at least 12 characters.
 6. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
-7. Set `SRS_FORCE_HTTPS=true` in production. Leave it unset or false for local
+7. For an existing database, sign in as secretary and open
+   **System → Database Upgrades** to review supported compatibility changes.
+   The app does not run schema changes automatically on normal requests. Back
+   up the database before applying any update; the page checks schema objects
+   but cannot guarantee a backup or undo MySQL DDL.
+8. Set `SRS_FORCE_HTTPS=true` in production. Leave it unset or false for local
    XAMPP HTTP development. When enabled, HTTP requests redirect to HTTPS and
    HSTS is sent. The public base URL is set in `config/environment.php` via
    `SRS_APP_URL`, which defaults to `http://localhost/srs-sppo` for XAMPP. On
    the real parish server, set the `SRS_APP_URL` environment variable to the
    public address (e.g. `https://parish.example.org`); a non-local host also
    enables HTTPS enforcement automatically.
-8. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
+9. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
    enable 2-Step Verification on the sending account and create an App Password.
    Add the settings below to the server-only `config/local.php`; do not commit
    that file or share the App Password. The displayed App Password spaces should

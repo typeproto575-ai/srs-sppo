@@ -30,14 +30,6 @@ if (in_array($databaseName, ['srs_sppo_db', (string) (getenv('SRS_DB_NAME') ?: '
 
 $root = dirname(__DIR__);
 $schemaPath = $root . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'srs_sppo_schema.sql';
-$migrationDirectory = $root . DIRECTORY_SEPARATOR . 'migrations' . DIRECTORY_SEPARATOR;
-$migrationPaths = [
-    $migrationDirectory . '012_add_review_and_rejection_columns.sql',
-    $migrationDirectory . '035_payment_status.sql',
-    $migrationDirectory . '036_add_awaiting_payment_notification.sql',
-    $migrationDirectory . '037_add_register_match_confirmation.sql',
-    $migrationDirectory . '038_data_retention_support.sql',
-];
 
 try {
     $server = new PDO(
@@ -54,9 +46,8 @@ try {
     $server->exec("CREATE DATABASE {$quotedDatabase} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 
     $schema = file_get_contents($schemaPath);
-    $migrations = array_map('file_get_contents', $migrationPaths);
-    if ($schema === false || in_array(false, $migrations, true)) {
-        throw new RuntimeException('Could not read the schema or retention migration.');
+    if ($schema === false) {
+        throw new RuntimeException('Could not read the canonical database schema.');
     }
 
     $schema = preg_replace('/^\s*USE\s+srs_sppo_db\s*;/mi', "USE {$quotedDatabase};", $schema);
@@ -74,9 +65,6 @@ try {
         ]
     );
     $database->exec($schema);
-    foreach ($migrations as $migration) {
-        $database->exec($migration);
-    }
 } catch (Throwable $e) {
     fwrite(STDERR, "Test database setup failed: {$e->getMessage()}\n");
     exit(1);

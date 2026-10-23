@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../includes/retention-purge.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/backup.php';
+require_once __DIR__ . '/../includes/database-upgrades.php';
 
 final class DatabaseIntegrationTest extends TestCase
 {
@@ -47,6 +48,47 @@ final class DatabaseIntegrationTest extends TestCase
             );
             $statement->execute([$table]);
             self::assertSame(1, (int) $statement->fetchColumn(), "Missing required table: {$table}");
+        }
+    }
+
+    public function testCanonicalSchemaIncludesManagedUpgradeFeatures(): void
+    {
+        $requiredColumns = [
+            'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at'],
+            'sacrament_applications' => ['paid_at', 'anonymized_at'],
+            'correction_requests' => ['anonymized_at'],
+        ];
+
+        foreach ($requiredColumns as $table => $columns) {
+            foreach ($columns as $column) {
+                $statement = $this->pdo->prepare(
+                    'SELECT COUNT(*) FROM information_schema.columns
+                     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+                );
+                $statement->execute([$table, $column]);
+                self::assertSame(1, (int) $statement->fetchColumn(), "Missing required column: {$table}.{$column}");
+            }
+        }
+
+        $statement = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = ?'
+        );
+        $statement->execute(['srs_schema_migrations']);
+        self::assertSame(1, (int) $statement->fetchColumn(), 'Missing database-upgrade history table.');
+    }
+
+    public function testDatabaseUpgradeChecksAndRecordsCanonicalSchemaIdempotently(): void
+    {
+        $status = srs_database_upgrade_status($this->pdo);
+        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
+            self::assertTrue($status[$migrationKey]['complete'], "Canonical schema is missing {$migrationKey}.");
+            srs_apply_database_upgrade($this->pdo, $migrationKey, 0);
+        }
+
+        $status = srs_database_upgrade_status($this->pdo);
+        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
+            self::assertTrue($status[$migrationKey]['recorded'], "Upgrade history did not record {$migrationKey}.");
         }
     }
 

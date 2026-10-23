@@ -1,6 +1,8 @@
 -- =====================================================================
 -- MIGRATION: admin notifications table (notification bell feature)
 -- =====================================================================
+-- Legacy one-off copy. New installs already have this table in
+-- srs_sppo_schema.sql; check the target schema before using on an old database.
 -- Run once on an existing database. New installs get this table from
 -- srs_sppo_schema.sql automatically.
 CREATE TABLE IF NOT EXISTS notifications (

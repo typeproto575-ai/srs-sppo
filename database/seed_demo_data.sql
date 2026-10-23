@@ -1,7 +1,14 @@
 -- =====================================================================
 -- SRS-SPPO DEMO / SEED DATA
 -- =====================================================================
--- Rebuilds a coherent local demo dataset with 21 rows for every supported
+-- DESTRUCTIVE: for a newly created, disposable local/demo database only.
+-- This script deletes existing rows from the sacramental-record, person,
+-- request, application, and certificate-generation tables listed below.
+-- Never import it into a populated, production, hosted, or parish database.
+-- First import database/srs_sppo_schema.sql, then run this only if you need
+-- sample data for a local demonstration.
+--
+-- Rebuilds a coherent demo dataset with 21 rows for every supported
 -- sacrament type. Each numbered person is linked across Baptismal,
 -- Confirmation, and First Communion records, requests, and applications.
 -- Marriage records are included; all supported workflows are seeded.
