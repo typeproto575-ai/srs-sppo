@@ -318,8 +318,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 unset($_SESSION[$flowKey]);
 
-                if (mail_request_received($requesterEmail, $trackingNumber, 'Baptismal Certificate Request')) {
-                    log_activity($pdo, null, 'confirmation_email_sent', 'certificate_requests', $requestId, "Confirmation email sent to {$requesterEmail}");
+                try {
+                    if (mail_request_received($requesterEmail, $trackingNumber, 'Baptismal Certificate Request')) {
+                        log_activity($pdo, null, 'confirmation_email_sent', 'certificate_requests', $requestId, "Confirmation email sent to {$requesterEmail}");
+                    }
+                } catch (Throwable $e) {
+                    error_log('Baptismal certificate request post-submit notification failed: ' . $e->getMessage());
                 }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) {

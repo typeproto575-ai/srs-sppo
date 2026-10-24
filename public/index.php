@@ -10,10 +10,10 @@ $basePath = $basePath ?? base_path();
 
 $settings = [
     'hero_heading_text'    => "Parish records, prepared with care.",
-    'hero_eyebrow_text'    => "St. Patrick's Parish Office · Dingalan, Aurora",
+    'hero_eyebrow_text'    => "St. Patrick Parish Office · Dingalan, Aurora",
     'hero_subtitle_text'   => "Submit a request online or visit the parish office. Every online submission is reviewed by the secretary before processing, and certificates are released only in person.",
     'office_hours_text'    => "Monday - Saturday: 8:00 AM - 12:00 NN\nMonday - Saturday: 2:00 PM - 5:00 PM\nSunday: Closed",
-    'office_location_text' => "St. Patrick's Parish Office\nDingalan, Aurora, Philippines",
+    'office_location_text' => "St. Patrick Parish Office\nDingalan, Aurora, Philippines",
 ];
 
 $pageTitle = 'Home';
