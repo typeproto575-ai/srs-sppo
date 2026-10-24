@@ -106,7 +106,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="process-grid">
         <div class="process-step"><span>01</span><h3>Prepare</h3><p>Review the requirements before coming to the parish office.</p></div>
         <div class="process-step"><span>02</span><h3>Visit</h3><p>The secretary reviews the online intake or encodes the request onsite.</p></div>
-        <div class="process-step"><span>03</span><h3>Bring if needed</h3><p>If documents are needed, show them in person at the Parish Office. The system never receives or stores documents — please do not email or message them.</p></div>
+        <div class="process-step"><span>03</span><h3>Bring if needed</h3><p>If documents are needed, show them in person at the Parish Office. Do not send documents by email or Messenger. You may still contact the Parish Office with questions.</p></div>
         <div class="process-step"><span>04</span><h3>Pick up</h3><p>When finalized, the parish office notifies you so the certificate can be claimed in person.</p></div>
     </div>
 </section>

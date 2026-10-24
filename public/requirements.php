@@ -26,7 +26,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="hub-cards">
         <div class="hub-card">
             <h3>No document uploads</h3>
-            <p>Online forms do not ask you to upload an ID, certificate, or other personal document. If the parish needs a document, show it in person at the Parish Office (originals or photocopies, as the office requires). The system never receives or stores documents — please do not email or message them.</p>
+            <p>Online forms do not ask you to upload an ID, certificate, or other personal document. If the parish needs a document, show it in person at the Parish Office (originals or photocopies, as the office requires). Do not send documents by email or Messenger. You may still contact the Parish Office by email or Messenger if you have questions.</p>
         </div>
         <div class="hub-card">
             <h3>Submission is not approval</h3>

@@ -49,7 +49,7 @@ $basePath       = $basePath ?? base_path();
                     <li>Keep the tracking number and the same email address. Check your status any time on the
                         <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a>
                         page using this number <em>and</em> the email you provided.</li>
-                    <li>If requirements are needed, bring your supporting documents to the Parish Office. Do not email or message them. When the status shows <strong>Ready for Pickup</strong>, bring valid ID and claim the printed certificate in person.</li>
+                    <li>If requirements are needed, bring your supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still contact the Parish Office with questions. When the status shows <strong>Ready for Pickup</strong>, bring valid ID and claim the printed certificate in person.</li>
                 </ol>
             </div>
 

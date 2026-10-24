@@ -109,7 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <textarea id="requested_changes" name="requested_changes" rows="5" placeholder="Please describe the error and the correct information..." required><?= e($_POST['requested_changes'] ?? '') ?></textarea>
             </div>
 
-            <p class="field-hint">Do not upload IDs or certificates here. If the secretary needs supporting documents, show them in person at the Parish Office. The system never receives or stores documents — please do not email or message them.</p>
+            <p class="field-hint">Do not upload IDs or certificates here. If the secretary needs supporting documents, show them in person at the Parish Office. Do not send documents by email or Messenger. You may still contact the Parish Office with questions.</p>
 
             <div class="form-group">
                 <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($_POST['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>
@@ -122,4 +122,3 @@ require_once __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
-

@@ -6,11 +6,6 @@
         "phpunit/phpunit": "^11.5",
         "phpstan/phpstan": "^2.1"
     },
-    "autoload": {
-        "files": [
-            "includes/functions.php"
-        ]
-    },
     "scripts": {
         "test": "phpunit --testdox",
         "test:integration": "phpunit --testsuite \"SRS-SPPO database integration tests\" --testdox",

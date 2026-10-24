@@ -50,6 +50,16 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
 
     try {
         require_once $autoloadPath;
+        if (!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
+            $phpMailerSource = __DIR__ . '/../vendor/phpmailer/phpmailer/src/';
+            foreach (['Exception.php', 'SMTP.php', 'PHPMailer.php'] as $sourceFile) {
+                $sourcePath = $phpMailerSource . $sourceFile;
+                if (!is_file($sourcePath)) {
+                    throw new RuntimeException('PHPMailer source file is missing: ' . $sourceFile);
+                }
+                require_once $sourcePath;
+            }
+        }
         $mailer = new \PHPMailer\PHPMailer\PHPMailer(true);
         $mailer->isSMTP();
         $mailer->Host = MAIL_SMTP_HOST;
@@ -88,7 +98,7 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
         . "The parish office has recorded your " . $kind . ".\r\n\r\n"
         . "Your tracking number is: " . $trackingNumber . "\r\n\r\n"
         . "Track your request at:\r\n" . $trackUrl . "\r\n\r\n"
-        . "Please keep this tracking number. Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Please bring your supporting documents to the Parish Office. Do not email or message them.\r\n\r\n"
+        . "Please keep this tracking number. Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
@@ -109,7 +119,7 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
         . "Current stage: " . $humaneStatus . "\r\n"
         . $paymentNote . "\r\n\r\n"
         . "For details, visit:\r\n" . $trackUrl . "\r\n\r\n"
-        . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person. Please bring your supporting documents to the Parish Office. Do not email or message them.\r\n\r\n"
+        . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);
 }
