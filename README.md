@@ -6,8 +6,9 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 
 1. Place this whole `srs-sppo` folder inside `htdocs/` in your XAMPP installation.
 2. Start Apache and MySQL from the XAMPP control panel.
-3. Open phpMyAdmin and import `database/srs_sppo_schema.sql` (or run it via the `mysql` CLI).
-4. Configure database credentials through environment variables, or create the
+3. From the project root, run `composer install` to install the PHP runtime dependencies.
+4. Open phpMyAdmin and import `database/srs_sppo_schema.sql` (or run it via the `mysql` CLI).
+5. Configure database credentials through environment variables, or create the
    untracked local file `config/local.php`:
    ```php
    <?php
@@ -26,26 +27,26 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    use the database host, database name, username, and password shown in that
    host's database panel. Never commit or upload your local `config/local.php`;
    create a separate server-only copy on the host.
-5. Only for a **disposable local database**, import
+6. Only for a **disposable local database**, import
    `database/seed_demo_data.sql` if you want sample records. It deletes all
    rows from the sacramental-record, request, application, and persons tables
    it targets before reseeding; never run it on a populated, real, or hosted
    database. It does not create a login. Create the first administrator from
    the project root with `php scripts/create-admin.php`; the CLI requires a
    password of at least 12 characters.
-6. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
+7. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
-7. For an existing database, sign in as secretary and open
+8. For an existing database, sign in as secretary and open
    **System → Database Setup** to review supported compatibility changes.
    The app does not run schema changes automatically on normal requests. Back
    up the database before applying any update; the page checks schema objects
    but cannot guarantee a backup or undo MySQL DDL.
-8. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
+9. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
    example, `https://parish.example.org` or
    `https://example.org/srs-sppo`). It can be set in the server environment or
    in server-only `config/local.php`. A non-local host automatically enables
    HTTPS enforcement.
-9. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
+10. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
    enable 2-Step Verification on the sending account and create an App Password.
    Add the settings below to the server-only `config/local.php`; do not commit
    that file or share the App Password. The displayed App Password spaces should
@@ -74,7 +75,8 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 ```
 srs-sppo/
 ├── config/
-│   └── database.php          PDO connection
+│   ├── database.php          PDO connection
+│   └── local.php             optional server-only settings (create during setup)
 ├── includes/
 │   ├── header.php / footer.php          shared public-facing layout
 │   ├── admin-header.php / admin-footer.php  shared staff layout (top bar + sidebar)
@@ -85,6 +87,9 @@ srs-sppo/
 ├── database/
 │   ├── srs_sppo_schema.sql        full DB schema
 │   └── seed_demo_data.sql        optional demo dataset
+├── migrations/                    reviewed database upgrades
+├── scripts/                       setup and maintenance commands
+├── tests/                         automated tests
 ├── public/                       parishioner-facing, no login required
 │   ├── index.php                 landing page with FullCalendar.js calendar + announcements
 │   ├── certificate-request.php   step 1: choose request type + sacrament
@@ -101,15 +106,11 @@ srs-sppo/
 │   ├── schedule/                 calendar, booking conflicts, announcements
 │   ├── reports/                  monthly/yearly
 │   └── system/                   backup/export, accounts, audit log
-├── docs/                         defense guide + archived design-process artifacts
 └── assets/
     ├── css/style.css             public site styles
     ├── css/admin.css             admin dashboard layout
     └── js/main.js
 ```
-
-The current ERD, normalization analysis, use-case diagram, and actor-based
-DFD are documented in [docs/SYSTEM_ANALYSIS_DIAGRAMS.md](docs/SYSTEM_ANALYSIS_DIAGRAMS.md).
 
 ## What's built
 
@@ -118,7 +119,7 @@ DFD are documented in [docs/SYSTEM_ANALYSIS_DIAGRAMS.md](docs/SYSTEM_ANALYSIS_DI
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 
-## Design decisions (see PROJECT_CONTEXT.md for full details)
+## Design decisions
 
 - No monetary/fee/amount fields anywhere — the system never takes money and has no payment feature. Payment is made **outside the system, before processing**: at the parish office, by contacting the parish (email, phone, or the parish Facebook page/Messenger), or through someone near the parish. It is recorded only as a **manual status** — the secretary marks a request/application "paid" by hand (`paid_at` / `paid_by`; no amount stored). Online rows pause at `awaiting_payment` until then.
 - Identity verification happens **in person at pickup** — no public form collects ID scans. The Data Privacy Act still applies to all personal data handled by the system.
