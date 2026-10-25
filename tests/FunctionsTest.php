@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
+
 final class FunctionsTest extends TestCase
 {
     public function testCertificateRequestTransitionRules(): void
@@ -116,6 +118,42 @@ final class FunctionsTest extends TestCase
         ], 'applicant', 'Applicant'));
     }
 
+    public function testRecordListNameUsesStructuredMiddleName(): void
+    {
+        self::assertSame(
+            'Mikaela Therese R. Dela Cruz',
+            display_name_with_middle_initial('Mikaela Therese Rivera Dela Cruz', 'Mikaela Therese', 'Rivera', 'Dela Cruz')
+        );
+    }
+
+    public function testRecordListNameFallsBackToFullNameWhenStructuredPartsAreMissing(): void
+    {
+        self::assertSame(
+            'Mikaela T. Rivera',
+            display_name_with_middle_initial('Mikaela Therese Rivera')
+        );
+    }
+
+    public function testUnspecifiedBaptismalCertificatePurposeIsBlank(): void
+    {
+        $values = baptismal_certificate_values(
+            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'unspecified']
+        );
+
+        self::assertSame('', $values['purpose']);
+    }
+
+    public function testBaptismalCertificatePurposeKeepsSuppliedValue(): void
+    {
+        $values = baptismal_certificate_values(
+            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'other', 'purpose_other' => 'School enrollment']
+        );
+
+        self::assertSame('School enrollment', $values['purpose']);
+    }
+
     public function testStructuredNameRowsComposeAndRejectIncompleteRows(): void
     {
         $names = [
@@ -135,6 +173,18 @@ final class FunctionsTest extends TestCase
                 'sponsor_last' => [''],
             ], 'sponsor', 'Sponsor')
         );
+    }
+
+    public function testStructuredNameRowsCanPreserveRelatedFieldIndexes(): void
+    {
+        $names = [
+            'witness_first' => ['', 'Juan'],
+            'witness_middle' => ['', 'Pablo'],
+            'witness_last' => ['', 'Dela Cruz'],
+            'witness_suffix' => ['', 'Jr.'],
+        ];
+
+        self::assertSame([1 => 'Juan Pablo Dela Cruz Jr.'], compose_person_name_rows_by_index($names, 'witness'));
     }
 
     public function testPublicRecordLookupAcceptsOneOrBothParents(): void

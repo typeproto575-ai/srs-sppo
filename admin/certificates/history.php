@@ -210,7 +210,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <form autocomplete="off" method="post" data-confirm="Mark this certificate as printed?">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="certificate_request_id" value="<?= (int) $log['certificate_request_id'] ?>">
-                                    <button type="submit" name="mark_printed" value="1" class="btn btn-small">Mark as Printed</button>
+                                    <input type="hidden" name="mark_printed" value="1">
+                                    <button type="submit" class="btn btn-small">Mark as Printed</button>
                                 </form>
                             </div>
                             <?php elseif ($log['print_status'] === 'printed' && empty($log['finalized_at'])): ?>
@@ -219,7 +220,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <form autocomplete="off" method="post" data-confirm="Finalize this certificate as signed and sealed? This closes out its processing.">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="certificate_request_id" value="<?= (int) $log['certificate_request_id'] ?>">
-                                    <button type="submit" name="finalize_certificate" value="1" class="btn btn-small">Finalize Signed and Sealed</button>
+                                    <input type="hidden" name="finalize_certificate" value="1">
+                                    <button type="submit" class="btn btn-small">Finalize Signed and Sealed</button>
                                 </form>
                             </div>
                             <?php elseif ($log['print_status'] !== 'released'): ?>
@@ -240,7 +242,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <input autocomplete="off" type="checkbox" name="id_verified" value="1" required>
                                     I verified valid ID at the counter
                                 </label>
-                                <button type="submit" name="mark_released" value="1" class="btn btn-small">Confirm Release</button>
+                                <input type="hidden" name="mark_released" value="1">
+                                <button type="submit" class="btn btn-small">Confirm Release</button>
                             </form>
                             <?php endif; ?>
                         </td>

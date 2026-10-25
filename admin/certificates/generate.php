@@ -707,8 +707,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                             <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                             <input type="hidden" name="sacrament_type" value="<?= e($previewSacrament) ?>">
+                            <input type="hidden" name="verify_book_record" value="1">
                             <label class="checkbox-label"><input type="checkbox" name="confirm_book_verified" value="1" required> I checked record #<?= (int) $rec['id'] ?> against the physical register book and it matches.</label>
-                            <button type="submit" name="verify_book_record" value="1" class="btn btn-secondary">Confirm Verification</button>
+                            <button type="submit" class="btn btn-secondary">Confirm Verification</button>
                         </form>
                     </div>
                 <?php elseif ($rec): ?>
@@ -726,7 +727,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <form autocomplete="off" method="post" class="cert-action-form" data-confirm="Mark this certificate as generated? This logs it as issued.">
                     <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
                     <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                    <button type="submit" name="log_generated" value="1" class="btn" <?= $bookVerified ? '' : 'disabled title="Confirm the register book verification above first."' ?>>Mark as Generated</button>
+                    <input type="hidden" name="log_generated" value="1">
+                    <button type="submit" class="btn" <?= $bookVerified ? '' : 'disabled title="Confirm the register book verification above first."' ?>>Mark as Generated</button>
                 </form>
                 </div>
                 <?php if (!$currentLog || empty($currentLog['cancelled_at'])): ?>

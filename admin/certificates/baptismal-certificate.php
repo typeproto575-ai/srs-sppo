@@ -172,9 +172,11 @@ function baptismal_certificate_values(array $source, array $req, array $sponsorN
     $birth = $first($source, ['birth_date']);
     $bapt  = $first($source, ['date_of_baptism', 'baptism_date']);
 
-    $purpose = (($req['purpose'] ?? '') === 'other' && !empty($req['purpose_other']))
-        ? (string) $req['purpose_other']
-        : ucwords(str_replace('_', ' ', (string) ($req['purpose'] ?? '')));
+    $purpose = ($req['purpose'] ?? '') === 'unspecified'
+        ? ''
+        : ((($req['purpose'] ?? '') === 'other' && !empty($req['purpose_other']))
+            ? (string) $req['purpose_other']
+            : ucwords(str_replace('_', ' ', (string) ($req['purpose'] ?? ''))));
 
     $v = [
         'subject_full_name'  => cert_format_upper_case($first($source, ['child_full_name'])),

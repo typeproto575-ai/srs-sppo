@@ -46,9 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $communicantSuffix = trim($_POST['communicant_suffix'] ?? '');
     if ($communicantFirst !== '' || $communicantMiddle !== '' || $communicantLast !== '') $communicantName = compose_structured_name($communicantFirst, $communicantMiddle, $communicantLast, $communicantSuffix);
     $domicile          = trim($_POST['domicile'] ?? '');
-    $fatherName        = trim($_POST['father_name'] ?? '');
-    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
-    $ministerName      = trim($_POST['minister_name'] ?? '');
+    $fatherName        = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherMaidenName  = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_maiden_name'] ?? '');
+    $ministerName      = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
     $remarks         = trim($_POST['remarks'] ?? '');
     $bookNo          = trim($_POST['book_no'] ?? '');
@@ -111,9 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $communionDate     = $_POST['communion_date'] ?? '';
     $domicile          = trim($_POST['domicile'] ?? '');
     $communicantName   = trim($_POST['communicant_full_name'] ?? '');
-    $fatherName        = trim($_POST['father_name'] ?? '');
-    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
-    $ministerName      = trim($_POST['minister_name'] ?? '');
+    $fatherName        = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherMaidenName  = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_maiden_name'] ?? '');
+    $ministerName      = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
     $remarks         = trim($_POST['remarks'] ?? '');
     $bookNo          = trim($_POST['book_no'] ?? '');
@@ -174,6 +174,16 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'first_communion_records');
 $communicantParts = $isEdit ? structured_name_parts((string) $editRecord['communicant_full_name']) : ['', '', '', ''];
+$recordNameFormValues = $_POST;
+foreach ([
+    'father' => $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''],
+    'mother' => $isEdit ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? '')) : ['', '', '', ''],
+    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
+] as $prefix => $parts) {
+    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
+    }
+}
 
 if (isset($_GET['added'])) $success = 'First Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
 if (isset($_GET['updated'])) $success = 'First Communion record updated.';
@@ -312,7 +322,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><?= e($rec['book_no'] ?: '—') ?></td>
                             <td><?= e($rec['page_no'] ?: '—') ?></td>
                             <td><?= e($rec['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial((string) $rec['communicant_full_name'])) ?></strong></td>
+                            <td><strong><?= e(display_name_with_middle_initial(
+                                (string) $rec['communicant_full_name'],
+                                isset($rec['communicant_first_name']) ? (string) $rec['communicant_first_name'] : null,
+                                isset($rec['communicant_middle_name']) ? (string) $rec['communicant_middle_name'] : null,
+                                isset($rec['communicant_last_name']) ? (string) $rec['communicant_last_name'] : null,
+                                isset($rec['communicant_suffix']) ? (string) $rec['communicant_suffix'] : null
+                            )) ?></strong></td>
                             <td><?= e(date('M j, Y', strtotime($rec['communion_date']))) ?></td>
                             <?php $linkStatus = ((int) ($rec['person_id'] ?? 0)) > 0 ? 'linked' : 'unlinked'; ?>
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
@@ -376,8 +392,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <label>Date of First Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
                 <label>Residence (Domicile) / Address <input autocomplete="off" type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
                 <div class="inline-fields">
-                    <label>Father's Name <input autocomplete="off" type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Maiden Name <input autocomplete="off" type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
+                    <?= person_name_fields('father', "Father's Name", $recordNameFormValues, false) ?>
+                    <?= person_name_fields('mother', "Mother's Maiden Name", $recordNameFormValues, false) ?>
                 </div>
             </fieldset>
 
@@ -399,7 +415,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <label>Officiating Minister <input autocomplete="off" type="text" name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
+                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 

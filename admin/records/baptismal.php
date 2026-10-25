@@ -92,22 +92,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     // Rule 7 note: legitimacy is NOT collected on new entries (project owner
     // decision) — the column stays NULL; legacy digitized rows keep theirs.
     $legitimacy       = null;
-    $fatherName       = trim($_POST['father_name'] ?? '');
-    $motherName       = trim($_POST['mother_name'] ?? '');
+    $fatherName       = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherName       = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_name'] ?? '');
     $parentsOrigin    = trim($_POST['parents_origin'] ?? '');
     $parentsResidence = trim($_POST['parents_residence'] ?? '');
-    $ministerName     = trim($_POST['minister_name'] ?? '');
+    $ministerName     = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $remarks          = trim($_POST['remarks'] ?? '');
     $bookNo           = trim($_POST['book_no'] ?? '');
     $pageNo           = trim($_POST['page_no'] ?? '');
     $lineNo           = trim($_POST['line_no'] ?? '');
 
     // Sponsors (Godfathers and Godmothers) - separate arrays for each type
-    $godfatherNames      = $_POST['godfather_name'] ?? [];
+    $godfatherNames      = array_key_exists('godfather_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'godfather')
+        : ($_POST['godfather_name'] ?? []);
     if (!is_array($godfatherNames)) { $godfatherNames = []; }
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
     if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
-    $godmotherNames      = $_POST['godmother_name'] ?? [];
+    $godmotherNames      = array_key_exists('godmother_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'godmother')
+        : ($_POST['godmother_name'] ?? []);
     if (!is_array($godmotherNames)) { $godmotherNames = []; }
     $godmotherResidences = $_POST['godmother_residence'] ?? [];
     if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
@@ -223,11 +227,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
     $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
     $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
-    $godfatherNames      = $_POST['godfather_name'] ?? [];
+    $godfatherNames      = array_key_exists('godfather_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'godfather')
+        : ($_POST['godfather_name'] ?? []);
     if (!is_array($godfatherNames)) { $godfatherNames = []; }
     $godfatherResidences = $_POST['godfather_residence'] ?? [];
     if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
-    $godmotherNames      = $_POST['godmother_name'] ?? [];
+    $godmotherNames      = array_key_exists('godmother_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'godmother')
+        : ($_POST['godmother_name'] ?? []);
     if (!is_array($godmotherNames)) { $godmotherNames = []; }
     $godmotherResidences = $_POST['godmother_residence'] ?? [];
     if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
@@ -242,11 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $childSuffix      = trim($_POST['child_suffix'] ?? '');
     $birthDate        = $_POST['birth_date'] ?: null;
     $legitimacy       = $_POST['legitimacy'] ?: null;
-    $fatherName       = trim($_POST['father_name'] ?? '');
-    $motherName       = trim($_POST['mother_name'] ?? '');
+    $fatherName       = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherName       = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_name'] ?? '');
     $parentsOrigin    = trim($_POST['parents_origin'] ?? '');
     $parentsResidence = trim($_POST['parents_residence'] ?? '');
-    $ministerName     = trim($_POST['minister_name'] ?? '');
+    $ministerName     = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $remarks          = trim($_POST['remarks'] ?? '');
     $bookNo           = trim($_POST['book_no'] ?? '');
     $pageNo           = trim($_POST['page_no'] ?? '');
@@ -345,6 +353,19 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'baptismal_records');
 $childParts = $isEdit ? structured_name_parts((string) $editRecord['child_full_name']) : ['', '', '', ''];
+$fatherParts = $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''];
+$motherParts = $isEdit ? structured_name_parts((string) ($editRecord['mother_name'] ?? '')) : ['', '', '', ''];
+$ministerParts = $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''];
+$nameFormValues = $_POST;
+foreach ([
+    'father' => $fatherParts,
+    'mother' => $motherParts,
+    'minister' => $ministerParts,
+] as $prefix => $parts) {
+    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+        $nameFormValues[$prefix . '_' . $part] ??= $parts[$index];
+    }
+}
 
 if (isset($_GET['added'])) $success = 'Baptismal record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked baptismal application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Baptismal record updated.';
@@ -478,7 +499,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><?= e($rec['book_no'] ?: '—') ?></td>
                             <td><?= e($rec['page_no'] ?: '—') ?></td>
                             <td><?= e($rec['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial((string) $rec['child_full_name'])) ?></strong></td>
+                            <td><strong><?= e(display_name_with_middle_initial(
+                                (string) $rec['child_full_name'],
+                                isset($rec['child_first_name']) ? (string) $rec['child_first_name'] : null,
+                                isset($rec['child_middle_name']) ? (string) $rec['child_middle_name'] : null,
+                                isset($rec['child_last_name']) ? (string) $rec['child_last_name'] : null,
+                                isset($rec['child_suffix']) ? (string) $rec['child_suffix'] : null
+                            )) ?></strong></td>
                             <td><?= e(date('M j, Y', strtotime($rec['baptism_date']))) ?></td>
                             <?php $linkStatus = ((int) ($rec['person_id'] ?? 0)) > 0 ? 'linked' : 'unlinked'; ?>
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
@@ -557,11 +584,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <fieldset>
                 <legend>Parents</legend>
                 <div class="inline-fields">
-                    <label>Father's Name <input autocomplete="off" type="text" data-nudge name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
+                    <?= person_name_fields('father', "Father's Name", $nameFormValues, false) ?>
                     <label>Father's Birthplace <input autocomplete="off" type="text" name="father_birthplace" value="<?= e($_POST['father_birthplace'] ?? $editRecord['father_birthplace'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
-                    <label>Mother's Maiden Name <input autocomplete="off" type="text" data-nudge name="mother_name" value="<?= e($_POST['mother_name'] ?? $editRecord['mother_name'] ?? '') ?>"></label>
+                    <?= person_name_fields('mother', "Mother's Maiden Name", $nameFormValues, false) ?>
                     <label>Mother's Birthplace <input autocomplete="off" type="text" name="mother_birthplace" value="<?= e($_POST['mother_birthplace'] ?? $editRecord['mother_birthplace'] ?? '') ?>"></label>
                 </div>
                 <div class="inline-fields">
@@ -585,12 +612,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             // loaded edit sponsors (edit mode), else a single blank row.
             // New rows are cloned client-side — see main.js, section 9.
             $gfRows = $_POST['godfather_name'] ?? array_column($editGodfathers ?? [], 'sponsor_name');
+            if (array_key_exists('godfather_first', $_POST)) {
+                $gfRows = array_fill(0, person_name_row_count($_POST, 'godfather'), '');
+            }
             if (!is_array($gfRows)) { $gfRows = []; }
             $gfRows = array_values($gfRows);
             $gfRes = $_POST['godfather_residence'] ?? array_column($editGodfathers ?? [], 'sponsor_residence');
             if (!is_array($gfRes)) { $gfRes = []; }
             $gfRes = array_values($gfRes);
             if (count($gfRows) === 0) { $gfRows = ['']; }
+            $godfatherFormValues = $_POST;
+            foreach ($gfRows as $i => $rowName) {
+                $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
+                foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
+                    $godfatherFormValues['godfather_' . $part][$i] ??= $parts[$partIndex];
+                }
+            }
             ?>
             <fieldset>
                 <legend>Godfathers (Ninong) - Up to 8</legend>
@@ -598,7 +635,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php foreach ($gfRows as $i => $rowName): ?>
                         <div class="godparent-row">
                             <div class="inline-fields">
-                                <label>Godfather Name <input autocomplete="off" type="text" name="godfather_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <?= person_name_fields('godfather', 'Godfather Name', $godfatherFormValues, false, $i) ?>
                                 <label>Residence <input autocomplete="off" type="text" name="godfather_residence[]" value="<?= e(isset($gfRes[$i]) && is_string($gfRes[$i]) ? $gfRes[$i] : '') ?>"></label>
                             </div>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
@@ -611,12 +648,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <!-- Godmothers (Ninang) - up to 8 -->
             <?php
             $gmRows = $_POST['godmother_name'] ?? array_column($editGodmothers ?? [], 'sponsor_name');
+            if (array_key_exists('godmother_first', $_POST)) {
+                $gmRows = array_fill(0, person_name_row_count($_POST, 'godmother'), '');
+            }
             if (!is_array($gmRows)) { $gmRows = []; }
             $gmRows = array_values($gmRows);
             $gmRes = $_POST['godmother_residence'] ?? array_column($editGodmothers ?? [], 'sponsor_residence');
             if (!is_array($gmRes)) { $gmRes = []; }
             $gmRes = array_values($gmRes);
             if (count($gmRows) === 0) { $gmRows = ['']; }
+            $godmotherFormValues = $_POST;
+            foreach ($gmRows as $i => $rowName) {
+                $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
+                foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
+                    $godmotherFormValues['godmother_' . $part][$i] ??= $parts[$partIndex];
+                }
+            }
             ?>
             <fieldset>
                 <legend>Godmothers (Ninang) - Up to 8</legend>
@@ -624,7 +671,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php foreach ($gmRows as $i => $rowName): ?>
                         <div class="godparent-row">
                             <div class="inline-fields">
-                                <label>Godmother Name <input autocomplete="off" type="text" name="godmother_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <?= person_name_fields('godmother', 'Godmother Name', $godmotherFormValues, false, $i) ?>
                                 <label>Residence <input autocomplete="off" type="text" name="godmother_residence[]" value="<?= e(isset($gmRes[$i]) && is_string($gmRes[$i]) ? $gmRes[$i] : '') ?>"></label>
                             </div>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
@@ -636,7 +683,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <label>Officiating Minister <input autocomplete="off" type="text" data-nudge name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
+                <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
                 <label>Remarks / Observanda <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 

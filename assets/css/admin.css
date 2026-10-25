@@ -3311,3 +3311,62 @@ textarea {
 .sacramental-certificate .sacramental-cert-rule { border-top: 2px solid #2c5a46; width: 82%; }
 .sacramental-certificate .sacramental-cert-kicker { color: #2c5a46; font-weight: 700; }
 .sacramental-certificate .sacramental-cert-subject { border-bottom: 1px solid #b9a37b; padding-bottom: .45rem; }
+
+.admin-layout .btn:disabled,
+.admin-layout .btn[disabled] {
+    background: #e7e3d9;
+    border-color: #c9c3b7;
+    color: #69665e;
+    cursor: not-allowed;
+    filter: none;
+    opacity: 1;
+    box-shadow: none;
+}
+
+.admin-layout .btn:disabled:hover,
+.admin-layout .btn[disabled]:hover {
+    background: #e7e3d9;
+    filter: none;
+}
+
+.admin-layout .btn:disabled:active,
+.admin-layout .btn[disabled]:active {
+    transform: none;
+}
+
+@media (max-width: 980px) {
+    #admin-sidebar-links {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+        grid-auto-flow: row dense;
+        align-items: start;
+        gap: 0.35rem;
+    }
+
+    #admin-sidebar-links > .sidebar-group {
+        min-width: 0;
+        margin: 0;
+    }
+
+}
+
+@media (min-width: 821px) and (max-width: 980px) {
+    #admin-sidebar-links {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    #admin-sidebar-links > .sidebar-group[open] {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 640px) {
+    .admin-sidebar {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .sidebar-scroll {
+        padding: 0.55rem 0.65rem;
+    }
+}

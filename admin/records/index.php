@@ -39,20 +39,29 @@ if (!in_array($sort, $allowedSorts, true)) {
 $recordSql = <<<'SQL'
 SELECT 'baptismal' AS record_type, id, child_full_name AS record_name,
        baptism_date AS event_date, entry_no, book_no, page_no, line_no,
-       person_id, certificate_request_id
+       person_id, certificate_request_id, child_first_name AS record_first_name,
+       child_middle_name AS record_middle_name, child_last_name AS record_last_name,
+       child_suffix AS record_suffix, NULL AS spouse_first_name, NULL AS spouse_middle_name,
+       NULL AS spouse_last_name, NULL AS spouse_suffix
   FROM baptismal_records WHERE is_archived = 0
 UNION ALL
 SELECT 'confirmation', id, confirmand_full_name, confirmation_date,
-       entry_no, book_no, page_no, line_no, person_id, certificate_request_id
+       entry_no, book_no, page_no, line_no, person_id, certificate_request_id,
+       confirmand_first_name, confirmand_middle_name, confirmand_last_name,
+       confirmand_suffix, NULL, NULL, NULL, NULL
   FROM confirmation_records WHERE is_archived = 0
 UNION ALL
 SELECT 'first_communion', id, communicant_full_name, communion_date,
-       entry_no, book_no, page_no, line_no, person_id, certificate_request_id
+       entry_no, book_no, page_no, line_no, person_id, certificate_request_id,
+       communicant_first_name, communicant_middle_name, communicant_last_name,
+       communicant_suffix, NULL, NULL, NULL, NULL
   FROM first_communion_records WHERE is_archived = 0
 UNION ALL
 SELECT 'marriage', id,
        CONCAT(husband_full_name, ' & ', wife_maiden_name), marriage_date,
-       entry_no, book_no, page_no, line_no, NULL, certificate_request_id
+       entry_no, book_no, page_no, line_no, NULL, certificate_request_id,
+       husband_first_name, husband_middle_name, husband_last_name, husband_suffix,
+       wife_first_name, wife_middle_name, wife_last_name, wife_suffix
   FROM marriage_records WHERE is_archived = 0
 SQL;
 
@@ -255,12 +264,28 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             ? trim($record['book_no'] . ' / ' . $record['page_no'] . ' / ' . $record['line_no'], ' /')
                             : 'Not recorded';
                         $viewUrl = $basePath . '/admin/records/view.php?type=' . urlencode($record['record_type']) . '&id=' . (int) $record['id'] . '&return=' . urlencode($selfReturn);
+                        $recordDisplayName = display_name_with_middle_initial(
+                            (string) $record['record_name'],
+                            isset($record['record_first_name']) ? (string) $record['record_first_name'] : null,
+                            isset($record['record_middle_name']) ? (string) $record['record_middle_name'] : null,
+                            isset($record['record_last_name']) ? (string) $record['record_last_name'] : null,
+                            isset($record['record_suffix']) ? (string) $record['record_suffix'] : null
+                        );
+                        if ($record['record_type'] === 'marriage') {
+                            $recordDisplayName .= ' & ' . display_name_with_middle_initial(
+                                (string) $record['record_name'],
+                                isset($record['spouse_first_name']) ? (string) $record['spouse_first_name'] : null,
+                                isset($record['spouse_middle_name']) ? (string) $record['spouse_middle_name'] : null,
+                                isset($record['spouse_last_name']) ? (string) $record['spouse_last_name'] : null,
+                                isset($record['spouse_suffix']) ? (string) $record['spouse_suffix'] : null
+                            );
+                        }
                         ?>
                         <tr>
                             <td><?= e($record['book_no'] ?: '—') ?></td>
                             <td><?= e($record['page_no'] ?: '—') ?></td>
                             <td><?= e($record['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial((string) $record['record_name'])) ?></strong></td>
+                            <td><strong><?= e($recordDisplayName) ?></strong></td>
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
                             <td class="row-actions"><a class="btn btn-success btn-small" href="<?= e($basePath . '/admin/certificates/generate.php?record_type=' . urlencode($record['record_type']) . '&record_id=' . (int) $record['id']) ?>">Generate</a> <a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a></td>

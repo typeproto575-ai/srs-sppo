@@ -89,13 +89,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $wifeOrigin        = trim($_POST['wife_origin'] ?? '');
     $wifeResidence     = trim($_POST['wife_residence'] ?? '');
     $wifeParents       = trim($_POST['wife_parents_name'] ?? '');
-    $ministerName    = trim($_POST['officiating_minister'] ?? '');
+    $ministerName    = compose_person_name($_POST, 'minister') ?: trim($_POST['officiating_minister'] ?? '');
     $remarks         = trim($_POST['remarks'] ?? '');
     $bookNo          = trim($_POST['book_no'] ?? '');
     $pageNo          = trim($_POST['page_no'] ?? '');
     $lineNo          = trim($_POST['line_no'] ?? '');
 
-    $witnessNames      = $_POST['witness_name'] ?? [];
+    $witnessNames      = array_key_exists('witness_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'witness')
+        : ($_POST['witness_name'] ?? []);
     if (!is_array($witnessNames)) { $witnessNames = []; }
     $witnessResidences = $_POST['witness_residence'] ?? [];
     if (!is_array($witnessResidences)) { $witnessResidences = []; }
@@ -208,12 +210,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $wifeOrigin        = trim($_POST['wife_origin'] ?? '');
     $wifeResidence     = trim($_POST['wife_residence'] ?? '');
     $wifeParents       = trim($_POST['wife_parents_name'] ?? '');
-    $ministerName      = trim($_POST['officiating_minister'] ?? '');
+    $ministerName      = compose_person_name($_POST, 'minister') ?: trim($_POST['officiating_minister'] ?? '');
     $remarks           = trim($_POST['remarks'] ?? '');
     $bookNo            = trim($_POST['book_no'] ?? '');
     $pageNo            = trim($_POST['page_no'] ?? '');
     $lineNo            = trim($_POST['line_no'] ?? '');
-    $witnessNames      = $_POST['witness_name'] ?? [];
+    $witnessNames      = array_key_exists('witness_first', $_POST)
+        ? compose_person_name_rows_by_index($_POST, 'witness')
+        : ($_POST['witness_name'] ?? []);
     if (!is_array($witnessNames)) { $witnessNames = []; }
     $witnessResidences = $_POST['witness_residence'] ?? [];
     if (!is_array($witnessResidences)) { $witnessResidences = []; }
@@ -297,6 +301,13 @@ $suggest = $isEdit
     : register_next_logbook_numbers($pdo, 'marriage_records');
 $husbandParts = $isEdit ? structured_name_parts((string) $editRecord['husband_full_name']) : ['', '', '', ''];
 $wifeParts = $isEdit ? structured_name_parts((string) $editRecord['wife_maiden_name']) : ['', '', '', ''];
+$ministerParts = $isEdit ? structured_name_parts((string) ($editRecord['officiating_minister'] ?? '')) : ['', '', '', ''];
+$recordNameFormValues = $_POST;
+foreach (['minister' => $ministerParts] as $prefix => $parts) {
+    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
+    }
+}
 
 if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked marriage application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Marriage record updated.';
@@ -428,7 +439,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><?= e($rec['book_no'] ?: '—') ?></td>
                             <td><?= e($rec['page_no'] ?: '—') ?></td>
                             <td><?= e($rec['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial((string) $rec['husband_full_name']) . ' & ' . display_name_with_middle_initial((string) $rec['wife_maiden_name'])) ?></strong></td>
+                            <td><strong><?= e(
+                                display_name_with_middle_initial(
+                                    (string) $rec['husband_full_name'],
+                                    isset($rec['husband_first_name']) ? (string) $rec['husband_first_name'] : null,
+                                    isset($rec['husband_middle_name']) ? (string) $rec['husband_middle_name'] : null,
+                                    isset($rec['husband_last_name']) ? (string) $rec['husband_last_name'] : null,
+                                    isset($rec['husband_suffix']) ? (string) $rec['husband_suffix'] : null
+                                ) . ' & ' . display_name_with_middle_initial(
+                                    (string) $rec['wife_maiden_name'],
+                                    isset($rec['wife_first_name']) ? (string) $rec['wife_first_name'] : null,
+                                    isset($rec['wife_middle_name']) ? (string) $rec['wife_middle_name'] : null,
+                                    isset($rec['wife_last_name']) ? (string) $rec['wife_last_name'] : null,
+                                    isset($rec['wife_suffix']) ? (string) $rec['wife_suffix'] : null
+                                )
+                            ) ?></strong></td>
                             <td><?= e(date('M j, Y', strtotime($rec['marriage_date']))) ?></td>
                             <?php
                             $husbandLinked = ((int) ($rec['husband_person_id'] ?? 0)) > 0;
@@ -530,7 +555,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <label>Wife Residence <input autocomplete="off" type="text" name="wife_residence" value="<?= e($_POST['wife_residence'] ?? $editRecord['wife_residence'] ?? '') ?>"></label>
                 </div>
                 <label>Wife Parents <input autocomplete="off" type="text" name="wife_parents_name" value="<?= e($_POST['wife_parents_name'] ?? $editRecord['wife_parents_name'] ?? '') ?>"></label>
-                <label>Officiating Minister <input autocomplete="off" type="text" name="officiating_minister" value="<?= e($_POST['officiating_minister'] ?? $editRecord['officiating_minister'] ?? '') ?>"></label>
+                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
             </fieldset>
 
             <?php
@@ -538,12 +563,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             // loaded witnesses (edit mode), else a single blank row.
             // New rows are cloned client-side — see main.js, section 9.
             $witnessRows = $_POST['witness_name'] ?? array_column($editWitnesses, 'witness_name');
+            if (array_key_exists('witness_first', $_POST)) {
+                $witnessRows = array_fill(0, person_name_row_count($_POST, 'witness'), '');
+            }
             if (!is_array($witnessRows)) { $witnessRows = []; }
             $witnessRows = array_values($witnessRows);
             $witnessRes = $_POST['witness_residence'] ?? array_column($editWitnesses, 'witness_residence');
             if (!is_array($witnessRes)) { $witnessRes = []; }
             $witnessRes = array_values($witnessRes);
             if (count($witnessRows) === 0) { $witnessRows = ['']; }
+            $witnessFormValues = $_POST;
+            foreach ($witnessRows as $i => $rowName) {
+                $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
+                foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
+                    $witnessFormValues['witness_' . $part][$i] ??= $parts[$partIndex];
+                }
+            }
             ?>
             <fieldset>
                 <legend>Witnesses</legend>
@@ -551,7 +586,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php foreach ($witnessRows as $i => $rowName): ?>
                         <div class="godparent-row">
                             <div class="inline-fields">
-                                <label>Witness Name <input autocomplete="off" type="text" name="witness_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label>
+                                <?= person_name_fields('witness', 'Witness Name', $witnessFormValues, false, $i) ?>
                                 <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" value="<?= e(isset($witnessRes[$i]) && is_string($witnessRes[$i]) ? $witnessRes[$i] : '') ?>"></label>
                             </div>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>

@@ -73,16 +73,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         $confirmandName = compose_structured_name($confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix);
     }
     $birthdate         = trim((string) ($_POST['birthdate'] ?? ''));
-    $fatherName        = trim($_POST['father_name'] ?? '');
-    $motherMaidenName  = trim($_POST['mother_maiden_name'] ?? '');
+    $fatherName        = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherMaidenName  = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_maiden_name'] ?? '');
     $personIdInput     = (int) ($_POST['person_id'] ?? 0);
     $baptismalRecordIdInput = (int) ($_POST['baptismal_record_id'] ?? 0);
     $birthdate = confirmation_resolve_birthdate($pdo, $birthdate, $personIdInput, $baptismalRecordIdInput);
     $birthdateNotRecorded = $birthdate === '' && isset($_POST['birthdate_not_recorded']) ? 1 : 0;
     $fatherNotRecorded = $fatherName === '' && isset($_POST['father_name_not_recorded']) ? 1 : 0;
     $motherNotRecorded = $motherMaidenName === '' && isset($_POST['mother_maiden_name_not_recorded']) ? 1 : 0;
-    $sponsorName       = trim($_POST['sponsor_name'] ?? '');
-    $ministerName      = trim($_POST['minister_name'] ?? '');
+    $sponsorName       = compose_person_name($_POST, 'sponsor') ?: trim($_POST['sponsor_name'] ?? '');
+    $ministerName      = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
     $remarks           = trim($_POST['remarks'] ?? '');
     $bookNo            = trim($_POST['book_no'] ?? '');
@@ -159,16 +159,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $confirmandFirst = trim($_POST['confirmand_first_name'] ?? ''); $confirmandMiddle = trim($_POST['confirmand_middle_name'] ?? ''); $confirmandLast = trim($_POST['confirmand_last_name'] ?? ''); $confirmandSuffix = trim($_POST['confirmand_suffix'] ?? '');
     if ($confirmandFirst !== '' || $confirmandMiddle !== '' || $confirmandLast !== '') $confirmandName = compose_structured_name($confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix);
     $birthdate       = trim((string) ($_POST['birthdate'] ?? ''));
-    $fatherName      = trim($_POST['father_name'] ?? '');
-    $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
+    $fatherName      = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
+    $motherMaidenName = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_maiden_name'] ?? '');
     $personIdInput = (int) ($_POST['person_id'] ?? 0);
     $baptismalRecordIdInput = (int) ($_POST['baptismal_record_id'] ?? 0);
     $birthdate = confirmation_resolve_birthdate($pdo, $birthdate, $personIdInput, $baptismalRecordIdInput);
     $birthdateNotRecorded = $birthdate === '' && isset($_POST['birthdate_not_recorded']) ? 1 : 0;
     $fatherNotRecorded = $fatherName === '' && isset($_POST['father_name_not_recorded']) ? 1 : 0;
     $motherNotRecorded = $motherMaidenName === '' && isset($_POST['mother_maiden_name_not_recorded']) ? 1 : 0;
-    $sponsorName     = trim($_POST['sponsor_name'] ?? '');
-    $ministerName    = trim($_POST['minister_name'] ?? '');
+    $sponsorName     = compose_person_name($_POST, 'sponsor') ?: trim($_POST['sponsor_name'] ?? '');
+    $ministerName    = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
     $baptismalRecordId = null;
     $remarks         = trim($_POST['remarks'] ?? '');
     $bookNo          = trim($_POST['book_no'] ?? '');
@@ -240,6 +240,17 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'confirmation_records');
 $confirmandParts = $isEdit ? structured_name_parts((string) $editRecord['confirmand_full_name']) : ['', '', '', ''];
+$recordNameFormValues = $_POST;
+foreach ([
+    'father' => $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''],
+    'mother' => $isEdit ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? '')) : ['', '', '', ''],
+    'sponsor' => $isEdit ? structured_name_parts((string) ($editRecord['sponsor_name'] ?? '')) : ['', '', '', ''],
+    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
+] as $prefix => $parts) {
+    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
+    }
+}
 
 if (isset($_GET['added'])) $success = 'Confirmation record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
 if (isset($_GET['updated'])) $success = 'Confirmation record updated.';
@@ -377,7 +388,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><?= e($rec['book_no'] ?: '—') ?></td>
                             <td><?= e($rec['page_no'] ?: '—') ?></td>
                             <td><?= e($rec['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial((string) $rec['confirmand_full_name'])) ?></strong></td>
+                            <td><strong><?= e(display_name_with_middle_initial(
+                                (string) $rec['confirmand_full_name'],
+                                isset($rec['confirmand_first_name']) ? (string) $rec['confirmand_first_name'] : null,
+                                isset($rec['confirmand_middle_name']) ? (string) $rec['confirmand_middle_name'] : null,
+                                isset($rec['confirmand_last_name']) ? (string) $rec['confirmand_last_name'] : null,
+                                isset($rec['confirmand_suffix']) ? (string) $rec['confirmand_suffix'] : null
+                            )) ?></strong></td>
                             <td><?= e(date('M j, Y', strtotime($rec['confirmation_date']))) ?></td>
                             <?php $linkStatus = ((int) ($rec['person_id'] ?? 0)) > 0 ? 'linked' : 'unlinked'; ?>
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
@@ -444,14 +461,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </div>
                 <label class="field-hint"><input type="checkbox" name="birthdate_not_recorded" value="1"<?= !empty($_POST['birthdate_not_recorded'] ?? $editRecord['birthdate_not_recorded'] ?? false) ? ' checked' : '' ?>> Birth date is not recorded in the source register</label>
                 <div class="inline-fields">
-                    <label>Father's Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="father_name" value="<?= e($_POST['father_name'] ?? $editRecord['father_name'] ?? '') ?>"></label>
-                    <label>Mother's Maiden Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="mother_maiden_name" value="<?= e($_POST['mother_maiden_name'] ?? $editRecord['mother_maiden_name'] ?? '') ?>"></label>
+                    <?= person_name_fields('father', "Father's Name", $recordNameFormValues) ?>
+                    <?= person_name_fields('mother', "Mother's Maiden Name", $recordNameFormValues) ?>
                 </div>
                 <div class="inline-fields">
                     <label class="field-hint"><input type="checkbox" name="father_name_not_recorded" value="1"<?= !empty($_POST['father_name_not_recorded'] ?? $editRecord['father_name_not_recorded'] ?? false) ? ' checked' : '' ?>> Father's name is not recorded in the source register</label>
                     <label class="field-hint"><input type="checkbox" name="mother_maiden_name_not_recorded" value="1"<?= !empty($_POST['mother_maiden_name_not_recorded'] ?? $editRecord['mother_maiden_name_not_recorded'] ?? false) ? ' checked' : '' ?>> Mother's maiden name is not recorded in the source register</label>
                 </div>
-                <label>Sponsor <input autocomplete="off" type="text" name="sponsor_name" value="<?= e($_POST['sponsor_name'] ?? $editRecord['sponsor_name'] ?? '') ?>"></label>
+                <?= person_name_fields('sponsor', 'Sponsor', $recordNameFormValues, false) ?>
             </fieldset>
 
             <fieldset>
@@ -472,7 +489,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <label>Officiating Minister <input autocomplete="off" type="text" name="minister_name" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"></label>
+                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 

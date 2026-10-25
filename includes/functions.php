@@ -421,6 +421,11 @@ function compose_person_name(array $values, string $prefix): string
 
 function compose_person_name_rows(array $values, string $prefix): array
 {
+    return array_values(compose_person_name_rows_by_index($values, $prefix));
+}
+
+function compose_person_name_rows_by_index(array $values, string $prefix): array
+{
     $rows = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $field = $values[$prefix . '_' . $part] ?? [];
@@ -438,7 +443,7 @@ function compose_person_name_rows(array $values, string $prefix): array
         }
         $name = compose_person_name($person, $prefix);
         if ($name !== '') {
-            $names[] = $name;
+            $names[$rowIndex] = $name;
         }
     }
 
@@ -962,8 +967,28 @@ function validate_full_name(string $name): ?string
     return null;
 }
 
-function display_name_with_middle_initial(string $fullName): string
+function display_name_with_middle_initial(
+    string $fullName,
+    ?string $firstName = null,
+    ?string $middleName = null,
+    ?string $lastName = null,
+    ?string $suffix = null
+): string
 {
+    if (trim((string) $firstName) !== '' || trim((string) $middleName) !== '' || trim((string) $lastName) !== '' || trim((string) $suffix) !== '') {
+        $middleName = trim((string) $middleName);
+        $middleInitial = $middleName !== ''
+            ? (function_exists('mb_substr') ? mb_substr($middleName, 0, 1) : substr($middleName, 0, 1)) . '.'
+            : '';
+
+        return trim(implode(' ', array_filter([
+            trim((string) $firstName),
+            $middleInitial,
+            trim((string) $lastName),
+            trim((string) $suffix),
+        ], static fn (string $part): bool => $part !== '')));
+    }
+
     $fullName = trim((string) $fullName);
     if ($fullName === '') {
         return '';
