@@ -237,6 +237,7 @@ CREATE TABLE certificate_requests (
   requester_relationship_other VARCHAR(100),
   requester_email             VARCHAR(150) NOT NULL,
   requester_contact_number    VARCHAR(30),
+  requester_mailing_address   VARCHAR(500) NULL,
   purpose                     VARCHAR(40) NOT NULL,  -- values come from the public forms (see migration 030)
   purpose_other               VARCHAR(150),
   notes                       TEXT,

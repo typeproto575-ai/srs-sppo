@@ -304,6 +304,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <dt>Contact</dt>
         <dd><?= e($req['requester_contact_number']) ?></dd>
     </div>
+    <?php if (!empty($req['requester_mailing_address'])): ?>
+    <div class="request-summary-item">
+        <dt>Postal mailing address</dt>
+        <dd><?= nl2br(e($req['requester_mailing_address'])) ?></dd>
+    </div>
+    <?php endif; ?>
     <div class="request-summary-item">
         <dt>Purpose</dt>
         <dd><?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></dd>

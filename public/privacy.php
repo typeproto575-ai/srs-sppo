@@ -50,7 +50,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="data-collected">
             <h2 class="legal-clause__title">What We Collect</h2>
             <ol class="legal-subclauses">
-                <li><span class="legal-term">Requester details:</span> name, email address, contact number, relationship to the person concerned, and the purpose of the request.</li>
+                <li><span class="legal-term">Requester details:</span> name, email address, contact number, optional postal mailing address, relationship to the person concerned, and the purpose of the request.</li>
                 <li><span class="legal-term">Record details:</span> the name, birthdate, birthplace, parents' names and sacrament dates needed for staff to review the request against the parish register.</li>
                 <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include religion, civil status (single, widowed, annulled), previous marriages, baptism and confirmation status, residence, and the names and residences of parents, godparents, sponsors and witnesses.</li>
                 <li><span class="legal-term">Children's data:</span> for First Communion, the child's name, birthdate, school, grade level and adviser. A parent or legal guardian must give the information and consent for a child.</li>

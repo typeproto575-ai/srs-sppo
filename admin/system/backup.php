@@ -88,7 +88,7 @@ $extraHead = '';
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
         <h1>Database Backup / Export</h1>
         <p class="field-hint">The encrypted export excludes password/hash columns, password-reset tokens, submission rate limits, and email delivery logs.</p>
-        <p class="field-hint"><strong>Backup note:</strong> Store backups on an external drive, keep at least two copies, delete old copies after [BACKUP RETENTION PERIOD].</p>
+        <p class="field-hint"><strong>Backup note:</strong> Store backups on an external drive, keep at least two copies, and follow the parish's approved retention policy when disposing of old copies.</p>
         <?php if ($error !== null): ?>
             <p class="form-error"><?= e($error) ?></p>
         <?php endif; ?>

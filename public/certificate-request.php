@@ -45,6 +45,6 @@ require_once __DIR__ . '/../includes/header.php';
     <h2>Before submitting</h2>
     <p>Online forms do not create an account, accept payment, or release a certificate online. <button type="button" class="help-btn" aria-expanded="false" aria-controls="before-submitting-help" title="Show what to expect if documents are needed">?</button></p>
     <div id="before-submitting-help" class="help-text" hidden><p>Requests are reviewed by the parish office; approval is not guaranteed and identity-document uploads are not collected here. If documents are needed, show them in person at the Parish Office (originals or photocopies, as the office requires). Do not send documents by email or Messenger. You may still contact the Parish Office with questions.</p></div>
-    <div class="hero-actions"><a class="btn" href="<?= $basePath ?>/public/requirements.php">View Requirements</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/how-it-works.php">How It Works</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/track-request.php">Track My Request</a></div>
+    <div class="hero-actions"><a class="btn" href="<?= $basePath ?>/public/requirements.php">View Requirements</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/how-it-works.php">How It Works</a><a class="btn btn-secondary" href="<?= $basePath ?>/public/track-request.php">Track a Request or Application</a></div>
 </section>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

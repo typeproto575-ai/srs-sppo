@@ -117,14 +117,25 @@ function humanize_label(string $s): string
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Booking Conflict Review</h1>
-        <p class="field-hint">Compares each pending marriage application's preferred wedding date and time against the calendar (assumes a <?= DEFAULT_EVENT_SLOT_MINUTES ?>-minute ceremony when no end time is set). Same-day bookings that don't actually overlap in time are no longer flagged. Nothing here is auto-resolved — the secretary confirms manually and adjusts the calendar as needed.</p>
+        <div class="admin-list-page booking-conflicts-page">
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">Schedule</p>
+                <h1>Booking conflict review</h1>
+                <p>Compare preferred marriage dates with events already on the parish calendar.</p>
+            </div>
+            <a href="<?= $basePath ?>/admin/schedule/calendar.php" class="btn btn-secondary">Open calendar</a>
+        </header>
+        <div class="schedule-review-notice" role="note">
+            <strong>Review conflicts manually.</strong>
+            The comparison assumes a <?= DEFAULT_EVENT_SLOT_MINUTES ?>-minute ceremony when no end time is set. Same-day events are only flagged when their times overlap; nothing is automatically resolved.
+        </div>
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($applications)): ?>
-            <p>No open marriage applications to review.</p>
+            <p class="admin-queue-empty">No open marriage applications match these filters.</p>
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">
@@ -167,5 +178,5 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
 
-        <p style="margin-top:1.5rem;"><a href="<?= $basePath ?>/admin/schedule/calendar.php" class="btn btn-secondary btn-small">Go to Calendar</a></p>
+        </div>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

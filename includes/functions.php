@@ -21,29 +21,31 @@ require_once __DIR__ . '/../config/environment.php';
 require_once __DIR__ . '/mail.php';
 
 /**
- * Generate a unique tracking number, e.g. SPPO-2026-000123
+ * Generate a tracking number, e.g. SPPO-2026-000123 or SPPO-APP-2026-000123.
  */
 function generate_tracking_number(PDO $pdo, string $table = 'certificate_requests'): string
 {
-    $year  = date('Y');
+    $year = date('Y');
+    $prefix = match ($table) {
+        'certificate_requests' => 'SPPO-' . $year . '-',
+        'sacrament_applications' => 'SPPO-APP-' . $year . '-',
+        default => throw new InvalidArgumentException('Unsupported tracking-number table.'),
+    };
 
     // Derive the next number from the current MAX sequence instead of a
     // COUNT, so deleting the newest request of a year never makes the next
     // submission collide with a previously issued (now-deleted) number.
-    // The prefix is taken from the newest existing row so each table keeps
-    // its own style (certificates: SPPO-2026-000001, applications seeded
-    // as SPPO-APP-2026-000001).
+    // Applications have their own prefix so their numbers cannot shadow a
+    // certificate request in the public tracking lookup.
     $stmt = $pdo->prepare(
         "SELECT tracking_number FROM {$table} WHERE tracking_number LIKE ? ORDER BY tracking_number DESC LIMIT 1"
     );
-    $stmt->execute(['%-' . $year . '-%']);
+    $stmt->execute([$prefix . '%']);
     $last = $stmt->fetchColumn();
 
-    $prefix = 'SPPO-' . $year . '-';
     $next   = 1;
-    if ($last !== false && preg_match('/^(.*)-(\d{6})$/', (string) $last, $m)) {
-        $prefix = $m[1] . '-';
-        $next   = ((int) $m[2]) + 1;
+    if ($last !== false && preg_match('/-(\d{6})$/', (string) $last, $m)) {
+        $next   = ((int) $m[1]) + 1;
     }
 
     return sprintf('%s%06d', $prefix, $next);

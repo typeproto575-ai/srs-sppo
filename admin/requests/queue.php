@@ -149,13 +149,23 @@ function humanize_label(string $s): string
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Certificate Requests Queue</h1>
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">Requests</p>
+                <h1>Certificate requests</h1>
+                <p>Find a request, review its details, and continue to the next processing step.</p>
+            </div>
+            <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> requests match the current filters">
+                <strong><?= (int) $totalRows ?></strong>
+                <span><?= $totalRows === 1 ? 'request' : 'requests' ?></span>
+            </div>
+        </header>
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($requests)): ?>
-            <p>No certificate requests match this filter.</p>
+            <p class="admin-queue-empty">No certificate requests match your search or filters. Try broadening your search.</p>
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">

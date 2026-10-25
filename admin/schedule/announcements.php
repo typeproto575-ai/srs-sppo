@@ -184,7 +184,18 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Announcements</h1>
+        <div class="admin-list-page announcements-page">
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">Schedule</p>
+                <h1>Announcements</h1>
+                <p>Share parish updates on the public home page. Drafts stay private until published.</p>
+            </div>
+            <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> announcements">
+                <strong><?= (int) $totalRows ?></strong>
+                <span><?= $totalRows === 1 ? 'announcement' : 'announcements' ?></span>
+            </div>
+        </header>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
         <?php if (!empty($errors)): ?>
@@ -200,7 +211,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php endif; ?>
         <?php if (empty($announcements)): ?>
-            <p>No announcements yet.</p>
+            <p class="admin-queue-empty"><?= $totalRows === 0 ? 'No announcements have been posted yet. Create one to share news with parishioners.' : 'No announcements match your search. Try broadening your search.' ?></p>
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">
@@ -234,6 +245,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
+        </div>
 
         <!-- Add/Edit announcement dialog (same records encode-dialog style) -->
         <?php if ($isSecretary): ?>

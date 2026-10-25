@@ -80,7 +80,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Verify and complete onsite</h3>
-            <p>If documents are needed, the parish office will tell you whether to bring them to the office or how to send them. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
+            <p>If documents are needed, bring them to the Parish Office in person when asked. Do not send documents by email or Messenger; you may still contact the office with questions. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
         </div>
     </div>
 
@@ -107,7 +107,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Final calls-to-action -->
 <div class="workflow-cta">
-    <p>Already sent a request? Check its status with your tracking number.</p>
+    <p>Already sent a certificate request or sacrament application? Check its status with the tracking number and the same email address used when submitting. You may use one email address for multiple submissions; track each one with its own number.</p>
     <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
 </div>
 

@@ -294,7 +294,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $requesterRelationship  = $_POST['requester_relationship'] ?? '';
     $requesterRelOther      = trim($_POST['requester_relationship_other'] ?? '');
     $requesterEmail         = trim($_POST['requester_email'] ?? '');
-    $requesterContact       = null; // Email is the only approved contact channel.
+    $requesterMailingAddress = trim($_POST['requester_mailing_address'] ?? '');
+    $requesterContact       = null; // Walk-in requests do not collect a phone number.
     $purpose      = $_POST['purpose'] ?? '';
     $purposeOther = trim($_POST['purpose_other'] ?? '');
     $notes        = trim($_POST['notes'] ?? '');
@@ -310,6 +311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if ($requesterName === '')         $errors[] = 'Requester name is required.';
         if ($requesterRelationship === '') $errors[] = 'Relationship is required.';
         if ($requesterEmail === '')        $errors[] = 'Email address is required.';
+        if (strlen($requesterMailingAddress) > 500) $errors[] = 'Mailing address must be 500 characters or fewer.';
         if ($purpose === '')               $errors[] = 'Purpose is required.';
     }
 
@@ -405,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
     if (empty($errors) && !$isSearchStep) {
         try {
-            $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther, $requesterEmail, $requesterContact, $purpose, $purposeOther, $notes, $markPaid, $extTable, $extCols, $extVals): string {
+            $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther, $requesterEmail, $requesterMailingAddress, $requesterContact, $purpose, $purposeOther, $notes, $markPaid, $extTable, $extCols, $extVals): string {
             $trackingNumber = generate_tracking_number($pdo, 'certificate_requests');
 
             $paidAt = $markPaid ? date('Y-m-d H:i:s') : null;
@@ -415,12 +417,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 "INSERT INTO certificate_requests
                     (tracking_number, submission_channel, sacrament_type, requester_name, requester_relationship,
                      requester_relationship_other, requester_email, requester_contact_number,
-                     purpose, purpose_other, notes, status, paid_at, paid_by)
-                 VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
+                     requester_mailing_address, purpose, purpose_other, notes, status, paid_at, paid_by)
+                 VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
             );
             $stmt->execute([
                 $trackingNumber, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther,
-                $requesterEmail, $requesterContact, $purpose, $purposeOther, $notes, $paidAt, $paidBy,
+                $requesterEmail, $requesterContact, $requesterMailingAddress !== '' ? $requesterMailingAddress : null,
+                $purpose, $purposeOther, $notes, $paidAt, $paidBy,
             ]);
             $requestId = (int) $pdo->lastInsertId();
 
@@ -447,14 +450,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Encode Walk-in Request</h1>
-        <p class="field-hint">Use this when a parishioner requests a certificate in person instead of through the public form.</p>
+        <div class="walk-in-page walk-in-request-page">
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">In-person service</p>
+                <h1>Encode a certificate request</h1>
+                <p>Use this form when a parishioner requests a certificate at the office.</p>
+            </div>
+        </header>
 
         <?php if ($trackingNumber): ?>
             <div class="alert alert-success">
                 <p>Request encoded. Tracking number:</p>
                 <p class="tracking-number"><strong><?= e($trackingNumber) ?></strong></p>
-                <p>Give this number to the requester, or write it on their receipt.</p>
+                <p>Print a tracking slip to hand to the requester or mail to the address below.</p>
                 <?php
                 $doneLabel = ['baptismal' => 'Baptismal', 'confirmation' => 'Confirmation', 'first_communion' => 'First Communion', 'marriage' => 'Marriage'][$sacramentType] ?? $sacramentType;
                 $doneName = $sacramentType === 'baptismal' ? ($childName ?? '') : ($sacramentType === 'confirmation' ? ($confirmandName ?? '') : ($sacramentType === 'first_communion' ? ($communicantName ?? '') : ''));
@@ -475,27 +484,57 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <dt>Purpose</dt><dd><?= e($purpose) ?></dd>
                 </dl>
             </div>
+            <section class="walk-in-tracking-slip" aria-labelledby="walk-in-slip-title">
+                <p class="walk-in-slip-parish">St. Patrick's Parish Office</p>
+                <h2 id="walk-in-slip-title">Certificate Request Tracking Slip</h2>
+                <p class="walk-in-slip-number"><?= e($trackingNumber) ?></p>
+                <p>Keep this number to check the request status with the email address provided.</p>
+                <dl>
+                    <dt>Requester</dt><dd><?= e($requesterName) ?></dd>
+                    <dt>Certificate</dt><dd><?= e($doneLabel) ?></dd>
+                    <?php if ($requesterMailingAddress !== ''): ?>
+                        <dt>Mail to</dt><dd><?= nl2br(e($requesterMailingAddress)) ?></dd>
+                    <?php endif; ?>
+                    <dt>Date</dt><dd><?= e(date('F j, Y')) ?></dd>
+                </dl>
+                <p class="walk-in-slip-note">This slip is a tracking reference only. It is not a certificate or proof of approval.</p>
+                <button type="button" class="btn btn-secondary walk-in-slip-print" id="print-walk-in-slip">Print Tracking Slip</button>
+            </section>
+            <script>
+                (function () {
+                    var button = document.getElementById('print-walk-in-slip');
+                    if (!button) return;
+                    button.addEventListener('click', function () {
+                        document.body.classList.add('walk-in-print-mode');
+                        window.print();
+                    });
+                    window.addEventListener('afterprint', function () {
+                        document.body.classList.remove('walk-in-print-mode');
+                    });
+                })();
+            </script>
         <?php endif; ?>
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
-        <form autocomplete="off" method="post" action="">
+        <form autocomplete="off" method="post" action="" class="walk-in-form walk-in-wizard" data-walk-in-kind="request">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
-            <fieldset>
+            <input type="hidden" name="walk_in_phase" value="<?= e((string) ($_POST['walk_in_phase'] ?? '1')) ?>" data-walk-in-current-step>
+            <fieldset data-walk-in-phase="type">
                 <legend>Sacrament Type</legend>
                 <label>Type *
                     <select name="sacrament_type" id="sacrament_type" required onchange="showSection(this.value)">
                         <option value="">-- Select --</option>
-                        <option value="baptismal">Baptismal</option>
-                        <option value="confirmation">Confirmation</option>
-                        <option value="first_communion">First Communion</option>
-                        <option value="marriage">Marriage</option>
+                        <option value="baptismal" <?= (($_POST['sacrament_type'] ?? '') === 'baptismal') ? 'selected' : '' ?>>Baptismal</option>
+                        <option value="confirmation" <?= (($_POST['sacrament_type'] ?? '') === 'confirmation') ? 'selected' : '' ?>>Confirmation</option>
+                        <option value="first_communion" <?= (($_POST['sacrament_type'] ?? '') === 'first_communion') ? 'selected' : '' ?>>First Communion</option>
+                        <option value="marriage" <?= (($_POST['sacrament_type'] ?? '') === 'marriage') ? 'selected' : '' ?>>Marriage</option>
                     </select>
                 </label>
             </fieldset>
 
-            <fieldset>
+            <fieldset data-walk-in-phase="contact">
                 <legend>Requester Information</legend>
                 <label>Requester's Full Name * <input autocomplete="off" type="text" name="requester_name" value="<?= e($_POST['requester_name'] ?? '') ?>" required></label>
                 <label>Relationship *
@@ -512,9 +551,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </label>
                 <label>If Other <input autocomplete="off" type="text" name="requester_relationship_other" value="<?= e($_POST['requester_relationship_other'] ?? '') ?>"></label>
                 <label>Email Address * <input autocomplete="off" type="email" name="requester_email" value="<?= e($_POST['requester_email'] ?? '') ?>" required></label>
+                <label>Postal Mailing Address <textarea name="requester_mailing_address" rows="3" maxlength="500" autocomplete="street-address"><?= e($_POST['requester_mailing_address'] ?? '') ?></textarea>
+                    <span class="field-hint">Optional. Enter this if the requester would like the tracking slip mailed to them. The parish must print and mail it manually; entering an address does not send anything automatically.</span>
+                </label>
             </fieldset>
 
-            <div id="section-baptismal" class="sacrament-section" style="display:none;">
+            <div id="section-baptismal" class="sacrament-section" data-walk-in-phase="record" style="display:none;">
                 <?php
                 $bapState = $bapState ?? '';
                 $bapResolved = $bapResolved ?? null;
@@ -599,7 +641,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endif; ?>
             </div>
 
-            <div id="section-confirmation" class="sacrament-section" style="display:none;">
+            <div id="section-confirmation" class="sacrament-section" data-walk-in-phase="record" style="display:none;">
                 <?php
                 $confState = $confState ?? '';
                 $confResolved = $confResolved ?? null;
@@ -685,7 +727,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endif; ?>
             </div>
 
-            <div id="section-first_communion" class="sacrament-section" style="display:none;">
+            <div id="section-first_communion" class="sacrament-section" data-walk-in-phase="record" style="display:none;">
                 <?php
                 $fcState = $fcState ?? '';
                 $fcResolved = $fcResolved ?? null;
@@ -767,7 +809,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endif; ?>
             </div>
 
-            <div id="section-marriage" class="sacrament-section" style="display:none;">
+            <div id="section-marriage" class="sacrament-section" data-walk-in-phase="record" style="display:none;">
                 <?php
                 $marState = $marState ?? '';
                 $marResolved = $marResolved ?? null;
@@ -861,7 +903,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php endif; ?>
             </div>
 
-            <fieldset>
+            <fieldset data-walk-in-phase="wrap-up">
                 <legend>Request Details</legend>
                 <label>Purpose *
                     <select name="purpose" required>
@@ -880,14 +922,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </label>
             </fieldset>
 
-            <fieldset>
+            <fieldset data-walk-in-phase="wrap-up">
                 <legend>Payment (in person)</legend>
                 <label class="checkbox-label"><input type="checkbox" name="payment_received" value="1" <?= (($_POST['payment_received'] ?? '') === '1') ? 'checked' : '' ?>> Payment received at the counter &mdash; mark as paid</label>
                 <p class="field-hint">Optional. Payment is collected in person at the office; the system records no amount, only that it was received and by whom.</p>
             </fieldset>
 
-            <button type="submit" class="btn">Encode Request</button>
+            <button type="submit" class="btn" data-walk-in-submit>Encode Request</button>
         </form>
+    </div>
+
     <script>
         // Show only the selected sacrament's detail section (all hidden by default).
         function showSection(type) {

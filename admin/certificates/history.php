@@ -160,7 +160,18 @@ function humanize_label(string $s): string
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Print / Pickup History</h1>
+        <div class="admin-list-page certificate-history-page">
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">Certificates</p>
+                <h1>Print and pickup history</h1>
+                <p>Continue printing, finalizing, and releasing certificates that are ready for collection.</p>
+            </div>
+            <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> certificate records">
+                <strong><?= (int) $totalRows ?></strong>
+                <span><?= $totalRows === 1 ? 'record' : 'records' ?></span>
+            </div>
+        </header>
 
         <?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
 
@@ -168,7 +179,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($logs)): ?>
-            <p>No certificates have been generated yet.</p>
+            <p class="admin-queue-empty"><?= $totalRows === 0 ? 'No certificates have been generated yet.' : 'No certificates match your search or filters.' ?></p>
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">
@@ -240,4 +251,5 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
+        </div>
     <?php require_once __DIR__ . '/../../includes/admin-footer.php';

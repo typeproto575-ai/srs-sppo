@@ -187,7 +187,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
     <h1>Application for the Sacrament of First Holy Communion</h1>
     <p>Formularyo para sa Unang Banal na Komunyon</p>
     <?php if ($trackingNumber): ?>
-        <?php $successHeading = 'Your application has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?>
+        <?php $successHeading = 'Your application has been submitted'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
     <?php else: ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
             <ol class="request-steps" aria-label="Application progress">

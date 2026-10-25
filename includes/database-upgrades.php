@@ -13,9 +13,21 @@ function srs_database_upgrade_definitions(): array
             'title' => 'Certificate request review fields',
             'description' => 'Adds private review notes and rejection reason fields to certificate requests.',
         ],
+        '034_philippine_application_template_fields' => [
+            'title' => 'Philippine sacrament application fields',
+            'description' => 'Adds the First Communion and Holy Matrimony details required by the application forms.',
+        ],
         '038_data_retention_support' => [
             'title' => 'Data-retention support',
             'description' => 'Adds anonymization tracking fields and indexes used by retention tools.',
+        ],
+        '041_requester_mailing_address' => [
+            'title' => 'Certificate request mailing address',
+            'description' => 'Adds an optional postal mailing address to onsite certificate requests so the parish can print and mail the tracking slip.',
+        ],
+        '042_confirmation_baptism_details' => [
+            'title' => 'Confirmation application baptism details',
+            'description' => 'Adds baptism date and parish details collected by the walk-in Confirmation application form.',
         ],
     ];
 }
@@ -105,6 +117,27 @@ function srs_upgrade_prerequisite_errors(PDO $pdo, string $migrationKey): array
         '012_request_review_fields' => [
             'certificate_requests' => ['notes'],
         ],
+        '034_philippine_application_template_fields' => [
+            'first_communion_applications' => [
+                'application_id',
+                'applicant_full_name',
+                'applicant_birthdate',
+                'parent_guardian_name',
+                'email',
+            ],
+            'marriage_applications' => [
+                'application_id',
+                'groom_full_name',
+                'groom_birthdate',
+                'groom_birthplace',
+                'groom_email',
+                'bride_full_name',
+                'bride_birthdate',
+                'bride_birthplace',
+                'bride_email',
+                'preferred_wedding_date',
+            ],
+        ],
         '038_data_retention_support' => [
             'certificate_requests' => ['status', 'date_processed', 'date_submitted'],
             'sacrament_applications' => ['status', 'date_processed', 'date_submitted'],
@@ -113,6 +146,18 @@ function srs_upgrade_prerequisite_errors(PDO $pdo, string $migrationKey): array
             'email_delivery_log' => ['created_at'],
             'notifications' => ['created_at'],
             'submission_rate_limits' => ['submitted_at'],
+        ],
+        '041_requester_mailing_address' => [
+            'certificate_requests' => ['requester_email'],
+        ],
+        '042_confirmation_baptism_details' => [
+            'confirmation_applications' => [
+                'application_id',
+                'applicant_full_name',
+                'applicant_birthdate',
+                'parent_guardian_name',
+                'email',
+            ],
         ],
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
@@ -152,9 +197,101 @@ function srs_upgrade_is_complete(PDO $pdo, string $migrationKey): bool
         '012_request_review_fields' => srs_upgrade_table_exists($pdo, 'certificate_requests')
             && srs_upgrade_column_exists($pdo, 'certificate_requests', 'review_notes')
             && srs_upgrade_column_exists($pdo, 'certificate_requests', 'rejection_reason'),
+        '034_philippine_application_template_fields' => srs_upgrade_application_template_fields_complete($pdo),
         '038_data_retention_support' => srs_upgrade_retention_complete($pdo),
+        '041_requester_mailing_address' => srs_upgrade_column_exists($pdo, 'certificate_requests', 'requester_mailing_address'),
+        '042_confirmation_baptism_details' => srs_upgrade_confirmation_baptism_details_complete($pdo),
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
+}
+
+function srs_upgrade_confirmation_baptism_detail_columns(): array
+{
+    return [
+        'baptism_date' => 'DATE NULL',
+        'baptism_parish_name' => 'VARCHAR(150) NULL',
+        'baptism_parish_address' => 'VARCHAR(255) NULL',
+    ];
+}
+
+function srs_upgrade_confirmation_baptism_details_complete(PDO $pdo): bool
+{
+    foreach (array_keys(srs_upgrade_confirmation_baptism_detail_columns()) as $column) {
+        if (!srs_upgrade_column_exists($pdo, 'confirmation_applications', $column)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function srs_upgrade_application_template_columns(): array
+{
+    return [
+        'first_communion_applications' => [
+            'applicant_gender' => 'VARCHAR(20) NULL',
+            'applicant_birthplace' => 'VARCHAR(150) NULL',
+            'current_address' => 'VARCHAR(255) NULL',
+            'school_name' => 'VARCHAR(150) NULL',
+            'grade_level_section' => 'VARCHAR(100) NULL',
+            'adviser_name' => 'VARCHAR(150) NULL',
+            'father_full_name' => 'VARCHAR(150) NULL',
+            'mother_maiden_name' => 'VARCHAR(150) NULL',
+            'parents_catholic_married' => 'VARCHAR(30) NULL',
+            'baptism_date' => 'DATE NULL',
+            'baptism_parish_name' => 'VARCHAR(150) NULL',
+            'baptism_parish_address' => 'VARCHAR(255) NULL',
+            'psa_birth_certificate_status' => "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            'catechetical_formation_status' => "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            'confession_completed' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'parental_consent' => 'TINYINT(1) NOT NULL DEFAULT 0',
+        ],
+        'marriage_applications' => [
+            'groom_current_address' => 'VARCHAR(255) NULL',
+            'groom_address_length' => 'VARCHAR(80) NULL',
+            'groom_religion' => 'VARCHAR(100) NULL',
+            'groom_occupation' => 'VARCHAR(150) NULL',
+            'groom_father_name' => 'VARCHAR(150) NULL',
+            'groom_mother_maiden_name' => 'VARCHAR(150) NULL',
+            'groom_confirmed' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'groom_previous_marriage' => 'VARCHAR(30) NULL',
+            'bride_current_address' => 'VARCHAR(255) NULL',
+            'bride_address_length' => 'VARCHAR(80) NULL',
+            'bride_religion' => 'VARCHAR(100) NULL',
+            'bride_occupation' => 'VARCHAR(150) NULL',
+            'bride_father_name' => 'VARCHAR(150) NULL',
+            'bride_mother_maiden_name' => 'VARCHAR(150) NULL',
+            'bride_confirmed' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'bride_previous_marriage' => 'VARCHAR(30) NULL',
+            'assigned_priest_name' => 'VARCHAR(150) NULL',
+            'civilly_married_to_each_other' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'civil_marriage_date' => 'DATE NULL',
+            'civil_marriage_place' => 'VARCHAR(150) NULL',
+            'groom_cenomar_status' => "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            'bride_cenomar_status' => "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            'marriage_license_status' => "VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            'psa_marriage_contract_status' => "VARCHAR(20) NOT NULL DEFAULT 'not_applicable'",
+            'groom_baptismal_annotated' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'bride_baptismal_annotated' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'groom_confirmation_annotated' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'bride_confirmation_annotated' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            'groom_banns_status' => "VARCHAR(30) NOT NULL DEFAULT 'pending'",
+            'bride_banns_status' => "VARCHAR(30) NOT NULL DEFAULT 'pending'",
+        ],
+    ];
+}
+
+function srs_upgrade_application_template_fields_complete(PDO $pdo): bool
+{
+    foreach (srs_upgrade_application_template_columns() as $table => $columns) {
+        foreach (array_keys($columns) as $column) {
+            if (!srs_upgrade_column_exists($pdo, $table, $column)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 function srs_upgrade_retention_complete(PDO $pdo): bool
@@ -256,6 +393,12 @@ function srs_apply_database_upgrade(PDO $pdo, string $migrationKey, int $userId)
     } elseif ($migrationKey === '012_request_review_fields') {
         srs_upgrade_add_column($pdo, 'certificate_requests', 'review_notes', 'TEXT NULL');
         srs_upgrade_add_column($pdo, 'certificate_requests', 'rejection_reason', 'TEXT NULL');
+    } elseif ($migrationKey === '034_philippine_application_template_fields') {
+        foreach (srs_upgrade_application_template_columns() as $table => $columns) {
+            foreach ($columns as $column => $definition) {
+                srs_upgrade_add_column($pdo, $table, $column, $definition);
+            }
+        }
     } elseif ($migrationKey === '038_data_retention_support') {
         srs_upgrade_add_column($pdo, 'certificate_requests', 'anonymized_at', 'DATETIME NULL');
         srs_upgrade_add_column($pdo, 'sacrament_applications', 'anonymized_at', 'DATETIME NULL');
@@ -282,6 +425,12 @@ function srs_apply_database_upgrade(PDO $pdo, string $migrationKey, int $userId)
         srs_upgrade_add_index($pdo, 'email_delivery_log', 'idx_delivery_purge', ['created_at']);
         srs_upgrade_add_index($pdo, 'notifications', 'idx_notif_purge', ['created_at']);
         srs_upgrade_add_index($pdo, 'submission_rate_limits', 'idx_ratelimit_purge', ['submitted_at']);
+    } elseif ($migrationKey === '041_requester_mailing_address') {
+        srs_upgrade_add_column($pdo, 'certificate_requests', 'requester_mailing_address', 'VARCHAR(500) NULL AFTER requester_contact_number');
+    } elseif ($migrationKey === '042_confirmation_baptism_details') {
+        foreach (srs_upgrade_confirmation_baptism_detail_columns() as $column => $definition) {
+            srs_upgrade_add_column($pdo, 'confirmation_applications', $column, $definition);
+        }
     }
 
     if (!srs_upgrade_is_complete($pdo, $migrationKey)) {

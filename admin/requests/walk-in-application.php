@@ -162,8 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $brideBirthplace = trim($_POST['bride_birthplace'] ?? '');
             $brideContact = null; // Email is the only approved contact channel.
             $brideEmail = trim($_POST['bride_email'] ?? '');
+            $preferredWeddingDate = trim($_POST['preferred_wedding_date'] ?? '');
 
-            if ($groomName === '' || $groomBirthdate === '' || $groomBirthplace === '' || $groomEmail === '' || $brideName === '' || $brideBirthdate === '' || $brideBirthplace === '' || $brideEmail === '') {
+            if ($groomName === '' || $groomBirthdate === '' || $groomBirthplace === '' || $groomEmail === '' || $brideName === '' || $brideBirthdate === '' || $brideBirthplace === '' || $brideEmail === '' || $preferredWeddingDate === '') {
                 throw new Exception('Please fill required marriage application fields for both parties.');
             }
 
@@ -178,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $stmt->execute([
                 $applicationId,
                 $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail, trim($_POST['groom_marital_status'] ?? 'single'),
-                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, trim($_POST['bride_marital_status'] ?? 'single'), $_POST['preferred_wedding_date'] ?: null
+                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, trim($_POST['bride_marital_status'] ?? 'single'), $preferredWeddingDate
             ]);
             $marriageAppExtId = (int) $pdo->lastInsertId();
 
@@ -216,7 +217,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 }
 ?>
 <?php require_once __DIR__ . '/../../includes/admin-header.php'; ?>
-        <h1>Encode Walk-in Application</h1>
+        <div class="walk-in-page walk-in-application-page">
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">In-person service</p>
+                <h1>Encode a sacrament application</h1>
+                <p>Record an application for a parishioner visiting the office. Choose a sacrament to show the matching details.</p>
+            </div>
+        </header>
         <?php if ($trackingNumber): ?>
             <!-- Success message with the generated tracking number -->
             <div class="alert alert-success">
@@ -229,9 +237,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
-        <form autocomplete="off" method="post" action="">
+        <form autocomplete="off" method="post" action="" class="walk-in-form walk-in-wizard" data-walk-in-kind="application">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
-            <fieldset>
+            <input type="hidden" name="walk_in_phase" value="<?= e((string) ($_POST['walk_in_phase'] ?? '1')) ?>" data-walk-in-current-step>
+            <fieldset data-walk-in-phase="type">
                 <legend>Sacrament Type</legend>
                 <label>Type *
                     <select name="sacrament_type" id="sacrament_type" required onchange="showSection(this.value)">
@@ -245,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             </fieldset>
 
             <!-- Sacrament-specific sections (shown/hidden via JS based on selection) -->
-            <div id="section-baptismal" class="sacrament-section" style="display:none;">
+            <div id="section-baptismal" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>Baptismal Application</legend>
                     <label>Child's Full Name * <input autocomplete="off" type="text" name="child_full_name" value="<?= e($_POST['child_full_name'] ?? '') ?>"></label>
@@ -271,7 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 </fieldset>
             </div>
 
-            <div id="section-confirmation" class="sacrament-section" style="display:none;">
+            <div id="section-confirmation" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>Confirmation Application</legend>
                     <label>Applicant's Full Name * <input autocomplete="off" type="text" name="applicant_full_name" value="<?= e($_POST['applicant_full_name'] ?? '') ?>"></label>
@@ -288,7 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 </fieldset>
             </div>
 
-            <div id="section-first_communion" class="sacrament-section" style="display:none;">
+            <div id="section-first_communion" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>First Communion Application</legend>
                     <label>Applicant's Full Name * <input autocomplete="off" type="text" name="applicant_full_name" value="<?= e($_POST['applicant_full_name'] ?? '') ?>"></label>
@@ -304,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 </fieldset>
             </div>
 
-            <div id="section-marriage" class="sacrament-section" style="display:none;">
+            <div id="section-marriage" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>Marriage Application</legend>
                     <h4>Groom</h4>
@@ -322,7 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     <label>Email * <input autocomplete="off" type="email" name="bride_email" value="<?= e($_POST['bride_email'] ?? '') ?>"></label>
                     <label>Marital Status <select name="bride_marital_status"><option value="single">Single</option><option value="widowed">Widowed</option><option value="annulled">Annulled</option></select></label>
                     <!-- Valid ID upload removed: identity verified in person -->
-                    <label>Preferred Wedding Date <input autocomplete="off" type="date" name="preferred_wedding_date" value="<?= e($_POST['preferred_wedding_date'] ?? '') ?>"></label>
+                    <label>Preferred Wedding Date * <input autocomplete="off" type="date" name="preferred_wedding_date" value="<?= e($_POST['preferred_wedding_date'] ?? '') ?>" required></label>
                     <div class="repeat-list">
                         <p>Principal Sponsors</p>
                         <div id="sponsors-list">
@@ -337,6 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 </fieldset>
             </div>
 
+            <div data-walk-in-phase="wrap-up">
             <fieldset>
                 <legend>Notes</legend>
                 <label>Notes <textarea autocomplete="off" name="notes"><?= e($_POST['notes'] ?? '') ?></textarea></label>
@@ -347,9 +357,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 <label class="checkbox-label"><input type="checkbox" name="payment_received" value="1" <?= (($_POST['payment_received'] ?? '') === '1') ? 'checked' : '' ?>> Payment received at the counter &mdash; mark as paid</label>
                 <p class="field-hint">Optional. Payment is collected in person at the office; the system records no amount, only that it was received and by whom.</p>
             </fieldset>
+            </div>
 
-            <button type="submit" class="btn">Encode Application</button>
+            <button type="submit" class="btn" data-walk-in-submit>Encode Application</button>
         </form>
+        </div>
 
         <script>
         // Show/hide the sacrament-specific section based on the selected type

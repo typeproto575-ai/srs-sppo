@@ -17,16 +17,18 @@ $settings = [
 ];
 
 $pageTitle = 'Home';
-$typeColorMap = [ 'mass' => '#2a7fe0', 'wedding' => '#d14b8b', 'baptism' => '#2a9d8f', 'other' => '#7a8797' ];
+$pageClass = 'public-home';
+$typeColorMap = [ 'mass' => '#245b8f', 'wedding' => '#923b67', 'baptism' => '#176b5a', 'other' => '#526171' ];
+$typeLabels = [ 'mass' => 'Mass', 'wedding' => 'Wedding', 'baptism' => 'Baptism', 'other' => 'Other' ];
 $announcements = $pdo->query("SELECT * FROM announcements WHERE is_published = 1 ORDER BY event_date DESC LIMIT 5")->fetchAll();
-$upcomingEvents = $pdo->query("SELECT * FROM schedule_events WHERE event_date >= CURDATE() ORDER BY event_date ASC LIMIT 10")->fetchAll();
+$calendarEventRows = $pdo->query("SELECT * FROM schedule_events WHERE event_date >= CURDATE() ORDER BY event_date ASC")->fetchAll();
 function public_calendar_title(string $title): string
 {
     return trim((string) preg_replace('/(?:\s*[-–—|:]\s*|\s+)\(?\b(?:AM|PM)\b\)?\s*$/i', '', $title));
 }
 
 $calendarEvents = array_map(function ($event) use ($typeColorMap) {
-    $color = $typeColorMap[$event['event_type']] ?? '#7a8797';
+    $color = $typeColorMap[$event['event_type']] ?? $typeColorMap['other'];
     $timeLabel = '';
     if (!empty($event['start_time'])) {
         $timeLabel = date('g:i A', strtotime($event['start_time']));
@@ -38,7 +40,7 @@ $calendarEvents = array_map(function ($event) use ($typeColorMap) {
         'end' => $event['end_time'] ? $event['event_date'] . 'T' . $event['end_time'] : null,
         'color' => $color,
     ];
-}, $upcomingEvents);
+}, $calendarEventRows);
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -49,12 +51,13 @@ require_once __DIR__ . '/../includes/header.php';
         <h1><?= e($settings['hero_heading_text']) ?></h1>
         <p class="hero-sub"><?= e($settings['hero_subtitle_text']) ?></p>
         <div class="hero-actions">
-            <a href="<?= $basePath ?>/public/requirements.php" class="btn">Get Started</a>
+            <a href="<?= $basePath ?>/public/requirements.php" class="btn">View Requirements &amp; Get Started</a>
+            <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
         </div>
     </div>
     <aside class="portal-hero-note" aria-label="Important parish office note">
         <span class="portal-note-label">Before you begin</span>
-        <h2>Online intake, secretary review</h2>
+        <h2>Online forms. Personal parish care.</h2>
         <p>There are no parishioner accounts or online payments. An online submission is only a pre-application; the secretary verifies requirements and identity before processing.</p>
         <a href="<?= $basePath ?>/public/how-it-works.php">See how the office process works &rarr;</a>
     </aside>
@@ -145,17 +148,16 @@ require_once __DIR__ . '/../includes/header.php';
 <section class="calendar-preview portal-section" aria-labelledby="calendar-heading">
     <div class="section-heading-row"><div><p class="section-kicker">Stay informed</p><h2 id="calendar-heading">Parish calendar</h2></div><p class="section-intro">Upcoming parish activities and office events.</p></div>
     <div id="parish-calendar" class="calendar-shell"></div>
-    <div class="calendar-legend" aria-label="Calendar event colors"><?php foreach ($typeColorMap as $type => $color): ?><span class="legend-item" title="<?= e(ucfirst($type)) ?>" aria-label="<?= e(ucfirst($type)) ?>"><span class="legend-swatch" style="background:<?= e($color) ?>"></span><?= e(ucfirst($type)) ?></span><?php endforeach; ?></div>
+    <div class="calendar-legend" aria-label="Calendar event colors"><?php foreach ($typeLabels as $type => $label): ?><span class="legend-item" title="<?= e($label) ?>"><span class="legend-swatch" style="background:<?= e($typeColorMap[$type]) ?>" aria-hidden="true"></span><?= e($label) ?></span><?php endforeach; ?></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.11/index.global.min.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('parish-calendar');
         if (typeof FullCalendar === 'undefined') { el.innerHTML = '<p class="empty-state">Calendar could not be loaded. See the parish office for event details.</p>'; return; }
-        var calendar = new FullCalendar.Calendar(el, { initialView: 'dayGridMonth', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' }, buttonText: { month: 'Month', list: 'List' }, height: 'auto', displayEventTime: false, dayMaxEventRows: true, eventDisplay: 'block', fixedWeekCount: false, events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> });
+        var calendar = new FullCalendar.Calendar(el, { initialView: 'dayGridMonth', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' }, buttonText: { prev: 'Previous', next: 'Next', today: 'Today', month: 'Month', list: 'List' }, height: 'auto', displayEventTime: false, dayMaxEventRows: true, eventDisplay: 'block', fixedWeekCount: false, events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> });
         calendar.render();
     });
     </script>
-    <?php if (!empty($upcomingEvents)): ?><h3 class="events-heading">Upcoming events</h3><div class="carousel" data-carousel aria-roledescription="carousel" aria-label="Upcoming events"><div class="carousel-viewport"><div class="carousel-track"><?php foreach (array_chunk($upcomingEvents, 2) as $batch): ?><article class="slide event-slide"><?php foreach ($batch as $event): ?><?php $eventColor = $typeColorMap[$event['event_type']] ?? '#7a8797'; ?><div class="card"><span class="event-date"><?= e(date('M j', strtotime($event['event_date']))) ?></span><div class="event-details"><strong><?= e($event['title']) ?></strong><?php if ($event['start_time']): ?><p><?= e(date('D, M j g:i A', strtotime($event['event_date'] . ' ' . $event['start_time']))) ?></p><?php endif; ?></div><span class="event-badge" style="background:<?= e($eventColor) ?>20; color:<?= e($eventColor) ?>"><?= e(ucfirst($event['event_type'])) ?></span></div><?php endforeach; ?></article><?php endforeach; ?></div></div><div class="carousel-controls"><button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous event">&#8249;</button><div class="carousel-dots" data-carousel-dots></div><button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next event">&#8250;</button></div></div><?php endif; ?>
 </section>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

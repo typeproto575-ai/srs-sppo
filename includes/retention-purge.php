@@ -214,6 +214,7 @@ function retention_anonymize_certificates(PDO $pdo, array $ids): void
 
     retention_exec($pdo, 'certificate_requests',
         "UPDATE certificate_requests SET requester_name = ?, requester_email = ?, requester_contact_number = NULL,"
+        . " requester_mailing_address = NULL,"
         . " requester_relationship_other = NULL, purpose_other = NULL, notes = NULL, review_notes = NULL,"
         . " rejection_reason = NULL, missing_requirements_note = NULL, cancellation_reason = NULL,"
         . " anonymized_at = NOW() WHERE id IN ($in) AND anonymized_at IS NULL",

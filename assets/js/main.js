@@ -48,13 +48,15 @@ document.addEventListener('DOMContentLoaded', function () {
     // handlers so cancelling a confirmation never disables the button.
     document.querySelectorAll('form:not([data-review])').forEach(function (form) {
         form.addEventListener('submit', function (ev) {
+            if (ev.defaultPrevented) return;
             var button = ev.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
             if (!button || button.disabled) return;
+            if (button.hasAttribute('data-preserve-submit')) return;
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
             if (button.tagName === 'INPUT') button.value = 'Submitting…';
             else button.textContent = 'Submitting…';
-        }, { once: true });
+        });
     });
 
     // ---- 3) Modal dialogs for the records encode forms -------------------
@@ -1050,5 +1052,248 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     }
+
+    // ---- 11) Phased walk-in request/application forms --------------------
+    document.querySelectorAll('form.walk-in-wizard[data-walk-in-kind]').forEach(function (form) {
+        var kind = form.getAttribute('data-walk-in-kind');
+        var isRequest = kind === 'request';
+        var phaseConfig = isRequest
+            ? [
+                { key: 'type', label: 'Request type' },
+                { key: 'record', label: 'Find the record' },
+                { key: 'contact', label: 'Requester details' },
+                { key: 'wrap-up', label: 'Purpose & payment' },
+                { key: 'review', label: 'Review' }
+            ]
+            : [
+                { key: 'type', label: 'Application type' },
+                { key: 'details', label: 'Applicant details' },
+                { key: 'wrap-up', label: 'Notes & payment' },
+                { key: 'review', label: 'Review' }
+            ];
+        var currentInput = form.querySelector('[data-walk-in-current-step]');
+        var submitButton = form.querySelector('[data-walk-in-submit]');
+        var typeSelect = form.querySelector('#sacrament_type');
+        if (!currentInput || !submitButton || !typeSelect) return;
+        form.querySelectorAll('button[type="submit"][name]').forEach(function (button) {
+            button.setAttribute('data-preserve-submit', '');
+        });
+
+        var wizard = document.createElement('div');
+        wizard.className = 'walk-in-wizard-shell';
+        var progress = document.createElement('ol');
+        progress.className = 'walk-in-progress';
+        progress.setAttribute('aria-label', isRequest ? 'Request progress' : 'Application progress');
+        var status = document.createElement('p');
+        status.className = 'walk-in-phase-status';
+        status.setAttribute('aria-live', 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        var alert = document.createElement('p');
+        alert.className = 'walk-in-phase-error';
+        alert.setAttribute('role', 'alert');
+        alert.hidden = true;
+
+        var panels = phaseConfig.map(function (phase) {
+            var panel = document.createElement('section');
+            panel.className = 'walk-in-wizard-panel';
+            panel.dataset.phase = phase.key;
+            panel.setAttribute('aria-label', phase.label);
+            wizard.appendChild(panel);
+            return panel;
+        });
+        var phaseNodes = form.querySelectorAll('[data-walk-in-phase]');
+        phaseNodes.forEach(function (node) {
+            var panel = panels.find(function (item) {
+                return item.dataset.phase === node.getAttribute('data-walk-in-phase');
+            });
+            if (panel) panel.appendChild(node);
+        });
+
+        var reviewPanel = panels[panels.length - 1];
+        var reviewHeading = document.createElement('h2');
+        reviewHeading.className = 'walk-in-review-heading';
+        reviewHeading.textContent = 'Check the details before saving';
+        var reviewList = document.createElement('dl');
+        reviewList.className = 'walk-in-review-list';
+        reviewPanel.append(reviewHeading, reviewList);
+
+        var controls = document.createElement('div');
+        controls.className = 'walk-in-wizard-actions';
+        var backButton = document.createElement('button');
+        backButton.type = 'button';
+        backButton.className = 'btn btn-secondary';
+        backButton.textContent = 'Back';
+        var nextButton = document.createElement('button');
+        nextButton.type = 'button';
+        nextButton.className = 'btn';
+        nextButton.textContent = 'Continue';
+        controls.append(backButton, nextButton);
+        wizard.insertBefore(progress, wizard.firstChild);
+        wizard.insertBefore(status, progress.nextSibling);
+        wizard.insertBefore(alert, status.nextSibling);
+        wizard.appendChild(controls);
+        controls.appendChild(submitButton);
+        form.appendChild(wizard);
+        form.noValidate = true;
+
+        phaseConfig.forEach(function (phase, index) {
+            var item = document.createElement('li');
+            item.dataset.step = String(index + 1);
+            var number = document.createElement('span');
+            number.textContent = String(index + 1);
+            var label = document.createElement('span');
+            label.textContent = phase.label;
+            item.append(number, label);
+            progress.appendChild(item);
+        });
+
+        function activeSacramentSection() {
+            return form.querySelector('#section-' + typeSelect.value);
+        }
+
+        function fieldValue(field) {
+            if (field.type === 'checkbox') return field.checked ? 'Yes' : 'No';
+            if (field.type === 'radio') return field.checked ? field.value : '';
+            if (field.tagName === 'SELECT') {
+                var option = field.options[field.selectedIndex];
+                return option && option.value ? option.textContent.trim() : '';
+            }
+            return field.value.trim();
+        }
+
+        function updateReview() {
+            reviewList.textContent = '';
+            var controlsInForm = form.querySelectorAll('input, select, textarea');
+            controlsInForm.forEach(function (field) {
+                if (field.type === 'hidden' || field.type === 'submit' || field.type === 'button'
+                    || field.disabled || field.closest('[data-phase="review"]')) return;
+                var sacramentSection = field.closest('.sacrament-section');
+                if (sacramentSection && sacramentSection.id !== 'section-' + typeSelect.value) return;
+                if (field.type === 'radio' && !field.checked) return;
+                var value = fieldValue(field);
+                if (!value) return;
+                var label = field.closest('label');
+                var labelText = label ? label.childNodes[0].textContent.trim().replace(/\s*\*$/, '') : '';
+                if (!labelText && field.name) labelText = field.name.replace(/[_\[\]]+/g, ' ').trim();
+                if (!labelText) return;
+                var term = document.createElement('dt');
+                var detail = document.createElement('dd');
+                term.textContent = labelText;
+                detail.textContent = value;
+                reviewList.append(term, detail);
+            });
+            if (!reviewList.children.length) {
+                var empty = document.createElement('dd');
+                empty.textContent = 'No details have been entered yet.';
+                reviewList.appendChild(empty);
+            }
+        }
+
+        function validateCurrent(index) {
+            var type = typeSelect.value;
+            var errors = [];
+            var focusTarget = null;
+            function requireValue(name, label) {
+                var activeSection = activeSacramentSection();
+                var field = activeSection && phaseConfig[index].key === 'details'
+                    ? activeSection.querySelector('[name="' + name + '"]')
+                    : form.querySelector('[name="' + name + '"]');
+                if (!field || field.disabled) return;
+                if (!field.value.trim()) {
+                    errors.push(label);
+                    focusTarget = focusTarget || field;
+                }
+            }
+
+            if (phaseConfig[index].key === 'type') {
+                if (!type) {
+                    errors.push('Choose a sacrament type.');
+                    focusTarget = typeSelect;
+                }
+            } else if (isRequest && phaseConfig[index].key === 'record') {
+                var prefixes = {
+                    baptismal: { prefix: 'bap', required: [['bap_child_full_name', "Child's full name"], ['bap_father_full_name', "Father's full name"], ['bap_mother_full_name', "Mother's full name"], ['bap_birthdate', 'Birthdate']] },
+                    confirmation: { prefix: 'conf', required: [['conf_confirmand_full_name', "Confirmand's full name"], ['conf_father_full_name', "Father's full name"]] },
+                    first_communion: { prefix: 'fc', required: [['fc_communicant_full_name', "Communicant's full name"], ['fc_father_full_name', "Father's full name"]] },
+                    marriage: { prefix: 'mar', required: [['party_a_full_name', "Party A's full name"], ['party_b_full_name', "Party B's full name"]] }
+                };
+                var record = prefixes[type];
+                if (record && !form.querySelector('[name="' + record.prefix + '_matched_id"]')) {
+                    errors.push('Search the register or choose “No match — continue manually” before continuing.');
+                } else if (record) {
+                    record.required.forEach(function (rule) { requireValue(rule[0], rule[1]); });
+                    if (type === 'confirmation') requireValue('conf_mother_full_name', "Mother's full name");
+                    if (type === 'first_communion') requireValue('fc_mother_full_name', "Mother's full name");
+                }
+            } else if (!isRequest && phaseConfig[index].key === 'details') {
+                var fields = type === 'baptismal'
+                    ? [['child_full_name', "Child's full name"], ['child_birthdate', 'Birthdate'], ['child_birthplace', 'Birthplace'], ['parent_guardian_name', 'Parent/guardian name'], ['email', 'Email']]
+                    : (type === 'confirmation' || type === 'first_communion')
+                        ? [['applicant_full_name', "Applicant's full name"], ['applicant_birthdate', 'Birthdate'], ['parent_guardian_name', 'Parent/guardian name'], ['email', 'Email']]
+                        : [['groom_full_name', "Groom's full name"], ['groom_birthdate', "Groom's birthdate"], ['bride_full_name', "Bride's full name"], ['bride_birthdate', "Bride's birthdate"]];
+                fields.forEach(function (rule) { requireValue(rule[0], rule[1]); });
+            } else if (isRequest && phaseConfig[index].key === 'contact') {
+                [['requester_name', "Requester's name"], ['requester_relationship', 'Relationship'], ['requester_email', 'Email address']]
+                    .forEach(function (rule) { requireValue(rule[0], rule[1]); });
+            } else if (isRequest && phaseConfig[index].key === 'wrap-up') {
+                requireValue('purpose', 'Purpose');
+            }
+
+            alert.hidden = errors.length === 0;
+            alert.textContent = errors.length ? 'Please complete: ' + errors.join(', ') + '.' : '';
+            if (focusTarget) focusTarget.focus();
+            return errors.length === 0;
+        }
+
+        function showStep(step, focus) {
+            var index = Math.max(0, Math.min(phaseConfig.length - 1, step - 1));
+            currentInput.value = String(index + 1);
+            panels.forEach(function (panel, panelIndex) {
+                panel.hidden = panelIndex !== index;
+            });
+            Array.from(progress.children).forEach(function (item, itemIndex) {
+                item.classList.toggle('is-current', itemIndex === index);
+                item.classList.toggle('is-done', itemIndex < index);
+                if (itemIndex === index) item.setAttribute('aria-current', 'step');
+                else item.removeAttribute('aria-current');
+            });
+            status.textContent = 'Phase ' + (index + 1) + ' of ' + phaseConfig.length + ' — ' + phaseConfig[index].label;
+            backButton.hidden = index === 0;
+            nextButton.hidden = index === phaseConfig.length - 1;
+            submitButton.hidden = index !== phaseConfig.length - 1;
+            alert.hidden = true;
+            if (index === phaseConfig.length - 1) updateReview();
+            if (focus) panels[index].querySelector('input:not([type="hidden"]), select, textarea, button')?.focus();
+        }
+
+        nextButton.addEventListener('click', function () {
+            var index = Number(currentInput.value) - 1;
+            if (validateCurrent(index)) showStep(index + 2, true);
+        });
+        backButton.addEventListener('click', function () {
+            showStep(Number(currentInput.value) - 1, true);
+        });
+        typeSelect.addEventListener('change', function () {
+            if (Number(currentInput.value) > 1 && phaseConfig[Number(currentInput.value) - 1].key === 'type') {
+                var section = activeSacramentSection();
+                if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        form.addEventListener('submit', function (event) {
+            var submitter = event.submitter;
+            if (submitter && (/_(step|use_record)$/.test(submitter.name))) {
+                currentInput.value = String(phaseConfig.findIndex(function (phase) { return phase.key === 'record'; }) + 1);
+                return;
+            }
+            if (Number(currentInput.value) !== phaseConfig.length) {
+                event.preventDefault();
+                return;
+            }
+            if (submitter === submitButton && !validateCurrent(phaseConfig.length - 2)) {
+                event.preventDefault();
+            }
+        }, true);
+        showStep(currentInput.value || '1');
+    });
 
 });

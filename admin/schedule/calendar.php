@@ -199,7 +199,7 @@ $stmt->execute($rf['params']);
 $events = $stmt->fetchAll();
 
 // Per-type calendar colors (also used by the legend and the list badges).
-$typeColors = ['mass' => '#1d6f42', 'wedding' => '#b03060', 'baptism' => '#1f6feb', 'other' => '#6b7280'];
+$typeColors = ['mass' => '#245b8f', 'wedding' => '#923b67', 'baptism' => '#176b5a', 'other' => '#526171'];
 $typeLabels = ['mass' => 'Mass', 'wedding' => 'Wedding', 'baptism' => 'Baptism', 'other' => 'Other'];
 
 // An event flags a booking conflict when another event on the SAME DATE has
@@ -223,6 +223,14 @@ function schedule_event_has_conflict(array $event, array $eventsByDate): bool
     return false;
 }
 
+$today = date('Y-m-d');
+$upcomingEventCount = 0;
+$conflictCount = 0;
+foreach ($allEvents as $event) {
+    if ($event['event_date'] >= $today) $upcomingEventCount++;
+    if (schedule_event_has_conflict($event, $eventsByDateAll)) $conflictCount++;
+}
+
 function schedule_calendar_title(string $title): string
 {
     return trim((string) preg_replace('/(?:\s*[-–—|:]\s*|\s+)\(?\b(?:AM|PM)\b\)?\s*$/i', '', $title));
@@ -239,7 +247,7 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
         'title' => $timeLabel . schedule_calendar_title((string) $e['title']) . ($conflict ? ' — CONFLICT' : ''),
         'start' => $e['event_date'] . ($e['start_time'] ? 'T' . $e['start_time'] : ''),
         'end' => $e['end_time'] ? $e['event_date'] . 'T' . $e['end_time'] : null,
-        'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? '#6b7280'),
+        'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? $typeColors['other']),
         'url'   => $basePath . '/admin/schedule/calendar.php?edit=' . (int) $e['id'],
     ];
 }, $allEvents);
@@ -251,14 +259,15 @@ $extraHead = '<script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
+        <div class="schedule-calendar-page">
         <section class="admin-hero">
             <div>
                 <p class="hero-eyebrow">Schedule</p>
                 <h1>Parish Calendar</h1>
-                <p class="hero-copy">Masses, weddings, baptisms, and parish events — click any event to edit it.</p>
+                <p class="hero-copy">Review upcoming parish events and keep the schedule up to date.</p>
             </div>
             <?php if ($isSecretary): ?>
-            <button type="button" class="btn" data-open-dialog="#event-dialog">+ Add Event</button>
+            <button type="button" class="btn schedule-add-event" data-open-dialog="#event-dialog"><span aria-hidden="true">+</span> Add event</button>
             <?php endif; ?>
         </section>
 
@@ -267,51 +276,80 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
 
+        <section class="schedule-overview" aria-label="Schedule overview">
+            <article class="schedule-stat">
+                <span class="schedule-stat-label">All scheduled events</span>
+                <strong><?= (int) count($allEvents) ?></strong>
+            </article>
+            <article class="schedule-stat">
+                <span class="schedule-stat-label">Upcoming events</span>
+                <strong><?= (int) $upcomingEventCount ?></strong>
+                <span class="schedule-stat-note">Today and later</span>
+            </article>
+            <article class="schedule-stat schedule-stat-warning">
+                <span class="schedule-stat-label">Events with conflicts</span>
+                <strong><?= (int) $conflictCount ?></strong>
+                <span class="schedule-stat-note">Review before confirming</span>
+            </article>
+        </section>
+
+        <section class="schedule-calendar-panel" aria-labelledby="calendar-section-heading">
+            <div class="schedule-section-heading">
+                <div>
+                    <p class="schedule-section-kicker">Schedule at a glance</p>
+                    <h2 id="calendar-section-heading">Calendar</h2>
+                </div>
+                <p>Choose a month to review event dates. Select an event to edit it.</p>
+            </div>
         <div class="calendar-toolbar">
             <div class="calendar-legend">
                 <?php foreach ($typeLabels as $type => $label): ?>
-                    <span class="legend-item" title="<?= e($label) ?>" aria-label="<?= e($label) ?>"><span class="legend-dot" style="background:<?= e($typeColors[$type]) ?>;"></span><?= e($label) ?></span>
+                    <span class="legend-item" title="<?= e($label) ?>"><span class="legend-swatch" style="background:<?= e($typeColors[$type]) ?>;" aria-hidden="true"></span><?= e($label) ?></span>
                 <?php endforeach; ?>
-                <span class="legend-item" title="Conflict" aria-label="Conflict"><span class="legend-dot" style="background:#b91c1c;"></span>Conflict</span>
-            </div>
-            <div class="calendar-view-toggle">
-                <button type="button" class="btn btn-small" data-cal-view="dayGridMonth">Month</button>
-                <button type="button" class="btn btn-small btn-secondary" data-cal-view="listMonth">List</button>
+                <span class="legend-item" title="Conflict"><span class="legend-swatch" style="background:#b91c1c;" aria-hidden="true"></span>Conflict</span>
             </div>
         </div>
 
-        <div id="parish-calendar" class="calendar-shell"></div>
+        <div id="parish-calendar" class="calendar-shell" aria-label="Parish event calendar"></div>
+        </section>
 
         <script>
         document.addEventListener('DOMContentLoaded', function () {
             var el = document.getElementById('parish-calendar');
             if (typeof FullCalendar === 'undefined') {
-                el.innerHTML = '<p>Calendar library failed to load (no internet connection?). See the list below instead.</p>';
+                el.innerHTML = '<p>Calendar could not be loaded. Use the searchable event list below to review scheduled events.</p>';
                 return;
             }
             var calendar = new FullCalendar.Calendar(el, {
                 initialView: 'dayGridMonth',
                 height: 'auto',
-                dayMaxEventRows: 6,
+                headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+                buttonText: { prev: 'Previous', next: 'Next', today: 'Today' },
+                buttonHints: { prev: 'Previous month', next: 'Next month', today: 'Current month' },
+                dayMaxEventRows: 4,
                 fixedWeekCount: false,
                 eventDisplay: 'block',
                 displayEventTime: false,
                 eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
+                eventDidMount: function (info) {
+                    info.el.setAttribute('aria-label', info.event.title + ', ' + info.event.start.toLocaleDateString());
+                },
                 events: <?= json_encode($calendarEvents) ?>
             });
             calendar.render();
-            document.querySelectorAll('[data-cal-view]').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    calendar.changeView(btn.getAttribute('data-cal-view'));
-                    document.querySelectorAll('[data-cal-view]').forEach(function (b) { b.classList.add('btn-secondary'); });
-                    btn.classList.remove('btn-secondary');
-                });
-            });
         });
         </script>
 
+        <section class="schedule-event-list" aria-labelledby="events-heading">
+        <div class="schedule-section-heading schedule-list-heading">
+            <div>
+                <p class="schedule-section-kicker">Search and manage</p>
+                <h2 id="events-heading">Scheduled events <span class="schedule-total-count"><?= (int) $totalRows ?></span></h2>
+            </div>
+            <p>Search by event title, notes, or type. Use the actions to edit or remove an event.</p>
+        </div>
         <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-        <form method="get" class="inline-fields" style="margin:0.75rem 0 1rem;">
+        <form method="get" class="inline-fields calendar-sort-form">
             <?php foreach ($_GET as $key => $value): ?>
                 <?php if (!in_array($key, ['sort', 'page'], true) && is_scalar($value)): ?><input type="hidden" name="<?= e($key) ?>" value="<?= e((string) $value) ?>"><?php endif; ?>
             <?php endforeach; ?>
@@ -329,9 +367,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($events)): ?>
-            <p>No events scheduled yet.</p>
+            <p class="schedule-empty-state"><?= $totalRows === 0 ? 'No events have been scheduled yet. Add an event to start building the parish calendar.' : 'No events match your current search or filters.' ?></p>
         <?php else: ?>
-        <h2 style="margin-top:2rem;">All Scheduled Events (<?= (int) $totalRows ?>)</h2>
         <div class="table-scroll">
         <table class="admin-table">
             <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Title</th><th>Notes</th><?php if ($isSecretary): ?><th>Actions</th><?php endif; ?></tr></thead>
@@ -361,6 +398,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
+        </section>
+        </div>
 
         <?php if ($isSecretary): ?>
         <!-- Add/Edit event dialog (same records encode-dialog style).

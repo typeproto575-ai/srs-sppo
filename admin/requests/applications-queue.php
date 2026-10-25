@@ -297,13 +297,23 @@ unset($app);
 // Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <h1>Sacrament Applications Queue</h1>
+        <header class="admin-queue-heading">
+            <div>
+                <p class="admin-queue-kicker">Requests</p>
+                <h1>Sacrament applications</h1>
+                <p>Review applications, check flagged details, and update their preparation status.</p>
+            </div>
+            <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> applications match the current filters">
+                <strong><?= (int) $totalRows ?></strong>
+                <span><?= $totalRows === 1 ? 'application' : 'applications' ?></span>
+            </div>
+        </header>
 
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
         <?php if (empty($applications)): ?>
-            <p>No sacrament applications match this filter.</p>
+            <p class="admin-queue-empty">No applications match your search or filters. Try broadening your search.</p>
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">

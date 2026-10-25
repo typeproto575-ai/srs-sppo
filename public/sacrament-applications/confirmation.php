@@ -219,8 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php if ($trackingNumber !== null): ?>
     <div class="success-panel">
         <h1>Confirmation Application Submitted</h1>
-        <p>Your application has been received for parish review.</p>
-        <p>Tracking Number: <strong><?= e($trackingNumber) ?></strong></p>
+        <?php $successHeading = 'Keep this tracking number'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
         <a class="btn" href="confirmation.php?reset=1">Start a New Application</a>
     </div>
 <?php else: ?>

@@ -2135,6 +2135,414 @@ textarea {
 .empty-state p { margin: 0; }
 .empty-state p { margin-top: 0.35rem; color: var(--admin-muted); }
 
+/* Schedule calendar workspace */
+.schedule-calendar-page .admin-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    margin: 0 0 1.25rem;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    border: 1px solid rgba(244, 217, 148, 0.24);
+    border-radius: 14px;
+    background: linear-gradient(120deg, #1f3d2b, #2f5e3f);
+    color: #fff;
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.schedule-calendar-page .admin-hero h1 {
+    margin: 0.15rem 0 0.35rem;
+    color: #fff;
+    font: 600 clamp(1.8rem, 3vw, 2.5rem)/1.15 var(--admin-font-serif);
+}
+
+.schedule-calendar-page .hero-eyebrow,
+.schedule-section-kicker {
+    margin: 0;
+    color: #f4d994;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.schedule-calendar-page .hero-copy {
+    max-width: 42rem;
+    margin: 0;
+    color: #f1f2e9;
+    font-size: 1rem;
+}
+
+.schedule-calendar-page .schedule-add-event {
+    min-height: 48px;
+    flex: 0 0 auto;
+    padding: 0.7rem 1rem;
+    background: #f6f1e4;
+    color: #1f3d2b;
+    font-weight: 800;
+}
+
+.schedule-calendar-page .schedule-add-event:hover,
+.schedule-calendar-page .schedule-add-event:focus-visible {
+    background: #fff;
+    color: #1f3d2b;
+}
+
+.schedule-overview {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+}
+
+.schedule-stat {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.2rem 0.75rem;
+    min-height: 96px;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: var(--admin-panel);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.schedule-stat-label {
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.schedule-stat strong {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    color: var(--admin-green-dark);
+    font: 700 2rem/1 var(--admin-font-serif);
+}
+
+.schedule-stat-note {
+    color: var(--admin-muted);
+    font-size: 0.8rem;
+}
+
+.schedule-stat-warning {
+    border-left: 4px solid #b91c1c;
+}
+
+.schedule-stat-warning strong {
+    color: #8f2a24;
+}
+
+.schedule-calendar-panel,
+.schedule-event-list {
+    margin-top: 1.1rem;
+    padding: clamp(1rem, 2vw, 1.5rem);
+    border: 1px solid var(--admin-border);
+    border-radius: 14px;
+    background: var(--admin-panel);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.schedule-section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.schedule-section-heading h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0.2rem 0 0;
+    color: var(--admin-ink);
+    font: 600 clamp(1.35rem, 2vw, 1.7rem)/1.2 var(--admin-font-serif);
+}
+
+.schedule-section-heading > p {
+    max-width: 34rem;
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    text-align: right;
+}
+
+.schedule-section-kicker {
+    color: var(--admin-green);
+    font-size: 0.7rem;
+}
+
+.schedule-calendar-page .calendar-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin: 0 0 0.5rem;
+}
+
+.schedule-calendar-page .calendar-legend {
+    justify-content: flex-start;
+    gap: 0.35rem 1rem;
+    margin: 0;
+    padding: 0.25rem 0 0.75rem;
+}
+
+.schedule-calendar-page .legend-item {
+    color: var(--admin-ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.schedule-calendar-page .calendar-shell {
+    padding: clamp(0.65rem, 1.5vw, 1rem);
+    border-color: var(--admin-border);
+    border-radius: 10px;
+    --fc-border-color: #e3e6e0;
+    --fc-button-bg-color: #2f5e3f;
+    --fc-button-border-color: #2f5e3f;
+    --fc-button-hover-bg-color: #234b35;
+    --fc-button-hover-border-color: #234b35;
+    --fc-button-active-bg-color: #234b35;
+    --fc-button-active-border-color: #234b35;
+    --fc-today-bg-color: #f0f5ed;
+    --fc-page-bg-color: #fff;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-toolbar {
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-toolbar-title {
+    color: var(--admin-ink);
+    font: 600 clamp(1.25rem, 2.5vw, 1.8rem)/1.2 var(--admin-font-serif);
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-button {
+    min-height: 42px;
+    padding: 0.5rem 0.8rem;
+    border-radius: 7px;
+    box-shadow: none;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-button:focus-visible {
+    outline: 3px solid #d2a640;
+    outline-offset: 2px;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-col-header-cell {
+    background: #f7f4ee;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-col-header-cell-cushion {
+    padding: 0.65rem 0.25rem;
+    color: #405247;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-daygrid-day-number {
+    padding: 0.45rem;
+    color: var(--admin-ink);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-day-other .fc-daygrid-day-number {
+    color: #778279;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-day-today .fc-daygrid-day-number {
+    color: var(--admin-green-dark);
+    font-weight: 900;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-daygrid-event {
+    margin: 2px 4px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.schedule-calendar-page .calendar-shell .fc .fc-event:focus-visible {
+    outline: 3px solid #d2a640;
+    outline-offset: 1px;
+}
+
+.schedule-list-heading {
+    margin-bottom: 0.75rem;
+}
+
+.schedule-total-count {
+    display: inline-grid;
+    min-width: 2rem;
+    min-height: 2rem;
+    place-items: center;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: var(--admin-green-soft);
+    color: var(--admin-green-dark);
+    font: 700 0.9rem/1 "Segoe UI", Arial, sans-serif;
+}
+
+.schedule-calendar-page .calendar-sort-form {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0.75rem 0;
+}
+
+.schedule-calendar-page .calendar-sort-form label {
+    width: min(100%, 18rem);
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.schedule-calendar-page .calendar-sort-form select {
+    min-height: 44px;
+    margin-top: 0.3rem;
+    background: #fff;
+}
+
+.schedule-calendar-page .table-scroll {
+    margin-top: 0.75rem;
+}
+
+.schedule-calendar-page .admin-table th {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+}
+
+.schedule-calendar-page .admin-table td {
+    padding-top: 0.8rem;
+    padding-bottom: 0.8rem;
+    font-size: 0.95rem;
+}
+
+.schedule-calendar-page .admin-table td:first-child {
+    white-space: nowrap;
+    font-weight: 700;
+}
+
+.schedule-calendar-page .admin-table td:nth-child(4) {
+    min-width: 12rem;
+    font-weight: 700;
+}
+
+.schedule-calendar-page .admin-table td:nth-child(5) {
+    min-width: 10rem;
+    max-width: 22rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.schedule-calendar-page .admin-table .status-badge {
+    min-height: 28px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.78rem;
+}
+
+.schedule-calendar-page .row-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.schedule-calendar-page .row-actions .btn {
+    min-height: 38px;
+}
+
+.schedule-empty-state {
+    margin: 0;
+    padding: 1.25rem;
+    border: 1px dashed rgba(31, 61, 43, 0.24);
+    border-radius: 10px;
+    background: var(--admin-panel-weak);
+    color: var(--admin-muted);
+}
+
+@media (max-width: 760px) {
+    .schedule-calendar-page .schedule-section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .schedule-section-heading > p {
+        text-align: left;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar {
+        align-items: flex-start;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar-chunk:nth-child(2) {
+        order: -1;
+        flex-basis: 100%;
+        text-align: left;
+    }
+}
+
+@media (max-width: 560px) {
+    .schedule-overview {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+    }
+
+    .schedule-stat {
+        min-height: 76px;
+        padding: 0.8rem 1rem;
+    }
+
+    .schedule-calendar-page .admin-hero {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .schedule-calendar-page .schedule-add-event {
+        width: 100%;
+    }
+
+    .schedule-calendar-page .calendar-shell {
+        padding: 0.4rem;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar {
+        flex-direction: column;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar-chunk {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar-chunk:nth-child(2) {
+        order: -1;
+    }
+
+    .schedule-calendar-page .calendar-shell .fc .fc-toolbar-title {
+        font-size: 1.4rem;
+    }
+
+    .schedule-calendar-page .calendar-sort-form {
+        justify-content: stretch;
+    }
+
+    .schedule-calendar-page .calendar-sort-form label {
+        width: 100%;
+    }
+}
+
 @media (max-width: 1050px) {
     .record-workspace-filters { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
     .record-search-field { grid-column: 1 / -1; }
@@ -2151,6 +2559,692 @@ textarea {
     .record-filter-bar + .per-page-form { flex: 1 1 auto; width: auto; }
     .record-filter-bar .filter-summary,
     .record-filter-bar + .per-page-form select { width: 100%; }
+}
+
+/* Shared staff-page controls and accessible keyboard focus. */
+.admin-layout .btn {
+    min-height: 44px;
+}
+
+.admin-layout .btn.btn-small {
+    min-height: 40px;
+}
+
+.admin-layout input:not([type="checkbox"]):not([type="radio"]),
+.admin-layout select {
+    min-height: 44px;
+}
+
+.admin-layout button:focus-visible,
+.admin-layout a:focus-visible,
+.admin-layout input:focus-visible,
+.admin-layout select:focus-visible,
+.admin-layout textarea:focus-visible,
+.site-master-header button:focus-visible,
+.site-master-header a:focus-visible,
+.admin-sidebar a:focus-visible,
+.admin-sidebar summary:focus-visible {
+    outline: 3px solid #d2a640;
+    outline-offset: 2px;
+}
+
+.admin-queue-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1.15rem 1.25rem;
+    border: 1px solid var(--admin-border);
+    border-left: 5px solid var(--admin-green);
+    border-radius: 12px;
+    background: var(--admin-panel);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.admin-queue-heading h1 {
+    margin: 0;
+    color: var(--admin-ink);
+    font: 600 clamp(1.45rem, 2.5vw, 2rem)/1.2 var(--admin-font-serif);
+}
+
+.admin-queue-heading > div:first-child > p:last-child {
+    margin: 0.4rem 0 0;
+    color: var(--admin-muted);
+}
+
+.admin-queue-kicker {
+    margin: 0 0 0.2rem;
+    color: var(--admin-green);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.admin-queue-total {
+    display: grid;
+    justify-items: center;
+    gap: 0.1rem;
+    min-width: 5rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 10px;
+    background: var(--admin-green-soft);
+    color: var(--admin-green-dark);
+}
+
+.admin-queue-total strong {
+    font: 700 1.55rem/1.1 var(--admin-font-serif);
+}
+
+.admin-queue-total span {
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.admin-queue-empty {
+    margin: 0.75rem 0;
+    padding: 1.2rem;
+    border: 1px dashed rgba(31, 61, 43, 0.24);
+    border-radius: 10px;
+    background: var(--admin-panel);
+    color: var(--admin-muted);
+}
+
+.admin-content > .admin-queue-heading ~ .table-scroll {
+    margin-top: 0.75rem;
+}
+
+.admin-content > .admin-queue-heading ~ .table-scroll .admin-table tbody tr:nth-child(even) {
+    background: #fafbf9;
+}
+
+.admin-content > .admin-queue-heading ~ .table-scroll .admin-table tbody tr:hover {
+    background: var(--admin-green-soft);
+}
+
+/* Consistent staff workspaces across records, certificates, and system tools. */
+.admin-content > h1 {
+    margin: 0 0 0.6rem;
+    padding: 0 0 0.65rem;
+    border-bottom: 2px solid rgba(47, 94, 63, 0.16);
+}
+
+.admin-content > h1 + .field-hint {
+    max-width: 70rem;
+    margin: 0 0 1rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.admin-content .admin-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    margin: 0 0 1.25rem;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    border: 1px solid rgba(244, 217, 148, 0.24);
+    border-radius: 14px;
+    background: linear-gradient(120deg, #1f3d2b, #2f5e3f);
+    color: #fff;
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.admin-content .admin-hero h1 {
+    margin: 0.15rem 0 0.35rem;
+    color: #fff;
+    font: 600 clamp(1.8rem, 3vw, 2.5rem)/1.15 var(--admin-font-serif);
+}
+
+.admin-content .admin-hero .hero-eyebrow {
+    margin: 0;
+    color: #f4d994;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.admin-content .admin-hero .hero-copy {
+    max-width: 42rem;
+    margin: 0;
+    color: #f1f2e9;
+    font-size: 1rem;
+}
+
+.admin-content > h1 ~ .table-scroll {
+    margin-top: 0.8rem;
+}
+
+.admin-content .table-scroll {
+    border-color: rgba(31, 61, 43, 0.16);
+    box-shadow: 0 4px 12px rgba(22, 36, 29, 0.04);
+}
+
+.admin-content .admin-table th {
+    padding: 0.8rem 0.85rem;
+}
+
+.admin-content .admin-table td {
+    line-height: 1.5;
+}
+
+.admin-content .admin-table tbody tr:nth-child(even) {
+    background: #fafbf9;
+}
+
+.admin-content .admin-table tbody tr:hover {
+    background: var(--admin-green-soft);
+}
+
+.admin-content .empty-state {
+    margin: 1rem 0;
+    border-color: rgba(31, 61, 43, 0.2);
+}
+
+.admin-content .panel-card,
+.admin-content .detail-card,
+.admin-content .admin-card {
+    border-radius: 12px;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin: 0.85rem 0;
+}
+
+.online-submission-notice,
+.schedule-review-notice {
+    margin: 0.85rem 0;
+    padding: 1rem 1.1rem;
+    border: 1px solid #c6d8c6;
+    border-left: 5px solid var(--admin-green);
+    border-radius: 10px;
+    background: #f0f5ed;
+    color: #294332;
+    line-height: 1.55;
+}
+
+.online-submission-notice strong,
+.schedule-review-notice strong {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--admin-green-dark);
+}
+
+.announcements-page .accounts-toolbar {
+    justify-content: flex-end;
+    margin: 0.85rem 0;
+}
+
+.announcements-page .admin-table td:first-child {
+    min-width: 16rem;
+}
+
+.announcements-page .admin-table td:first-child small {
+    display: inline-block;
+    max-width: 35rem;
+    margin-top: 0.25rem;
+    color: var(--admin-muted);
+    line-height: 1.45;
+    white-space: normal;
+}
+
+.announcements-page .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.announcements-page .row-actions form {
+    margin: 0;
+}
+
+.booking-conflicts-page .admin-table th,
+.booking-conflicts-page .admin-table td {
+    vertical-align: middle;
+}
+
+.booking-conflicts-page .admin-table td:last-child {
+    min-width: 17rem;
+    max-width: 34rem;
+    white-space: normal;
+}
+
+.booking-conflicts-page .flag-badge {
+    display: inline-block;
+    margin: 0.15rem 0;
+    white-space: normal;
+    line-height: 1.45;
+}
+
+.walk-in-page {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.walk-in-page .walk-in-form {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.walk-in-page .walk-in-wizard-shell {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.walk-in-page .walk-in-wizard-panel[hidden],
+.walk-in-page .walk-in-wizard-actions [hidden] {
+    display: none !important;
+}
+
+.walk-in-page .walk-in-progress {
+    display: flex;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0 0 0.75rem;
+    overflow-x: auto;
+    list-style: none;
+    border-bottom: 1px solid var(--admin-border);
+    scrollbar-width: thin;
+}
+
+.walk-in-page .walk-in-progress li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 0 max-content;
+    min-width: 0;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 9px;
+    background: var(--admin-panel);
+    color: var(--admin-muted);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.walk-in-page .walk-in-progress li > span:first-child {
+    display: grid;
+    place-items: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    flex: 0 0 1.8rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+}
+
+.walk-in-page .walk-in-progress li.is-current {
+    border-color: rgba(31, 61, 43, 0.4);
+    background: var(--admin-green-soft);
+    color: var(--admin-green-dark);
+}
+
+.walk-in-page .walk-in-progress li.is-current > span:first-child {
+    border-color: var(--admin-green);
+    background: var(--admin-green);
+    color: #fff;
+}
+
+.walk-in-page .walk-in-progress li.is-done > span:first-child {
+    border-color: var(--admin-green);
+    color: var(--admin-green-dark);
+}
+
+.walk-in-page .walk-in-phase-status {
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.walk-in-page .walk-in-phase-error {
+    margin: 0;
+    padding: 0.75rem 0.9rem;
+    border-left: 4px solid #a63e36;
+    border-radius: 6px;
+    background: #fff3f1;
+    color: #702a25;
+    font-weight: 650;
+}
+
+.walk-in-page .walk-in-wizard-panel {
+    min-width: 0;
+}
+
+.walk-in-page .walk-in-wizard-panel > fieldset,
+.walk-in-page .walk-in-wizard-panel > .sacrament-section {
+    margin: 0;
+}
+
+.walk-in-page .walk-in-wizard-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-top: 0.2rem;
+}
+
+.walk-in-page .walk-in-wizard-actions button {
+    min-width: 8.5rem;
+    min-height: 46px;
+}
+
+.walk-in-page .walk-in-wizard-actions [data-walk-in-submit] {
+    margin-left: auto;
+}
+
+.walk-in-page .walk-in-review-heading {
+    margin: 0;
+    color: var(--admin-green-dark);
+    font: 600 1.35rem/1.3 var(--admin-font-serif);
+}
+
+.walk-in-page .walk-in-review-list {
+    display: grid;
+    grid-template-columns: minmax(9rem, 0.35fr) minmax(0, 1fr);
+    gap: 0;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.walk-in-page .walk-in-review-list dt,
+.walk-in-page .walk-in-review-list dd {
+    margin: 0;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--admin-border);
+    overflow-wrap: anywhere;
+}
+
+.walk-in-page .walk-in-review-list dt {
+    background: var(--admin-panel-weak);
+    color: var(--admin-muted);
+    font-weight: 700;
+}
+
+.walk-in-page .walk-in-form > fieldset,
+.walk-in-page .sacrament-section fieldset {
+    margin: 0;
+    padding: clamp(1rem, 2.5vw, 1.4rem);
+    border-color: rgba(31, 61, 43, 0.15);
+    border-radius: 12px;
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.walk-in-page .walk-in-form legend {
+    padding: 0 0.35rem;
+    color: var(--admin-green-dark);
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.walk-in-page .walk-in-form > button[type="submit"] {
+    justify-self: start;
+    min-width: 12rem;
+    min-height: 48px;
+}
+
+.walk-in-page .walk-in-form input,
+.walk-in-page .walk-in-form select,
+.walk-in-page .walk-in-form textarea {
+    border-radius: 7px;
+}
+
+.walk-in-page .walk-in-form .repeat-list {
+    margin-top: 0.8rem;
+    padding: 0.9rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    background: var(--admin-panel-weak);
+}
+
+.walk-in-page .walk-in-form .repeat-item {
+    margin-bottom: 0.5rem;
+}
+
+.walk-in-page .walk-in-form .sacrament-section {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.walk-in-page .review-list {
+    border-radius: 9px;
+}
+
+.walk-in-tracking-slip {
+    max-width: 40rem;
+    margin: 1.25rem auto;
+    padding: 1.5rem;
+    border: 1px solid var(--admin-border);
+    border-top: 5px solid var(--admin-green);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.walk-in-tracking-slip h2 {
+    margin: 0.2rem 0 0.75rem;
+    color: var(--admin-green-dark);
+    font: 600 1.45rem/1.25 var(--admin-font-serif);
+}
+
+.walk-in-slip-parish {
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.walk-in-slip-number {
+    margin: 0.75rem 0;
+    padding: 0.85rem;
+    border: 1px dashed rgba(31, 61, 43, 0.35);
+    border-radius: 8px;
+    background: var(--admin-green-soft);
+    color: var(--admin-green-dark);
+    font: 700 clamp(1.5rem, 4vw, 2rem)/1.2 var(--admin-font-serif);
+    letter-spacing: 0.08em;
+    text-align: center;
+}
+
+.walk-in-tracking-slip dl {
+    display: grid;
+    grid-template-columns: minmax(7rem, 0.3fr) minmax(0, 1fr);
+    margin: 0.8rem 0;
+}
+
+.walk-in-tracking-slip dt,
+.walk-in-tracking-slip dd {
+    margin: 0;
+    padding: 0.45rem 0.2rem;
+    border-bottom: 1px solid var(--admin-border);
+    overflow-wrap: anywhere;
+}
+
+.walk-in-tracking-slip dt {
+    color: var(--admin-muted);
+    font-weight: 700;
+}
+
+.walk-in-slip-note {
+    color: var(--admin-muted);
+    font-size: 0.85rem;
+}
+
+@media print {
+    body.walk-in-print-mode * {
+        visibility: hidden !important;
+    }
+
+    body.walk-in-print-mode .walk-in-tracking-slip,
+    body.walk-in-print-mode .walk-in-tracking-slip * {
+        visibility: visible !important;
+    }
+
+    body.walk-in-print-mode .walk-in-tracking-slip {
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        max-width: 40rem;
+        margin: 0;
+        padding: 1.25rem;
+        border: 1px solid #777;
+        border-top: 4px solid #1f3d2b;
+        box-shadow: none;
+    }
+
+    body.walk-in-print-mode .walk-in-slip-print {
+        display: none !important;
+    }
+}
+
+.certificate-history-page .admin-table td:last-child {
+    min-width: 16rem;
+}
+
+.certificate-history-page .cert-history-actions {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.certificate-history-page .cert-history-actions form {
+    margin: 0;
+}
+
+.certificate-history-page .admin-table form label {
+    margin-bottom: 0.55rem;
+    font-size: 0.88rem;
+}
+
+.certificate-history-page .admin-table form input:not([type="checkbox"]),
+.certificate-history-page .admin-table form textarea {
+    min-height: 40px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.9rem;
+}
+
+.admin-content .settings-form,
+.admin-content > form:not([class]) {
+    max-width: 52rem;
+}
+
+.admin-content .settings-form .admin-card {
+    margin-bottom: 1rem;
+    padding: 1rem 1.2rem;
+    border: 1px solid var(--admin-border);
+    background: var(--admin-panel);
+}
+
+.admin-content .settings-form legend {
+    padding: 0 0.4rem;
+    color: var(--admin-green-dark);
+    font-weight: 800;
+}
+
+.admin-content .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+@media (max-width: 640px) {
+    .admin-content .admin-hero {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .admin-actions .btn,
+    .walk-in-page .walk-in-form > button[type="submit"] {
+        width: 100%;
+    }
+
+    .announcements-page .accounts-toolbar {
+        justify-content: stretch;
+    }
+
+    .announcements-page .accounts-toolbar .btn {
+        width: 100%;
+    }
+
+    .announcements-page .row-actions {
+        justify-content: flex-start;
+    }
+
+    .walk-in-page .walk-in-form .repeat-item {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .walk-in-page .walk-in-progress {
+        margin-right: -0.25rem;
+        padding-bottom: 0.6rem;
+    }
+
+    .walk-in-page .walk-in-progress li {
+        flex: 0 0 auto;
+    }
+
+    .walk-in-page .walk-in-wizard-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .walk-in-page .walk-in-wizard-actions button {
+        width: 100%;
+    }
+
+    .walk-in-page .walk-in-wizard-actions [data-walk-in-submit] {
+        grid-column: 1 / -1;
+        margin-left: 0;
+    }
+
+    .walk-in-page .walk-in-review-list {
+        grid-template-columns: 1fr;
+    }
+
+    .walk-in-page .walk-in-review-list dt {
+        padding-bottom: 0.2rem;
+        border-bottom: 0;
+    }
+
+    .walk-in-page .walk-in-review-list dd {
+        padding-top: 0.15rem;
+    }
+}
+
+@media (max-width: 560px) {
+    .admin-queue-heading {
+        align-items: stretch;
+    }
+
+    .admin-queue-total {
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        justify-items: start;
+        min-width: 0;
+        gap: 0.5rem;
+    }
+
+    .admin-queue-total strong {
+        font-size: 1.3rem;
+    }
 }
 
 /* Philippine sacramental certificate layouts */

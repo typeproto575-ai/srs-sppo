@@ -54,8 +54,11 @@ final class DatabaseIntegrationTest extends TestCase
     public function testCanonicalSchemaIncludesManagedUpgradeFeatures(): void
     {
         $requiredColumns = [
-            'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at'],
+            'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at', 'requester_mailing_address'],
             'sacrament_applications' => ['paid_at', 'anonymized_at'],
+            'confirmation_applications' => ['baptism_date', 'baptism_parish_name', 'baptism_parish_address'],
+            'first_communion_applications' => ['applicant_gender', 'psa_birth_certificate_status', 'parental_consent'],
+            'marriage_applications' => ['groom_current_address', 'groom_confirmed', 'civil_marriage_date', 'groom_banns_status'],
             'correction_requests' => ['anonymized_at'],
         ];
 

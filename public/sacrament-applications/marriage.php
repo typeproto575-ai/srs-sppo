@@ -200,7 +200,7 @@ function msel(string $key, string $value): string { global $formData; return ($f
 <section class="request-form">
 <div class="alert alert-info online-intake-notice"><strong>Pre-nuptial canonical application:</strong> The parish office will verify documents, interview both parties, publish banns, and approve the wedding separately.</div>
 <h1>Application for the Sacrament of Holy Matrimony</h1><p>Pre-Nuptial Canonical Application Form</p>
-<?php if ($trackingNumber): ?><?php $successHeading = 'Your application has been submitted'; require __DIR__ . '/../../includes/submission-success.php'; ?><?php else: ?>
+<?php if ($trackingNumber): ?><?php $successHeading = 'Your application has been submitted'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?><?php else: ?>
 <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php if ($dateConflictWarning): ?><div class="alert alert-warning"><?= e($dateConflictWarning) ?></div><?php endif; ?>
 <ol class="request-steps" aria-label="Application progress">

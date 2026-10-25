@@ -14,9 +14,10 @@
  *   $trackingNumber  - (required) the generated tracking number
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
+ *   $successIsApplication - (optional) show sacrament-application next steps
  *   $basePath        - falls back to base_path()
  *
- * Scope note: the panel points at Track My Request only - never a
+ * Scope note: the panel points at the public tracking page - never a
  * download/print-your-certificate flow (certificates are picked up and
  * printed at the counter per project rules). The action buttons here are
  * visitor-side conveniences only: "Send to Email" opens the visitor's
@@ -32,6 +33,7 @@ if (empty($trackingNumber)) {
 }
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
+$successIsApplication = $successIsApplication ?? false;
 $basePath       = $basePath ?? base_path();
 ?>
         <div class="submission-success" id="submission-success">
@@ -45,11 +47,19 @@ $basePath       = $basePath ?? base_path();
             <div class="submission-next-steps">
                 <h3>What happens next</h3>
                 <ol>
+                    <?php if ($successIsApplication): ?>
+                    <li>The parish office reviews your application and contacts you about requirements, payment, preparation, and scheduling.</li>
+                    <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
+                    <?php endif; ?>
                     <li>Keep the tracking number and the same email address. Check your status any time on the
-                        <a href="<?= $basePath ?>/public/track-request.php">Track My Request</a>
+                        <a href="<?= $basePath ?>/public/track-request.php">Track a Request or Application</a>
                         page using this number <em>and</em> the email you provided.</li>
+                    <?php if ($successIsApplication): ?>
+                    <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
+                    <?php else: ?>
                     <li>If requirements are needed, bring your supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still contact the Parish Office with questions. When the status shows <strong>Ready for Pickup</strong>, bring valid ID and claim the printed certificate in person.</li>
+                    <?php endif; ?>
                 </ol>
             </div>
 

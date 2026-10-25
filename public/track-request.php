@@ -18,9 +18,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php'; // starts a session for CSRF
 
-$pageTitle = 'Track My Request';
-$error  = null;
-$result = null; // ['kind' => 'certificate'|'application', 'row' => [...]]
+$pageTitle = 'Track a Request or Application';
+$error = null;
+$results = [];
 
 /**
  * Humanize a status enum value for display, e.g. 'ready_for_pickup' -> 'Ready For Pickup'
@@ -61,75 +61,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!preg_match($trackingPattern, $trackingNumber)) {
                 // Malformed format counts as a failed attempt (rate-limit bypass fix).
                 lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                $error = 'We couldn\'t find a request matching that tracking number and email combination.';
+                $error = 'We couldn\'t find a request or application matching that tracking number and email combination.';
             } else {
-                // 1. Look in certificate_requests first -- email lives directly on the shared table.
-                    $stmt = $pdo->prepare(
-                        "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
-                         FROM certificate_requests WHERE tracking_number = ?"
-                    );
-                    $stmt->execute([$trackingNumber]);
-                    $row = $stmt->fetch();
+                $certificateStmt = $pdo->prepare(
+                    "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
+                     FROM certificate_requests WHERE tracking_number = ?"
+                );
+                $certificateStmt->execute([$trackingNumber]);
+                $certificateRow = $certificateStmt->fetch();
+                if ($certificateRow && strcasecmp(trim((string) $certificateRow['requester_email']), $email) === 0) {
+                    $results[] = ['kind' => 'certificate', 'row' => $certificateRow];
+                }
 
-                    if ($row) {
-                        // Case-insensitive email match protects against trivial snooping.
-                        if (strcasecmp(trim($row['requester_email']), $email) === 0) {
-                            $result = ['kind' => 'certificate', 'row' => $row];
-                        } else {
-                            // Record failed attempt (wrong email for this tracking number).
-                            lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
-                        }
-                    } else {
-                    // 2. Look in sacrament_applications -- email lives in the sacrament-specific extension table.
-                    $stmt = $pdo->prepare(
-                        "SELECT id, tracking_number, sacrament_type, status, date_submitted
-                         FROM sacrament_applications WHERE tracking_number = ?"
-                    );
-                    $stmt->execute([$trackingNumber]);
-                    $appRow = $stmt->fetch();
-
-                    if ($appRow) {
+                $applicationStmt = $pdo->prepare(
+                    "SELECT id, tracking_number, sacrament_type, status, date_submitted
+                     FROM sacrament_applications WHERE tracking_number = ?"
+                );
+                $applicationStmt->execute([$trackingNumber]);
+                $applicationRow = $applicationStmt->fetch();
+                if ($applicationRow) {
+                    $emailQuery = match ($applicationRow['sacrament_type']) {
+                        'baptismal' => 'SELECT email FROM baptismal_applications WHERE application_id = ?',
+                        'confirmation' => 'SELECT email FROM confirmation_applications WHERE application_id = ?',
+                        'first_communion' => 'SELECT email FROM first_communion_applications WHERE application_id = ?',
+                        'marriage' => 'SELECT groom_email, bride_email FROM marriage_applications WHERE application_id = ?',
+                        default => null,
+                    };
+                    if ($emailQuery !== null) {
+                        $emailStmt = $pdo->prepare($emailQuery);
+                        $emailStmt->execute([(int) $applicationRow['id']]);
+                        $applicationEmails = $emailStmt->fetch() ?: [];
                         $matchedEmail = false;
-
-                        if ($appRow['sacrament_type'] === 'confirmation') {
-                            $s = $pdo->prepare("SELECT email FROM confirmation_applications WHERE application_id = ?");
-                            $s->execute([$appRow['id']]);
-                            $e2 = $s->fetch();
-                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
-                        } elseif ($appRow['sacrament_type'] === 'first_communion') {
-                            $s = $pdo->prepare("SELECT email FROM first_communion_applications WHERE application_id = ?");
-                            $s->execute([$appRow['id']]);
-                            $e2 = $s->fetch();
-                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
-                        } elseif ($appRow['sacrament_type'] === 'marriage') {
-                            // Marriage has two possible contact emails (couple).
-                            $s = $pdo->prepare("SELECT groom_email, bride_email FROM marriage_applications WHERE application_id = ?");
-                            $s->execute([$appRow['id']]);
-                            $e2 = $s->fetch();
-                            $matchedEmail = $e2 && (
-                                strcasecmp(trim($e2['groom_email']), $email) === 0 ||
-                                strcasecmp(trim($e2['bride_email']), $email) === 0
-                            );
-                        } elseif ($appRow['sacrament_type'] === 'baptismal') {
-                            $s = $pdo->prepare("SELECT email FROM baptismal_applications WHERE application_id = ?");
-                            $s->execute([$appRow['id']]);
-                            $e2 = $s->fetch();
-                            $matchedEmail = $e2 && strcasecmp(trim($e2['email']), $email) === 0;
+                        foreach ($applicationEmails as $applicationEmail) {
+                            if (strcasecmp(trim((string) $applicationEmail), $email) === 0) {
+                                $matchedEmail = true;
+                                break;
+                            }
                         }
-
-                                                if ($matchedEmail) {
-                            $result = ['kind' => 'application', 'row' => $appRow];
-                        } else {
-                            // Record failed attempt (no matching email in extension table).
-                            lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                            $error = 'We couldn\'t find a request matching that tracking number and email combination.';
+                        if ($matchedEmail) {
+                            $results[] = ['kind' => 'application', 'row' => $applicationRow];
                         }
-                    } else {
-                        // Record failed attempt (tracking number not found at all).
-                        lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                        $error = 'We couldn\'t find a request matching that tracking number and email combination.';
                     }
+                }
+
+                if ($results === []) {
+                    lookup_record_attempt($pdo, 'lookup_track', $rateKey);
+                    $error = 'We couldn\'t find a request or application matching that tracking number and email combination.';
                 }
             }
         }
@@ -140,14 +117,14 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <section class="request-form">
-    <h1>Track My Request</h1>
-    <p>Enter the tracking number provided after submission and the same email address used for your request or application.</p>
+    <h1>Track a Request or Application</h1>
+    <p>Use the tracking number and the same email address you provided for that certificate request or sacrament application. One email address can be used for more than one submission; each tracking number shows its own status.</p>
 
     <?php if ($error): ?>
         <div class="alert alert-error"><p><?= e($error) ?></p></div>
     <?php endif; ?>
 
-        <?php if ($result): ?>
+        <?php foreach ($results as $result): ?>
         <?php
         $status = $result['row']['status'];
         if ($result['kind'] === 'certificate') {
@@ -161,6 +138,7 @@ require_once __DIR__ . '/../includes/header.php';
         }
         ?>
         <div class="alert alert-success track-result">
+            <h2><?= $result['kind'] === 'application' ? 'Sacrament Application' : 'Certificate Request' ?></h2>
             <p><strong>Tracking Number:</strong> <?= e($result['row']['tracking_number']) ?></p>
             <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> - <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
             <p><strong>Date Submitted:</strong> <?= e(date('F j, Y', strtotime($result['row']['date_submitted']))) ?></p>
@@ -182,7 +160,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </ol>
                 <p class="field-hint">
                     <?php if ($status === 'awaiting_payment'): ?>
-                        <strong>Awaiting payment.</strong> Your request has been received and matched. Payment is made <strong>outside this website</strong> — the office never takes money online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once the office records your payment.
+                        <strong>Awaiting payment.</strong> Your <?= $result['kind'] === 'application' ? 'application' : 'request' ?> has been received. Payment is made <strong>outside this website</strong> — the office never takes money online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once the office records your payment.
                     <?php elseif ($status === 'ready_for_pickup'): ?>
                         Your certificate is ready. Please visit the parish office with your tracking number and valid identification. Certificates are released in person.
                     <?php elseif ($status === 'released'): ?>
@@ -194,7 +172,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </p>
             <?php endif; ?>
         </div>
-    <?php endif; ?>
+        <?php endforeach; ?>
 
 <!-- Status lookup form: posts back to this page; CSRF-protected -->
     <form method="post" action="">
@@ -202,13 +180,13 @@ require_once __DIR__ . '/../includes/header.php';
         <fieldset>
             <legend>Look Up Your Office Transaction</legend>
             <label>Tracking Number *
-                <input type="text" name="tracking_number" placeholder="SPPO-2026-000123 or BAP-XXXXXXXX" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
+                <input type="text" name="tracking_number" placeholder="SPPO-2026-000123 or SPPO-APP-2026-000123" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
             </label>
             <label>Email Address *
                 <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required>
             </label>
         </fieldset>
-        <button type="submit" class="btn">Track Request</button>
+        <button type="submit" class="btn">Track Request or Application</button>
     </form>
 </section>
 

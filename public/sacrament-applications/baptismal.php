@@ -284,9 +284,7 @@ require_once __DIR__ . '/../../includes/header.php';
 if ($currentStep === STEP_COUNT + 1): ?>
     <div class="success-panel">
         <h1>Application Submitted</h1>
-        <p>Thank you! Your baptismal application has been submitted.</p>
-        <p>Tracking Number: <strong><?= e($trackingNumber ?? 'N/A') ?></strong></p>
-        <p>The parish secretary will review your application. You will receive a confirmation email shortly.</p>
+        <?php $successHeading = 'Keep this tracking number'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
         <a href="baptismal.php?reset=1" class="btn">Start New Application</a>
     </div>
 </section>
