@@ -89,7 +89,7 @@ require_once __DIR__ . '/../includes/header.php';
             
             <div class="form-group">
                 <label for="tracking_number">Certificate Tracking Number <span class="required">*</span></label>
-                <input type="text" id="tracking_number" name="tracking_number" placeholder="e.g. SPPO-2026-000123" required value="<?= e($_POST['tracking_number'] ?? '') ?>">
+                <input type="text" id="tracking_number" name="tracking_number" placeholder="Enter the tracking number from your confirmation" required value="<?= e($_POST['tracking_number'] ?? '') ?>">
                 <small>This is the tracking number provided when you requested the certificate.</small>
             </div>
 

@@ -171,7 +171,7 @@ require __DIR__ . '/../../includes/workflow-checklist-panel.php';
                 <tr><th>Full Name</th><td><?= e($app['groom_full_name']) ?></td></tr>
                 <tr><th>Birthdate</th><td><?= e($app['groom_birthdate']) ?></td></tr>
                 <tr><th>Birthplace</th><td><?= e($app['groom_birthplace']) ?></td></tr>
-                <tr><th>Address / Length of stay</th><td><?= e(($app['groom_current_address'] ?? '—') . ' / ' . ($app['groom_address_length'] ?? '—')) ?></td></tr>
+                <tr><th>Current Address</th><td><?= e($app['groom_current_address'] ?? '—') ?></td></tr>
                 <tr><th>Contact</th><td><?= e($app['groom_contact_number']) ?></td></tr>
                 <tr><th>Email</th><td><?= e($app['groom_email']) ?></td></tr>
                 <tr><th>Religion / Occupation</th><td><?= e(($app['groom_religion'] ?? '—') . ' / ' . ($app['groom_occupation'] ?? '—')) ?></td></tr>
@@ -192,7 +192,7 @@ require __DIR__ . '/../../includes/workflow-checklist-panel.php';
                 <tr><th>Full Name</th><td><?= e($app['bride_full_name']) ?></td></tr>
                 <tr><th>Birthdate</th><td><?= e($app['bride_birthdate']) ?></td></tr>
                 <tr><th>Birthplace</th><td><?= e($app['bride_birthplace']) ?></td></tr>
-                <tr><th>Address / Length of stay</th><td><?= e(($app['bride_current_address'] ?? '—') . ' / ' . ($app['bride_address_length'] ?? '—')) ?></td></tr>
+                <tr><th>Current Address</th><td><?= e($app['bride_current_address'] ?? '—') ?></td></tr>
                 <tr><th>Contact</th><td><?= e($app['bride_contact_number']) ?></td></tr>
                 <tr><th>Email</th><td><?= e($app['bride_email']) ?></td></tr>
                 <tr><th>Religion / Occupation</th><td><?= e(($app['bride_religion'] ?? '—') . ' / ' . ($app['bride_occupation'] ?? '—')) ?></td></tr>

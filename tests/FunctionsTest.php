@@ -49,6 +49,30 @@ final class FunctionsTest extends TestCase
         self::assertNull(safe_internal_return_url('/admin/../../outside.php'));
     }
 
+    public function testTrackingTokenUsesRandomLookingUnambiguousFormat(): void
+    {
+        self::assertMatchesRegularExpression('/^[A-HJ-NP-Z2-9]{16}$/', generate_tracking_token());
+    }
+
+    public function testNamePartsAllowAnAbsentMiddleName(): void
+    {
+        self::assertSame(
+            'Maria Santos',
+            compose_person_name([
+                'applicant_first' => ' Maria ',
+                'applicant_middle' => '',
+                'applicant_last' => 'Santos',
+                'applicant_suffix' => '',
+            ], 'applicant')
+        );
+        self::assertNull(validate_full_name('Maria Santos'));
+        self::assertSame('J. Santos', compose_person_name([
+            'applicant_first' => 'J.',
+            'applicant_last' => 'Santos',
+        ], 'applicant'));
+        self::assertNotNull(validate_full_name('J. Santos'));
+    }
+
     public function testScheduleOverlapRules(): void
     {
         self::assertTrue(event_times_overlap('09:00:00', '10:00:00', '09:30:00', '10:30:00'));

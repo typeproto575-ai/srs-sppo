@@ -296,8 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $requesterEmail         = trim($_POST['requester_email'] ?? '');
     $requesterMailingAddress = trim($_POST['requester_mailing_address'] ?? '');
     $requesterContact       = null; // Walk-in requests do not collect a phone number.
-    $purpose      = $_POST['purpose'] ?? '';
-    $purposeOther = trim($_POST['purpose_other'] ?? '');
+    $purpose      = 'unspecified';
     $notes        = trim($_POST['notes'] ?? '');
 
     // Walk-in counter flow: request -> pay -> process. If the fee was already
@@ -312,7 +311,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if ($requesterRelationship === '') $errors[] = 'Relationship is required.';
         if ($requesterEmail === '')        $errors[] = 'Email address is required.';
         if (strlen($requesterMailingAddress) > 500) $errors[] = 'Mailing address must be 500 characters or fewer.';
-        if ($purpose === '')               $errors[] = 'Purpose is required.';
     }
 
     // Sacrament-specific fields: each type stores its details in a
@@ -407,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
     if (empty($errors) && !$isSearchStep) {
         try {
-            $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther, $requesterEmail, $requesterMailingAddress, $requesterContact, $purpose, $purposeOther, $notes, $markPaid, $extTable, $extCols, $extVals): string {
+            $trackingNumber = retry_on_duplicate($pdo, function () use ($pdo, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther, $requesterEmail, $requesterMailingAddress, $requesterContact, $purpose, $notes, $markPaid, $extTable, $extCols, $extVals): string {
             $trackingNumber = generate_tracking_number($pdo, 'certificate_requests');
 
             $paidAt = $markPaid ? date('Y-m-d H:i:s') : null;
@@ -417,13 +415,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 "INSERT INTO certificate_requests
                     (tracking_number, submission_channel, sacrament_type, requester_name, requester_relationship,
                      requester_relationship_other, requester_email, requester_contact_number,
-                     requester_mailing_address, purpose, purpose_other, notes, status, paid_at, paid_by)
-                 VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
+                     requester_mailing_address, purpose, notes, status, paid_at, paid_by)
+                 VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)"
             );
             $stmt->execute([
                 $trackingNumber, $sacramentType, $requesterName, $requesterRelationship, $requesterRelOther,
                 $requesterEmail, $requesterContact, $requesterMailingAddress !== '' ? $requesterMailingAddress : null,
-                $purpose, $purposeOther, $notes, $paidAt, $paidBy,
+                $purpose, $notes, $paidAt, $paidBy,
             ]);
             $requestId = (int) $pdo->lastInsertId();
 
@@ -481,7 +479,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <dt>Payment</dt><dd><?= (($_POST['payment_received'] ?? '') === '1') ? 'Received at the counter and recorded' : 'Not yet recorded' ?></dd>
                     <dt>Requester</dt><dd><?= e($requesterName) ?></dd>
                     <dt>Relationship</dt><dd><?= e($requesterRelationship) ?></dd>
-                    <dt>Purpose</dt><dd><?= e($purpose) ?></dd>
                 </dl>
             </div>
             <section class="walk-in-tracking-slip" aria-labelledby="walk-in-slip-title">
@@ -905,18 +902,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset data-walk-in-phase="wrap-up">
                 <legend>Request Details</legend>
-                <label>Purpose *
-                    <select name="purpose" required>
-                        <option value="">-- Select --</option>
-                        <option value="marriage">Marriage requirement</option>
-                        <option value="school">School or education</option>
-                        <option value="employment">Employment</option>
-                        <option value="government_civil">Government ID, passport, or visa</option>
-                        <option value="legal_tribunal">Legal or court matter</option>
-                        <option value="other">Other</option>
-                    </select>
-                </label>
-                <label>If Other, please specify <input autocomplete="off" type="text" name="purpose_other" value="<?= e($_POST['purpose_other'] ?? '') ?>"></label>
                 <label>Additional Notes / Observanda
                     <textarea autocomplete="off" name="notes"><?= e($_POST['notes'] ?? '') ?></textarea>
                 </label>

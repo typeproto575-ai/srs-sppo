@@ -616,9 +616,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 unset($rowValue);
                 // Request metadata — always taken from the shared request row.
                 $certRows['Requested by'] = $req['requester_name'] ?? '—';
-                $certRows['Purpose'] = (!empty($req['purpose_other']) && ($req['purpose'] ?? '') === 'other')
-                    ? $req['purpose_other']
-                    : humanize_label($req['purpose'] ?? '');
+                if (($req['purpose'] ?? '') !== 'unspecified') {
+                    $certRows['Purpose'] = (!empty($req['purpose_other']) && ($req['purpose'] ?? '') === 'other')
+                        ? $req['purpose_other']
+                        : humanize_label($req['purpose'] ?? '');
+                }
             ?>
             <div class="cert-preview">
                 <?php if (!$printOnly): ?><h2>Certificate Preview — <?= e(humanize_label($previewSacrament)) ?></h2><?php endif; ?>

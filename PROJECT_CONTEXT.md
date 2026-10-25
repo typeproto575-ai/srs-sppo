@@ -175,7 +175,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 ## Conventions — follow these
 
 - **Public form insert:** validate server-side → `public_submission_allowed()` (Marriage: groom **and** bride emails) → one PDO transaction (shared row, `lastInsertId()`, extension rows) → `log_activity()` → `record_public_submission()` before commit → `retry_on_duplicate()` for tracking-number races. Copy `public/certificate-requests/baptismal.php`. Set `submission_channel` to `'online'` on public forms and `'onsite'` on walk-in encoders.
-- **Tracking numbers:** `generate_tracking_number($pdo, $table)` → certificate requests use `SPPO-YYYY-NNNNNN`; sacrament applications use `SPPO-APP-YYYY-NNNNNN` so public tracking can distinguish them.
+- **Tracking numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament applications use `SPPO-APP-YYYY-` plus the token so public tracking can distinguish them. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
 - **Success panel:** `includes/submission-success.php`. Print there = confirmation page only, never a certificate.
 - **CSRF:** every POST uses `csrf_field()` / `csrf_verify()`.
 - **SQL:** PDO native prepared statements. Output: `e()`.
@@ -205,7 +205,9 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that, then seed if needed (`database/seed_demo_data.sql`).
 
-Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), and Confirmation application baptism details (042), checking existing tables/columns before applying changes.
+Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes.
+
+Application and database-generated timestamps use Philippine local time (`Asia/Manila`, UTC+08:00).
 
 `migrations/` remains the historical record for older database versions and is not replayed wholesale by the application. Numeric prefixes are not unique (`017_*`, `023_*`, `025_*`, `026_*`, `027_*`, `028_*`, and `038_*` are reused); identify historical scripts by their full filename and inspect the target database before applying any of them.
 

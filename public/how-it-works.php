@@ -4,7 +4,7 @@
  * SRS-SPPO "HOW IT WORKS" (public explainer page)
  * =====================================================================
  * Purpose: Walks visitors through the parish's request workflow in
- *          five ledger-style steps, then offers two path cards that
+ *          six ledger-style steps, then offers two path cards that
  *          route them to the right entry point. Static content — no
  *          database queries.
  * =====================================================================
@@ -24,7 +24,7 @@ require_once __DIR__ . '/../includes/header.php';
 <section class="workflow-hero">
 <span class="eyebrow">How Online Intake Works</span>
     <h1>Convenient submission, careful parish review.</h1>
-    <p>Online forms make it easier to send complete details before visiting the office. They do not replace secretary verification, the physical register, or in-person certificate release.</p>
+    <p>Send the details online first. The parish office will review them and tell you what to do next.</p>
 </section>
 
 <!-- Step-by-step ledger (one row per step) -->
@@ -43,8 +43,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-<h3>Submit a pre-application</h3>
-            <p>Enter the names, dates, relationship, purpose, and other details requested by the form. You do not need an account, and you should not upload an identity document.</p>
+<h3>Send your request</h3>
+            <p>Enter the details requested by the form. You do not need an account. Do not upload or send personal documents with the form.</p>
         </div>
     </div>
 
@@ -53,7 +53,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Secretary review</h3>
-            <p>The secretary checks the submission against the parish register and reviews requirements. An online submission is not an official parish record and is not automatically approved.</p>
+            <p>The parish office checks the details against its records and confirms any requirements. Sending a form does not mean it is approved.</p>
         </div>
     </div>
 
@@ -61,8 +61,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-<h3>Payment (outside this website)</h3>
-            <p>Once your details match a parish record, your request or application is marked <strong>awaiting payment</strong>. Payment is never taken on this website. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. The office records your payment by hand, and processing continues.</p>
+<h3>If payment is needed</h3>
+            <p>Payment is not taken on this website. If payment is needed, the parish office will tell you the amount and how to pay. Processing continues after the office records payment.</p>
         </div>
     </div>
 
@@ -71,7 +71,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Keep your tracking number</h3>
-            <p>After a successful submission, keep the tracking number and recorded email address. Use both to view a limited public status timeline.</p>
+            <p>After submitting, keep your tracking number and the email address you entered. Use both to check the request status.</p>
         </div>
     </div>
 
@@ -79,8 +79,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="ledger-row">
         <span class="ledger-no"></span>
         <div>
-<h3>Verify and complete onsite</h3>
-            <p>If documents are needed, bring them to the Parish Office in person when asked. Do not send documents by email or Messenger; you may still contact the office with questions. Identity is verified in person, and certificates are printed and released only onsite. There is no online payment.</p>
+<h3>Finish at the parish office</h3>
+            <p>If documents are needed, the parish office will tell you what to bring. Certificates are collected at the Parish Office; they are not issued online.</p>
         </div>
     </div>
 

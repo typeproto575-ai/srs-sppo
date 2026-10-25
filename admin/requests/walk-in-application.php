@@ -69,43 +69,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         // --- Handle type-specific insertion and file uploads -------------
         if ($sacramentType === 'baptismal') {
             // --- Baptismal application ---
-            $childName = trim($_POST['child_full_name'] ?? '');
+            $childName = compose_person_name($_POST, 'child');
             $childBirthdate = $_POST['child_birthdate'] ?? null;
             $childPlace = trim($_POST['child_birthplace'] ?? '');
             $fatherName = trim($_POST['father_full_name'] ?? '');
-            $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
             $motherMaidenName = trim($_POST['mother_full_name'] ?? ''); // form field is "mother_full_name"; stored in mother_maiden_name column
-            $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
-            $parentsAddress = trim($_POST['parents_address'] ?? '');
-            $parentsUnionType = trim($_POST['parents_union_type'] ?? 'legitimate');
             $parentName = trim($_POST['parent_guardian_name'] ?? '');
             $contact = null; // Email is the only approved contact channel.
             $email = trim($_POST['email'] ?? '');
-            if ($childName === '' || $childBirthdate === '' || $childPlace === '' || $parentName === '' || $email === '') {
+            if (trim((string) ($_POST['child_first'] ?? '')) === '' || trim((string) ($_POST['child_last'] ?? '')) === '' || $childBirthdate === '' || $childPlace === '' || $parentName === '' || $email === '') {
                 throw new Exception('Please fill required baptismal application fields.');
+            }
+            if (($nameError = validate_full_name($childName)) !== null) {
+                throw new Exception($nameError);
             }
             // No ID upload (feature removed): identity verified in person.
 
             $stmt = $pdo->prepare(
-                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, father_birthplace, mother_maiden_name, mother_birthplace, parents_address, parents_union_type, parent_guardian_name, contact_number, email, preferred_date, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO baptismal_applications (application_id, child_full_name, child_birthdate, child_birthplace, father_full_name, mother_maiden_name, parents_union_type, parent_guardian_name, contact_number, email, preferred_date, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $applicationId, $childName, $childBirthdate, $childPlace,
-                $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
-                $parentsAddress, $parentsUnionType,
+                $fatherName, $motherMaidenName,
                 $parentName, $contact, $email, $_POST['preferred_date'] ?: null, trim($_POST['notes'] ?? '')
             ]);
             $baptismalAppExtId = (int) $pdo->lastInsertId();
 
             // Insert godparents if provided
             if (!empty($_POST['godparents']) && is_array($_POST['godparents'])) {
-                $gpStmt = $pdo->prepare("INSERT INTO baptismal_application_godparents (baptismal_application_id, godparent_name, godparent_residence) VALUES (?, ?, ?)");
+                $gpStmt = $pdo->prepare("INSERT INTO baptismal_application_godparents (baptismal_application_id, godparent_name) VALUES (?, ?)");
                 foreach ($_POST['godparents'] as $i => $gpName) {
                     $name = trim($gpName);
-                    $res = trim($_POST['godparents_residence'][$i] ?? '');
                     if ($name !== '') {
-                        $gpStmt->execute([$baptismalAppExtId, $name, $res]);
+                        $gpStmt->execute([$baptismalAppExtId, $name]);
                     }
                 }
             }
@@ -113,59 +110,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         } elseif ($sacramentType === 'confirmation' || $sacramentType === 'first_communion') {
             $isConfirmation = $sacramentType === 'confirmation';
             $extTable = $isConfirmation ? 'confirmation_applications' : 'first_communion_applications';
-            $name = trim($_POST['applicant_full_name'] ?? '');
+            $name = compose_person_name($_POST, 'applicant');
             $birthdate = $_POST['applicant_birthdate'] ?? null;
             $parentGuardian = trim($_POST['parent_guardian_name'] ?? '');
             $email = trim($_POST['email'] ?? '');
-            if ($name === '' || $birthdate === '' || $parentGuardian === '' || $email === '') {
+            if (trim((string) ($_POST['applicant_first'] ?? '')) === '' || trim((string) ($_POST['applicant_last'] ?? '')) === '' || $birthdate === '' || $parentGuardian === '' || $email === '') {
                 throw new Exception('Please fill the required application fields.');
+            }
+            if (($nameError = validate_full_name($name)) !== null) {
+                throw new Exception($nameError);
             }
             if ($isConfirmation) {
                 $stmt = $pdo->prepare(
                     "INSERT INTO confirmation_applications
                         (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name, contact_number, email,
-                         baptized_here, baptism_date, baptism_parish_name, baptism_parish_address, preferred_batch, sponsor_name)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                         baptized_here, sponsor_name)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $applicationId, $name, $birthdate, $parentGuardian, trim($_POST['contact_number'] ?? ''), $email,
                     ($_POST['baptized_here'] ?? '') === 'this_parish' ? 1 : 0,
-                    $_POST['baptism_date'] ?: null, trim($_POST['baptism_parish_name'] ?? ''),
-                    trim($_POST['baptism_parish_address'] ?? ''), trim($_POST['preferred_batch'] ?? ''), trim($_POST['sponsor_name'] ?? ''),
+                    trim($_POST['sponsor_name'] ?? ''),
                 ]);
             } else {
                 $stmt = $pdo->prepare(
                     "INSERT INTO first_communion_applications
                         (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name, contact_number, email,
-                         baptized_here, baptism_date, baptism_parish_name, baptism_parish_address, preferred_batch)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                         baptized_here)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $applicationId, $name, $birthdate, $parentGuardian, trim($_POST['contact_number'] ?? ''), $email,
                     ($_POST['baptized_here'] ?? '') === 'this_parish' ? 1 : 0,
-                    $_POST['baptism_date'] ?: null, trim($_POST['baptism_parish_name'] ?? ''),
-                    trim($_POST['baptism_parish_address'] ?? ''), trim($_POST['preferred_batch'] ?? ''),
                 ]);
             }
 
         } elseif ($sacramentType === 'marriage') {
             // --- Marriage application ---
             // Minimal required marriage fields for both parties
-            $groomName = trim($_POST['groom_full_name'] ?? '');
+            $groomName = compose_person_name($_POST, 'groom');
             $groomBirthdate = $_POST['groom_birthdate'] ?? null;
             $groomBirthplace = trim($_POST['groom_birthplace'] ?? '');
             $groomContact = null; // Email is the only approved contact channel.
             $groomEmail = trim($_POST['groom_email'] ?? '');
 
-            $brideName = trim($_POST['bride_full_name'] ?? '');
+            $brideName = compose_person_name($_POST, 'bride');
             $brideBirthdate = $_POST['bride_birthdate'] ?? null;
             $brideBirthplace = trim($_POST['bride_birthplace'] ?? '');
             $brideContact = null; // Email is the only approved contact channel.
             $brideEmail = trim($_POST['bride_email'] ?? '');
             $preferredWeddingDate = trim($_POST['preferred_wedding_date'] ?? '');
+            $groomMaritalStatus = trim($_POST['groom_marital_status'] ?? '');
+            $brideMaritalStatus = trim($_POST['bride_marital_status'] ?? '');
 
-            if ($groomName === '' || $groomBirthdate === '' || $groomBirthplace === '' || $groomEmail === '' || $brideName === '' || $brideBirthdate === '' || $brideBirthplace === '' || $brideEmail === '' || $preferredWeddingDate === '') {
+            if (trim((string) ($_POST['groom_first'] ?? '')) === '' || trim((string) ($_POST['groom_last'] ?? '')) === '' || trim((string) ($_POST['bride_first'] ?? '')) === '' || trim((string) ($_POST['bride_last'] ?? '')) === '' || $groomBirthdate === '' || $groomBirthplace === '' || $groomEmail === '' || $brideBirthdate === '' || $brideBirthplace === '' || $brideEmail === '' || $preferredWeddingDate === '' || !in_array($groomMaritalStatus, ['single', 'married', 'widowed', 'annulled'], true) || !in_array($brideMaritalStatus, ['single', 'married', 'widowed', 'annulled'], true)) {
                 throw new Exception('Please fill required marriage application fields for both parties.');
+            }
+            foreach ([$groomName, $brideName] as $name) {
+                if (($nameError = validate_full_name($name)) !== null) {
+                    throw new Exception($nameError);
+                }
             }
 
             // No ID upload (feature removed): both parties' identities
@@ -178,19 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             );
             $stmt->execute([
                 $applicationId,
-                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail, trim($_POST['groom_marital_status'] ?? 'single'),
-                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, trim($_POST['bride_marital_status'] ?? 'single'), $preferredWeddingDate
+                $groomName, $groomBirthdate, $groomBirthplace, $groomContact, $groomEmail, $groomMaritalStatus,
+                $brideName, $brideBirthdate, $brideBirthplace, $brideContact, $brideEmail, $brideMaritalStatus, $preferredWeddingDate
             ]);
             $marriageAppExtId = (int) $pdo->lastInsertId();
 
             // Insert principal sponsors if provided
             if (!empty($_POST['principal_sponsors_name']) && is_array($_POST['principal_sponsors_name'])) {
-                $msStmt = $pdo->prepare("INSERT INTO marriage_principal_sponsors (marriage_application_id, sponsor_name, sponsor_residence) VALUES (?, ?, ?)");
+                $msStmt = $pdo->prepare("INSERT INTO marriage_principal_sponsors (marriage_application_id, sponsor_name) VALUES (?, ?)");
                 foreach ($_POST['principal_sponsors_name'] as $i => $sName) {
                     $name = trim($sName);
-                    $res = trim($_POST['principal_sponsors_residence'][$i] ?? '');
                     if ($name !== '') {
-                        $msStmt->execute([$marriageAppExtId, $name, $res]);
+                        $msStmt->execute([$marriageAppExtId, $name]);
                     }
                 }
             }
@@ -257,7 +260,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <div id="section-baptismal" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>Baptismal Application</legend>
-                    <label>Child's Full Name * <input autocomplete="off" type="text" name="child_full_name" value="<?= e($_POST['child_full_name'] ?? '') ?>"></label>
+                    <div class="inline-fields">
+                        <label>Child's First Name * <input autocomplete="given-name" type="text" name="child_first" value="<?= e($_POST['child_first'] ?? '') ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input autocomplete="additional-name" type="text" name="child_middle" value="<?= e($_POST['child_middle'] ?? '') ?>"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Last Name * <input autocomplete="family-name" type="text" name="child_last" value="<?= e($_POST['child_last'] ?? '') ?>" required></label>
+                        <label>Suffix <span class="field-hint">(optional)</span> <input autocomplete="honorific-suffix" type="text" name="child_suffix" value="<?= e($_POST['child_suffix'] ?? '') ?>"></label>
+                    </div>
                     <label>Birthdate * <input autocomplete="off" type="date" name="child_birthdate" value="<?= e($_POST['child_birthdate'] ?? '') ?>"></label>
                     <label>Birthplace * <input autocomplete="off" type="text" name="child_birthplace" value="<?= e($_POST['child_birthplace'] ?? '') ?>"></label>
                     <label>Father's Full Name <input autocomplete="off" type="text" name="father_full_name" value="<?= e($_POST['father_full_name'] ?? '') ?>"></label>
@@ -271,7 +281,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                         <div id="godparents-list">
                             <div class="repeat-item">
                                 <input autocomplete="off" type="text" name="godparents[]" placeholder="Godparent full name">
-                                <input autocomplete="off" type="text" name="godparents_residence[]" placeholder="Residence (optional)">
                                 <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>
                             </div>
                         </div>
@@ -283,7 +292,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <div id="section-confirmation" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>Confirmation Application</legend>
-                    <label>Applicant's Full Name * <input autocomplete="off" type="text" name="applicant_full_name" value="<?= e($_POST['applicant_full_name'] ?? '') ?>"></label>
+                    <div class="inline-fields">
+                        <label>First Name * <input autocomplete="given-name" type="text" name="applicant_first" value="<?= e($_POST['applicant_first'] ?? '') ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input autocomplete="additional-name" type="text" name="applicant_middle" value="<?= e($_POST['applicant_middle'] ?? '') ?>"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Last Name * <input autocomplete="family-name" type="text" name="applicant_last" value="<?= e($_POST['applicant_last'] ?? '') ?>" required></label>
+                        <label>Suffix <span class="field-hint">(optional)</span> <input autocomplete="honorific-suffix" type="text" name="applicant_suffix" value="<?= e($_POST['applicant_suffix'] ?? '') ?>"></label>
+                    </div>
                     <label>Date of Birth * <input autocomplete="off" type="date" name="applicant_birthdate" value="<?= e($_POST['applicant_birthdate'] ?? '') ?>"></label>
                     <label>Parent/Guardian Name * <input autocomplete="off" type="text" name="parent_guardian_name" value="<?= e($_POST['parent_guardian_name'] ?? '') ?>"></label>
                     <label>Contact Number <input autocomplete="off" type="text" name="contact_number" value="<?= e($_POST['contact_number'] ?? '') ?>"></label>
@@ -291,8 +307,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     <label>Baptized at this parish?
                         <select name="baptized_here"><option value="">-- Select --</option><option value="this_parish">Yes</option><option value="elsewhere">Another parish/church</option></select>
                     </label>
-                    <div class="inline-fields"><label>Baptism Date <input autocomplete="off" type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? '') ?>"></label><label>Baptism Parish <input autocomplete="off" type="text" name="baptism_parish_name" value="<?= e($_POST['baptism_parish_name'] ?? '') ?>"></label></div>
-                    <label>Preferred Batch <input autocomplete="off" type="text" name="preferred_batch" value="<?= e($_POST['preferred_batch'] ?? '') ?>"></label>
                     <label>Sponsor <input autocomplete="off" type="text" name="sponsor_name" value="<?= e($_POST['sponsor_name'] ?? '') ?>"></label>
                 </fieldset>
             </div>
@@ -300,7 +314,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             <div id="section-first_communion" class="sacrament-section" data-walk-in-phase="details" style="display:none;">
                 <fieldset>
                     <legend>First Communion Application</legend>
-                    <label>Applicant's Full Name * <input autocomplete="off" type="text" name="applicant_full_name" value="<?= e($_POST['applicant_full_name'] ?? '') ?>"></label>
+                    <div class="inline-fields">
+                        <label>First Name * <input autocomplete="given-name" type="text" name="applicant_first" value="<?= e($_POST['applicant_first'] ?? '') ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input autocomplete="additional-name" type="text" name="applicant_middle" value="<?= e($_POST['applicant_middle'] ?? '') ?>"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Last Name * <input autocomplete="family-name" type="text" name="applicant_last" value="<?= e($_POST['applicant_last'] ?? '') ?>" required></label>
+                        <label>Suffix <span class="field-hint">(optional)</span> <input autocomplete="honorific-suffix" type="text" name="applicant_suffix" value="<?= e($_POST['applicant_suffix'] ?? '') ?>"></label>
+                    </div>
                     <label>Date of Birth * <input autocomplete="off" type="date" name="applicant_birthdate" value="<?= e($_POST['applicant_birthdate'] ?? '') ?>"></label>
                     <label>Parent/Guardian Name * <input autocomplete="off" type="text" name="parent_guardian_name" value="<?= e($_POST['parent_guardian_name'] ?? '') ?>"></label>
                     <label>Contact Number <input autocomplete="off" type="text" name="contact_number" value="<?= e($_POST['contact_number'] ?? '') ?>"></label>
@@ -308,8 +329,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     <label>Baptized at this parish?
                         <select name="baptized_here"><option value="">-- Select --</option><option value="this_parish">Yes</option><option value="elsewhere">Another parish/church</option></select>
                     </label>
-                    <div class="inline-fields"><label>Baptism Date <input autocomplete="off" type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? '') ?>"></label><label>Baptism Parish <input autocomplete="off" type="text" name="baptism_parish_name" value="<?= e($_POST['baptism_parish_name'] ?? '') ?>"></label></div>
-                    <label>Preferred Batch <input autocomplete="off" type="text" name="preferred_batch" value="<?= e($_POST['preferred_batch'] ?? '') ?>"></label>
                 </fieldset>
             </div>
 
@@ -317,19 +336,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 <fieldset>
                     <legend>Marriage Application</legend>
                     <h4>Groom</h4>
-                    <label>Full Name * <input autocomplete="off" type="text" name="groom_full_name" value="<?= e($_POST['groom_full_name'] ?? '') ?>"></label>
+                    <div class="inline-fields">
+                        <label>Groom's First Name * <input autocomplete="given-name" type="text" name="groom_first" value="<?= e($_POST['groom_first'] ?? '') ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input autocomplete="additional-name" type="text" name="groom_middle" value="<?= e($_POST['groom_middle'] ?? '') ?>"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Last Name * <input autocomplete="family-name" type="text" name="groom_last" value="<?= e($_POST['groom_last'] ?? '') ?>" required></label>
+                        <label>Suffix <span class="field-hint">(optional)</span> <input autocomplete="honorific-suffix" type="text" name="groom_suffix" value="<?= e($_POST['groom_suffix'] ?? '') ?>"></label>
+                    </div>
                     <label>Birthdate * <input autocomplete="off" type="date" name="groom_birthdate" value="<?= e($_POST['groom_birthdate'] ?? '') ?>"></label>
                     <label>Birthplace * <input autocomplete="off" type="text" name="groom_birthplace" value="<?= e($_POST['groom_birthplace'] ?? '') ?>"></label>
                     <label>Email * <input autocomplete="off" type="email" name="groom_email" value="<?= e($_POST['groom_email'] ?? '') ?>"></label>
-                    <label>Marital Status <select name="groom_marital_status"><option value="single">Single</option><option value="widowed">Widowed</option><option value="annulled">Annulled</option></select></label>
+                    <label>Marital Status * <select name="groom_marital_status" required><option value="">-- Select --</option><option value="single" <?= ($_POST['groom_marital_status'] ?? '') === 'single' ? 'selected' : '' ?>>Single</option><option value="married" <?= ($_POST['groom_marital_status'] ?? '') === 'married' ? 'selected' : '' ?>>Married</option><option value="widowed" <?= ($_POST['groom_marital_status'] ?? '') === 'widowed' ? 'selected' : '' ?>>Widowed</option><option value="annulled" <?= ($_POST['groom_marital_status'] ?? '') === 'annulled' ? 'selected' : '' ?>>Annulled</option></select></label>
                     <!-- Valid ID upload removed: identity verified in person -->
 
                     <h4>Bride</h4>
-                    <label>Full Name * <input autocomplete="off" type="text" name="bride_full_name" value="<?= e($_POST['bride_full_name'] ?? '') ?>"></label>
+                    <div class="inline-fields">
+                        <label>Bride's First Name * <input autocomplete="given-name" type="text" name="bride_first" value="<?= e($_POST['bride_first'] ?? '') ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input autocomplete="additional-name" type="text" name="bride_middle" value="<?= e($_POST['bride_middle'] ?? '') ?>"></label>
+                    </div>
+                    <div class="inline-fields">
+                        <label>Last Name * <input autocomplete="family-name" type="text" name="bride_last" value="<?= e($_POST['bride_last'] ?? '') ?>" required></label>
+                        <label>Suffix <span class="field-hint">(optional)</span> <input autocomplete="honorific-suffix" type="text" name="bride_suffix" value="<?= e($_POST['bride_suffix'] ?? '') ?>"></label>
+                    </div>
                     <label>Birthdate * <input autocomplete="off" type="date" name="bride_birthdate" value="<?= e($_POST['bride_birthdate'] ?? '') ?>"></label>
                     <label>Birthplace * <input autocomplete="off" type="text" name="bride_birthplace" value="<?= e($_POST['bride_birthplace'] ?? '') ?>"></label>
                     <label>Email * <input autocomplete="off" type="email" name="bride_email" value="<?= e($_POST['bride_email'] ?? '') ?>"></label>
-                    <label>Marital Status <select name="bride_marital_status"><option value="single">Single</option><option value="widowed">Widowed</option><option value="annulled">Annulled</option></select></label>
+                    <label>Marital Status * <select name="bride_marital_status" required><option value="">-- Select --</option><option value="single" <?= ($_POST['bride_marital_status'] ?? '') === 'single' ? 'selected' : '' ?>>Single</option><option value="married" <?= ($_POST['bride_marital_status'] ?? '') === 'married' ? 'selected' : '' ?>>Married</option><option value="widowed" <?= ($_POST['bride_marital_status'] ?? '') === 'widowed' ? 'selected' : '' ?>>Widowed</option><option value="annulled" <?= ($_POST['bride_marital_status'] ?? '') === 'annulled' ? 'selected' : '' ?>>Annulled</option></select></label>
                     <!-- Valid ID upload removed: identity verified in person -->
                     <label>Preferred Wedding Date * <input autocomplete="off" type="date" name="preferred_wedding_date" value="<?= e($_POST['preferred_wedding_date'] ?? '') ?>" required></label>
                     <div class="repeat-list">
@@ -337,7 +370,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                         <div id="sponsors-list">
                             <div class="repeat-item">
                                 <input autocomplete="off" type="text" name="principal_sponsors_name[]" placeholder="Sponsor full name">
-                                <input autocomplete="off" type="text" name="principal_sponsors_residence[]" placeholder="Residence (optional)">
                                 <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>
                             </div>
                         </div>
@@ -381,7 +413,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             var list = document.getElementById('godparents-list');
             var div = document.createElement('div');
             div.className = 'repeat-item';
-            div.innerHTML = '<input autocomplete="off" type="text" name="godparents[]" placeholder="Godparent full name">\n                                <input autocomplete="off" type="text" name="godparents_residence[]" placeholder="Residence (optional)">\n                                <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>';
+            div.innerHTML = '<input autocomplete="off" type="text" name="godparents[]" placeholder="Godparent full name">\n                                <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>';
             list.appendChild(div);
         }
 
@@ -390,7 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             var list = document.getElementById('sponsors-list');
             var div = document.createElement('div');
             div.className = 'repeat-item';
-            div.innerHTML = '<input autocomplete="off" type="text" name="principal_sponsors_name[]" placeholder="Sponsor full name">\n                                <input autocomplete="off" type="text" name="principal_sponsors_residence[]" placeholder="Residence (optional)">\n                                <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>';
+            div.innerHTML = '<input autocomplete="off" type="text" name="principal_sponsors_name[]" placeholder="Sponsor full name">\n                                <button type="button" class="btn-remove" onclick="removeItem(this)">Remove</button>';
             list.appendChild(div);
         }
 
@@ -405,17 +437,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             var type = document.getElementById('sacrament_type').value;
             var missing = [];
             if (type === 'baptismal') {
-                if (!document.querySelector('#section-' + type + ' input[name="child_full_name"]').value) missing.push('Child name');
+                if (!document.querySelector('#section-' + type + ' input[name="child_first"]').value || !document.querySelector('#section-' + type + ' input[name="child_last"]').value) missing.push('Child first and last names');
                 if (!document.querySelector('#section-' + type + ' input[name="child_birthdate"]').value) missing.push('Child birthdate');
                 if (!document.querySelector('#section-' + type + ' input[name="child_birthplace"]').value) missing.push('Child birthplace');
                 if (!document.querySelector('#section-' + type + ' input[name="parent_guardian_name"]').value) missing.push('Parent/guardian name');
             } else if (type === 'confirmation' || type === 'first_communion') {
-                if (!document.querySelector('#section-' + type + ' input[name="applicant_full_name"]').value) missing.push('Applicant name');
+                if (!document.querySelector('#section-' + type + ' input[name="applicant_first"]').value || !document.querySelector('#section-' + type + ' input[name="applicant_last"]').value) missing.push('Applicant first and last names');
                 if (!document.querySelector('#section-' + type + ' input[name="applicant_birthdate"]').value) missing.push('Applicant birthdate');
                 if (!document.querySelector('#section-' + type + ' input[name="parent_guardian_name"]').value) missing.push('Parent/guardian name');
             } else if (type === 'marriage') {
-                if (!document.querySelector('#section-' + type + ' input[name="groom_full_name"]').value) missing.push('Groom full name');
-                if (!document.querySelector('#section-' + type + ' input[name="bride_full_name"]').value) missing.push('Bride full name');
+                if (!document.querySelector('#section-' + type + ' input[name="groom_first"]').value || !document.querySelector('#section-' + type + ' input[name="groom_last"]').value) missing.push('Groom first and last names');
+                if (!document.querySelector('#section-' + type + ' input[name="bride_first"]').value || !document.querySelector('#section-' + type + ' input[name="bride_last"]').value) missing.push('Bride first and last names');
             }
             if (missing.length) {
                 e.preventDefault();

@@ -21,7 +21,7 @@
  *               Not found: NOT a dead end. Older register entries may not be
  *               encoded yet, so the visitor can ask the secretary to search
  *               the register book by hand (path = "manual").
- *   3. CONTACT— email, contact number, purpose (+ requester name and
+ *   3. CONTACT— email, contact number (+ requester name and
  *               relationship when requesting for someone else) and the Terms
  *               checkbox. On submit, two rows are inserted in one transaction:
  *                 a. certificate_requests          — shared request data
@@ -194,8 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $requesterRelationship = $_POST['requester_relationship'] ?? '';
         $requesterEmail        = trim($_POST['requester_email'] ?? '');
         $requesterContact      = trim($_POST['requester_contact_number'] ?? '');
-        $purpose               = $_POST['purpose'] ?? '';
-        $purposeOther          = trim($_POST['purpose_other'] ?? '');
+        $purpose               = 'unspecified';
         $termsAccepted         = ($_POST['terms_accepted'] ?? '') === '1';
 
         // Subject details come from the confirmed register entry, or (manual
@@ -248,9 +247,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!is_valid_phone_number($requesterContact)) {
                 $errors[] = 'Please enter a valid contact number (at least 10 digits).';
             }
-            if ($purpose === '') $errors[] = 'Please choose what the certificate is for.';
-            if ($purpose === 'other' && $purposeOther === '') $errors[] = 'Please describe the reason.';
-            if ($purpose !== 'other') $purposeOther = '';
             if (!$termsAccepted) $errors[] = 'You must accept the Terms and Conditions before submitting.';
         }
 
@@ -279,12 +275,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "INSERT INTO certificate_requests
                         (tracking_number, submission_channel, sacrament_type, requester_name, requester_relationship,
                          requester_relationship_other, requester_email, requester_contact_number,
-                         purpose, purpose_other, status)
-                     VALUES (?, 'online', 'baptismal', ?, ?, ?, ?, ?, ?, ?, ?)"
+                         purpose, status)
+                     VALUES (?, 'online', 'baptismal', ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $trackingNumber, $requesterName, $requesterRelationship, '',
-                    $requesterEmail, $requesterContact, $purpose, $purposeOther, $initialStatus,
+                    $requesterEmail, $requesterContact, $purpose, $initialStatus,
                 ]);
                 $requestId = (int) $pdo->lastInsertId();
 
@@ -530,26 +526,6 @@ require_once __DIR__ . '/../../includes/header.php';
                     </label>
                     <label>Contact number *
                         <input type="text" name="requester_contact_number" autocomplete="tel" value="<?= $val('requester_contact_number') ?>" required>
-                    </label>
-                    <label>What is the certificate for? *
-                        <select name="purpose" required>
-                            <option value="">-- Select --</option>
-                            <?php
-                            $purposes = [
-                                'marriage'         => 'Marriage requirement',
-                                'school'           => 'School or education',
-                                'employment'       => 'Employment',
-                                'government_civil' => 'Government ID, passport, or visa',
-                                'legal_tribunal'   => 'Legal or court matter',
-                                'other'            => 'Other',
-                            ];
-                            foreach ($purposes as $k => $label): ?>
-                                <option value="<?= $k ?>" <?= ($_POST['purpose'] ?? '') === $k ? 'selected' : '' ?>><?= e($label) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                    <label data-show-if="purpose=other">Please describe the reason *
-                        <input type="text" name="purpose_other" value="<?= $val('purpose_other') ?>">
                     </label>
                 </fieldset>
 

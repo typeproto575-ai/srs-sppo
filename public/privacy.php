@@ -50,13 +50,13 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="data-collected">
             <h2 class="legal-clause__title">What We Collect</h2>
             <ol class="legal-subclauses">
-                <li><span class="legal-term">Requester details:</span> name, email address, contact number, optional postal mailing address, relationship to the person concerned, and the purpose of the request.</li>
+                <li><span class="legal-term">Requester details:</span> name, email address, contact number, and relationship to the person concerned, when applicable. Some onsite requests may also include a mailing address.</li>
                 <li><span class="legal-term">Record details:</span> the name, birthdate, birthplace, parents' names and sacrament dates needed for staff to review the request against the parish register.</li>
-                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include religion, civil status (single, widowed, annulled), previous marriages, baptism and confirmation status, residence, and the names and residences of parents, godparents, sponsors and witnesses.</li>
-                <li><span class="legal-term">Children's data:</span> for First Communion, the child's name, birthdate, school, grade level and adviser. A parent or legal guardian must give the information and consent for a child.</li>
+                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include current address, religion, marital status, previous marriage, baptism and Confirmation status, and the names of parents, godparents, or sponsors.</li>
+                <li><span class="legal-term">Children's data:</span> a child's name, birthdate, parent or guardian details, and information needed for sacrament preparation. A parent or legal guardian must submit the application and consent for a child.</li>
                 <li><span class="legal-term">Technical data:</span> IP address and the time of requests, kept in an audit log for security and to prevent misuse.</li>
             </ol>
-            <p>Religion, age and civil status are <span class="legal-term">sensitive personal information</span> under Section 3(l) of the Act. We collect them only when the sacrament or certificate requires them.</p>
+            <p>Religion, age, and civil status are <span class="legal-term">sensitive personal information</span> under Section 3(l) of the Act. We collect them only when needed to review a sacrament application.</p>
             <p>Please give us information about another person (parents, godparents, sponsors, witnesses) only if you are authorized to do so, and let them know you did.</p>
         </section>
 

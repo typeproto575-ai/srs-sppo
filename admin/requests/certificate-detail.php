@@ -312,7 +312,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php endif; ?>
     <div class="request-summary-item">
         <dt>Purpose</dt>
-        <dd><?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></dd>
+        <dd><?= ($req['purpose'] ?? '') === 'unspecified' ? '—' : e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></dd>
     </div>
     <div class="request-summary-item">
         <dt>Submitted</dt>

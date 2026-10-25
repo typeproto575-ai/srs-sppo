@@ -29,6 +29,10 @@ function srs_database_upgrade_definitions(): array
             'title' => 'Confirmation application baptism details',
             'description' => 'Adds baptism date and parish details collected by the walk-in Confirmation application form.',
         ],
+        '043_marriage_marital_status' => [
+            'title' => 'Marriage application marital status',
+            'description' => 'Allows applicants to report Married as a current marital status.',
+        ],
     ];
 }
 
@@ -159,6 +163,12 @@ function srs_upgrade_prerequisite_errors(PDO $pdo, string $migrationKey): array
                 'email',
             ],
         ],
+        '043_marriage_marital_status' => [
+            'marriage_applications' => [
+                'groom_marital_status',
+                'bride_marital_status',
+            ],
+        ],
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
 
@@ -201,8 +211,27 @@ function srs_upgrade_is_complete(PDO $pdo, string $migrationKey): bool
         '038_data_retention_support' => srs_upgrade_retention_complete($pdo),
         '041_requester_mailing_address' => srs_upgrade_column_exists($pdo, 'certificate_requests', 'requester_mailing_address'),
         '042_confirmation_baptism_details' => srs_upgrade_confirmation_baptism_details_complete($pdo),
+        '043_marriage_marital_status' => srs_upgrade_marriage_marital_status_complete($pdo),
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
+}
+
+function srs_upgrade_marriage_marital_status_complete(PDO $pdo): bool
+{
+    $statement = $pdo->prepare(
+        'SELECT column_name, column_type FROM information_schema.columns
+         WHERE table_schema = DATABASE() AND table_name = ? AND column_name IN (?, ?)'
+    );
+    $statement->execute(['marriage_applications', 'groom_marital_status', 'bride_marital_status']);
+    $columns = $statement->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    foreach (['groom_marital_status', 'bride_marital_status'] as $column) {
+        if (!isset($columns[$column]) || strpos((string) $columns[$column], "'married'") === false) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function srs_upgrade_confirmation_baptism_detail_columns(): array
@@ -431,6 +460,12 @@ function srs_apply_database_upgrade(PDO $pdo, string $migrationKey, int $userId)
         foreach (srs_upgrade_confirmation_baptism_detail_columns() as $column => $definition) {
             srs_upgrade_add_column($pdo, 'confirmation_applications', $column, $definition);
         }
+    } elseif ($migrationKey === '043_marriage_marital_status') {
+        $pdo->exec(
+            "ALTER TABLE marriage_applications
+             MODIFY groom_marital_status ENUM('single', 'widowed', 'annulled', 'married') NOT NULL,
+             MODIFY bride_marital_status ENUM('single', 'widowed', 'annulled', 'married') NOT NULL"
+        );
     }
 
     if (!srs_upgrade_is_complete($pdo, $migrationKey)) {

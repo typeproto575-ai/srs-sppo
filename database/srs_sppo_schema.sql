@@ -236,7 +236,7 @@ CREATE TABLE certificate_requests (
   requester_email             VARCHAR(150) NOT NULL,
   requester_contact_number    VARCHAR(30),
   requester_mailing_address   VARCHAR(500) NULL,
-  purpose                     VARCHAR(40) NOT NULL,  -- values come from the public forms (see migration 030)
+  purpose                     VARCHAR(40) NOT NULL,  -- legacy public-form purpose; new requests use 'unspecified'
   purpose_other               VARCHAR(150),
   notes                       TEXT,
   review_notes                TEXT NULL,
@@ -373,11 +373,11 @@ CREATE TABLE baptismal_applications (
   child_birthdate       DATE NOT NULL,
   child_birthplace      VARCHAR(150) NOT NULL,
   father_full_name      VARCHAR(150),
-  father_birthplace     VARCHAR(150),          -- per parish form
+  father_birthplace     VARCHAR(150),          -- legacy application data
   mother_maiden_name    VARCHAR(150),          -- per parish form (maiden name)
-  mother_birthplace     VARCHAR(150),          -- per parish form
-  parents_address       VARCHAR(255),          -- per parish form
-  parents_union_type    ENUM('legitimate', 'civil', 'natural') DEFAULT 'legitimate', -- per parish form
+  mother_birthplace     VARCHAR(150),          -- legacy application data
+  parents_address       VARCHAR(255),          -- legacy application data
+  parents_union_type    ENUM('legitimate', 'civil', 'natural') DEFAULT 'legitimate', -- new applications set NULL; legacy default retained
   parent_guardian_name  VARCHAR(150) NOT NULL, -- whoever is submitting/vouching for the child
   contact_number        VARCHAR(30),
   email                 VARCHAR(150) NOT NULL,
@@ -404,6 +404,8 @@ CREATE TABLE baptismal_application_godparents (
   FOREIGN KEY (baptismal_application_id) REFERENCES baptismal_applications(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Optional profile and baptism-identification fields are retained for
+-- legacy rows; current public and walk-in intake forms do not collect them.
 CREATE TABLE confirmation_applications (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   application_id        INT UNSIGNED NOT NULL UNIQUE,
@@ -439,6 +441,8 @@ CREATE TABLE confirmation_applications (
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- Optional profile and baptism-identification fields are retained for
+-- legacy rows; current public and walk-in intake forms do not collect them.
 CREATE TABLE first_communion_applications (
   id                    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   application_id        INT UNSIGNED NOT NULL UNIQUE,
@@ -472,7 +476,7 @@ CREATE TABLE marriage_applications (
   groom_occupation            VARCHAR(150),
   groom_father_name           VARCHAR(150),
   groom_mother_maiden_name    VARCHAR(150),
-  groom_marital_status        ENUM('single', 'widowed', 'annulled') NOT NULL,
+  groom_marital_status        ENUM('single', 'widowed', 'annulled', 'married') NOT NULL,
   groom_baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
   groom_confirmed              TINYINT(1) NOT NULL DEFAULT 0,
   groom_previous_marriage     VARCHAR(30),
@@ -491,7 +495,7 @@ CREATE TABLE marriage_applications (
   bride_occupation            VARCHAR(150),
   bride_father_name           VARCHAR(150),
   bride_mother_maiden_name    VARCHAR(150),
-  bride_marital_status        ENUM('single', 'widowed', 'annulled') NOT NULL,
+  bride_marital_status        ENUM('single', 'widowed', 'annulled', 'married') NOT NULL,
   bride_baptized_here         TINYINT(1) NOT NULL DEFAULT 0,
   bride_confirmed              TINYINT(1) NOT NULL DEFAULT 0,
   bride_previous_marriage     VARCHAR(30),

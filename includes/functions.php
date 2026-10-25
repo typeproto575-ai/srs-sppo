@@ -21,7 +21,7 @@ require_once __DIR__ . '/../config/environment.php';
 require_once __DIR__ . '/mail.php';
 
 /**
- * Generate a tracking number, e.g. SPPO-2026-000123 or SPPO-APP-2026-000123.
+ * Generate a tracking number with a random, non-sequential suffix.
  */
 function generate_tracking_number(PDO $pdo, string $table = 'certificate_requests'): string
 {
@@ -32,23 +32,21 @@ function generate_tracking_number(PDO $pdo, string $table = 'certificate_request
         default => throw new InvalidArgumentException('Unsupported tracking-number table.'),
     };
 
-    // Derive the next number from the current MAX sequence instead of a
-    // COUNT, so deleting the newest request of a year never makes the next
-    // submission collide with a previously issued (now-deleted) number.
-    // Applications have their own prefix so their numbers cannot shadow a
-    // certificate request in the public tracking lookup.
-    $stmt = $pdo->prepare(
-        "SELECT tracking_number FROM {$table} WHERE tracking_number LIKE ? ORDER BY tracking_number DESC LIMIT 1"
-    );
-    $stmt->execute([$prefix . '%']);
-    $last = $stmt->fetchColumn();
+    return $prefix . generate_tracking_token();
+}
 
-    $next   = 1;
-    if ($last !== false && preg_match('/-(\d{6})$/', (string) $last, $m)) {
-        $next   = ((int) $m[1]) + 1;
+function generate_tracking_token(): string
+{
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $bytes = random_bytes(16);
+    $token = '';
+
+    for ($i = 0; $i < 16; $i++) {
+        // The alphabet has 32 symbols, so masking preserves a uniform choice.
+        $token .= $alphabet[ord($bytes[$i]) & 31];
     }
 
-    return sprintf('%s%06d', $prefix, $next);
+    return $token;
 }
 /**
  * True when an exception is a MySQL duplicate-key error (driver code 1062).
@@ -406,6 +404,19 @@ function e(?string $value): string
     // ENT_QUOTES tells it to escape both single AND double quotes.
     // 'UTF-8' ensures proper handling of multi-byte / Unicode characters.
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+function compose_person_name(array $values, string $prefix): string
+{
+    $parts = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $value = $values[$prefix . '_' . $part] ?? '';
+        if (is_scalar($value) && trim((string) $value) !== '') {
+            $parts[] = trim((string) $value);
+        }
+    }
+
+    return implode(' ', $parts);
 }
 
 /**
@@ -785,9 +796,9 @@ function compose_structured_name(string $first, string $middle, string $last, st
 /**
  * Validate a "full name" free-text field.
  *
- * The parish form requires the complete first, middle and last name spelled
- * out — initials (e.g. "J.", "D") or a two-part name are rejected because the
- * certificate/register needs the exact full name.
+ * Names with two or more parts are accepted because a person may not have a
+ * middle name. Initials (e.g. "J.", "D") are rejected because the parish
+ * register needs each supplied name spelled out.
  *
  * Returns NULL when acceptable, otherwise a human-readable error message.
  * Empty strings return NULL (the field's own `required` rule handles that).
@@ -801,8 +812,8 @@ function validate_full_name(string $name): ?string
 
     $parts = preg_split('/\s+/', $name);
     $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
-    if (count($parts) < 3) {
-        return 'Please enter the full name (First Name Middle Name Last Name).';
+    if (count($parts) < 2) {
+        return 'Please enter at least a first name and a last name.';
     }
 
     foreach ($parts as $part) {

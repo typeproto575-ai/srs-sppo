@@ -58,7 +58,7 @@ require_once __DIR__ . '/../includes/header.php';
     <aside class="portal-hero-note" aria-label="Important parish office note">
         <span class="portal-note-label">Before you begin</span>
         <h2>Online forms. Personal parish care.</h2>
-        <p>There are no parishioner accounts or online payments. An online submission is only a pre-application; the secretary verifies requirements and identity before processing.</p>
+        <p>No account or online payment is needed. The parish office reviews each submission and confirms the next steps.</p>
         <a href="<?= $basePath ?>/public/how-it-works.php">See how the office process works &rarr;</a>
     </aside>
 </section>

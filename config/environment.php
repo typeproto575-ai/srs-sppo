@@ -13,6 +13,8 @@
  * ============================================================================
  */
 
+date_default_timezone_set('Asia/Manila');
+
 // The server-only local config is useful on shared hosts without environment
 // variable controls. Environment variables take precedence when both exist.
 $environmentLocalConfig = [];

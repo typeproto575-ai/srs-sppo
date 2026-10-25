@@ -189,7 +189,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e(humanize_label($req['sacrament_type'])) ?></td>
                         <td><?= e($req['subject_name'] ?? '—') ?></td>
                         <td><?= e($req['requester_name']) ?><br><small><?= e($req['requester_email']) ?></small></td>
-                        <td><?= e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></td>
+                        <td><?= ($req['purpose'] ?? '') === 'unspecified' ? '—' : e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></td>
                         <td><?= e(ucfirst($req['submission_channel'] ?? 'onsite')) ?></td>
                         <td><?= e(date('M j, Y', strtotime($req['date_submitted']))) ?></td>
                         <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></td>

@@ -99,6 +99,8 @@ try {
     // Connection succeeded — $pdo is now ready for queries.
     // No further setup is needed; every page can immediately use $pdo.
 
+    // Keep database-generated timestamps aligned with Philippine local time.
+    $pdo->exec("SET time_zone = '+08:00'");
 } catch (PDOException $e) {
     // -----------------------------------------------------------------------
     // CONNECTION FAILED — handle gracefully.

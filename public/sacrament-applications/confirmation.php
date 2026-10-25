@@ -68,8 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Your session expired. Please submit the form again.';
     } elseif ($action === 'next' || $action === 'back') {
         $stepFields = [
-            CONF_STEP_DETAILS => ['applicant_full_name', 'applicant_birthdate', 'parent_guardian_name'],
-            CONF_STEP_BAPTISM => ['baptized_here', 'baptismal_certificate_status'],
+            CONF_STEP_DETAILS => ['applicant_first', 'applicant_middle', 'applicant_last', 'applicant_suffix', 'applicant_birthdate', 'parent_guardian_name'],
+            CONF_STEP_BAPTISM => ['baptized_here'],
             CONF_STEP_CONTACT => ['contact_number', 'email'],
         ];
         foreach ($stepFields[$currentStep] ?? [] as $field) {
@@ -83,15 +83,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $app['current_step'] = max(CONF_STEP_DETAILS, $currentStep - 1);
         } else {
             if ($currentStep === CONF_STEP_DETAILS) {
-                if ($formData['applicant_full_name'] === '') $errors[] = "Applicant's full name is required.";
-                if (($e = validate_full_name($formData['applicant_full_name'])) !== null) $errors[] = $e;
+                $applicantName = compose_person_name($formData, 'applicant');
+                if (cfd('applicant_first', $formData) === '') $errors[] = "Applicant's first name is required.";
+                if (cfd('applicant_last', $formData) === '') $errors[] = "Applicant's last name is required.";
+                if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
                 if ($formData['applicant_birthdate'] === '') $errors[] = "Applicant's birthdate is required.";
                 if ($formData['applicant_birthdate'] !== '' && is_future_date($formData['applicant_birthdate'])) $errors[] = "Applicant's birthdate cannot be in the future.";
                 if ($formData['parent_guardian_name'] === '') $errors[] = 'Parent/Guardian name is required.';
                 if (($e = validate_full_name($formData['parent_guardian_name'])) !== null) $errors[] = $e;
             } elseif ($currentStep === CONF_STEP_BAPTISM) {
                 if (!in_array($formData['baptized_here'], ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
-                if (!in_array($formData['baptismal_certificate_status'], ['ready', 'not_ready'], true)) $errors[] = 'Please indicate whether the applicant has a baptismal certificate ready.';
             } elseif ($currentStep === CONF_STEP_CONTACT) {
                 if ($formData['contact_number'] === '') $errors[] = 'Contact number is required.';
                 if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
@@ -111,25 +112,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'final_submit' && $currentStep === CONF_STEP_VERIFY) {
         $formData['certify_accuracy'] = ($_POST['certify_accuracy'] ?? '') === '1' ? '1' : '0';
 
-        $applicantName = cfd('applicant_full_name', $formData);
+        $applicantName = compose_person_name($formData, 'applicant');
         $applicantBirthdate = cfd('applicant_birthdate', $formData);
         $parentGuardian = cfd('parent_guardian_name', $formData);
         $contactNumber = cfd('contact_number', $formData);
         $email = cfd('email', $formData);
         $baptizedHere = $formData['baptized_here'] ?? '';
-        $baptismalCert = $formData['baptismal_certificate_status'] ?? '';
-        $preferredBatch = $formData['preferred_batch'] ?? null;
-        $sponsorName = cfd('sponsor_name', $formData);
 
         if ($formData['certify_accuracy'] !== '1') $errors[] = 'You must certify that all information is true and correct before submitting.';
-        if ($applicantName === '') $errors[] = "Applicant's full name is required.";
+        if (cfd('applicant_first', $formData) === '') $errors[] = "Applicant's first name is required.";
+        if (cfd('applicant_last', $formData) === '') $errors[] = "Applicant's last name is required.";
+        if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
         if ($applicantBirthdate === '') $errors[] = "Applicant's birthdate is required.";
         if ($applicantBirthdate !== '' && is_future_date($applicantBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
         if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
         if ($contactNumber === '') $errors[] = 'Contact number is required.';
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
         if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
-        if (!in_array($baptismalCert, ['ready', 'not_ready'], true)) $errors[] = 'Please indicate whether the applicant has a baptismal certificate ready.';
         if (($formData['privacy_consent'] ?? '') !== '1') $errors[] = 'Please agree to the Privacy Notice before submitting.';
 
         if (!$errors) {
@@ -144,9 +143,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // All inserts run inside ONE transaction owned by retry_on_duplicate,
                 // which regenerates the tracking number and retries on a duplicate-key
                 // race (tracking_number is UNIQUE). New online confirmation
-                // applications always start with the baptismal certificate not yet
-                // physically received ('pending') — the form's ready/not_ready answer
-                // is reviewed by the secretary in person at the office.
+                // applications leave the baptismal certificate checklist pending
+                // until the secretary verifies the document in person.
                 $applicationId = null;
                 $trackingNumber = retry_on_duplicate($pdo, function () use (
                     $pdo,
@@ -156,8 +154,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $contactNumber,
                     $email,
                     $baptizedHere,
-                    $preferredBatch,
-                    $sponsorName,
                     &$applicationId
                 ): string {
                     $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
@@ -170,9 +166,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmt2 = $pdo->prepare("INSERT INTO confirmation_applications
                         (application_id, applicant_full_name, applicant_birthdate,
-                         parent_guardian_name, contact_number, email, baptized_here,
-                         baptismal_cert_status, preferred_batch, sponsor_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                         parent_guardian_name, contact_number, email, baptized_here)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)");
                     $stmt2->execute([
                         $applicationId,
                         $applicantName,
@@ -181,9 +176,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $contactNumber,
                         $email,
                         ($baptizedHere === 'this_parish') ? 1 : 0,
-                        'pending',
-                        $preferredBatch,
-                        $sponsorName,
                     ]);
 
                     return $trackingNumber;
@@ -239,9 +231,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($currentStep === CONF_STEP_DETAILS): ?>
         <fieldset>
             <legend>Phase 1 of 4 — Applicant Information</legend>
-            <label>Full Name *
-                <input type="text" name="applicant_full_name" autocomplete="name" value="<?= $wv('applicant_full_name') ?>" required>
-            </label>
+            <div class="inline-fields">
+                <label>First Name *
+                    <input type="text" name="applicant_first" autocomplete="given-name" value="<?= $wv('applicant_first') ?>" required>
+                </label>
+                <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span>
+                    <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= $wv('applicant_middle') ?>">
+                </label>
+            </div>
+            <div class="inline-fields">
+                <label>Last Name *
+                    <input type="text" name="applicant_last" autocomplete="family-name" value="<?= $wv('applicant_last') ?>" required>
+                </label>
+                <label>Suffix <span class="field-hint">(optional)</span>
+                    <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= $wv('applicant_suffix') ?>">
+                </label>
+            </div>
             <label>Birthdate *
                 <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
             </label>
@@ -257,20 +262,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="">-- Select --</option>
                         <option value="this_parish" <?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'selected' : '' ?>>At this parish</option>
                         <option value="elsewhere" <?= ($formData['baptized_here'] ?? '') === 'elsewhere' ? 'selected' : '' ?>>At another parish or church</option>
-                        <option value="not_sure" <?= ($formData['baptized_here'] ?? '') === 'not_sure' ? 'selected' : '' ?>>Not sure</option>
+                        <option value="not_sure" <?= ($formData['baptized_here'] ?? '') === 'not_sure' ? 'selected' : '' ?>>I’m not sure — I need help checking</option>
                     </select>
                 </label>
-                <p class="field-hint">Bring a copy of the applicant's Baptismal Certificate when the parish office asks for it. Don't have one yet? <a href="<?= e($basePath . '/public/certificate-requests/baptismal.php') ?>" target="_blank" rel="noopener noreferrer">Request a Baptismal Certificate</a>.</p>
-            </fieldset>
-            <fieldset>
-                <legend>Baptismal Certificate</legend>
-                <label>Do you have a copy of the applicant's Baptismal Certificate ready to submit?
-                    <select name="baptismal_certificate_status" required>
-                        <option value="">-- Select --</option>
-                        <option value="ready" <?= ($formData['baptismal_certificate_status'] ?? '') === 'ready' ? 'selected' : '' ?>>Yes, ready to submit</option>
-                        <option value="not_ready" <?= ($formData['baptismal_certificate_status'] ?? '') === 'not_ready' ? 'selected' : '' ?>>Not ready yet — request a certificate</option>
-                    </select>
-                </label>
+                <p class="field-hint">It’s okay if you don’t know which parish baptized the applicant. The parish office can help verify the record. Bring a copy of the applicant's Baptismal Certificate when asked. Don't have one yet? <a href="<?= e($basePath . '/public/certificate-requests/baptismal.php') ?>" target="_blank" rel="noopener noreferrer">Request a Baptismal Certificate</a>.</p>
             </fieldset>
         <?php elseif ($currentStep === CONF_STEP_CONTACT): ?>
             <fieldset>
@@ -289,11 +284,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <fieldset>
                 <legend>Phase 4 of 4 — Review &amp; Submit</legend>
                 <table class="review-table">
-                    <tr><th>Applicant</th><td><?= $wv('applicant_full_name') ?></td></tr>
+                    <tr><th>Applicant</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                     <tr><th>Birthdate</th><td><?= $wv('applicant_birthdate') ?></td></tr>
                     <tr><th>Parent / Guardian</th><td><?= $wv('parent_guardian_name') ?></td></tr>
-                    <tr><th>Baptized at</th><td><?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'At this parish' : (($formData['baptized_here'] ?? '') === 'elsewhere' ? 'At another parish or church' : 'Not sure') ?></td></tr>
-                    <tr><th>Baptismal certificate</th><td><?= ($formData['baptismal_certificate_status'] ?? '') === 'ready' ? 'Ready to submit' : 'Not ready yet' ?></td></tr>
+                    <tr><th>Baptized at</th><td><?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'At this parish' : (($formData['baptized_here'] ?? '') === 'elsewhere' ? 'At another parish or church' : 'Not sure — please help us check') ?></td></tr>
                     <tr><th>Contact number</th><td><?= $wv('contact_number') ?></td></tr>
                     <tr><th>Email</th><td><?= $wv('email') ?></td></tr>
                 </table>

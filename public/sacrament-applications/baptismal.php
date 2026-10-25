@@ -90,11 +90,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors = [];
 
             if ($currentStep === STEP_APP_DETAILS) {
-                $childName       = fd('child_full_name',       $_POST);
+                $childName       = compose_person_name($_POST, 'child');
                 $childBirthdate  = $_POST['child_birthdate'] ?? '';
                 $childBirthplace = fd('child_birthplace',      $_POST);
 
-                if ($childName === '')       $errors[] = "Child's full name is required.";
+                if (fd('child_first', $_POST) === '') $errors[] = "Child's first name is required.";
+                if (fd('child_last', $_POST) === '') $errors[] = "Child's last name is required.";
                 if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
                 if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
                 if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
@@ -137,6 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_write_close();
             header('Location: ' . htmlspecialchars($_SERVER['REQUEST_URI']));
             exit;
+        } elseif ($action === 'next') {
+            $stepData = [];
+            foreach ($_POST as $key => $value) {
+                if ($key === '_action' || $key === 'csrf_token') continue;
+                $stepData[$key] = $value;
+            }
+            $formData = array_merge($formData, $stepData);
         }
     }
     // ------------------------------------------------------------------
@@ -151,15 +159,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
-            $childName       = fd('child_full_name',       $formData);
+            $childName       = compose_person_name($formData, 'child');
             $childBirthdate  = $formData['child_birthdate'] ?? '';
             $childBirthplace = fd('child_birthplace',      $formData);
             $fatherName      = fd('father_full_name',      $formData);
-            $fatherBirthplace = fd('father_birthplace',     $formData);
             $motherMaidenName = fd('mother_maiden_name',   $formData);
-            $motherBirthplace = fd('mother_birthplace',    $formData);
-            $parentsAddress  = fd('parents_address',       $formData);
-            $parentsUnionType = fd('parents_union_type',   $formData);
             $parentGuardian  = fd('parent_guardian_name',  $formData);
             $contactNumber   = fd('contact_number',        $formData);
             $email           = fd('email',                 $formData);
@@ -167,11 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $privacyConsent  = $formData['privacy_consent'] ?? '';
 
             $godfatherNames      = fa('godfather_name',      $formData);
-            $godfatherResidences = fa('godfather_residence', $formData);
             $godmotherNames      = fa('godmother_name',      $formData);
-            $godmotherResidences = fa('godmother_residence', $formData);
 
-            if ($childName === '')       $errors[] = "Child's full name is required.";
+            if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
+            if (fd('child_last', $formData) === '') $errors[] = "Child's last name is required.";
+            if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
             if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
             if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
             if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
@@ -203,32 +207,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $stmt = $pdo->prepare("INSERT INTO baptismal_applications
                             (application_id, child_full_name, child_birthdate, child_birthplace,
-                             father_full_name, father_birthplace, mother_maiden_name, mother_birthplace,
-                             parents_address, parents_union_type, parent_guardian_name,
+                             father_full_name, mother_maiden_name, parents_union_type, parent_guardian_name,
                              contact_number, email, preferred_date)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)");
                         $stmt->execute([
                             $applicationId, $childName, $childBirthdate, $childBirthplace,
-                            $fatherName, $fatherBirthplace, $motherMaidenName, $motherBirthplace,
-                            $parentsAddress, $parentsUnionType, $parentGuardian,
+                            $fatherName, $motherMaidenName, $parentGuardian,
                             $contactNumber, $email, $preferredDate ?: null,
                         ]);
                         $baptismalApplicationId = (int) $pdo->lastInsertId();
 
                         $godparentStmt = $pdo->prepare("INSERT INTO baptismal_application_godparents
-                            (baptismal_application_id, godparent_name, godparent_residence, godparent_type)
-                            VALUES (?, ?, ?, ?)");
+                            (baptismal_application_id, godparent_name, godparent_type)
+                            VALUES (?, ?, ?)");
                         foreach ([
-                            ['names' => $godfatherNames, 'residences' => $godfatherResidences, 'type' => 'godfather'],
-                            ['names' => $godmotherNames, 'residences' => $godmotherResidences, 'type' => 'godmother'],
+                            ['names' => $godfatherNames, 'type' => 'godfather'],
+                            ['names' => $godmotherNames, 'type' => 'godmother'],
                         ] as $group) {
                             foreach ($group['names'] as $i => $name) {
                                 if (!is_scalar($name) || trim((string) $name) === '') continue;
-                                $residence = $group['residences'][$i] ?? '';
                                 $godparentStmt->execute([
                                     $baptismalApplicationId,
                                     trim((string) $name),
-                                    is_scalar($residence) ? trim((string) $residence) : '',
                                     $group['type'],
                                 ]);
                             }
@@ -272,12 +272,6 @@ $reviewNames = static function (array $names): string {
         $names
     ))));
 };
-$reviewParentsUnion = [
-    'legitimate' => 'Married in the Church',
-    'civil' => 'Civilly married',
-    'natural' => 'Not married',
-][$formData['parents_union_type'] ?? 'legitimate'] ?? '';
-
 require_once __DIR__ . '/../../includes/header.php';
 ?><section class="application-form">
 <?php
@@ -306,9 +300,22 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 1 of 4 — Child Information</legend>
-            <label>Child's Full Name
-                <input type="text" name="child_full_name" value="<?= e(fd('child_full_name', $formData)) ?>" required>
-            </label>
+            <div class="inline-fields">
+                <label>Child's First Name *
+                    <input type="text" name="child_first" autocomplete="given-name" value="<?= e(fd('child_first', $formData)) ?>" required>
+                </label>
+                <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span>
+                    <input type="text" name="child_middle" autocomplete="additional-name" value="<?= e(fd('child_middle', $formData)) ?>">
+                </label>
+            </div>
+            <div class="inline-fields">
+                <label>Last Name *
+                    <input type="text" name="child_last" autocomplete="family-name" value="<?= e(fd('child_last', $formData)) ?>" required>
+                </label>
+                <label>Suffix <span class="field-hint">(optional)</span>
+                    <input type="text" name="child_suffix" autocomplete="honorific-suffix" value="<?= e(fd('child_suffix', $formData)) ?>">
+                </label>
+            </div>
             <label>Date of Birth
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
             </label>
@@ -342,33 +349,15 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <label>Father's Full Name
                 <input type="text" name="father_full_name" value="<?= e(fd('father_full_name', $formData)) ?>">
             </label>
-            <label>Father's Birthplace
-                <input type="text" name="father_birthplace" value="<?= e(fd('father_birthplace', $formData)) ?>">
-            </label>
             <label>Mother's Maiden Name
                 <input type="text" name="mother_maiden_name" value="<?= e(fd('mother_maiden_name', $formData)) ?>">
-            </label>
-            <label>Mother's Birthplace
-                <input type="text" name="mother_birthplace" value="<?= e(fd('mother_birthplace', $formData)) ?>">
-            </label>
-            <label>Parents' Address
-                <textarea name="parents_address"><?= e(fd('parents_address', $formData)) ?></textarea>
-            </label>
-            <label>Parents' Union Type
-                <select name="parents_union_type">
-                    <option value="legitimate" <?= (fd('parents_union_type', $formData) === 'legitimate') ? 'selected' : '' ?>>Married in the Church</option>
-                    <option value="civil" <?= (fd('parents_union_type', $formData) === 'civil') ? 'selected' : '' ?>>Civilly married</option>
-                    <option value="natural" <?= (fd('parents_union_type', $formData) === 'natural') ? 'selected' : '' ?>>Not married</option>
-                </select>
             </label>
             <label>Parent/Guardian Name
                 <input type="text" name="parent_guardian_name" value="<?= e(fd('parent_guardian_name', $formData)) ?>" required>
             </label>
             <?php
             $godfatherRows = fa('godfather_name', $formData);
-            $godfatherResidenceRows = fa('godfather_residence', $formData);
             $godmotherRows = fa('godmother_name', $formData);
-            $godmotherResidenceRows = fa('godmother_residence', $formData);
             if (!$godfatherRows) $godfatherRows = [''];
             if (!$godmotherRows) $godmotherRows = [''];
             ?>
@@ -381,9 +370,6 @@ if ($currentStep === STEP_COUNT + 1): ?>
                             <div class="inline-fields">
                                 <label>Godfather Name
                                     <input type="text" name="godfather_name[]" value="<?= e(is_scalar($name) ? (string) $name : '') ?>">
-                                </label>
-                                <label>Residence
-                                    <input type="text" name="godfather_residence[]" value="<?= e(is_scalar($godfatherResidenceRows[$i] ?? '') ? (string) ($godfatherResidenceRows[$i] ?? '') : '') ?>">
                                 </label>
                             </div>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
@@ -401,9 +387,6 @@ if ($currentStep === STEP_COUNT + 1): ?>
                             <div class="inline-fields">
                                 <label>Godmother Name
                                     <input type="text" name="godmother_name[]" value="<?= e(is_scalar($name) ? (string) $name : '') ?>">
-                                </label>
-                                <label>Residence
-                                    <input type="text" name="godmother_residence[]" value="<?= e(is_scalar($godmotherResidenceRows[$i] ?? '') ? (string) ($godmotherResidenceRows[$i] ?? '') : '') ?>">
                                 </label>
                             </div>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
@@ -476,13 +459,11 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <fieldset>
             <legend>Review Your Information</legend>
             <table class="review-table">
-                <tr><th>Child's Full Name</th><td><?= e(fd('child_full_name', $formData)) ?></td></tr>
+                <tr><th>Child's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
                 <tr><th>Date of Birth</th><td><?= e($formData['child_birthdate'] ?? '') ?></td></tr>
                 <tr><th>Place of Birth</th><td><?= e(fd('child_birthplace', $formData)) ?></td></tr>
                 <tr><th>Father's Name</th><td><?= e(fd('father_full_name', $formData)) ?></td></tr>
                 <tr><th>Mother's Maiden Name</th><td><?= e(fd('mother_maiden_name', $formData)) ?></td></tr>
-                <tr><th>Parents' Address</th><td><?= e(fd('parents_address', $formData)) ?></td></tr>
-                <tr><th>Parents' Union Type</th><td><?= e($reviewParentsUnion) ?></td></tr>
                 <tr><th>Parent/Guardian</th><td><?= e(fd('parent_guardian_name', $formData)) ?></td></tr>
                 <tr><th>Godfathers</th><td><?= $reviewNames(fa('godfather_name', $formData)) ?></td></tr>
                 <tr><th>Godmothers</th><td><?= $reviewNames(fa('godmother_name', $formData)) ?></td></tr>
