@@ -423,7 +423,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Confirmand</legend>
                 <div class="inline-fields structured-name-fields">
                     <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="confirmand_first_name" value="<?= e($_POST['confirmand_first_name'] ?? $editRecord['confirmand_first_name'] ?? $confirmandParts[0]) ?>" required></label>
-                    <label>Middle Name <input autocomplete="off" type="text" name="confirmand_middle_name" value="<?= e($_POST['confirmand_middle_name'] ?? $editRecord['confirmand_middle_name'] ?? $confirmandParts[1]) ?>"></label>
+                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="confirmand_middle_name" value="<?= e($_POST['confirmand_middle_name'] ?? $editRecord['confirmand_middle_name'] ?? $confirmandParts[1]) ?>"></label>
                     <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="confirmand_last_name" value="<?= e($_POST['confirmand_last_name'] ?? $editRecord['confirmand_last_name'] ?? $confirmandParts[2]) ?>" required></label>
                     <label>Suffix <input autocomplete="off" type="text" name="confirmand_suffix" value="<?= e($_POST['confirmand_suffix'] ?? $editRecord['confirmand_suffix'] ?? $confirmandParts[3]) ?>"></label>
                 </div>

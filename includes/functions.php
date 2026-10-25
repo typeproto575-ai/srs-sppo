@@ -419,6 +419,147 @@ function compose_person_name(array $values, string $prefix): string
     return implode(' ', $parts);
 }
 
+function compose_person_name_rows(array $values, string $prefix): array
+{
+    $rows = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $field = $values[$prefix . '_' . $part] ?? [];
+        $rows = array_merge($rows, is_array($field) ? array_keys($field) : []);
+    }
+    $rows = array_unique($rows);
+    sort($rows);
+
+    $names = [];
+    foreach ($rows as $rowIndex) {
+        $person = [];
+        foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+            $field = $values[$prefix . '_' . $part] ?? [];
+            $person[$prefix . '_' . $part] = is_array($field) ? ($field[$rowIndex] ?? '') : '';
+        }
+        $name = compose_person_name($person, $prefix);
+        if ($name !== '') {
+            $names[] = $name;
+        }
+    }
+
+    return $names;
+}
+
+function person_name_row_count(array $values, string $prefix): int
+{
+    $count = 0;
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $field = $values[$prefix . '_' . $part] ?? [];
+        if (is_array($field)) {
+            $count = max($count, count($field));
+        }
+    }
+
+    return $count;
+}
+
+function validate_person_name_fields(array $values, string $prefix, string $label, bool $required = true): ?string
+{
+    $parts = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $value = $values[$prefix . '_' . $part] ?? '';
+        $parts[$part] = is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    $hasName = implode('', $parts) !== '';
+    if (!$required && !$hasName) {
+        return null;
+    }
+    if ($parts['first'] === '' && $parts['last'] === '') {
+        return "Please enter a first name or last name for {$label}.";
+    }
+
+    return validate_full_name(compose_person_name($values, $prefix));
+}
+
+function validate_person_name_rows(array $values, string $prefix, string $label): array
+{
+    $errors = [];
+    $rowCount = person_name_row_count($values, $prefix);
+    for ($rowIndex = 0; $rowIndex < $rowCount; $rowIndex++) {
+        $person = [];
+        $hasNamePart = false;
+        foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+            $field = $values[$prefix . '_' . $part] ?? [];
+            $value = is_array($field) && is_scalar($field[$rowIndex] ?? null)
+                ? trim((string) $field[$rowIndex])
+                : '';
+            $person[$prefix . '_' . $part] = $value;
+            $hasNamePart = $hasNamePart || $value !== '';
+        }
+        if (!$hasNamePart) {
+            continue;
+        }
+
+        $error = validate_person_name_fields($person, $prefix, $label);
+        if ($error !== null) {
+            $errors[] = $error;
+        }
+    }
+
+    return array_values(array_unique($errors));
+}
+
+function person_name_fields(
+    string $prefix,
+    string $label,
+    array $values,
+    bool $required = true,
+    ?int $rowIndex = null
+): string {
+    $isList = $rowIndex !== null;
+    $optionalHint = $required
+        ? ' <span class="field-hint">(required; enter First Name or Last Name; other parts are optional)</span>'
+        : ' <span class="field-hint">(optional)</span>';
+    $markup = '<div class="structured-name-fields" role="group" aria-label="' . e($label) . '"><p><strong>' . e($label) . '</strong>' . $optionalHint . '</p>';
+
+    foreach ([['first', 'middle'], ['last', 'suffix']] as $group) {
+        $markup .= '<div class="inline-fields">';
+        foreach ($group as $part) {
+            $partLabel = match ($part) {
+                'first' => 'First Name',
+                'middle' => 'Middle Name',
+                'last' => 'Last Name',
+                default => 'Suffix',
+            };
+            $key = $prefix . '_' . $part;
+            $value = $values[$key] ?? '';
+            if ($isList && is_array($value)) {
+                $value = $value[$rowIndex] ?? '';
+            }
+            $value = is_scalar($value) ? (string) $value : '';
+
+            $inputName = $key . ($isList ? '[]' : '');
+            $inputId = $isList ? '' : $key;
+            $idAttribute = $inputId === '' ? '' : ' id="' . e($inputId) . '"';
+            $forAttribute = $inputId === '' ? '' : ' for="' . e($inputId) . '"';
+            $autocomplete = match ($part) {
+                'first' => 'given-name',
+                'middle' => 'additional-name',
+                'last' => 'family-name',
+                default => 'honorific-suffix',
+            };
+            $hint = match ($part) {
+                'middle' => ' <span class="field-hint">(optional)</span>',
+                'suffix' => ' <span class="field-hint">(optional)</span>',
+                default => '',
+            };
+
+            $markup .= '<label' . $forAttribute . '>' . e($partLabel) . $hint
+                . '<input type="text"' . $idAttribute . ' name="' . e($inputName) . '" autocomplete="' . $autocomplete
+                . '" value="' . e($value) . '"></label>';
+        }
+        $markup .= '</div>';
+    }
+
+    return $markup . '</div>';
+}
+
 /**
  * Return the project's base URL path, used for all internal links and asset URLs.
  *
@@ -812,10 +953,6 @@ function validate_full_name(string $name): ?string
 
     $parts = preg_split('/\s+/', $name);
     $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
-    if (count($parts) < 2) {
-        return 'Please enter at least a first name and a last name.';
-    }
-
     foreach ($parts as $part) {
         if (preg_match('/^[A-Za-z]\.?$/', $part)) {
             return 'Please spell out every name in full — initials (e.g. "J.", "D") are not allowed.';

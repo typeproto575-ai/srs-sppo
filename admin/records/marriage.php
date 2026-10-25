@@ -483,7 +483,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Husband</legend>
                 <div class="inline-fields structured-name-fields">
                     <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="husband_first_name" value="<?= e($_POST['husband_first_name'] ?? $editRecord['husband_first_name'] ?? $husbandParts[0]) ?>" required></label>
-                    <label>Middle Name <input autocomplete="off" type="text" name="husband_middle_name" value="<?= e($_POST['husband_middle_name'] ?? $editRecord['husband_middle_name'] ?? $husbandParts[1]) ?>"></label>
+                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="husband_middle_name" value="<?= e($_POST['husband_middle_name'] ?? $editRecord['husband_middle_name'] ?? $husbandParts[1]) ?>"></label>
                     <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="husband_last_name" value="<?= e($_POST['husband_last_name'] ?? $editRecord['husband_last_name'] ?? $husbandParts[2]) ?>" required></label>
                     <label>Suffix <input autocomplete="off" type="text" name="husband_suffix" value="<?= e($_POST['husband_suffix'] ?? $editRecord['husband_suffix'] ?? $husbandParts[3]) ?>"></label>
                 </div>
@@ -498,7 +498,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Wife</legend>
                 <div class="inline-fields structured-name-fields">
                     <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="wife_first_name" value="<?= e($_POST['wife_first_name'] ?? $editRecord['wife_first_name'] ?? $wifeParts[0]) ?>" required></label>
-                    <label>Middle Name <input autocomplete="off" type="text" name="wife_middle_name" value="<?= e($_POST['wife_middle_name'] ?? $editRecord['wife_middle_name'] ?? $wifeParts[1]) ?>"></label>
+                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="wife_middle_name" value="<?= e($_POST['wife_middle_name'] ?? $editRecord['wife_middle_name'] ?? $wifeParts[1]) ?>"></label>
                     <label>Maiden Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="wife_last_name" value="<?= e($_POST['wife_last_name'] ?? $editRecord['wife_last_name'] ?? $wifeParts[2]) ?>" required></label>
                     <label>Suffix <input autocomplete="off" type="text" name="wife_suffix" value="<?= e($_POST['wife_suffix'] ?? $editRecord['wife_suffix'] ?? $wifeParts[3]) ?>"></label>
                 </div>

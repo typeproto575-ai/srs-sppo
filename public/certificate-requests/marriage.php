@@ -80,17 +80,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ---- Step 1: search the register --------------------------------------
     if ($action === 'find') {
         $search = [
-            'husband_first_name' => trim($_POST['husband_first_name'] ?? ''),
-            'husband_last_name'  => trim($_POST['husband_last_name'] ?? ''),
-            'wife_first_name'    => trim($_POST['wife_first_name'] ?? ''),
-            'wife_last_name'     => trim($_POST['wife_last_name'] ?? ''),
+            'husband_first' => trim($_POST['husband_first'] ?? ''),
+            'husband_middle' => trim($_POST['husband_middle'] ?? ''),
+            'husband_last' => trim($_POST['husband_last'] ?? ''),
+            'husband_suffix' => trim($_POST['husband_suffix'] ?? ''),
+            'wife_first' => trim($_POST['wife_first'] ?? ''),
+            'wife_middle' => trim($_POST['wife_middle'] ?? ''),
+            'wife_last' => trim($_POST['wife_last'] ?? ''),
+            'wife_suffix' => trim($_POST['wife_suffix'] ?? ''),
+            'husband_first_name' => trim($_POST['husband_first'] ?? ''),
+            'husband_last_name'  => trim($_POST['husband_last'] ?? ''),
+            'wife_first_name'    => trim($_POST['wife_first'] ?? ''),
+            'wife_last_name'     => trim($_POST['wife_last'] ?? ''),
             'marriage_date'      => trim($_POST['marriage_date'] ?? ''),
         ];
 
-        if ($search['husband_first_name'] === '') $errors[] = "Groom's first name is required.";
-        if ($search['husband_last_name'] === '')  $errors[] = "Groom's last name is required.";
-        if ($search['wife_first_name'] === '')    $errors[] = "Bride's first name is required.";
-        if ($search['wife_last_name'] === '')     $errors[] = "Bride's maiden last name is required.";
+        if ($search['husband_first_name'] === '' && $search['husband_last_name'] === '') {
+            $errors[] = "Please enter the groom's first name or last name.";
+        }
+        if ($search['wife_first_name'] === '' && $search['wife_last_name'] === '') {
+            $errors[] = "Please enter the bride's first name or maiden last name.";
+        }
 
         $mdate = DateTime::createFromFormat('Y-m-d', $search['marriage_date']);
         if (!$mdate || $mdate->format('Y-m-d') !== $search['marriage_date']) {
@@ -144,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ---- Step 3: contact details + submit ---------------------------------
     if ($action === 'submit' && $flow && !empty($flow['path'])) {
-        $requesterName         = trim($_POST['requester_name'] ?? '');
+        $requesterName         = compose_person_name($_POST, 'requester');
         $requesterRelationship = $_POST['requester_relationship'] ?? '';
         $requesterParty        = $_POST['requester_party'] ?? '';
         $requesterEmail        = trim($_POST['requester_email'] ?? '');
@@ -172,8 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $s            = $flow['search'];
-            $husbandName  = trim($s['husband_first_name'] . ' ' . $s['husband_last_name']);
-            $wifeName     = trim($s['wife_first_name'] . ' ' . $s['wife_last_name']);
+            $husbandName  = compose_person_name($s, 'husband');
+            $wifeName     = compose_person_name($s, 'wife');
             $marriageDate = $s['marriage_date'];
         }
 
@@ -377,25 +387,11 @@ require_once __DIR__ . '/../../includes/header.php';
                 <?= csrf_field() ?>
                 <fieldset>
                     <legend>Groom</legend>
-                    <div class="inline-fields">
-                        <label>First name *
-                            <input type="text" name="husband_first_name" autocomplete="off" value="<?= $searchVal('husband_first_name') ?>" required>
-                        </label>
-                        <label>Last name *
-                            <input type="text" name="husband_last_name" autocomplete="off" value="<?= $searchVal('husband_last_name') ?>" required>
-                        </label>
-                    </div>
+                    <?= person_name_fields('husband', "Groom's name", $flow['search'] ?? $_POST) ?>
                 </fieldset>
                 <fieldset>
                     <legend>Bride</legend>
-                    <div class="inline-fields">
-                        <label>First name *
-                            <input type="text" name="wife_first_name" autocomplete="off" value="<?= $searchVal('wife_first_name') ?>" required>
-                        </label>
-                        <label>Maiden last name *
-                            <input type="text" name="wife_last_name" autocomplete="off" value="<?= $searchVal('wife_last_name') ?>" required>
-                        </label>
-                    </div>
+                    <?= person_name_fields('wife', "Bride's name (maiden)", $flow['search'] ?? $_POST) ?>
                 </fieldset>
                 <label>Marriage date *
                     <input type="date" name="marriage_date" max="<?= e(date('Y-m-d')) ?>" value="<?= $searchVal('marriage_date') ?>" required>
@@ -449,7 +445,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     <strong><?= e($selectedRecord['husband_full_name']) ?> &amp; <?= e($selectedRecord['wife_maiden_name']) ?></strong>
                     <span>Married <?= e($formatDate($selectedRecord['marriage_date'])) ?></span>
                 <?php else: ?>
-                    <strong><?= e(trim(($flow['search']['husband_first_name'] ?? '') . ' ' . ($flow['search']['husband_last_name'] ?? ''))) ?> &amp; <?= e(trim(($flow['search']['wife_first_name'] ?? '') . ' ' . ($flow['search']['wife_last_name'] ?? ''))) ?></strong>
+                    <strong><?= e(compose_person_name($flow['search'] ?? [], 'husband')) ?> &amp; <?= e(compose_person_name($flow['search'] ?? [], 'wife')) ?></strong>
                     <span>Married <?= e($formatDate($flow['search']['marriage_date'] ?? '')) ?> &middot; the secretary will search the register for this record</span>
                 <?php endif; ?>
                 <a href="<?= e($pageUrl . $modeQuery . '&step=result') ?>">change</a>
@@ -471,9 +467,7 @@ require_once __DIR__ . '/../../includes/header.php';
                             </select>
                         </label>
                     <?php else: ?>
-                        <label>Your full name *
-                            <input type="text" name="requester_name" autocomplete="name" value="<?= $val('requester_name') ?>" required>
-                        </label>
+                        <?= person_name_fields('requester', 'Your name', $_POST) ?>
                         <label>Your relationship to the couple *
                             <select name="requester_relationship" required>
                                 <option value="">-- Select --</option>

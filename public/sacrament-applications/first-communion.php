@@ -70,7 +70,12 @@ if ($isWizardNavigation && csrf_verify()) {
             if ($value('applicant_birthdate') === '') $errors[] = "Applicant's birthdate is required.";
             if ($value('applicant_birthdate') !== '' && is_future_date($value('applicant_birthdate'))) $errors[] = "Applicant's birthdate cannot be in the future.";
         } elseif ($currentStep === 2) {
-            if ($value('parent_guardian_name') === '') $errors[] = 'Parent/Guardian name is required.';
+            $parentName = compose_person_name($_POST, 'parent_guardian');
+            if ($parentName === '') $errors[] = 'Parent/Guardian name is required.';
+            if (($e = validate_full_name($parentName)) !== null) $errors[] = $e;
+            foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
+                if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
+            }
             if ($value('contact_number') === '' || !is_valid_phone_number($value('contact_number'))) $errors[] = 'A valid contact number is required.';
             if (!filter_var($value('email'), FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
         } elseif ($currentStep === 3) {
@@ -105,9 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     }
     $name = compose_person_name($formData, 'applicant');
     $birthdate = $_POST['applicant_birthdate'] ?? '';
-    $parent = trim($_POST['parent_guardian_name'] ?? '');
-    $father = trim($_POST['father_full_name'] ?? '');
-    $mother = trim($_POST['mother_maiden_name'] ?? '');
+    $parent = compose_person_name($_POST, 'parent_guardian');
+    $father = compose_person_name($_POST, 'father');
+    $mother = compose_person_name($_POST, 'mother');
     $contact = trim($_POST['contact_number'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $baptizedHere = $_POST['baptized_here'] ?? '';
@@ -126,6 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if ($birthdate !== '' && is_future_date($birthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
     if ($parent === '') $errors[] = 'Parent/Guardian name is required.';
     if (($e = validate_full_name($parent)) !== null) $errors[] = $e;
+    foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
+        if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
+    }
     if ($contact === '' || !is_valid_phone_number($contact)) $errors[] = 'A valid contact number is required.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
     if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
@@ -190,7 +198,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
                         <div class="inline-fields">
                             <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
-                            <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
+                            <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
                         </div>
                         <div class="inline-fields">
                             <label>Last Name * <input type="text" name="applicant_last" autocomplete="family-name" value="<?= oldv('applicant_last') ?>" required></label>
@@ -200,14 +208,15 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     </fieldset>
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>
-                        <label>Father's Full Name <input type="text" name="father_full_name" value="<?= oldv('father_full_name') ?>"></label>
-                        <label>Mother's Full Maiden Name <input type="text" name="mother_maiden_name" value="<?= oldv('mother_maiden_name') ?>"></label>
-                        <label>Parent/Guardian Full Name * <input type="text" name="parent_guardian_name" value="<?= oldv('parent_guardian_name') ?>" required></label>
+                        <?= person_name_fields('father', "Father's name", $formData, false) ?>
+                        <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
+                        <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
                         <div class="inline-fields"><label>Contact Number * <input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>" required></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
                     </fieldset>
                 <?php elseif ($currentStep === 3): ?>
                     <fieldset><legend>Phase 3 of 5 — Sacramental Record</legend>
-                        <label>Where was the applicant baptized? * <select name="baptized_here" required><option value="">-- Select --</option><option value="this_parish" <?= selectedv('baptized_here', 'this_parish') ?>>This parish</option><option value="elsewhere" <?= selectedv('baptized_here', 'elsewhere') ?>>Another parish/church</option><option value="not_sure" <?= selectedv('baptized_here', 'not_sure') ?>>Not sure</option></select></label>
+                        <label>Where was the applicant baptized? * <select name="baptized_here" required><option value="">-- Select --</option><option value="this_parish" <?= selectedv('baptized_here', 'this_parish') ?>>This parish</option><option value="elsewhere" <?= selectedv('baptized_here', 'elsewhere') ?>>Another parish/church</option><option value="not_sure" <?= selectedv('baptized_here', 'not_sure') ?>>Not sure — please help us check</option></select></label>
+                        <p class="field-hint">If you do not know where the applicant was baptized, the parish office can help check.</p>
                     </fieldset>
                 <?php elseif ($currentStep === 4): ?>
                     <fieldset><legend>Phase 4 of 5 — Parent / Guardian Consent</legend>
@@ -220,8 +229,8 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <table class="review-table">
                             <tr><th>Full name</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                             <tr><th>Date of birth</th><td><?= oldv('applicant_birthdate') ?></td></tr>
-                            <tr><th>Parents</th><td><?= oldv('father_full_name') ?> · <?= oldv('mother_maiden_name') ?></td></tr>
-                            <tr><th>Parent / Guardian</th><td><?= oldv('parent_guardian_name') ?></td></tr>
+                            <tr><th>Parents</th><td><?= e(compose_person_name($formData, 'father')) ?> · <?= e(compose_person_name($formData, 'mother')) ?></td></tr>
+                            <tr><th>Parent / Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
                             <tr><th>Contact</th><td><?= oldv('contact_number') ?> · <?= oldv('email') ?></td></tr>
                             <tr><th>Baptized at</th><td><?= e((string) ($formData['baptized_here'] ?? '')) ?></td></tr>
                         </table>

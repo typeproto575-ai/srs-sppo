@@ -38,11 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $bapState = ''; // '' | 'results' | 'resolved'
     $bapResolved = null; // loaded register row when a numeric id was picked
     $bapSearch = [
-        'first_name'  => trim($_POST['bap_first_name'] ?? ''),
-        'last_name'   => trim($_POST['bap_last_name'] ?? ''),
+        'first_name'  => trim($_POST['bap_record_first'] ?? ''),
+        'last_name'   => trim($_POST['bap_record_last'] ?? ''),
         'birthdate'   => trim($_POST['bap_birthdate'] ?? ''),
-        'father_name' => trim($_POST['bap_father_name'] ?? ''),
-        'mother_name' => trim($_POST['bap_mother_name'] ?? ''),
+        'father_name' => compose_person_name($_POST, 'bap_search_father'),
+        'mother_name' => compose_person_name($_POST, 'bap_search_mother'),
     ];
     if (($_POST['bap_step'] ?? '') === 'find') {
         if ($bapSearch['first_name'] === '' || $bapSearch['last_name'] === '') {
@@ -98,11 +98,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $confResolved = null; // loaded register row when a numeric id was picked
     $confBapDate = null; // linked baptism_date for display only
     $confSearch = [
-        'first_name'  => trim($_POST['conf_first_name'] ?? ''),
-        'last_name'   => trim($_POST['conf_last_name'] ?? ''),
+        'first_name'  => trim($_POST['conf_record_first'] ?? ''),
+        'last_name'   => trim($_POST['conf_record_last'] ?? ''),
         'birthdate'   => trim($_POST['conf_birthdate'] ?? ''),
-        'father_name' => trim($_POST['conf_father_name'] ?? ''),
-        'mother_name' => trim($_POST['conf_mother_name'] ?? ''),
+        'father_name' => compose_person_name($_POST, 'conf_search_father'),
+        'mother_name' => compose_person_name($_POST, 'conf_search_mother'),
     ];
     if (($_POST['conf_step'] ?? '') === 'find') {
         if ($confSearch['first_name'] === '' || $confSearch['last_name'] === '') {
@@ -166,11 +166,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $fcState = ''; // '' | 'results' | 'resolved'
     $fcResolved = null; // loaded register row when a numeric id was picked
     $fcSearch = [
-        'first_name'  => trim($_POST['fc_first_name'] ?? ''),
-        'last_name'   => trim($_POST['fc_last_name'] ?? ''),
+        'first_name'  => trim($_POST['fc_record_first'] ?? ''),
+        'last_name'   => trim($_POST['fc_record_last'] ?? ''),
         'birthdate'   => trim($_POST['fc_birthdate'] ?? ''),
-        'father_name' => trim($_POST['fc_father_name'] ?? ''),
-        'mother_name' => trim($_POST['fc_mother_name'] ?? ''),
+        'father_name' => compose_person_name($_POST, 'fc_search_father'),
+        'mother_name' => compose_person_name($_POST, 'fc_search_mother'),
     ];
     if (($_POST['fc_step'] ?? '') === 'find') {
         if ($fcSearch['first_name'] === '' || $fcSearch['last_name'] === '') {
@@ -227,10 +227,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $marState = ''; // '' | 'results' | 'resolved'
     $marResolved = null; // loaded register row when a numeric id was picked
     $marSearch = [
-        'husband_first_name' => trim($_POST['husband_first_name'] ?? ''),
-        'husband_last_name'  => trim($_POST['husband_last_name'] ?? ''),
-        'wife_first_name'    => trim($_POST['wife_first_name'] ?? ''),
-        'wife_last_name'     => trim($_POST['wife_last_name'] ?? ''),
+        'husband_first_name' => trim($_POST['mar_groom_first'] ?? ''),
+        'husband_last_name'  => trim($_POST['mar_groom_last'] ?? ''),
+        'wife_first_name'    => trim($_POST['mar_bride_first'] ?? ''),
+        'wife_last_name'     => trim($_POST['mar_bride_last'] ?? ''),
         'marriage_date'      => trim($_POST['mar_marriage_date'] ?? ''),
     ];
     if (($_POST['mar_step'] ?? '') === 'find') {
@@ -290,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         || array_key_exists('fc_use_record', $_POST) || array_key_exists('mar_use_record', $_POST);
     $validTypes = ['baptismal', 'confirmation', 'first_communion', 'marriage'];
 
-    $requesterName          = trim($_POST['requester_name'] ?? '');
+    $requesterName          = compose_person_name($_POST, 'requester');
     $requesterRelationship  = $_POST['requester_relationship'] ?? '';
     $requesterRelOther      = trim($_POST['requester_relationship_other'] ?? '');
     $requesterEmail         = trim($_POST['requester_email'] ?? '');
@@ -308,6 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     if (!$isSearchStep) {
         if (!in_array($sacramentType, $validTypes, true)) $errors[] = 'Select a sacrament type.';
         if ($requesterName === '')         $errors[] = 'Requester name is required.';
+        if (($nameError = validate_person_name_fields($_POST, 'requester', 'Requester')) !== null) $errors[] = $nameError;
         if ($requesterRelationship === '') $errors[] = 'Relationship is required.';
         if ($requesterEmail === '')        $errors[] = 'Email address is required.';
         if (strlen($requesterMailingAddress) > 500) $errors[] = 'Mailing address must be 500 characters or fewer.';
@@ -327,12 +328,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if (!$isSearchStep && ($sacramentType === 'baptismal') && ($bapState === '') && !array_key_exists('bap_matched_id', $_POST)) {
             $errors[] = "Search the register or choose 'No match — continue manually' before encoding.";
         } elseif (!$isSearchStep) {
-            $childName = trim($_POST['bap_child_full_name'] ?? '');
-            $fatherName = trim($_POST['bap_father_full_name'] ?? '');
-            $motherName = trim($_POST['bap_mother_full_name'] ?? '');
+            $childName = compose_person_name($_POST, 'bap_child') ?: trim($_POST['bap_child_full_name'] ?? '');
+            $fatherName = compose_person_name($_POST, 'bap_father') ?: trim($_POST['bap_father_full_name'] ?? '');
+            $motherName = compose_person_name($_POST, 'bap_mother') ?: trim($_POST['bap_mother_full_name'] ?? '');
             if ($childName === '') $errors[] = "Child's full name is required.";
             if ($fatherName === '') $errors[] = "Father's full name is required.";
             if ($motherName === '') $errors[] = "Mother's full name is required.";
+            if ($matchedId === null) {
+                foreach (['bap_child' => "Child's name", 'bap_father' => "Father's name", 'bap_mother' => "Mother's name"] as $prefix => $label) {
+                    if (($nameError = validate_person_name_fields($_POST, $prefix, $label)) !== null) $errors[] = $nameError;
+                }
+            }
             $birthdateVal = $_POST['bap_birthdate'] ?? '';
             if ($birthdateVal === '') $errors[] = 'Birthdate is required.'; // column is NOT NULL; register rows always have one
             $extVals = [$childName, $fatherName, $motherName, trim($_POST['bap_birthplace'] ?? ''), $birthdateVal,
@@ -347,17 +353,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if (!$isSearchStep && ($sacramentType === 'confirmation') && ($confState === '') && !array_key_exists('conf_matched_id', $_POST)) {
             $errors[] = "Search the register or choose 'No match — continue manually' before encoding.";
         } elseif (!$isSearchStep) {
-            $confirmandName = trim($_POST['conf_confirmand_full_name'] ?? '');
-            $confFatherName = trim($_POST['conf_father_full_name'] ?? '');
+            $confirmandName = compose_person_name($_POST, 'conf_confirmand') ?: trim($_POST['conf_confirmand_full_name'] ?? '');
+            $confFatherName = compose_person_name($_POST, 'conf_father') ?: trim($_POST['conf_father_full_name'] ?? '');
             // Matched state carries conf_mother_full_name; the manual inputs post
             // conf_mother_maiden_name - read whichever was posted.
-            $confMotherName = trim($_POST['conf_mother_full_name'] ?? $_POST['conf_mother_maiden_name'] ?? '');
+            $confMotherName = compose_person_name($_POST, 'conf_mother')
+                ?: trim($_POST['conf_mother_full_name'] ?? $_POST['conf_mother_maiden_name'] ?? '');
             if ($confirmandName === '') $errors[] = "Confirmand's full name is required.";
             if ($confFatherName === '') $errors[] = "Father's full name is required.";
             if ($confMotherName === '') $errors[] = "Mother's full name is required.";
+            if ($confMatchedId === null) {
+                foreach (['conf_confirmand' => "Confirmand's name", 'conf_father' => "Father's name", 'conf_mother' => "Mother's name"] as $prefix => $label) {
+                    if (($nameError = validate_person_name_fields($_POST, $prefix, $label)) !== null) $errors[] = $nameError;
+                }
+            }
+            if (($nameError = validate_person_name_fields($_POST, 'conf_sponsor', 'Sponsor', false)) !== null) $errors[] = $nameError;
             $extVals = [$confirmandName, $confFatherName, $confMotherName,
                         ($_POST['conf_date_of_confirmation'] ?? '') ?: null, $confBapDate, '',
-                        trim($_POST['conf_officiating_minister'] ?? ''), trim($_POST['conf_sponsor_name'] ?? ''),
+                        trim($_POST['conf_officiating_minister'] ?? ''),
+                        compose_person_name($_POST, 'conf_sponsor') ?: trim($_POST['conf_sponsor_name'] ?? ''),
                         '', '', '', $confMatchedId];
         }
     } elseif ($sacramentType === 'first_communion') {
@@ -368,14 +382,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if (!$isSearchStep && ($sacramentType === 'first_communion') && ($fcState === '') && !array_key_exists('fc_matched_id', $_POST)) {
             $errors[] = "Search the register or choose 'No match — continue manually' before encoding.";
         } elseif (!$isSearchStep) {
-            $communicantName = trim($_POST['fc_communicant_full_name'] ?? '');
-            $fcFatherName = trim($_POST['fc_father_full_name'] ?? '');
+            $communicantName = compose_person_name($_POST, 'fc_communicant') ?: trim($_POST['fc_communicant_full_name'] ?? '');
+            $fcFatherName = compose_person_name($_POST, 'fc_father') ?: trim($_POST['fc_father_full_name'] ?? '');
             // Manual posts fc_mother_maiden_name; matched carries
             // fc_mother_full_name - read whichever was posted.
-            $fcMotherName = trim($_POST['fc_mother_full_name'] ?? $_POST['fc_mother_maiden_name'] ?? '');
+            $fcMotherName = compose_person_name($_POST, 'fc_mother')
+                ?: trim($_POST['fc_mother_full_name'] ?? $_POST['fc_mother_maiden_name'] ?? '');
             if ($communicantName === '') $errors[] = "Communicant's full name is required.";
             if ($fcFatherName === '') $errors[] = "Father's full name is required.";
             if ($fcMotherName === '') $errors[] = "Mother's full name is required.";
+            if ($fcMatchedId === null) {
+                foreach (['fc_communicant' => "Communicant's name", 'fc_father' => "Father's name", 'fc_mother' => "Mother's name"] as $prefix => $label) {
+                    if (($nameError = validate_person_name_fields($_POST, $prefix, $label)) !== null) $errors[] = $nameError;
+                }
+            }
             $extVals = [$communicantName, $fcFatherName, $fcMotherName,
                         ($_POST['fc_date_of_first_communion'] ?? '') ?: null, trim($_POST['fc_officiating_minister'] ?? ''),
                         '', '', '', $fcMatchedId];
@@ -388,14 +408,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         if (!$isSearchStep && ($sacramentType === 'marriage') && ($marState === '') && !array_key_exists('mar_matched_id', $_POST)) {
             $errors[] = "Search the register or choose 'No match — continue manually' before encoding.";
         } elseif (!$isSearchStep) {
-            $husbandName = trim($_POST['party_a_full_name'] ?? '');
-            $wifeName    = trim($_POST['party_b_full_name'] ?? '');
+            $husbandName = compose_person_name($_POST, 'party_a') ?: trim($_POST['party_a_full_name'] ?? '');
+            $wifeName    = compose_person_name($_POST, 'party_b') ?: trim($_POST['party_b_full_name'] ?? '');
             if ($husbandName === '') $errors[] = "Party A's full name is required.";
             if ($wifeName === '')    $errors[] = "Party B's full name is required.";
-            $extVals = [$husbandName, trim($_POST['party_a_father_name'] ?? ''), trim($_POST['party_a_mother_name'] ?? ''),
+            if ($marMatchedId === null) {
+                foreach (['party_a' => "Party A's name", 'party_b' => "Party B's name"] as $prefix => $label) {
+                    if (($nameError = validate_person_name_fields($_POST, $prefix, $label)) !== null) $errors[] = $nameError;
+                }
+            }
+            foreach ([
+                'party_a_father' => "Party A's father's name",
+                'party_a_mother' => "Party A's mother's name",
+                'party_b_father' => "Party B's father's name",
+                'party_b_mother' => "Party B's mother's name",
+            ] as $prefix => $label) {
+                if (($nameError = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $nameError;
+            }
+            $extVals = [$husbandName, compose_person_name($_POST, 'party_a_father'), compose_person_name($_POST, 'party_a_mother'),
                         '', null,
                         '', '', '',
-                        $wifeName, trim($_POST['party_b_father_name'] ?? ''), trim($_POST['party_b_mother_name'] ?? ''),
+                        $wifeName, compose_person_name($_POST, 'party_b_father'), compose_person_name($_POST, 'party_b_mother'),
                         '', null,
                         '', '', '',
                         trim($_POST['mar_marriage_date'] ?? '') !== '' ? $_POST['mar_marriage_date'] : null, trim($_POST['mar_officiating_minister'] ?? ''),
@@ -533,7 +566,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset data-walk-in-phase="contact">
                 <legend>Requester Information</legend>
-                <label>Requester's Full Name * <input autocomplete="off" type="text" name="requester_name" value="<?= e($_POST['requester_name'] ?? '') ?>" required></label>
+                <?= person_name_fields('requester', "Requester's name", $_POST) ?>
                 <label>Relationship *
                     <select name="requester_relationship" required>
                         <option value="">-- Select --</option>
@@ -594,9 +627,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php else: ?>
                         <fieldset>
                             <legend>Baptismal Details (manual)</legend>
-                            <label>Child's Full Name * <input autocomplete="off" type="text" name="bap_child_full_name" value="<?= e($_POST['bap_child_full_name'] ?? '') ?>"></label>
-                            <label>Father's Full Name * <input autocomplete="off" type="text" name="bap_father_full_name" value="<?= e($_POST['bap_father_full_name'] ?? '') ?>"></label>
-                            <label>Mother's Full Name * <input autocomplete="off" type="text" name="bap_mother_full_name" value="<?= e($_POST['bap_mother_full_name'] ?? '') ?>"></label>
+                            <?= person_name_fields('bap_child', "Child's name", $_POST) ?>
+                            <?= person_name_fields('bap_father', "Father's name", $_POST) ?>
+                            <?= person_name_fields('bap_mother', "Mother's name", $_POST) ?>
                             <label>Birthdate * <input autocomplete="off" type="date" name="bap_birthdate" value="<?= e($_POST['bap_birthdate'] ?? '') ?>"></label>
                             <label>Birthplace <input autocomplete="off" type="text" name="bap_birthplace" value="<?= e($_POST['bap_birthplace'] ?? '') ?>"></label>
                             <label>Date of Baptism <input autocomplete="off" type="date" name="bap_date_of_baptism" value="<?= e($_POST['bap_date_of_baptism'] ?? '') ?>"></label>
@@ -608,13 +641,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>Baptismal Record Details</legend>
                         <p class="field-hint">Search the encoded register first. Use the child's name and birth details as they appear in the record.</p>
-                        <div class="inline-fields">
-                            <label>First name <input autocomplete="off" type="text" name="bap_first_name" value="<?= e($_POST['bap_first_name'] ?? '') ?>"></label>
-                            <label>Last name <input autocomplete="off" type="text" name="bap_last_name" value="<?= e($_POST['bap_last_name'] ?? '') ?>"></label>
-                        </div>
+                        <?= person_name_fields('bap_record', "Child's name", $_POST) ?>
                         <label>Birthdate <input autocomplete="off" type="date" name="bap_birthdate" value="<?= e($_POST['bap_birthdate'] ?? '') ?>"></label>
-                        <label>Father's full name <input autocomplete="off" type="text" name="bap_father_name" value="<?= e($_POST['bap_father_name'] ?? '') ?>"></label>
-                        <label>Mother's maiden name <input autocomplete="off" type="text" name="bap_mother_name" value="<?= e($_POST['bap_mother_name'] ?? '') ?>"></label>
+                        <?= person_name_fields('bap_search_father', "Father's name", $_POST, false) ?>
+                        <?= person_name_fields('bap_search_mother', "Mother's maiden name", $_POST, false) ?>
                         <button type="submit" name="bap_step" value="find" formnovalidate class="btn btn-secondary">Find in Register</button>
                     </fieldset>
                     <?php if ($bapState === 'results'): ?>
@@ -681,12 +711,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php else: ?>
                         <fieldset>
                             <legend>Confirmation Details (manual)</legend>
-                            <label>Confirmand's Full Name * <input autocomplete="off" type="text" name="conf_confirmand_full_name" value="<?= e($_POST['conf_confirmand_full_name'] ?? '') ?>"></label>
-                            <label>Father's Full Name * <input autocomplete="off" type="text" name="conf_father_full_name" value="<?= e($_POST['conf_father_full_name'] ?? '') ?>"></label>
-                            <label>Mother's Maiden Name * <input autocomplete="off" type="text" name="conf_mother_maiden_name" value="<?= e($_POST['conf_mother_maiden_name'] ?? '') ?>"></label>
+                            <?= person_name_fields('conf_confirmand', "Confirmand's name", $_POST) ?>
+                            <?= person_name_fields('conf_father', "Father's name", $_POST) ?>
+                            <?= person_name_fields('conf_mother', "Mother's maiden name", $_POST) ?>
                             <label>Date of Confirmation <input autocomplete="off" type="date" name="conf_date_of_confirmation" value="<?= e($_POST['conf_date_of_confirmation'] ?? '') ?>"></label>
                             <label>Officiating Minister <input autocomplete="off" type="text" name="conf_officiating_minister" value="<?= e($_POST['conf_officiating_minister'] ?? '') ?>"></label>
-                            <label>Sponsor <input autocomplete="off" type="text" name="conf_sponsor_name" value="<?= e($_POST['conf_sponsor_name'] ?? '') ?>"></label>
+                            <?= person_name_fields('conf_sponsor', 'Sponsor', $_POST, false) ?>
                             <input type="hidden" name="conf_matched_id" value="">
                         </fieldset>
                     <?php endif; ?>
@@ -694,13 +724,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>Confirmation Record Details</legend>
                         <p class="field-hint">Search the encoded register first. Use the confirmand's name and birth details as they appear in the record.</p>
-                        <div class="inline-fields">
-                            <label>First name <input autocomplete="off" type="text" name="conf_first_name" value="<?= e($_POST['conf_first_name'] ?? '') ?>"></label>
-                            <label>Last name <input autocomplete="off" type="text" name="conf_last_name" value="<?= e($_POST['conf_last_name'] ?? '') ?>"></label>
-                        </div>
+                        <?= person_name_fields('conf_record', "Confirmand's name", $_POST) ?>
                         <label>Birthdate <input autocomplete="off" type="date" name="conf_birthdate" value="<?= e($_POST['conf_birthdate'] ?? '') ?>"></label>
-                        <label>Father's full name <input autocomplete="off" type="text" name="conf_father_name" value="<?= e($_POST['conf_father_name'] ?? '') ?>"></label>
-                        <label>Mother's maiden name <input autocomplete="off" type="text" name="conf_mother_name" value="<?= e($_POST['conf_mother_name'] ?? '') ?>"></label>
+                        <?= person_name_fields('conf_search_father', "Father's name", $_POST, false) ?>
+                        <?= person_name_fields('conf_search_mother', "Mother's maiden name", $_POST, false) ?>
                         <button type="submit" name="conf_step" value="find" formnovalidate class="btn btn-secondary">Find in Register</button>
                     </fieldset>
                     <?php if ($confState === 'results'): ?>
@@ -764,9 +791,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php else: ?>
                         <fieldset>
                             <legend>First Communion Details (manual)</legend>
-                            <label>Communicant's Full Name * <input autocomplete="off" type="text" name="fc_communicant_full_name" value="<?= e($_POST['fc_communicant_full_name'] ?? '') ?>"></label>
-                            <label>Father's Full Name * <input autocomplete="off" type="text" name="fc_father_full_name" value="<?= e($_POST['fc_father_full_name'] ?? '') ?>"></label>
-                            <label>Mother's Maiden Name * <input autocomplete="off" type="text" name="fc_mother_maiden_name" value="<?= e($_POST['fc_mother_maiden_name'] ?? '') ?>"></label>
+                            <?= person_name_fields('fc_communicant', "Communicant's name", $_POST) ?>
+                            <?= person_name_fields('fc_father', "Father's name", $_POST) ?>
+                            <?= person_name_fields('fc_mother', "Mother's maiden name", $_POST) ?>
                             <label>Date of First Communion <input autocomplete="off" type="date" name="fc_date_of_first_communion" value="<?= e($_POST['fc_date_of_first_communion'] ?? '') ?>"></label>
                             <label>Officiating Minister <input autocomplete="off" type="text" name="fc_officiating_minister" value="<?= e($_POST['fc_officiating_minister'] ?? '') ?>"></label>
                             <input type="hidden" name="fc_matched_id" value="">
@@ -776,13 +803,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>First Communion Record Details</legend>
                         <p class="field-hint">Search the encoded register first. Use the communicant's name and birth details as they appear in the record.</p>
-                        <div class="inline-fields">
-                            <label>First name <input autocomplete="off" type="text" name="fc_first_name" value="<?= e($_POST['fc_first_name'] ?? '') ?>"></label>
-                            <label>Last name <input autocomplete="off" type="text" name="fc_last_name" value="<?= e($_POST['fc_last_name'] ?? '') ?>"></label>
-                        </div>
+                        <?= person_name_fields('fc_record', "Communicant's name", $_POST) ?>
                         <label>Birthdate <input autocomplete="off" type="date" name="fc_birthdate" value="<?= e($_POST['fc_birthdate'] ?? '') ?>"></label>
-                        <label>Father's full name <input autocomplete="off" type="text" name="fc_father_name" value="<?= e($_POST['fc_father_name'] ?? '') ?>"></label>
-                        <label>Mother's maiden name <input autocomplete="off" type="text" name="fc_mother_name" value="<?= e($_POST['fc_mother_name'] ?? '') ?>"></label>
+                        <?= person_name_fields('fc_search_father', "Father's name", $_POST, false) ?>
+                        <?= person_name_fields('fc_search_mother', "Mother's maiden name", $_POST, false) ?>
                         <button type="submit" name="fc_step" value="find" formnovalidate class="btn btn-secondary">Find in Register</button>
                     </fieldset>
                     <?php if ($fcState === 'results'): ?>
@@ -843,19 +867,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php else: ?>
                         <fieldset>
                             <legend>Party A (e.g., Groom)</legend>
-                            <label>Full Name * <input autocomplete="off" type="text" name="party_a_full_name" value="<?= e($_POST['party_a_full_name'] ?? '') ?>"></label>
-                            <div class="inline-fields">
-                                <label>Father's Name <input autocomplete="off" type="text" name="party_a_father_name" value="<?= e($_POST['party_a_father_name'] ?? '') ?>"></label>
-                                <label>Mother's Name <input autocomplete="off" type="text" name="party_a_mother_name" value="<?= e($_POST['party_a_mother_name'] ?? '') ?>"></label>
-                            </div>
+                            <?= person_name_fields('party_a', "Party A's name", $_POST) ?>
+                            <?= person_name_fields('party_a_father', "Party A's father's name", $_POST, false) ?>
+                            <?= person_name_fields('party_a_mother', "Party A's mother's name", $_POST, false) ?>
                         </fieldset>
                         <fieldset>
                             <legend>Party B (e.g., Bride)</legend>
-                            <label>Full Name * <input autocomplete="off" type="text" name="party_b_full_name" value="<?= e($_POST['party_b_full_name'] ?? '') ?>"></label>
-                            <div class="inline-fields">
-                                <label>Father's Name <input autocomplete="off" type="text" name="party_b_father_name" value="<?= e($_POST['party_b_father_name'] ?? '') ?>"></label>
-                                <label>Mother's Name <input autocomplete="off" type="text" name="party_b_mother_name" value="<?= e($_POST['party_b_mother_name'] ?? '') ?>"></label>
-                            </div>
+                            <?= person_name_fields('party_b', "Party B's name", $_POST) ?>
+                            <?= person_name_fields('party_b_father', "Party B's father's name", $_POST, false) ?>
+                            <?= person_name_fields('party_b_mother', "Party B's mother's name", $_POST, false) ?>
                         </fieldset>
                         <fieldset>
                             <legend>Contracted Marriage Detail</legend>
@@ -868,14 +888,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>Marriage Record Details</legend>
                         <p class="field-hint">Search the encoded register first. Use the couple's names and marriage date as they appear in the record.</p>
-                        <div class="inline-fields">
-                            <label>Groom's first name <input autocomplete="off" type="text" name="husband_first_name" value="<?= e($_POST['husband_first_name'] ?? '') ?>"></label>
-                            <label>Groom's last name <input autocomplete="off" type="text" name="husband_last_name" value="<?= e($_POST['husband_last_name'] ?? '') ?>"></label>
-                        </div>
-                        <div class="inline-fields">
-                            <label>Bride's first name <input autocomplete="off" type="text" name="wife_first_name" value="<?= e($_POST['wife_first_name'] ?? '') ?>"></label>
-                            <label>Bride's maiden last name <input autocomplete="off" type="text" name="wife_last_name" value="<?= e($_POST['wife_last_name'] ?? '') ?>"></label>
-                        </div>
+                        <?= person_name_fields('mar_groom', "Groom's name", $_POST) ?>
+                        <?= person_name_fields('mar_bride', "Bride's name (maiden)", $_POST) ?>
                         <label>Marriage date <input autocomplete="off" type="date" name="mar_marriage_date" value="<?= e($_POST['mar_marriage_date'] ?? '') ?>"></label>
                         <button type="submit" name="mar_step" value="find" formnovalidate class="btn btn-secondary">Find in Register</button>
                     </fieldset>

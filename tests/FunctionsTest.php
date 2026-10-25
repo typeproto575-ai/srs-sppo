@@ -54,6 +54,14 @@ final class FunctionsTest extends TestCase
         self::assertMatchesRegularExpression('/^[A-HJ-NP-Z2-9]{16}$/', generate_tracking_token());
     }
 
+    public function testPhilippineMobileNumberFormats(): void
+    {
+        self::assertTrue(is_valid_phone_number('09171234567'));
+        self::assertTrue(is_valid_phone_number('+639171234567'));
+        self::assertTrue(is_valid_phone_number('+63 917-123-4567'));
+        self::assertFalse(is_valid_phone_number('+63 917-123'));
+    }
+
     public function testNamePartsAllowAnAbsentMiddleName(): void
     {
         self::assertSame(
@@ -65,12 +73,97 @@ final class FunctionsTest extends TestCase
                 'applicant_suffix' => '',
             ], 'applicant')
         );
+        self::assertNull(validate_person_name_fields([
+            'applicant_first' => 'Maria',
+            'applicant_middle' => '',
+            'applicant_last' => 'Santos',
+            'applicant_suffix' => '',
+        ], 'applicant', 'Applicant'));
         self::assertNull(validate_full_name('Maria Santos'));
         self::assertSame('J. Santos', compose_person_name([
             'applicant_first' => 'J.',
             'applicant_last' => 'Santos',
         ], 'applicant'));
         self::assertNotNull(validate_full_name('J. Santos'));
+    }
+
+    public function testNamePartsAllowMissingFirstOrLastName(): void
+    {
+        self::assertSame('Madonna', compose_person_name([
+            'applicant_first' => 'Madonna',
+            'applicant_middle' => '',
+            'applicant_last' => '',
+            'applicant_suffix' => '',
+        ], 'applicant'));
+        self::assertNull(validate_person_name_fields([
+            'applicant_first' => 'Madonna',
+            'applicant_middle' => '',
+            'applicant_last' => '',
+            'applicant_suffix' => '',
+        ], 'applicant', 'Applicant'));
+        self::assertNull(validate_full_name('Madonna'));
+        self::assertNotNull(validate_person_name_fields([
+            'applicant_first' => '',
+            'applicant_middle' => '',
+            'applicant_last' => '',
+            'applicant_suffix' => '',
+        ], 'applicant', 'Applicant'));
+        self::assertNotNull(validate_person_name_fields([
+            'applicant_first' => '',
+            'applicant_middle' => 'Angela',
+            'applicant_last' => '',
+            'applicant_suffix' => '',
+        ], 'applicant', 'Applicant'));
+    }
+
+    public function testStructuredNameRowsComposeAndRejectIncompleteRows(): void
+    {
+        $names = [
+            'sponsor_first' => ['Maria', 'Juan', ''],
+            'sponsor_middle' => ['', 'Pablo', ''],
+            'sponsor_last' => ['Santos', 'Dela Cruz', ''],
+            'sponsor_suffix' => ['', 'Jr.', ''],
+        ];
+
+        self::assertSame(['Maria Santos', 'Juan Pablo Dela Cruz Jr.'], compose_person_name_rows($names, 'sponsor'));
+        self::assertSame([], validate_person_name_rows($names, 'sponsor', 'Sponsor'));
+        self::assertSame(
+            ['Please enter a first name or last name for Sponsor.'],
+            validate_person_name_rows([
+                'sponsor_middle' => ['Pablo'],
+                'sponsor_first' => [''],
+                'sponsor_last' => [''],
+            ], 'sponsor', 'Sponsor')
+        );
+    }
+
+    public function testPublicRecordLookupAcceptsOneOrBothParents(): void
+    {
+        self::assertNull(record_lookup_parent_search_error('', 'Maria Santos'));
+        self::assertNull(record_lookup_parent_search_error('Juan Cruz', 'Maria Santos'));
+        self::assertNotNull(record_lookup_parent_search_error('', ''));
+        self::assertNull(record_lookup_parent_search_error('Juan', ''));
+        self::assertNotNull(record_lookup_parent_search_error('Jr.', ''));
+
+        self::assertTrue(record_lookup_parents_match([
+            ['input' => 'Juan Cruz', 'candidates' => ['Juan Cruz']],
+            ['input' => '', 'candidates' => ['']],
+        ]));
+        self::assertTrue(record_lookup_parents_match([
+            ['input' => 'Juan Cruz', 'candidates' => ['Juan Cruz']],
+            ['input' => 'Maria Santos', 'candidates' => ['Maria Santos']],
+        ]));
+        self::assertFalse(record_lookup_parents_match([
+            ['input' => 'Juan Cruz', 'candidates' => ['Juan Cruz']],
+            ['input' => 'Maria Wrong', 'candidates' => ['Maria Santos']],
+        ]));
+    }
+
+    public function testPublicRecordLookupMatchesANameWithOneMissingPart(): void
+    {
+        self::assertTrue(record_lookup_name_matches('Maria', '', 'Maria Santos', 'Maria', 'Santos'));
+        self::assertTrue(record_lookup_name_matches('', 'Santos', 'Maria Santos', 'Maria', 'Santos'));
+        self::assertFalse(record_lookup_name_matches('', '', 'Maria Santos', 'Maria', 'Santos'));
     }
 
     public function testScheduleOverlapRules(): void

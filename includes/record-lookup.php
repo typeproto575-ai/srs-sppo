@@ -10,8 +10,8 @@
  *   Lets a parishioner find out, BEFORE filling in contact details, whether
  *   the parish register entry they want is already in the system. The public
  *   certificate request page calls find_baptismal_record_matches() with the
- *   five identity details (first name, last name, birthdate, father's name,
- *   mother's maiden name) and gets back the matching register rows, if any.
+ * identity details (name, birthdate, and one or both parents' names) and gets
+ * back the matching register rows, if any.
  *
  * WHAT A MATCH MEANS:
  *   A match is a CLAIM, not an approval. The request is still reviewed by the
@@ -21,8 +21,8 @@
  *   so the page offers a manual-search fallback instead of a dead end.
  *
  * PRIVACY / ANTI-GUESSING RULES (keep these when editing):
- *   - Birthdate must match EXACTLY, and every other supplied detail must match
- *     too. There is no partial or "closest" result.
+ *   - Birthdate must match EXACTLY, and every supplied detail that is present
+ *     in the register must match. There is no partial or "closest" result.
  *   - Callers must show the same generic "not found" message whichever field
  *     was wrong, and must never echo record fields the visitor did not
  *     already supply beyond the recorded name and the baptism date.
@@ -52,6 +52,7 @@ function record_lookup_normalize(string $value): string
     if ($value === '') {
         return '';
     }
+
     // Common Latin accents (kept explicit so it behaves the same on XAMPP
     // and Linux; iconv //TRANSLIT differs between platforms).
     $value = strtr($value, [
@@ -114,7 +115,7 @@ function record_lookup_words_overlap(array $a, array $b): bool
 }
 
 /**
- * Does the visitor's first + last name match the register entry?
+ * Does the visitor's supplied first and/or last name match the register entry?
  * Uses the structured first/last columns when the record has them, and the
  * full-name string for older rows that were encoded before those columns.
  */
@@ -138,30 +139,52 @@ function record_lookup_name_matches(string $firstIn, string $lastIn, string $rec
 {
     $inFirst = record_lookup_tokens($firstIn);
     $inLast  = record_lookup_tokens($lastIn);
-    if (empty($inFirst) || empty($inLast)) {
+    if (empty($inFirst) && empty($inLast)) {
         return false;
     }
 
     $recFirst = record_lookup_tokens($recFirstName);
     $recLast  = record_lookup_tokens($recLastName);
-    if (!empty($recFirst) && !empty($recLast)) {
-        return $inLast === $recLast && record_lookup_words_overlap($inFirst, $recFirst);
+    $full = record_lookup_tokens($recFullName);
+
+    if (!empty($inFirst)) {
+        if (!empty($recFirst)) {
+            if (!record_lookup_words_overlap($inFirst, $recFirst)) {
+                return false;
+            }
+        } else {
+            $givenName = $full;
+            $recordSurname = $recLast;
+            if (empty($recordSurname) && count($full) > 1) {
+                $recordSurname = [end($full)];
+            }
+            if (!empty($recordSurname)
+                && array_slice($full, -count($recordSurname)) === $recordSurname) {
+                $givenName = array_slice($full, 0, count($full) - count($recordSurname));
+            }
+            if (!record_lookup_words_overlap($inFirst, $givenName)) {
+                return false;
+            }
+        }
     }
 
-    // Legacy row: only the full name string is available. The surname must be
-    // the tail of it and the given name must be somewhere before that.
-    $full = record_lookup_tokens($recFullName);
-    $n = count($inLast);
-    if (count($full) <= $n || array_slice($full, -$n) !== $inLast) {
-        return false;
+    if (!empty($inLast)) {
+        if (!empty($recLast)) {
+            if ($inLast !== $recLast) {
+                return false;
+            }
+        } elseif (empty($full) || array_slice($full, -count($inLast)) !== $inLast) {
+            return false;
+        }
     }
-    return record_lookup_words_overlap($inFirst, array_slice($full, 0, count($full) - $n));
+
+    return true;
 }
 
 /**
  * Does a typed parent name match any of the recorded spellings?
- * Needs at least a first and last word from the visitor. Middle names and
- * initials are ignored: "Ramon Reyes" matches "Ramon A. Santos Reyes".
+ * Needs at least one name word from the visitor. Middle names and initials
+ * are ignored when a full parent name is available.
  * A register entry that holds only a surname matches when that surname
  * appears in what the visitor typed.
  *
@@ -170,7 +193,7 @@ function record_lookup_name_matches(string $firstIn, string $lastIn, string $rec
 function record_lookup_parent_matches(string $input, array $candidates): bool
 {
     $in = record_lookup_tokens($input);
-    if (count($in) < 2) {
+    if (empty($in)) {
         return false;
     }
     foreach ($candidates as $candidate) {
@@ -184,6 +207,12 @@ function record_lookup_parent_matches(string $input, array $candidates): bool
             }
             continue;
         }
+        if (count($in) === 1) {
+            if (in_array($in[0], $rec, true)) {
+                return true;
+            }
+            continue;
+        }
         if ($in[0] === $rec[0] && end($in) === end($rec)) {
             return true;
         }
@@ -192,12 +221,59 @@ function record_lookup_parent_matches(string $input, array $candidates): bool
 }
 
 /**
+ * Require at least one searchable name part for either parent.
+ */
+function record_lookup_parent_search_error(string $fatherName, string $motherName): ?string
+{
+    foreach ([$fatherName, $motherName] as $name) {
+        if (trim($name) !== '' && empty(record_lookup_tokens($name))) {
+            return "Please enter a name part other than suffix for the parent, or leave that parent's name blank.";
+        }
+    }
+
+    return trim($fatherName) !== '' || trim($motherName) !== ''
+        ? null
+        : "Please enter at least one parent's name. You may enter both parents if known.";
+}
+
+/**
+ * Match one or both supplied parent names against the names available in a
+ * register row. Every supplied name with register data must match, and at
+ * least one supplied parent must be verifiable against the register.
+ *
+ * @param array<int, array{input: string, candidates: array}> $parents
+ */
+function record_lookup_parents_match(array $parents): bool
+{
+    $matchedParent = false;
+    foreach ($parents as $parent) {
+        $input = trim((string) ($parent['input'] ?? ''));
+        if ($input === '') {
+            continue;
+        }
+
+        $candidates = array_values(array_filter(
+            $parent['candidates'] ?? [],
+            static fn ($candidate): bool => trim((string) $candidate) !== ''
+        ));
+        if (empty($candidates)) {
+            continue;
+        }
+        if (!record_lookup_parent_matches($input, $candidates)) {
+            return false;
+        }
+        $matchedParent = true;
+    }
+
+    return $matchedParent;
+}
+
+/**
  * Find baptismal register entries that match what the visitor typed.
  *
- * Required in $input: first_name, last_name, birthdate (YYYY-MM-DD),
- * father_name, mother_name. The father's name is checked when the register
- * lists one; if it is absent from the source register, matching uses the
- * remaining required identity details.
+ * Required in $input: at least one of first_name/last_name, birthdate
+ * (YYYY-MM-DD), and at least one parent's full name. Any supplied parent name
+ * is checked when that name is present in the register.
  *
  * @return array[] Up to 5 rows: id, child_full_name, baptism_date
  */
@@ -224,14 +300,11 @@ function find_baptismal_record_matches(PDO $pdo, array $input): array
         if (!record_lookup_person_matches((string) $input['first_name'], (string) $input['last_name'], $row)) {
             continue;
         }
-        // Mother is always required. The register form labels the mother's
-        // column "Mother's Maiden Name"; the separate maiden-name column is
-        // optional, so accept either spelling.
-        if (!record_lookup_parent_matches((string) ($input['mother_name'] ?? ''), [$row['mother_name'], $row['mother_maiden_name']])) {
-            continue;
-        }
-        $recordedFather = trim((string) ($row['father_name'] ?? ''));
-        if ($recordedFather !== '' && !record_lookup_parent_matches((string) ($input['father_name'] ?? ''), [$recordedFather])) {
+        if (!record_lookup_parents_match([
+            ['input' => (string) ($input['father_name'] ?? ''), 'candidates' => [$row['father_name']]],
+            // The register's maiden-name column is optional, so accept either spelling.
+            ['input' => (string) ($input['mother_name'] ?? ''), 'candidates' => [$row['mother_name'], $row['mother_maiden_name']]],
+        ])) {
             continue;
         }
         $matches[] = [
@@ -339,11 +412,10 @@ function find_confirmation_record_matches(PDO $pdo, array $input): array
         )) {
             continue;
         }
-        if (!record_lookup_parent_matches((string) ($input['mother_name'] ?? ''), [$row['mother_maiden_name']])) {
-            continue;
-        }
-        $recordedFather = trim((string) ($row['father_name'] ?? ''));
-        if ($recordedFather !== '' && !record_lookup_parent_matches((string) ($input['father_name'] ?? ''), [$recordedFather])) {
+        if (!record_lookup_parents_match([
+            ['input' => (string) ($input['father_name'] ?? ''), 'candidates' => [$row['father_name']]],
+            ['input' => (string) ($input['mother_name'] ?? ''), 'candidates' => [$row['mother_maiden_name']]],
+        ])) {
             continue;
         }
         $matches[] = [
@@ -408,11 +480,10 @@ function find_first_communion_record_matches(PDO $pdo, array $input): array
         )) {
             continue;
         }
-        if (!record_lookup_parent_matches((string) ($input['mother_name'] ?? ''), [$row['mother_maiden_name']])) {
-            continue;
-        }
-        $recordedFather = trim((string) ($row['father_name'] ?? ''));
-        if ($recordedFather !== '' && !record_lookup_parent_matches((string) ($input['father_name'] ?? ''), [$recordedFather])) {
+        if (!record_lookup_parents_match([
+            ['input' => (string) ($input['father_name'] ?? ''), 'candidates' => [$row['father_name']]],
+            ['input' => (string) ($input['mother_name'] ?? ''), 'candidates' => [$row['mother_maiden_name']]],
+        ])) {
             continue;
         }
         $matches[] = [

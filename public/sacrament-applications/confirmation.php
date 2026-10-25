@@ -68,7 +68,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Your session expired. Please submit the form again.';
     } elseif ($action === 'next' || $action === 'back') {
         $stepFields = [
-            CONF_STEP_DETAILS => ['applicant_first', 'applicant_middle', 'applicant_last', 'applicant_suffix', 'applicant_birthdate', 'parent_guardian_name'],
+            CONF_STEP_DETAILS => [
+                'applicant_first', 'applicant_middle', 'applicant_last', 'applicant_suffix',
+                'applicant_birthdate',
+                'parent_guardian_first', 'parent_guardian_middle', 'parent_guardian_last', 'parent_guardian_suffix',
+            ],
             CONF_STEP_BAPTISM => ['baptized_here'],
             CONF_STEP_CONTACT => ['contact_number', 'email'],
         ];
@@ -89,12 +93,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
                 if ($formData['applicant_birthdate'] === '') $errors[] = "Applicant's birthdate is required.";
                 if ($formData['applicant_birthdate'] !== '' && is_future_date($formData['applicant_birthdate'])) $errors[] = "Applicant's birthdate cannot be in the future.";
-                if ($formData['parent_guardian_name'] === '') $errors[] = 'Parent/Guardian name is required.';
-                if (($e = validate_full_name($formData['parent_guardian_name'])) !== null) $errors[] = $e;
+                $parentGuardian = compose_person_name($formData, 'parent_guardian');
+                if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
+                if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
             } elseif ($currentStep === CONF_STEP_BAPTISM) {
                 if (!in_array($formData['baptized_here'], ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
             } elseif ($currentStep === CONF_STEP_CONTACT) {
-                if ($formData['contact_number'] === '') $errors[] = 'Contact number is required.';
+                if ($formData['contact_number'] === '' || !is_valid_phone_number($formData['contact_number'])) {
+                    $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
+                }
                 if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
                 if ($formData['privacy_consent'] !== '1') $errors[] = 'Please agree to the Privacy Notice before continuing.';
             }
@@ -114,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $applicantName = compose_person_name($formData, 'applicant');
         $applicantBirthdate = cfd('applicant_birthdate', $formData);
-        $parentGuardian = cfd('parent_guardian_name', $formData);
+        $parentGuardian = compose_person_name($formData, 'parent_guardian');
         $contactNumber = cfd('contact_number', $formData);
         $email = cfd('email', $formData);
         $baptizedHere = $formData['baptized_here'] ?? '';
@@ -126,7 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($applicantBirthdate === '') $errors[] = "Applicant's birthdate is required.";
         if ($applicantBirthdate !== '' && is_future_date($applicantBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
         if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
-        if ($contactNumber === '') $errors[] = 'Contact number is required.';
+        if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
+        if ($contactNumber === '' || !is_valid_phone_number($contactNumber)) {
+            $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
+        }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
         if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
         if (($formData['privacy_consent'] ?? '') !== '1') $errors[] = 'Please agree to the Privacy Notice before submitting.';
@@ -235,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label>First Name *
                     <input type="text" name="applicant_first" autocomplete="given-name" value="<?= $wv('applicant_first') ?>" required>
                 </label>
-                <label>Middle Name <span class="field-hint">(if any; leave blank if none)</span>
+                <label>Middle Name <span class="field-hint">(optional)</span>
                     <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= $wv('applicant_middle') ?>">
                 </label>
             </div>
@@ -251,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
             </label>
             <label>Parent/Guardian Name * <span class="field-hint">(if an adult applicant, you may enter your own name)</span>
-                <input type="text" name="parent_guardian_name" autocomplete="off" value="<?= $wv('parent_guardian_name') ?>" required>
+                <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             </label>
         </fieldset>
         <?php elseif ($currentStep === CONF_STEP_BAPTISM): ?>
@@ -270,7 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php elseif ($currentStep === CONF_STEP_CONTACT): ?>
             <fieldset>
                 <legend>Phase 3 of 4 — Contact &amp; Consent</legend>
-                <label>Contact Number * <span class="field-hint">(prefix with country code)</span>
+                <label>Contact Number * <span class="field-hint">(e.g. 09171234567 or +639171234567)</span>
                     <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>" required>
                 </label>
                 <label>Email Address *
@@ -286,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <table class="review-table">
                     <tr><th>Applicant</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                     <tr><th>Birthdate</th><td><?= $wv('applicant_birthdate') ?></td></tr>
-                    <tr><th>Parent / Guardian</th><td><?= $wv('parent_guardian_name') ?></td></tr>
+                    <tr><th>Parent / Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
                     <tr><th>Baptized at</th><td><?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'At this parish' : (($formData['baptized_here'] ?? '') === 'elsewhere' ? 'At another parish or church' : 'Not sure — please help us check') ?></td></tr>
                     <tr><th>Contact number</th><td><?= $wv('contact_number') ?></td></tr>
                     <tr><th>Email</th><td><?= $wv('email') ?></td></tr>

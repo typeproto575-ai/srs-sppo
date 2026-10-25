@@ -80,10 +80,14 @@ if ($isWizardNavigation) {
                 if ($value($prefix . '_contact_number') === '' || !is_valid_phone_number($value($prefix . '_contact_number'))) $errors[] = "$label's valid contact number is required.";
                 if (!filter_var($value($prefix . '_email'), FILTER_VALIDATE_EMAIL)) $errors[] = "$label's email address is required.";
                 if (!in_array($value($prefix . '_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "$label's marital status is required.";
+                foreach ([$prefix . '_father' => "$label's father's name", $prefix . '_mother' => "$label's mother's maiden name"] as $namePrefix => $nameLabel) {
+                    if (($e = validate_person_name_fields($_POST, $namePrefix, $nameLabel, false)) !== null) $errors[] = $e;
+                }
             } elseif ($currentStep === 4) {
                 foreach (['groom_baptized' => 'Groom', 'bride_baptized' => 'Bride', 'groom_confirmed' => 'Groom', 'bride_confirmed' => 'Bride'] as $key => $label) {
                     if (!in_array($value($key), ['yes', 'no'], true)) $errors[] = "Please indicate whether the $label is baptized and confirmed Catholic.";
                 }
+                $errors = array_merge($errors, validate_person_name_rows($_POST, 'sponsor', 'Sponsor'));
             } elseif ($currentStep === 5 && $value('privacy_consent') !== '1') {
                 $errors[] = 'You must accept the Privacy Notice before submitting.';
             }
@@ -128,6 +132,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
         if ($place === '') $errors[] = "$label's place of birth is required.";
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = "$label's email address is required.";
     }
+    foreach ([
+        'groom_father' => "Groom's father's name",
+        'groom_mother' => "Groom's mother's maiden name",
+        'bride_father' => "Bride's father's name",
+        'bride_mother' => "Bride's mother's maiden name",
+    ] as $namePrefix => $nameLabel) {
+        if (($e = validate_person_name_fields($_POST, $namePrefix, $nameLabel, false)) !== null) $errors[] = $e;
+    }
+    $errors = array_merge($errors, validate_person_name_rows($_POST, 'sponsor', 'Sponsor'));
     if ($g('groom_contact_number') === '' || !is_valid_phone_number($g('groom_contact_number'))) $errors[] = "Groom's valid contact number is required.";
     if ($g('bride_contact_number') === '' || !is_valid_phone_number($g('bride_contact_number'))) $errors[] = "Bride's valid contact number is required.";
     if (!in_array($g('groom_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "Groom's marital status is required.";
@@ -159,12 +172,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'application_id' => $applicationId,
                 'groom_full_name' => $groomName, 'groom_birthdate' => $gd, 'groom_birthplace' => $g('groom_birthplace'),
                 'groom_current_address' => $g('groom_current_address'), 'groom_contact_number' => $g('groom_contact_number'), 'groom_email' => $groomEmail,
-                'groom_religion' => $g('groom_religion'), 'groom_father_name' => $g('groom_father_name'), 'groom_mother_maiden_name' => $g('groom_mother_maiden_name'),
+                'groom_religion' => $g('groom_religion'),
+                'groom_father_name' => compose_person_name($_POST, 'groom_father'),
+                'groom_mother_maiden_name' => compose_person_name($_POST, 'groom_mother'),
                 'groom_marital_status' => $g('groom_marital_status'), 'groom_baptized_here' => $g('groom_baptized') === 'yes' ? 1 : 0, 'groom_confirmed' => $g('groom_confirmed') === 'yes' ? 1 : 0, 'groom_previous_marriage' => $g('groom_previous_marriage') ?: 'no',
                 'groom_baptismal_cert_status' => 'pending', 'groom_confirmation_cert_status' => 'pending',
                 'bride_full_name' => $brideName, 'bride_birthdate' => $bd, 'bride_birthplace' => $g('bride_birthplace'),
                 'bride_current_address' => $g('bride_current_address'), 'bride_contact_number' => $g('bride_contact_number'), 'bride_email' => $brideEmail,
-                'bride_religion' => $g('bride_religion'), 'bride_father_name' => $g('bride_father_name'), 'bride_mother_maiden_name' => $g('bride_mother_maiden_name'),
+                'bride_religion' => $g('bride_religion'),
+                'bride_father_name' => compose_person_name($_POST, 'bride_father'),
+                'bride_mother_maiden_name' => compose_person_name($_POST, 'bride_mother'),
                 'bride_marital_status' => $g('bride_marital_status'), 'bride_baptized_here' => $g('bride_baptized') === 'yes' ? 1 : 0, 'bride_confirmed' => $g('bride_confirmed') === 'yes' ? 1 : 0, 'bride_previous_marriage' => $g('bride_previous_marriage') ?: 'no',
                 'bride_baptismal_cert_status' => 'pending', 'bride_confirmation_cert_status' => 'pending',
                 'preferred_wedding_date' => $weddingDate, 'preferred_wedding_time' => $weddingTime, 'preferred_wedding_venue' => $venue,
@@ -181,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             foreach ($data as $key => $value) $stmt->bindValue(':' . $key, $value);
             $stmt->execute();
             $marriageApplicationId = (int) $pdo->lastInsertId();
-            $sponsorNames = $_POST['sponsor_name'] ?? [];
+            $sponsorNames = compose_person_name_rows($_POST, 'sponsor');
             if (!is_array($sponsorNames)) { $sponsorNames = []; }
             $sponsorStmt = $pdo->prepare('INSERT INTO marriage_principal_sponsors (marriage_application_id, sponsor_name) VALUES (?, ?)');
             foreach ($sponsorNames as $name) { if (!is_string($name)) continue; $name = trim($name); if ($name !== '') $sponsorStmt->execute([$marriageApplicationId, $name]); }
@@ -223,24 +240,24 @@ function msel(string $key, string $value): string { global $formData; return ($f
 <fieldset><legend>Phase 2 of 5 — Groom's Information</legend>
 <div class="inline-fields">
 <label>First Name * <input name="groom_first" autocomplete="given-name" value="<?= mv('groom_first') ?>" required></label>
-<label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input name="groom_middle" autocomplete="additional-name" value="<?= mv('groom_middle') ?>"></label>
+<label>Middle Name <span class="field-hint">(optional)</span> <input name="groom_middle" autocomplete="additional-name" value="<?= mv('groom_middle') ?>"></label>
 </div>
 <div class="inline-fields">
 <label>Last Name * <input name="groom_last" autocomplete="family-name" value="<?= mv('groom_last') ?>" required></label>
 <label>Suffix <span class="field-hint">(optional)</span> <input name="groom_suffix" autocomplete="honorific-suffix" value="<?= mv('groom_suffix') ?>"></label>
 </div>
-<div class="inline-fields"><label>Date of Birth * <input type="date" name="groom_birthdate" value="<?= mv('groom_birthdate') ?>" required></label><label>Place of Birth * <input name="groom_birthplace" value="<?= mv('groom_birthplace') ?>" required></label></div><label>Current Address <input name="groom_current_address" value="<?= mv('groom_current_address') ?>"></label><label>Telephone / Mobile * <input name="groom_contact_number" value="<?= mv('groom_contact_number') ?>" required></label><label>Religion / Sect <input name="groom_religion" value="<?= mv('groom_religion') ?>"></label><label>Email * <input type="email" name="groom_email" value="<?= mv('groom_email') ?>" required></label><div class="inline-fields"><label>Father's Full Name <input name="groom_father_name" value="<?= mv('groom_father_name') ?>"></label><label>Mother's Full Maiden Name <input name="groom_mother_maiden_name" value="<?= mv('groom_mother_maiden_name') ?>"></label></div><div class="inline-fields"><label>Marital Status * <select name="groom_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('groom_marital_status','single') ?>>Single</option><option value="married" <?= msel('groom_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('groom_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('groom_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="groom_previous_marriage"><option value="no" <?= msel('groom_previous_marriage','no') ?>>No</option><option value="church" <?= msel('groom_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('groom_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>
+<div class="inline-fields"><label>Date of Birth * <input type="date" name="groom_birthdate" value="<?= mv('groom_birthdate') ?>" required></label><label>Place of Birth * <input name="groom_birthplace" value="<?= mv('groom_birthplace') ?>" required></label></div><label>Current Address <input name="groom_current_address" value="<?= mv('groom_current_address') ?>"></label><label>Telephone / Mobile * <input name="groom_contact_number" value="<?= mv('groom_contact_number') ?>" required></label><label>Religion / Sect <input name="groom_religion" value="<?= mv('groom_religion') ?>"></label><label>Email * <input type="email" name="groom_email" value="<?= mv('groom_email') ?>" required></label><?= person_name_fields('groom_father', "Groom's father's name", $formData, false) ?><?= person_name_fields('groom_mother', "Groom's mother's maiden name", $formData, false) ?><div class="inline-fields"><label>Marital Status * <select name="groom_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('groom_marital_status','single') ?>>Single</option><option value="married" <?= msel('groom_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('groom_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('groom_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="groom_previous_marriage"><option value="no" <?= msel('groom_previous_marriage','no') ?>>No</option><option value="church" <?= msel('groom_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('groom_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>
 <?php elseif ($currentStep === 3): ?>
 <fieldset><legend>Phase 3 of 5 — Bride's Information</legend>
 <div class="inline-fields">
 <label>First Name * <input name="bride_first" autocomplete="given-name" value="<?= mv('bride_first') ?>" required></label>
-<label>Middle Name <span class="field-hint">(if any; leave blank if none)</span> <input name="bride_middle" autocomplete="additional-name" value="<?= mv('bride_middle') ?>"></label>
+<label>Middle Name <span class="field-hint">(optional)</span> <input name="bride_middle" autocomplete="additional-name" value="<?= mv('bride_middle') ?>"></label>
 </div>
 <div class="inline-fields">
 <label>Last Name * <input name="bride_last" autocomplete="family-name" value="<?= mv('bride_last') ?>" required></label>
 <label>Suffix <span class="field-hint">(optional)</span> <input name="bride_suffix" autocomplete="honorific-suffix" value="<?= mv('bride_suffix') ?>"></label>
 </div>
-<div class="inline-fields"><label>Date of Birth * <input type="date" name="bride_birthdate" value="<?= mv('bride_birthdate') ?>" required></label><label>Place of Birth * <input name="bride_birthplace" value="<?= mv('bride_birthplace') ?>" required></label></div><label>Current Address <input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><label>Telephone / Mobile * <input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>" required></label><label>Religion / Sect <input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Email * <input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><div class="inline-fields"><label>Father's Full Name <input name="bride_father_name" value="<?= mv('bride_father_name') ?>"></label><label>Mother's Full Maiden Name <input name="bride_mother_maiden_name" value="<?= mv('bride_mother_maiden_name') ?>"></label></div><div class="inline-fields"><label>Marital Status * <select name="bride_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('bride_marital_status','single') ?>>Single</option><option value="married" <?= msel('bride_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('bride_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('bride_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="bride_previous_marriage"><option value="no" <?= msel('bride_previous_marriage','no') ?>>No</option><option value="church" <?= msel('bride_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('bride_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>
+<div class="inline-fields"><label>Date of Birth * <input type="date" name="bride_birthdate" value="<?= mv('bride_birthdate') ?>" required></label><label>Place of Birth * <input name="bride_birthplace" value="<?= mv('bride_birthplace') ?>" required></label></div><label>Current Address <input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><label>Telephone / Mobile * <input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>" required></label><label>Religion / Sect <input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Email * <input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><?= person_name_fields('bride_father', "Bride's father's name", $formData, false) ?><?= person_name_fields('bride_mother', "Bride's mother's maiden name", $formData, false) ?><div class="inline-fields"><label>Marital Status * <select name="bride_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('bride_marital_status','single') ?>>Single</option><option value="married" <?= msel('bride_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('bride_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('bride_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="bride_previous_marriage"><option value="no" <?= msel('bride_previous_marriage','no') ?>>No</option><option value="church" <?= msel('bride_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('bride_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>
 <?php elseif ($currentStep === 4): ?>
 <fieldset><legend>Phase 4 of 5 — Church &amp; Civil Status</legend><div class="inline-fields"><label>Groom baptized Catholic? * <select name="groom_baptized" required><option value="">-- Select --</option><option value="yes" <?= msel('groom_baptized','yes') ?>>Yes</option><option value="no" <?= msel('groom_baptized','no') ?>>No</option></select></label><label>Bride baptized Catholic? * <select name="bride_baptized" required><option value="">-- Select --</option><option value="yes" <?= msel('bride_baptized','yes') ?>>Yes</option><option value="no" <?= msel('bride_baptized','no') ?>>No</option></select></label></div><div class="inline-fields"><label>Groom confirmed Catholic? * <select name="groom_confirmed" required><option value="">-- Select --</option><option value="yes" <?= msel('groom_confirmed','yes') ?>>Yes</option><option value="no" <?= msel('groom_confirmed','no') ?>>No</option></select></label><label>Bride confirmed Catholic? * <select name="bride_confirmed" required><option value="">-- Select --</option><option value="yes" <?= msel('bride_confirmed','yes') ?>>Yes</option><option value="no" <?= msel('bride_confirmed','no') ?>>No</option></select></label></div><label>Are you civilly married to each other? <select name="civilly_married"><option value="no" <?= msel('civilly_married','no') ?>>No</option><option value="yes" <?= msel('civilly_married','yes') ?>>Yes</option></select></label><div class="inline-fields"><label>Date <input type="date" name="civil_marriage_date" value="<?= mv('civil_marriage_date') ?>"></label><label>Place <input name="civil_marriage_place" value="<?= mv('civil_marriage_place') ?>"></label></div></fieldset>
 <?php endif; ?>
@@ -249,19 +266,11 @@ function msel(string $key, string $value): string { global $formData; return ($f
 // Render one row per previously submitted non-blank sponsor (validation
 // re-render), otherwise a single blank row — max(1, non-blank count),
 // clamped to 4. New rows are cloned client-side — see main.js, section 9.
-$rawSponsorNames = $formData['sponsor_name'] ?? [];
-if (!is_array($rawSponsorNames)) { $rawSponsorNames = []; }
-$rawSponsorNames = array_values($rawSponsorNames);
-$sponsorRows = [];
-foreach ($rawSponsorNames as $rawName) {
-    if (!is_string($rawName) || trim($rawName) === '') { continue; }
-    $sponsorRows[] = $rawName;
-    if (count($sponsorRows) >= 4) { break; }
-}
-if (count($sponsorRows) === 0) { $sponsorRows = ['']; }
+$sponsorNameList = array_slice(compose_person_name_rows($formData, 'sponsor'), 0, 4);
+$sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor')) - 1));
 ?>
 <?php if ($currentStep === 4): ?>
-<fieldset><legend>Principal Sponsors</legend><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><label>Sponsor Name <input name="sponsor_name[]" value="<?= e(is_string($rowName) ? $rowName : '') ?>"></label><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
+<fieldset><legend>Principal Sponsors</legend><p class="field-hint">For each sponsor, enter first and last name. Middle name and suffix are optional.</p><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><?= person_name_fields('sponsor', 'Sponsor', $formData, false, $i) ?><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
 <?php elseif ($currentStep === 5): ?>
 <fieldset><legend>Phase 5 of 5 — Review Your Application</legend>
 <table class="review-table">
@@ -273,7 +282,7 @@ if (count($sponsorRows) === 0) { $sponsorRows = ['']; }
 <tr><th>Bride's marital status</th><td><?= mv('bride_marital_status') ?></td></tr>
 <tr><th>Baptism / confirmation</th><td>Groom: <?= mv('groom_baptized') ?> / <?= mv('groom_confirmed') ?>; Bride: <?= mv('bride_baptized') ?> / <?= mv('bride_confirmed') ?></td></tr>
 <tr><th>Civil marriage</th><td><?= mv('civilly_married') ?> <?= mv('civil_marriage_date') ?> <?= mv('civil_marriage_place') ?></td></tr>
-<tr><th>Principal sponsors</th><td><?= e(implode(', ', array_filter($sponsorRows, 'is_string'))) ?></td></tr>
+<tr><th>Principal sponsors</th><td><?= e(implode(', ', $sponsorNameList)) ?></td></tr>
 </table>
 </fieldset>
 <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($formData['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</label>

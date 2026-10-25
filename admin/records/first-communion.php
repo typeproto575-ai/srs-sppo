@@ -358,7 +358,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Communicant</legend>
                 <div class="inline-fields structured-name-fields">
                     <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_first_name" value="<?= e($_POST['communicant_first_name'] ?? $editRecord['communicant_first_name'] ?? $communicantParts[0]) ?>" required></label>
-                    <label>Middle Name <input autocomplete="off" type="text" name="communicant_middle_name" value="<?= e($_POST['communicant_middle_name'] ?? $editRecord['communicant_middle_name'] ?? $communicantParts[1]) ?>"></label>
+                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="communicant_middle_name" value="<?= e($_POST['communicant_middle_name'] ?? $editRecord['communicant_middle_name'] ?? $communicantParts[1]) ?>"></label>
                     <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_last_name" value="<?= e($_POST['communicant_last_name'] ?? $editRecord['communicant_last_name'] ?? $communicantParts[2]) ?>" required></label>
                     <label>Suffix <input autocomplete="off" type="text" name="communicant_suffix" value="<?= e($_POST['communicant_suffix'] ?? $editRecord['communicant_suffix'] ?? $communicantParts[3]) ?>"></label>
                 </div>

@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messageType = 'error';
     } else {
         $trackingNumber = strtoupper(trim($_POST['tracking_number'] ?? ''));
-        $requesterName  = trim($_POST['requester_name'] ?? '');
+        $requesterName  = compose_person_name($_POST, 'requester');
         $requesterEmail = trim($_POST['requester_email'] ?? '');
         $requestedChanges = trim($_POST['requested_changes'] ?? '');
 
@@ -94,10 +94,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <div class="form-row">
-                <div class="form-group">
-                    <label for="requester_name">Full Name <span class="required">*</span></label>
-                    <input type="text" id="requester_name" name="requester_name" placeholder="Juan Dela Cruz" required value="<?= e($_POST['requester_name'] ?? '') ?>">
-                </div>
+                <?= person_name_fields('requester', 'Your name', $_POST) ?>
                 <div class="form-group">
                     <label for="requester_email">Email Address <span class="required">*</span></label>
                     <input type="email" id="requester_email" name="requester_email" placeholder="juan@example.com" required value="<?= e($_POST['requester_email'] ?? '') ?>">

@@ -79,15 +79,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ---- Step 1: search the register --------------------------------------
     if ($action === 'find') {
         $search = [
-            'first_name'  => trim($_POST['first_name'] ?? ''),
-            'last_name'   => trim($_POST['last_name'] ?? ''),
+            'record_first' => trim($_POST['record_first'] ?? ''),
+            'record_middle' => trim($_POST['record_middle'] ?? ''),
+            'record_last' => trim($_POST['record_last'] ?? ''),
+            'record_suffix' => trim($_POST['record_suffix'] ?? ''),
+            'first_name'  => trim($_POST['record_first'] ?? ''),
+            'last_name'   => trim($_POST['record_last'] ?? ''),
             'birthdate'   => trim($_POST['birthdate'] ?? ''),
-            'father_name' => trim($_POST['father_name'] ?? ''),
-            'mother_name' => trim($_POST['mother_name'] ?? ''),
+            'father_first' => trim($_POST['father_first'] ?? ''),
+            'father_middle' => trim($_POST['father_middle'] ?? ''),
+            'father_last' => trim($_POST['father_last'] ?? ''),
+            'father_suffix' => trim($_POST['father_suffix'] ?? ''),
+            'mother_first' => trim($_POST['mother_first'] ?? ''),
+            'mother_middle' => trim($_POST['mother_middle'] ?? ''),
+            'mother_last' => trim($_POST['mother_last'] ?? ''),
+            'mother_suffix' => trim($_POST['mother_suffix'] ?? ''),
         ];
+        $search['father_name'] = compose_person_name($search, 'father');
+        $search['mother_name'] = compose_person_name($search, 'mother');
 
-        if ($search['first_name'] === '') $errors[] = 'First name is required.';
-        if ($search['last_name'] === '')  $errors[] = 'Last name is required.';
+        if ($search['first_name'] === '' && $search['last_name'] === '') {
+            $errors[] = "Please enter the applicant's first name or last name.";
+        }
 
         $birth = DateTime::createFromFormat('Y-m-d', $search['birthdate']);
         if (!$birth || $birth->format('Y-m-d') !== $search['birthdate']) {
@@ -96,11 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Birthdate cannot be in the future.';
         }
 
-        if (count(record_lookup_tokens($search['mother_name'])) < 2) {
-            $errors[] = "Please enter the mother's maiden name (first and last name).";
-        }
-        if (count(record_lookup_tokens($search['father_name'])) < 2) {
-            $errors[] = "Please enter the father's first and last name.";
+        if (($parentError = record_lookup_parent_search_error($search['father_name'], $search['mother_name'])) !== null) {
+            $errors[] = $parentError;
         }
 
         if (empty($errors)) {
@@ -148,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ---- Step 3: contact details + submit ---------------------------------
     if ($action === 'submit' && $flow && !empty($flow['path'])) {
-        $requesterName         = trim($_POST['requester_name'] ?? '');
+        $requesterName         = compose_person_name($_POST, 'requester');
         $requesterRelationship = $_POST['requester_relationship'] ?? '';
         $requesterEmail        = trim($_POST['requester_email'] ?? '');
         $requesterContact      = trim($_POST['requester_contact_number'] ?? '');
@@ -178,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $s                = $flow['search'];
-            $communicantName  = trim($s['first_name'] . ' ' . $s['last_name']);
+            $communicantName  = compose_person_name($s, 'record');
             $fatherName       = $s['father_name'];
             $motherMaidenName = $s['mother_name'];
             $birthdate        = $s['birthdate'];
@@ -379,24 +389,14 @@ require_once __DIR__ . '/../../includes/header.php';
                 <?= csrf_field() ?>
                 <fieldset>
                     <legend>Details on the first communion record</legend>
-                    <div class="inline-fields">
-                        <label>First name *
-                            <input type="text" name="first_name" autocomplete="off" value="<?= $searchVal('first_name') ?>" required>
-                        </label>
-                        <label>Last name *
-                            <input type="text" name="last_name" autocomplete="off" value="<?= $searchVal('last_name') ?>" required>
-                        </label>
-                    </div>
+                    <?= person_name_fields('record', "Applicant's name", $flow['search'] ?? $_POST) ?>
                     <label>Birthdate *
                         <input type="date" name="birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $searchVal('birthdate') ?>" required>
                     </label>
-                    <label>Father's full name *
-                        <input type="text" name="father_name" autocomplete="off" value="<?= $searchVal('father_name') ?>" required>
-                    </label>
-                    <label>Mother's maiden full name *
-                        <input type="text" name="mother_name" autocomplete="off" value="<?= $searchVal('mother_name') ?>" required>
-                    </label>
+                    <?= person_name_fields('father', "Father's name", $flow['search'] ?? $_POST, false) ?>
+                    <?= person_name_fields('mother', "Mother's maiden name", $flow['search'] ?? $_POST, false) ?>
                 </fieldset>
+                <p class="field-hint">Enter one or both parents' names. Leave any name part blank if it does not apply, and leave a parent's fields blank if you do not know their name.</p>
                 <button type="submit" class="btn">Search records</button>
                 <p class="field-hint">We use these details only to look up the record. <a href="<?= e($basePath . '/public/terms.php#personal-data') ?>" target="_blank" rel="noopener noreferrer">How we use your data</a></p>
             </form>
@@ -446,7 +446,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     <strong><?= e($selectedRecord['communicant_full_name']) ?></strong>
                     <span>First Communion <?= e($formatDate($selectedRecord['communion_date'])) ?></span>
                 <?php else: ?>
-                    <strong><?= e(trim(($flow['search']['first_name'] ?? '') . ' ' . ($flow['search']['last_name'] ?? ''))) ?></strong>
+                    <strong><?= e(compose_person_name($flow['search'] ?? [], 'record')) ?></strong>
                     <span>Born <?= e($formatDate($flow['search']['birthdate'] ?? '')) ?> &middot; the secretary will search the register for this record</span>
                 <?php endif; ?>
                 <a href="<?= e($pageUrl . $modeQuery . '&step=result') ?>">change</a>
@@ -460,9 +460,7 @@ require_once __DIR__ . '/../../includes/header.php';
                     <legend>Your contact details</legend>
 
                     <?php if ($requesterMode === 'other'): ?>
-                        <label>Your full name *
-                            <input type="text" name="requester_name" autocomplete="name" value="<?= $val('requester_name') ?>" required>
-                        </label>
+                        <?= person_name_fields('requester', 'Your name', $_POST) ?>
                         <label>Your relationship to this person *
                             <select name="requester_relationship" required>
                                 <option value="">-- Select --</option>

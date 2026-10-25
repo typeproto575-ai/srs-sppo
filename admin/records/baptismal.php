@@ -530,7 +530,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Child</legend>
                 <div class="inline-fields structured-name-fields">
                     <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="child_first_name" value="<?= e($_POST['child_first_name'] ?? $editRecord['child_first_name'] ?? $childParts[0]) ?>" required></label>
-                    <label>Middle Name <input autocomplete="off" type="text" name="child_middle_name" value="<?= e($_POST['child_middle_name'] ?? $editRecord['child_middle_name'] ?? $childParts[1]) ?>"></label>
+                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="child_middle_name" value="<?= e($_POST['child_middle_name'] ?? $editRecord['child_middle_name'] ?? $childParts[1]) ?>"></label>
                     <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="child_last_name" value="<?= e($_POST['child_last_name'] ?? $editRecord['child_last_name'] ?? $childParts[2]) ?>" required></label>
                     <label>Suffix <input autocomplete="off" type="text" name="child_suffix" value="<?= e($_POST['child_suffix'] ?? $editRecord['child_suffix'] ?? $childParts[3]) ?>"></label>
                 </div>
