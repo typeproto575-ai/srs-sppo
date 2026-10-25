@@ -27,18 +27,25 @@ function public_calendar_title(string $title): string
     return trim((string) preg_replace('/(?:\s*[-–—|:]\s*|\s+)\(?\b(?:AM|PM)\b\)?\s*$/i', '', $title));
 }
 
-$calendarEvents = array_map(function ($event) use ($typeColorMap) {
+$calendarEvents = array_map(function ($event) use ($typeColorMap, $typeLabels) {
     $color = $typeColorMap[$event['event_type']] ?? $typeColorMap['other'];
-    $timeLabel = '';
+    $displayTitle = public_calendar_title((string) $event['title']);
+    $publicDetails = trim((string) ($event['public_details'] ?? ''));
+    $calendarTitle = $displayTitle;
     if (!empty($event['start_time'])) {
         $timeLabel = date('g:i A', strtotime($event['start_time']));
-        $timeLabel .= ' - ';
+        $calendarTitle = $timeLabel . ' - ' . $displayTitle;
     }
     return [
-        'title' => $timeLabel . public_calendar_title((string) $event['title']),
+        'title' => $calendarTitle,
         'start' => $event['event_date'] . ($event['start_time'] ? 'T' . $event['start_time'] : ''),
         'end' => $event['end_time'] ? $event['event_date'] . 'T' . $event['end_time'] : null,
         'color' => $color,
+        'classNames' => $publicDetails === '' ? [] : ['has-public-details'],
+        'displayTitle' => $displayTitle,
+        'publicDetails' => $publicDetails,
+        'eventType' => $typeLabels[$event['event_type']] ?? $typeLabels['other'],
+        'displayDate' => date('l, F j, Y', strtotime($event['event_date'])),
     ];
 }, $calendarEventRows);
 
@@ -146,15 +153,68 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <section class="calendar-preview portal-section" aria-labelledby="calendar-heading">
-    <div class="section-heading-row"><div><p class="section-kicker">Stay informed</p><h2 id="calendar-heading">Parish calendar</h2></div><p class="section-intro">Upcoming parish activities and office events.</p></div>
+    <div class="section-heading-row"><div><p class="section-kicker">Stay informed</p><h2 id="calendar-heading">Parish calendar</h2></div><p class="section-intro">Upcoming parish activities and office events. Select an event with a details indicator to read more.</p></div>
     <div id="parish-calendar" class="calendar-shell"></div>
     <div class="calendar-legend" aria-label="Calendar event colors"><?php foreach ($typeLabels as $type => $label): ?><span class="legend-item" title="<?= e($label) ?>"><span class="legend-swatch" style="background:<?= e($typeColorMap[$type]) ?>" aria-hidden="true"></span><?= e($label) ?></span><?php endforeach; ?></div>
+    <dialog id="calendar-event-dialog" class="calendar-event-dialog" aria-labelledby="calendar-event-title">
+        <div class="calendar-event-head">
+            <p class="calendar-event-type" data-calendar-event-type></p>
+            <h2 id="calendar-event-title" data-calendar-event-title></h2>
+        </div>
+        <section class="calendar-event-description" data-calendar-event-description-section hidden>
+            <h3>More information</h3>
+            <p data-calendar-event-description></p>
+        </section>
+        <div class="calendar-event-actions">
+            <button type="button" class="btn" data-calendar-event-close>Close</button>
+        </div>
+    </dialog>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.11/index.global.min.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('parish-calendar');
         if (typeof FullCalendar === 'undefined') { el.innerHTML = '<p class="empty-state">Calendar could not be loaded. See the parish office for event details.</p>'; return; }
-        var calendar = new FullCalendar.Calendar(el, { initialView: 'dayGridMonth', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' }, buttonText: { prev: 'Previous', next: 'Next', today: 'Today', month: 'Month', list: 'List' }, height: 'auto', displayEventTime: false, dayMaxEventRows: true, eventDisplay: 'block', fixedWeekCount: false, events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?> });
+        var dialog = document.getElementById('calendar-event-dialog');
+        var closeButton = dialog.querySelector('[data-calendar-event-close]');
+        closeButton.addEventListener('click', function () { dialog.close(); });
+        dialog.addEventListener('click', function (event) {
+            if (event.target === dialog) dialog.close();
+        });
+        var calendar = new FullCalendar.Calendar(el, {
+            initialView: 'dayGridMonth',
+            headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+            buttonText: { prev: 'Previous', next: 'Next', today: 'Today', month: 'Month', list: 'List' },
+            height: 'auto',
+            displayEventTime: false,
+            dayMaxEventRows: true,
+            eventDisplay: 'block',
+            fixedWeekCount: false,
+            events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+            eventDidMount: function (info) {
+                var details = info.event.extendedProps;
+                var hasPublicDetails = details.publicDetails !== '';
+                info.el.setAttribute('aria-label', details.displayTitle + ', ' + details.eventType + ', ' + details.displayDate + (hasPublicDetails ? '. Select to read more.' : '. No additional details posted.'));
+                if (hasPublicDetails) {
+                    var indicator = document.createElement('span');
+                    indicator.className = 'calendar-event-has-details';
+                    indicator.textContent = ' · Details';
+                    indicator.setAttribute('aria-hidden', 'true');
+                    info.el.appendChild(indicator);
+                } else {
+                    info.el.setAttribute('tabindex', '-1');
+                }
+            },
+            eventClick: function (info) {
+                var details = info.event.extendedProps;
+                if (details.publicDetails === '') return;
+                info.jsEvent.preventDefault();
+                dialog.querySelector('[data-calendar-event-type]').textContent = details.eventType;
+                dialog.querySelector('[data-calendar-event-title]').textContent = details.displayTitle;
+                dialog.querySelector('[data-calendar-event-description]').textContent = details.publicDetails;
+                dialog.querySelector('[data-calendar-event-description-section]').hidden = false;
+                dialog.showModal();
+            }
+        });
         calendar.render();
     });
     </script>

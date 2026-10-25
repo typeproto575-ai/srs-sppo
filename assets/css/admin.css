@@ -2244,6 +2244,37 @@ textarea {
     box-shadow: var(--admin-shadow-sm);
 }
 
+.schedule-management > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.schedule-management > summary::-webkit-details-marker { display: none; }
+.schedule-management > summary::after {
+    content: "＋";
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--admin-border);
+    border-radius: 50%;
+    color: var(--admin-green-dark);
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+.schedule-management[open] > summary::after { content: "−"; }
+.schedule-management > summary:focus-visible { outline: 3px solid #d2a640; outline-offset: 4px; }
+.schedule-management-summary > span:first-child { display: grid; gap: 0.2rem; }
+.schedule-management-summary strong { color: var(--admin-ink); font: 600 1.15rem/1.3 var(--admin-font-serif); }
+.schedule-management-kicker { color: var(--admin-green); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.schedule-management-intro { margin: 0.65rem 0 1rem; color: var(--admin-muted); font-size: 0.9rem; }
+.schedule-management[open] > summary { padding-bottom: 0.85rem; border-bottom: 1px solid var(--admin-border); }
+
 .schedule-section-heading {
     display: flex;
     align-items: end;

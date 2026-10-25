@@ -59,6 +59,7 @@ final class DatabaseIntegrationTest extends TestCase
             'confirmation_applications' => ['baptism_date', 'baptism_parish_name', 'baptism_parish_address'],
             'first_communion_applications' => ['applicant_gender', 'psa_birth_certificate_status', 'parental_consent'],
             'marriage_applications' => ['groom_current_address', 'groom_confirmed', 'civil_marriage_date', 'groom_banns_status'],
+            'schedule_events' => ['public_details'],
             'correction_requests' => ['anonymized_at'],
         ];
 

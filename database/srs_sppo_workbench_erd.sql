@@ -562,6 +562,7 @@ CREATE TABLE schedule_events (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   event_type      ENUM('mass', 'wedding', 'baptism', 'other') NOT NULL,
   title           VARCHAR(150) NOT NULL,
+  public_details  TEXT,
   event_date      DATE NOT NULL,
   start_time      TIME,
   end_time        TIME,

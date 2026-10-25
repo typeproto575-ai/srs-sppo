@@ -53,12 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_e
     $eventDate = $_POST['event_date'] ?? '';
     $startTime = $_POST['start_time'] ?: null;
     $endTime   = $_POST['end_time'] ?: null;
+    $publicDetails = trim((string) ($_POST['public_details'] ?? ''));
     $notes     = trim($_POST['notes'] ?? '');
 
     if (!in_array($postedEventType, ['mass', 'wedding', 'baptism', 'other'], true)) $errors[] = 'Event type is required.';
     if ($title === '')     $errors[] = 'Title is required.';
     if ($eventDate === '') $errors[] = 'Event date is required.';
     if ($startTime && $endTime && $endTime <= $startTime) $errors[] = 'End time must be after the start time.';
+    if (mb_strlen($publicDetails, 'UTF-8') > 1000) $errors[] = 'Public details must be 1,000 characters or fewer.';
 
     if (empty($errors)) {
         // Flag (never block): check same-date events for an actual TIME
@@ -76,10 +78,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_e
         }
 
         $stmt = $pdo->prepare(
-            "INSERT INTO schedule_events (event_type, title, event_date, start_time, end_time, notes, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO schedule_events (event_type, title, public_details, event_date, start_time, end_time, notes, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         );
-        $stmt->execute([$postedEventType, $title, $eventDate, $startTime, $endTime, $notes, current_user()['id']]);
+        $stmt->execute([$postedEventType, $title, $publicDetails !== '' ? $publicDetails : null, $eventDate, $startTime, $endTime, $notes, current_user()['id']]);
         $eventId = (int) $pdo->lastInsertId();
 
         log_activity($pdo, current_user()['id'], 'schedule_event_added', 'schedule_events', $eventId, "Added event: {$title} on {$eventDate}");
@@ -109,12 +111,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $updDate  = $_POST['event_date'] ?? '';
     $updStart = $_POST['start_time'] ?: null;
     $updEnd   = $_POST['end_time'] ?: null;
+    $updPublicDetails = trim((string) ($_POST['public_details'] ?? ''));
     $updNotes = trim($_POST['notes'] ?? '');
 
     $editEvent = [
         'id' => $editId, 'event_type' => $updType, 'title' => $updTitle,
         'event_date' => $updDate, 'start_time' => $updStart,
-        'end_time' => $updEnd, 'notes' => $updNotes,
+        'end_time' => $updEnd, 'public_details' => $updPublicDetails, 'notes' => $updNotes,
     ];
     $isEdit = $editId > 0;
 
@@ -122,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     if ($updTitle === '')     $errors[] = 'Title is required.';
     if ($updDate === '')      $errors[] = 'Event date is required.';
     if ($updStart && $updEnd && $updEnd <= $updStart) $errors[] = 'End time must be after the start time.';
+    if (mb_strlen($updPublicDetails, 'UTF-8') > 1000) $errors[] = 'Public details must be 1,000 characters or fewer.';
 
     // Verify the row still exists (the GET loader was skipped on POST).
     if ($editId && empty($errors)) {
@@ -143,9 +147,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         }
 
         $stmt = $pdo->prepare(
-            "UPDATE schedule_events SET event_type = ?, title = ?, event_date = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ?"
+            "UPDATE schedule_events SET event_type = ?, title = ?, public_details = ?, event_date = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ?"
         );
-        $stmt->execute([$updType, $updTitle, $updDate, $updStart, $updEnd, $updNotes, $editId]);
+        $stmt->execute([$updType, $updTitle, $updPublicDetails !== '' ? $updPublicDetails : null, $updDate, $updStart, $updEnd, $updNotes, $editId]);
         log_activity($pdo, current_user()['id'], 'schedule_event_updated', 'schedule_events', $editId, "Updated: {$updTitle}");
         redirect_to('/admin/schedule/calendar.php?updated=1' . ($hadConflict ? '&conflict=1' : ''));
         exit;
@@ -170,8 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_event']) && cs
 $selfUrl = $basePath . '/admin/schedule/calendar.php';
 $rfConfig = [
     'date_column' => 'event_date',
-    'search_columns' => ['title', 'notes', 'event_type'],
-    'placeholder' => 'Search event title, notes, or type...',
+    'search_columns' => ['title', 'public_details', 'notes', 'event_type'],
+    'placeholder' => 'Search event title, details, notes, or type...',
     'ranges' => ['today', 'week', 'month', 'year'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
@@ -248,6 +252,7 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
         'start' => $e['event_date'] . ($e['start_time'] ? 'T' . $e['start_time'] : ''),
         'end' => $e['end_time'] ? $e['event_date'] . 'T' . $e['end_time'] : null,
         'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? $typeColors['other']),
+        'classNames' => trim((string) ($e['public_details'] ?? '')) === '' ? [] : ['has-public-details'],
         'url'   => $basePath . '/admin/schedule/calendar.php?edit=' . (int) $e['id'],
     ];
 }, $allEvents);
@@ -299,7 +304,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="schedule-section-kicker">Schedule at a glance</p>
                     <h2 id="calendar-section-heading">Calendar</h2>
                 </div>
-                <p>Choose a month to review event dates. Select an event to edit it.</p>
+                <p>Switch between Month and List views. Select an event to edit it.</p>
             </div>
         <div class="calendar-toolbar">
             <div class="calendar-legend">
@@ -315,6 +320,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <script>
         document.addEventListener('DOMContentLoaded', function () {
+            var eventType = document.querySelector('#event-dialog select[name="event_type"]');
+            var publicDetailsHint = document.getElementById('public-event-details-hint');
+            var detailsGuidance = {
+                mass: 'Share the celebration or occasion, such as “Feast of St. Patrick.” Avoid private Mass intentions.',
+                wedding: 'If the couple agrees to share their names, you may write “Wedding of [names].” Otherwise, describe the ceremony without naming them.',
+                baptism: 'For a group baptism, share general information such as “Group baptism ceremony.” Do not list children’s names.',
+                other: 'Briefly explain what parishioners should know about this event. Keep private or personal information in Staff notes.'
+            };
+            if (eventType && publicDetailsHint) {
+                var updatePublicDetailsHint = function () {
+                    publicDetailsHint.textContent = (detailsGuidance[eventType.value] || 'Add only information parishioners should see. Avoid private details or personal intentions unless you have permission.')
+                        + ' Public details are optional and visible on the parish website.';
+                };
+                eventType.addEventListener('change', updatePublicDetailsHint);
+                updatePublicDetailsHint();
+            }
+
             var el = document.getElementById('parish-calendar');
             if (typeof FullCalendar === 'undefined') {
                 el.innerHTML = '<p>Calendar could not be loaded. Use the searchable event list below to review scheduled events.</p>';
@@ -323,9 +345,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             var calendar = new FullCalendar.Calendar(el, {
                 initialView: 'dayGridMonth',
                 height: 'auto',
-                headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
-                buttonText: { prev: 'Previous', next: 'Next', today: 'Today' },
-                buttonHints: { prev: 'Previous month', next: 'Next month', today: 'Current month' },
+                headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+                buttonText: { prev: 'Previous', next: 'Next', today: 'Today', month: 'Month', list: 'List' },
+                buttonHints: { prev: 'Previous month', next: 'Next month', today: 'Current month', dayGridMonth: 'Month view', listMonth: 'List view' },
                 dayMaxEventRows: 4,
                 fixedWeekCount: false,
                 eventDisplay: 'block',
@@ -340,14 +362,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         });
         </script>
 
-        <section class="schedule-event-list" aria-labelledby="events-heading">
-        <div class="schedule-section-heading schedule-list-heading">
-            <div>
-                <p class="schedule-section-kicker">Search and manage</p>
-                <h2 id="events-heading">Scheduled events <span class="schedule-total-count"><?= (int) $totalRows ?></span></h2>
-            </div>
-            <p>Search by event title, notes, or type. Use the actions to edit or remove an event.</p>
-        </div>
+        <details class="schedule-event-list schedule-management"<?= ($rf['active'] || $rf['page'] > 1 || $sort !== 'date' || $rf['per_page'] !== 10) ? ' open' : '' ?>>
+        <summary class="schedule-management-summary">
+            <span>
+                <span class="schedule-management-kicker">Event tools</span>
+                <strong>Search, edit, or remove events</strong>
+            </span>
+            <span class="schedule-total-count" aria-label="<?= (int) $totalRows ?> matching events"><?= (int) $totalRows ?></span>
+        </summary>
+        <p class="schedule-management-intro">Open this section when you need to find an event or use its management actions. Use the calendar’s List view for a quick schedule overview.</p>
         <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
         <form method="get" class="inline-fields calendar-sort-form">
             <?php foreach ($_GET as $key => $value): ?>
@@ -371,7 +394,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php else: ?>
         <div class="table-scroll">
         <table class="admin-table">
-            <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Title</th><th>Notes</th><?php if ($isSecretary): ?><th>Actions</th><?php endif; ?></tr></thead>
+            <thead><tr><th>Date</th><th>Time</th><th>Type</th><th>Title</th><th>Public details</th><th>Staff notes</th><?php if ($isSecretary): ?><th>Actions</th><?php endif; ?></tr></thead>
             <tbody>
                 <?php foreach ($events as $e): ?>
                     <?php $conflict = schedule_event_has_conflict($e, $eventsByDateAll); ?>
@@ -380,6 +403,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= $e['start_time'] ? e(date('g:i A', strtotime($e['start_time']))) : '—' ?></td>
                         <td><span class="status-badge" style="background:<?= e($typeColors[$e['event_type']] ?? '#6b7280') ?>;color:#fff;"><?= e($typeLabels[$e['event_type']] ?? ucfirst($e['event_type'])) ?></span></td>
                         <td><?= e($e['title']) ?><?php if ($conflict): ?> <span class="status-badge status-rejected">Conflict</span><?php endif; ?></td>
+                        <td><?= e($e['public_details'] ?? '') ?></td>
                         <td><?= e($e['notes']) ?></td>
                         <?php if ($isSecretary): ?>
                         <td class="row-actions">
@@ -398,7 +422,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
         <?php endif; ?>
-        </section>
+        </details>
         </div>
 
         <?php if ($isSecretary): ?>
@@ -429,7 +453,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <label>Start Time <input autocomplete="off" type="time" name="start_time" value="<?= e($_POST['start_time'] ?? ($editEvent['start_time'] ?? '')) ?>"></label>
                         <label>End Time <input autocomplete="off" type="time" name="end_time" value="<?= e($_POST['end_time'] ?? ($editEvent['end_time'] ?? '')) ?>"></label>
                     </div>
-                    <label>Notes <textarea autocomplete="off" name="notes"><?= e($_POST['notes'] ?? ($editEvent['notes'] ?? '')) ?></textarea></label>
+                    <label for="public-event-details">Public details <span class="field-hint">(optional; shown to parishioners, up to 1,000 characters)</span>
+                        <textarea id="public-event-details" autocomplete="off" name="public_details" maxlength="1000" aria-describedby="public-event-details-hint"><?= e($_POST['public_details'] ?? ($editEvent['public_details'] ?? '')) ?></textarea>
+                    </label>
+                    <p id="public-event-details-hint" class="field-hint" aria-live="polite">Add only information parishioners should see. Avoid private details or personal intentions unless you have permission.</p>
+                    <label>Staff notes <textarea autocomplete="off" name="notes"><?= e($_POST['notes'] ?? ($editEvent['notes'] ?? '')) ?></textarea></label>
                     <div class="form-actions">
                         <button type="submit" name="<?= $isEdit ? 'update_event' : 'add_event' ?>" value="1" class="btn"><?= $isEdit ? 'Save changes' : 'Add Event' ?></button>
                         <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>

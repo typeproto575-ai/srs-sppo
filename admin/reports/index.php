@@ -37,18 +37,18 @@ if ($isMonthly) {
     $periodParams = [$year];
 }
 
-// --- Records encoded this period, per sacrament -------------------------
+// --- Records entered into the parish system this period, per sacrament ---
 $recordCounts = [];
 $recordQueries = $isMonthly ? [
-    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE MONTH(baptism_date) = ? AND YEAR(baptism_date) = ?",
-    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE MONTH(confirmation_date) = ? AND YEAR(confirmation_date) = ?",
-    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE MONTH(communion_date) = ? AND YEAR(communion_date) = ?",
-    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE MONTH(marriage_date) = ? AND YEAR(marriage_date) = ?",
+    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
+    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
+    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
+    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
 ] : [
-    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE YEAR(baptism_date) = ?",
-    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE YEAR(confirmation_date) = ?",
-    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE YEAR(communion_date) = ?",
-    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE YEAR(marriage_date) = ?",
+    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE YEAR(date_encoded) = ?",
+    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE YEAR(date_encoded) = ?",
+    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE YEAR(date_encoded) = ?",
+    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE YEAR(date_encoded) = ?",
 ];
 foreach ($recordQueries as $label => $sql) {
     $stmt = $pdo->prepare($sql);
@@ -131,7 +131,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <h2><?= e($periodHeading) ?></h2>
 
-        <h3>Records Encoded (by sacrament date)</h3>
+        <h3>Records Encoded (by date entered)</h3>
         <div class="table-scroll">
         <table class="admin-table">
             <thead><tr><th>Sacrament</th><th>Count</th></tr></thead>

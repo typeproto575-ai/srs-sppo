@@ -33,6 +33,10 @@ function srs_database_upgrade_definitions(): array
             'title' => 'Marriage application marital status',
             'description' => 'Allows applicants to report Married as a current marital status.',
         ],
+        '044_public_calendar_event_details' => [
+            'title' => 'Public calendar event details',
+            'description' => 'Adds a separate optional public description to schedule events without exposing staff notes.',
+        ],
     ];
 }
 
@@ -169,6 +173,9 @@ function srs_upgrade_prerequisite_errors(PDO $pdo, string $migrationKey): array
                 'bride_marital_status',
             ],
         ],
+        '044_public_calendar_event_details' => [
+            'schedule_events' => ['title', 'notes'],
+        ],
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
 
@@ -212,6 +219,7 @@ function srs_upgrade_is_complete(PDO $pdo, string $migrationKey): bool
         '041_requester_mailing_address' => srs_upgrade_column_exists($pdo, 'certificate_requests', 'requester_mailing_address'),
         '042_confirmation_baptism_details' => srs_upgrade_confirmation_baptism_details_complete($pdo),
         '043_marriage_marital_status' => srs_upgrade_marriage_marital_status_complete($pdo),
+        '044_public_calendar_event_details' => srs_upgrade_column_exists($pdo, 'schedule_events', 'public_details'),
         default => throw new InvalidArgumentException('Unknown database upgrade.'),
     };
 }
@@ -466,6 +474,8 @@ function srs_apply_database_upgrade(PDO $pdo, string $migrationKey, int $userId)
              MODIFY groom_marital_status ENUM('single', 'widowed', 'annulled', 'married') NOT NULL,
              MODIFY bride_marital_status ENUM('single', 'widowed', 'annulled', 'married') NOT NULL"
         );
+    } elseif ($migrationKey === '044_public_calendar_event_details') {
+        srs_upgrade_add_column($pdo, 'schedule_events', 'public_details', 'TEXT NULL AFTER title');
     }
 
     if (!srs_upgrade_is_complete($pdo, $migrationKey)) {
