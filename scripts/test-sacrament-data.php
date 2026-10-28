@@ -99,6 +99,20 @@ check('bad participant role rejected', throws(fn() => sd_save_record($pdo, ['sac
 check('type cannot be changed on update', throws(fn() => sd_save_record($pdo, ['id' => $id, 'sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2020-01-01'])));
 
 
+// --- logbook numbering
+$aId = sd_save_record($pdo, ['sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2026-01-01',
+    'entry_no' => 'T-009', 'book_no' => 'I', 'page_no' => '3', 'line_no' => '10']);
+$n = sd_next_logbook_numbers($pdo, 'baptism');
+check('next logbook: entry +1, line overflows to next page',
+    $n === ['entry_no' => 'T-010', 'book_no' => 'I', 'page_no' => '4', 'line_no' => '1']);
+sd_save_record($pdo, ['sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2026-01-02',
+    'entry_no' => 'T-010', 'book_no' => 'I', 'page_no' => '500', 'line_no' => '10']);
+$n = sd_next_logbook_numbers($pdo, 'baptism');
+check('next logbook: last page of a book rolls to book II', $n['book_no'] === 'II' && $n['page_no'] === '1' && $n['line_no'] === '1');
+sd_save_record($pdo, ['sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2026-01-03',
+    'entry_no' => 'old', 'book_no' => 'B-1', 'page_no' => '17', 'line_no' => '9']);
+check('next logbook: odd legacy numbering restarts at I/1/1', sd_next_logbook_numbers($pdo, 'baptism')['book_no'] === 'I');
+
 $pdo->rollBack();
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);

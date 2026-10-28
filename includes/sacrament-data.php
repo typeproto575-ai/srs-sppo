@@ -485,3 +485,71 @@ function sd_count_records_by_type(PDO $pdo): array
     }
     return $counts;
 }
+
+/**
+ * Suggest the next logbook numbers for a sacrament type, from the newest this_parish row of that type.
+ * Entry no. keeps its prefix and padding (1950-003 -> 1950-004). Line runs 1..10 per page,
+ * page 1..500 per book, book in Roman numerals. A row that does not fit the scheme restarts at I / 1 / 1.
+ * Suggestion only: the form fields stay editable.
+ * Returns ['entry_no' => string, 'book_no' => string, 'page_no' => string, 'line_no' => string].
+ */
+function sd_next_logbook_numbers(PDO $pdo, string $type): array
+{
+    if (!in_array($type, SD_TYPES, true)) {
+        throw new InvalidArgumentException('Invalid sacrament type.');
+    }
+    $fresh = ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
+    $stmt = $pdo->prepare("SELECT entry_no, book_no, page_no, line_no FROM sacrament_records "
+        . "WHERE sacrament_type = ? AND source = 'this_parish' ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$type]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return $fresh;
+    }
+    $entryNo = '';
+    $entryRaw = trim((string) ($row['entry_no'] ?? ''));
+    if ($entryRaw !== '' && preg_match('/^(.*?)(\d+)$/', $entryRaw, $m)) {
+        $entryNo = $m[1] . str_pad((string) ((int) $m[2] + 1), strlen($m[2]), '0', STR_PAD_LEFT);
+    }
+    $fresh['entry_no'] = $entryNo;
+
+    $bookRaw = strtoupper(trim((string) ($row['book_no'] ?? '')));
+    $pageRaw = trim((string) ($row['page_no'] ?? ''));
+    $lineRaw = trim((string) ($row['line_no'] ?? ''));
+    $book = null;
+    if (ctype_digit($bookRaw)) {
+        $book = (int) $bookRaw;
+    } elseif ($bookRaw !== '' && preg_match('/^[IVXLCDM]+$/', $bookRaw)) {
+        $vals = ['I' => 1, 'V' => 5, 'X' => 10, 'L' => 50, 'C' => 100, 'D' => 500, 'M' => 1000];
+        $book = 0;
+        for ($i = 0, $n = strlen($bookRaw); $i < $n; $i++) {
+            $v = $vals[$bookRaw[$i]];
+            $next = $i + 1 < $n ? $vals[$bookRaw[$i + 1]] : 0;
+            $book += ($v < $next) ? -$v : $v;
+        }
+    }
+    if ($book === null || $book < 1 || !ctype_digit($pageRaw) || !ctype_digit($lineRaw)
+        || (int) $pageRaw < 1 || (int) $lineRaw < 1) {
+        return $fresh;
+    }
+    $page = (int) $pageRaw;
+    $line = (int) $lineRaw + 1;
+    if ($line > 10) {
+        $line = 1;
+        $page++;
+    }
+    if ($page > 500) {
+        $page = 1;
+        $book++;
+    }
+    $roman = '';
+    $rem = $book;
+    foreach ([1000 => 'M', 900 => 'CM', 500 => 'D', 400 => 'CD', 100 => 'C', 90 => 'XC', 50 => 'L',
+        40 => 'XL', 10 => 'X', 9 => 'IX', 5 => 'V', 4 => 'IV', 1 => 'I'] as $val => $glyph) {
+        while ($rem >= $val) {
+            $roman .= $glyph;
+            $rem -= $val;
+        }
+    }
+    return ['entry_no' => $entryNo, 'book_no' => $roman, 'page_no' => (string) $page, 'line_no' => (string) $line];
+}

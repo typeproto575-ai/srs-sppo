@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
@@ -54,12 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$recordId || !in_array($current['status'], ['new', 'matched'], true)) {
                     throw new DomainException('Select a valid sacramental record for a request that can be matched.');
                 }
-                $recordStmt = $pdo->prepare(
-                    'SELECT id, person_id FROM sacrament_records WHERE id = ? AND sacrament_type = ?'
-                );
-                $recordStmt->execute([(int) $recordId, $current['sacrament_type']]);
-                $record = $recordStmt->fetch();
-                if (!$record) {
+                $record = sd_get_record($pdo, (int) $recordId);
+                if (!$record || (string) ($record['sacrament_type'] ?? '') !== $current['sacrament_type']) {
                     throw new DomainException('The selected record does not exist for this sacrament type.');
                 }
                 $nextStatus = $current['status'] === 'new' ? 'matched' : $current['status'];
@@ -72,19 +69,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE id = ?'
                 );
                 $update->execute([(int) $record['person_id'], (int) $record['id'], $userId, $nextStatus, $requestId]);
-                log_activity($pdo, $userId, 'certificate_request_matched', 'certificate_requests', $requestId, 'Matched to sacrament record ' . (int) $record['id'] . '.');
+                log_activity($pdo, $userId, 'certificate.match', 'certificate_requests', $requestId, 'Matched to sacrament record ' . (int) $record['id'] . '.');
                 $message = 'The certificate request is linked to the selected sacrament record.';
+            } elseif ($action === 'verify_book') {
+                $verifyRecordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
+                if (!$verifyRecordId) {
+                    throw new DomainException('A valid record ID is required.');
+                }
+                $verifyRecord = sd_get_record($pdo, (int) $verifyRecordId);
+                if (!$verifyRecord || (int) ($verifyRecord['id'] ?? 0) !== (int) $req['record_id']) {
+                    throw new DomainException('The record does not match this request.');
+                }
+                sd_verify_book_entry($pdo, (int) $verifyRecordId, $userId);
+                log_activity($pdo, $userId, 'record.verify', 'sacrament_records', (int) $verifyRecordId, 'Verified book entry');
+                $message = 'Book entry has been verified.';
             } elseif ($action === 'mark_for_signature') {
                 $certificateNo = certificate_detail_post_string('certificate_no');
                 if (!cert_request_transition_valid($current['status'], 'for_signature')) {
                     throw new DomainException('This request cannot move to For Signature from its current status.');
                 }
-                $paymentGate = cert_request_payment_gate($current, 'for_signature');
-                if (!$paymentGate['ok']) {
-                    throw new DomainException($paymentGate['reason']);
-                }
                 if ((int) $current['record_id'] < 1 || $certificateNo === '' || strlen($certificateNo) > 30) {
                     throw new DomainException('A linked sacrament record and a certificate number (maximum 30 characters) are required.');
+                }
+                $linkedRecord = sd_get_record($pdo, (int) $current['record_id']);
+                if (!sd_can_print_certificate($linkedRecord ?: [])) {
+                    throw new DomainException('Verify the book entry first (this-parish records only).');
                 }
                 $update = $pdo->prepare(
                     "UPDATE certificate_requests
@@ -92,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE id = ?"
                 );
                 $update->execute([$certificateNo, $userId, $requestId]);
-                log_activity($pdo, $userId, 'certificate_request_printed', 'certificate_requests', $requestId, 'Certificate recorded as printed and awaiting priest signature.');
+                log_activity($pdo, $userId, 'certificate.print', 'certificate_requests', $requestId, 'Certificate recorded as printed and awaiting priest signature.');
                 $message = 'The request is now awaiting the priest signature.';
             } elseif ($action === 'mark_ready') {
                 if (!cert_request_transition_valid($current['status'], 'ready') || certificate_detail_post_string('signature_confirmed') !== '1') {
@@ -100,13 +109,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $update = $pdo->prepare("UPDATE certificate_requests SET status = 'ready', signed_at = NOW() WHERE id = ?");
                 $update->execute([$requestId]);
-                log_activity($pdo, $userId, 'certificate_request_signed', 'certificate_requests', $requestId, 'Priest signature confirmed; request marked ready.');
+                log_activity($pdo, $userId, 'certificate.sign', 'certificate_requests', $requestId, 'Priest signature confirmed; request marked ready.');
                 $message = 'The certificate request is marked Ready for pickup.';
             } elseif ($action === 'release') {
                 $claimantType = certificate_detail_post_string('claimant_type');
                 $representativeName = certificate_detail_post_string('representative_name');
                 $representativeRelationship = certificate_detail_post_string('representative_relationship');
                 $claimantNotes = certificate_detail_post_string('claimant_notes');
+                $idVerified = certificate_detail_post_string('id_verified') === '1';
+                $paidNow = certificate_detail_post_string('paid_now') === '1';
+                $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
                 if (!cert_request_transition_valid($current['status'], 'released')) {
                     throw new DomainException('Only a Ready request can be released.');
                 }
@@ -118,18 +130,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update = $pdo->prepare(
                     "UPDATE certificate_requests
                      SET status = 'released', claimant_type = ?, representative_name = ?, representative_relationship = ?,
-                         claimant_notes = ?, id_verified = 1, released_by = ?, released_at = NOW()
+                         claimant_notes = ?, id_verified = 1, paid_at = COALESCE(paid_at, NOW()), paid_by = COALESCE(paid_by, ?), released_by = ?, released_at = NOW()
                      WHERE id = ?"
                 );
                 $update->execute([
                     $claimantType,
                     $claimantType === 'representative' ? $representativeName : null,
-                    $claimantType === 'representative' ? $representativeRelationship : null,
+                    $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
                     $claimantNotes !== '' ? $claimantNotes : null,
+                    empty($current['paid_at']) ? $userId : null,
                     $userId,
                     $requestId,
                 ]);
-                log_activity($pdo, $userId, 'certificate_request_released', 'certificate_requests', $requestId, 'Certificate released after claimant identity verification.');
+                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released after claimant identity verification.');
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
                 $reason = certificate_detail_post_string('rejection_reason');
@@ -141,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $update = $pdo->prepare("UPDATE certificate_requests SET status = 'rejected', rejection_reason = ? WHERE id = ?");
                 $update->execute([$reason, $requestId]);
-                log_activity($pdo, $userId, 'certificate_request_rejected', 'certificate_requests', $requestId, 'Certificate request rejected.', $reason);
+                log_activity($pdo, $userId, 'certificate.reject', 'certificate_requests', $requestId, 'Certificate request rejected.', $reason);
                 $message = 'The certificate request was rejected.';
             } elseif ($action === 'mark_paid') {
                 if (!empty($current['paid_at']) || in_array($current['status'], ['released', 'rejected'], true)) {
@@ -149,13 +162,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $update = $pdo->prepare('UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ?');
                 $update->execute([$userId, $requestId]);
-                log_activity($pdo, $userId, 'certificate_request_payment_recorded', 'certificate_requests', $requestId, 'Payment received and recorded.');
+                log_activity($pdo, $userId, 'certificate.payment', 'certificate_requests', $requestId, 'Payment received and recorded.');
                 $message = 'Payment has been recorded.';
             } else {
                 throw new DomainException('The requested action is not supported.');
             }
 
             $pdo->commit();
+            if ($action === 'mark_ready' && !empty($req['requester_email'])) {
+                $sacramentLabel = sd_type_label($req['sacrament_type']);
+                $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
+                    . "Please bring: a valid government-issued photo ID.\n"
+                    . "If someone else will claim it for you, they must bring: their own valid government ID, a signed authorization letter from you, and a copy of your valid ID.\n"
+                    . "The fee is paid at pickup.";
+                try {
+                    send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId);
+                } catch (Throwable $e) {
+                    error_log('SRS-SPPO ready email failed: ' . $e->getMessage());
+                }
+            }
             $notice = ['success', $message];
         } catch (DomainException $e) {
             if ($pdo->inTransaction()) {
@@ -180,25 +205,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $person = null;
 if (!empty($req['person_id'])) {
-    $personStmt = $pdo->prepare(
-        'SELECT id, first_name, middle_name, last_name, suffix, birth_date
-         FROM persons WHERE id = ?'
-    );
-    $personStmt->execute([(int) $req['person_id']]);
-    $person = $personStmt->fetch() ?: null;
+    $person = sd_get_person($pdo, (int) $req['person_id']);
 }
 
 $record = null;
 if (!empty($req['record_id'])) {
-    $recordStmt = $pdo->prepare(
-        'SELECT sr.id, sr.event_date, sr.place, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
-                p.first_name, p.middle_name, p.last_name, p.suffix
-         FROM sacrament_records sr
-         JOIN persons p ON p.id = sr.person_id
-         WHERE sr.id = ? AND sr.sacrament_type = ?'
-    );
-    $recordStmt->execute([(int) $req['record_id'], $req['sacrament_type']]);
-    $record = $recordStmt->fetch() ?: null;
+    $record = sd_get_record($pdo, (int) $req['record_id']);
+    if ($record && (string) ($record['sacrament_type'] ?? '') !== $req['sacrament_type']) {
+        $record = null;
+    }
 }
 
 $details = [];
@@ -220,9 +235,13 @@ $auditHistory = $auditStmt->fetchAll();
 
 $requesterName = $req['requester_name'];
 $statusLabel = certificate_detail_label((string) $req['status']);
-$recordName = $record
-    ? trim(implode(' ', array_filter([$record['first_name'], $record['middle_name'], $record['last_name'], $record['suffix']])))
-    : '';
+$recordName = '';
+if ($record && !empty($record['person_id'])) {
+    $recordPerson = sd_get_person($pdo, (int) $record['person_id']);
+    if ($recordPerson) {
+        $recordName = sd_full_name($recordPerson);
+    }
+}
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <section class="admin-page-heading">
@@ -303,7 +322,19 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <dt>Event date</dt><dd><?= e($record['event_date'] ?: 'Not recorded') ?></dd>
             <dt>Place</dt><dd><?= e($record['place'] ?: 'Not recorded') ?></dd>
             <dt>Register reference</dt><dd><?= e(implode(' / ', array_filter([$record['entry_no'], $record['book_no'], $record['page_no'], $record['line_no']]))) ?: 'Not recorded' ?></dd>
+            <dt>Source</dt><dd><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></dd>
+            <dt>Book entry</dt><dd><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></dd>
         </dl>
+        <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
+            <p class="field-hint">No certificate is printed for records from another parish.</p>
+        <?php elseif (empty($record['book_verified_at'])): ?>
+            <form method="post" action="<?= e($detailUrl) ?>" style="margin-top:.5rem;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="verify_book">
+                <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
+                <button type="submit" class="btn btn-small">Verify book entry</button>
+            </form>
+        <?php endif; ?>
     <?php elseif (!empty($req['record_id'])): ?>
         <p>The linked record is unavailable or has the wrong sacrament type.</p>
     <?php else: ?>
@@ -311,14 +342,49 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php endif; ?>
 
     <?php if (in_array($req['status'], ['new', 'matched'], true)): ?>
-        <form method="post" action="<?= e($detailUrl) ?>" class="stacked-form">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="link_record">
-            <label for="record_id">Sacrament record ID</label>
-            <input type="number" id="record_id" name="record_id" min="1" required value="<?= !empty($req['record_id']) ? (int) $req['record_id'] : '' ?>">
-            <p>Only a record with the request's sacrament type can be linked. The person's identity is taken from that record and is not edited here.</p>
-            <button type="submit" class="btn">Link record<?= $req['status'] === 'new' ? ' and mark Matched' : '' ?></button>
+        <?php $searchQ = trim((string) ($_GET['q'] ?? $req['subject_name'])); ?>
+        <form method="get" action="<?= e($detailUrl) ?>" class="stacked-form" style="margin-bottom:1rem;">
+            <label for="q">Search person by name</label>
+            <input type="text" id="q" name="q" value="<?= e($searchQ) ?>">
+            <button type="submit" class="btn btn-secondary">Search</button>
         </form>
+        <?php if ($searchQ !== ''): ?>
+            <?php $searchResults = sd_search_persons($pdo, $searchQ); ?>
+            <?php if (empty($searchResults)): ?>
+                <p>No matching person found.</p>
+            <?php else: ?>
+                <?php foreach ($searchResults as $sp): ?>
+                    <?php $spRecords = sd_get_person_records($pdo, (int) $sp['id']); ?>
+                    <?php
+                        $recsToShow = [];
+                        if ($req['sacrament_type'] === 'marriage') {
+                            $recsToShow = $spRecords['marriages'] ?? [];
+                        } else {
+                            $r = $spRecords[$req['sacrament_type']] ?? null;
+                            if ($r) $recsToShow = [$r];
+                        }
+                    ?>
+                    <div style="margin-bottom:1rem;">
+                        <p><strong><?= e($sp['full_name']) ?></strong> (Person #<?= (int) $sp['id'] ?>)</p>
+                        <?php if (empty($recsToShow)): ?>
+                            <p class="field-hint">No <?= e(sd_type_label($req['sacrament_type'])) ?> record for this person.</p>
+                        <?php else: ?>
+                            <?php foreach ($recsToShow as $r): ?>
+                                <div style="margin:.25rem 0; padding:.5rem; border:1px solid #ddd;">
+                                    <span><?= e(date('M j, Y', strtotime($r['event_date']))) ?> &middot; <?= e($r['place'] ?: 'no place') ?> &middot; <?= e(implode(' / ', array_filter([$r['entry_no'], $r['book_no'], $r['page_no'], $r['line_no']])) ?: 'no ref') ?></span>
+                                    <form method="post" action="<?= e($detailUrl) ?>" style="display:inline;margin-left:.5rem;">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="link_record">
+                                        <input type="hidden" name="record_id" value="<?= (int) $r['id'] ?>">
+                                        <button type="submit" class="btn btn-small">Use this record</button>
+                                    </form>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        <?php endif; ?>
     <?php endif; ?>
 </section>
 
@@ -329,7 +395,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="mark_for_signature">
             <label for="certificate_no">Certificate number</label>
-            <input type="text" id="certificate_no" name="certificate_no" maxlength="30" required value="<?= e($req['certificate_no'] ?? '') ?>">
+            <input type="text" id="certificate_no" name="certificate_no" maxlength="30" required value="<?= e($req['certificate_no'] ?: 'C-' . date('Y') . '-' . str_pad((string) $requestId, 5, '0', STR_PAD_LEFT)) ?>">
             <p>Use this after the certificate has been printed for the priest's signature.</p>
             <?php if ($req['channel'] === 'online' && empty($req['paid_at'])): ?>
                 <p>Record the online request payment before continuing.</p>
@@ -354,10 +420,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </select>
             <label for="representative_name">Representative name (if applicable)</label>
             <input type="text" id="representative_name" name="representative_name" maxlength="150">
-            <label for="representative_relationship">Representative relationship (if applicable)</label>
+            <label for="representative_relationship">Representative relationship (optional)</label>
             <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
+            <p class="field-hint">Representative must bring: (1) their own valid government ID, (2) a signed authorization letter from the subject, (3) a copy of the subject's valid ID.</p>
+            <label><input type="checkbox" name="rep_docs_received" value="1"> I received the representative's valid ID, the signed authorization letter and a copy of the subject's valid ID.</label>
             <label for="claimant_notes">Pickup notes (optional)</label>
             <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
+            <?php if (empty($req['paid_at'])): ?>
+                <label><input type="checkbox" name="paid_now" value="1"> Payment received</label>
+            <?php else: ?>
+                <p class="field-hint">Payment recorded on <?= e($req['paid_at']) ?></p>
+            <?php endif; ?>
             <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID.</label>
             <button type="submit" class="btn">Verify ID and Release</button>
         </form>

@@ -8,10 +8,25 @@ require_once __DIR__ . '/../config/mail.php';
 
 function email_delivery_log(PDO $pdo, string $to, string $subject, string $eventType, string $status, ?string $error = null, ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null): void
 {
+    $allowed = ['sent', 'failed', 'disabled', 'invalid'];
+    if (!in_array($status, $allowed, true)) {
+        $status = 'failed';
+    }
+
     try {
-        $stmt = $pdo->prepare('INSERT INTO email_delivery_log (recipient, subject_line, event_type, entity_type, entity_id, tracking_number, delivery_status, error_message, sent_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $user = function_exists('current_user') ? current_user() : null;
-        $stmt->execute([$to, $subject, $eventType, $entityType, $entityId, $trackingNumber, $status, $error, $user['id'] ?? null]);
+        $stmt = $pdo->prepare(
+            "INSERT INTO notifications (channel, type, title, recipient, delivery_status, error_message, entity_type, entity_id)
+             VALUES ('email', ?, ?, ?, ?, ?, ?, ?)"
+        );
+        $stmt->execute([
+            substr($eventType, 0, 60),
+            substr($subject, 0, 150),
+            substr($to, 0, 150),
+            $status,
+            substr($error ?? '', 0, 500),
+            $entityType,
+            $entityId,
+        ]);
     } catch (Throwable $e) {
         error_log('SRS-SPPO email delivery log failed: ' . $e->getMessage());
     }
