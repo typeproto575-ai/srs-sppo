@@ -1,11 +1,11 @@
 <?php
-/** Shared helpers for linking register rows to the persons identity index. */
+/** Shared helpers for linking register rows to master person profiles. */
 
 if (!function_exists('person_identity_choices')) {
     function person_identity_choices(PDO $pdo): array
     {
         return $pdo->query(
-            'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
+            'SELECT id, first_name, middle_name, last_name, suffix, birth_date
              FROM persons ORDER BY last_name, first_name, middle_name LIMIT 2000'
         )->fetchAll();
     }
@@ -18,7 +18,6 @@ if (!function_exists('person_identity_choices')) {
             $person['last_name'] ?? '',
             $person['suffix'] ?? '',
         ])));
-        if (!empty($person['maiden_name'])) $label .= ' (maiden: ' . $person['maiden_name'] . ')';
         if (!empty($person['birth_date'])) $label .= ' - born ' . date('Y-m-d', strtotime($person['birth_date']));
         return $label;
     }
@@ -33,6 +32,79 @@ if (!function_exists('person_identity_choices')) {
         $stmt->execute([$id]);
         if (!$stmt->fetchColumn()) throw new InvalidArgumentException('The selected person identity does not exist.');
         return $id;
+    }
+
+    function save_person_identity(PDO $pdo, ?int $personId, array $identity): int
+    {
+        $name = static function (string $key) use ($identity): ?string {
+            $value = trim((string) ($identity[$key] ?? ''));
+            return $value === '' ? null : $value;
+        };
+        $firstName = $name('first_name');
+        $lastName = $name('last_name');
+        if ($firstName === null || $lastName === null) {
+            throw new InvalidArgumentException('Enter the person\'s first and last name to save the master profile.');
+        }
+
+        $values = [
+            $firstName,
+            $name('middle_name'),
+            $lastName,
+            $name('suffix'),
+            $name('sex'),
+            $name('birth_date'),
+            $name('birth_place'),
+            $name('father_name'),
+            $name('mother_maiden_name'),
+        ];
+
+        if ($personId !== null) {
+            $exists = $pdo->prepare('SELECT id FROM persons WHERE id = ?');
+            $exists->execute([$personId]);
+            if (!$exists->fetchColumn()) {
+                throw new InvalidArgumentException('The selected person identity no longer exists.');
+            }
+
+            // Keep established master values; fill only profile details not yet recorded.
+            $updateSql = "UPDATE persons
+                          SET birth_date = COALESCE(birth_date, ?),
+                              birth_place = COALESCE(NULLIF(birth_place, ''), ?),
+                              sex = COALESCE(sex, ?),
+                              father_name = COALESCE(NULLIF(father_name, ''), ?),
+                              mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?)";
+            $updateValues = [$values[5], $values[6], $values[4], $values[7], $values[8]];
+            if (array_key_exists('address', $identity)) {
+                $updateSql .= ", address = COALESCE(NULLIF(address, ''), ?)";
+                $updateValues[] = $name('address');
+            }
+            $updateSql .= ' WHERE id = ?';
+            $updateValues[] = $personId;
+            $pdo->prepare($updateSql)->execute($updateValues);
+            return $personId;
+        }
+
+        $columns = [
+            'first_name', 'middle_name', 'last_name', 'suffix', 'sex',
+            'birth_date', 'birth_place', 'father_name', 'mother_maiden_name',
+        ];
+        if (array_key_exists('address', $identity)) {
+            $columns[] = 'address';
+            $values[] = $name('address');
+        }
+        if (isset($identity['baptismal_status'])) {
+            $status = (string) $identity['baptismal_status'];
+            if (!in_array($status, ['baptized_catholic', 'baptized_non_catholic', 'unbaptized'], true)) {
+                throw new InvalidArgumentException('Choose a valid baptismal status.');
+            }
+            $columns[] = 'baptismal_status';
+            $values[] = $status;
+        }
+        $insert = $pdo->prepare(
+            'INSERT INTO persons (' . implode(', ', $columns) . ')
+             VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ')'
+        );
+        $insert->execute($values);
+        return (int) $pdo->lastInsertId();
     }
 
     /**

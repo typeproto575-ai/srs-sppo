@@ -1,13 +1,6 @@
 <?php
 /**
- * =====================================================================
- * SRS-SPPO BAPTISMAL RECORDS (admin register)
- * =====================================================================
- * Purpose: Digital mirror of the physical baptismal register. The
- *          secretary encodes entries from the physical logbook (never
- *          replacing it), lists/searches them, and this is the source
- *          the certificate generator validates requests against.
- * =====================================================================
+ * SRS-SPPO baptismal register.
  */
 
 require_once __DIR__ . '/../../config/database.php';
@@ -16,420 +9,686 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_role('secretary');
 
-// Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
-
-// This page's own app-relative URL (path + current query string) so the record
-// view can send the user back here with the same search, filter and page.
-$selfReturn = '/admin/records/baptismal.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
-
+$selfUrl = $basePath . '/admin/records/baptismal.php';
+$selfReturn = '/admin/records/baptismal.php' . (($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . $_SERVER['QUERY_STRING'] : '');
 $pageTitle = 'Baptismal Records';
-$errors  = [];
+$errors = [];
 $success = null;
+$editRecord = null;
+$editParticipants = [];
+$application = null;
+$applicationDetails = [];
+$applicationId = (int) ($_GET['from_application'] ?? $_POST['from_application'] ?? 0);
+$personId = 0;
+$identity = null;
+$formValues = $_POST;
+$isEdit = isset($_GET['edit']);
 
-// --- Pre-fill from an approved sacrament application (optional) -----------
-// Opened from a baptismal application detail page via ?from_application=N:
-// the application data becomes the form defaults so the secretary does not
-// re-type what the family already provided. GET-only seeding; a POST
-// (submit / validation retry) always keeps what the secretary typed.
-$fromApplicationId = 0;
-if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $s = $pdo->prepare(
-        "SELECT sa.*, ba.* FROM sacrament_applications sa
-         JOIN baptismal_applications ba ON ba.application_id = sa.id
-         WHERE sa.id = ? AND sa.sacrament_type = 'baptismal'"
-    );
-    $s->execute([(int) $_GET['from_application']]);
-    if ($app = $s->fetch()) {
-        $fromApplicationId = (int) $app['id'];
-        $_POST['birth_date']      = (string) ($app['child_birth_date'] ?? '');
-        $_POST['child_birthplace'] = (string) ($app['child_birthplace'] ?? '');
-        $_POST['father_name']     = (string) ($app['father_full_name'] ?? '');
-        $_POST['mother_name']     = (string) ($app['mother_guardian_name'] ?? '');
-        $_POST['remarks']         = 'Encoded from application ' . $app['tracking_number'];
-        // Godparents from the application, split by type for the form arrays.
-        $g = $pdo->prepare("SELECT godparent_name, godparent_residence, godparent_type
-                            FROM baptismal_application_godparents
-                            WHERE baptismal_application_id = ? ORDER BY godparent_type, id");
-        $g->execute([$fromApplicationId]);
-        $gf = $gm = [];
-        foreach ($g->fetchAll() as $gp) {
-            if ($gp['godparent_type'] === 'godmother') { $gm[] = $gp; }
-            else { $gf[] = $gp; }
-        }
-        $fill = function (array $rows) {
-            $n = $r = [];
-            foreach ($rows as $row) { $n[] = $row['godparent_name']; $r[] = $row['godparent_residence']; }
-            return [$n, $r];
-        };
-        if ($gf) { [$_POST['godfather_name'], $_POST['godfather_residence']] = $fill($gf); }
-        if ($gm) { [$_POST['godmother_name'], $_POST['godmother_residence']] = $fill($gm); }
+if (!function_exists('application_queue_next_statuses')) {
+    function application_queue_next_statuses(string $status): array
+    {
+        return [
+            'new' => ['reviewing', 'rejected'],
+            'reviewing' => ['requirements_pending', 'approved', 'rejected'],
+            'requirements_pending' => ['reviewing', 'approved', 'rejected'],
+            'approved' => ['scheduled', 'rejected'],
+            'scheduled' => ['completed', 'rejected'],
+            'completed' => [],
+            'rejected' => [],
+        ][$status] ?? [];
     }
 }
 
-// --- Handle new record submission (secretary encodes from the physical logbook) ---
-// CSRF guard: reject any POST whose token is missing or stale (see
-// csrf_field() inside the form). Nothing is written when it fails.
+function baptismal_next_logbook_numbers(PDO $pdo): array
+{
+    $stmt = $pdo->query(
+        "SELECT entry_no, book_no, page_no, line_no
+         FROM sacrament_records
+        WHERE sacrament_type = 'baptism' AND source = 'this_parish'
+         ORDER BY id DESC LIMIT 1"
+    );
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
+    }
+
+    $parts = register_parse_entry_no((string) ($row['entry_no'] ?? ''));
+    $entryNo = $parts ? register_build_entry_no($parts, $parts['number'] + 1) : '';
+    $bookRaw = trim((string) ($row['book_no'] ?? ''));
+    $pageRaw = trim((string) ($row['page_no'] ?? ''));
+    $lineRaw = trim((string) ($row['line_no'] ?? ''));
+    $book = register_roman_to_int($bookRaw);
+    if ($book === null && ctype_digit($bookRaw)) {
+        $book = (int) $bookRaw;
+    }
+    if ($book === null || !ctype_digit($pageRaw) || !ctype_digit($lineRaw)) {
+        return ['entry_no' => $entryNo, 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
+    }
+    $page = (int) $pageRaw;
+    $line = (int) $lineRaw + 1;
+    if ($line > REGISTER_LINES_PER_PAGE) {
+        $line = 1;
+        $page++;
+    }
+    if ($page > REGISTER_PAGES_PER_BOOK) {
+        $page = 1;
+        $book++;
+    }
+    return [
+        'entry_no' => $entryNo,
+        'book_no' => register_roman_numeral($book),
+        'page_no' => (string) $page,
+        'line_no' => (string) $line,
+    ];
+}
+
+function baptismal_shift_entry_numbers(PDO $pdo, string $entryNo): int
+{
+    $incoming = register_parse_entry_no($entryNo);
+    if (!$incoming) {
+        return 0;
+    }
+    $stmt = $pdo->prepare(
+        "SELECT id, entry_no FROM sacrament_records
+         WHERE sacrament_type = 'baptism' AND source = 'this_parish' AND entry_no LIKE ?"
+    );
+    $stmt->execute([$incoming['prefix'] . '%']);
+    $update = $pdo->prepare('UPDATE sacrament_records SET entry_no = ? WHERE id = ?');
+    $shifted = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $parts = register_parse_entry_no((string) $row['entry_no']);
+        if (!$parts || $parts['prefix'] !== $incoming['prefix'] || $parts['number'] < $incoming['number']) {
+            continue;
+        }
+        $update->execute([
+            register_build_entry_no($parts, $parts['number'] + 1),
+            (int) $row['id'],
+        ]);
+        $shifted++;
+    }
+    return $shifted;
+}
+
+if ($isEdit) {
+    $editId = filter_var($_GET['edit'], FILTER_VALIDATE_INT);
+    if (!$editId || $editId < 1) {
+        redirect_to($selfUrl);
+    }
+    $stmt = $pdo->prepare(
+        "SELECT sr.id, sr.sacrament_type, sr.person_id, sr.source, sr.event_date, sr.place,
+                sr.minister_name, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
+                sr.parents_union_type, sr.details, sr.remarks, sr.encoded_by,
+                p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
+                p.birth_place, p.father_name, p.mother_maiden_name
+         FROM sacrament_records sr
+         JOIN persons p ON p.id = sr.person_id
+         WHERE sr.id = ? AND sr.sacrament_type = 'baptism'"
+    );
+    $stmt->execute([(int) $editId]);
+    $editRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$editRecord) {
+        redirect_to($selfUrl);
+    }
+    $personId = (int) $editRecord['person_id'];
+    $stmt = $pdo->prepare(
+        'SELECT role, full_name, residence, sort_order
+         FROM sacrament_participants WHERE record_id = ? ORDER BY sort_order, id'
+    );
+    $stmt->execute([(int) $editRecord['id']]);
+    $editParticipants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $formValues = array_merge($editRecord, is_array($_POST) ? $_POST : []);
+    $recordDetails = json_decode((string) ($editRecord['details'] ?? ''), true);
+    $recordDetails = is_array($recordDetails) ? $recordDetails : [];
+    foreach ($recordDetails as $key => $value) {
+        if (!array_key_exists($key, $formValues)) {
+            $formValues[$key] = $value;
+        }
+    }
+} elseif ($applicationId > 0) {
+    $stmt = $pdo->prepare(
+        "SELECT id, request_no, sacrament_type, person_id, status, details
+         FROM sacrament_applications
+         WHERE id = ? AND sacrament_type = 'baptism'"
+    );
+    $stmt->execute([$applicationId]);
+    $application = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($application) {
+        $applicationDetails = json_decode((string) ($application['details'] ?? ''), true);
+        $applicationDetails = is_array($applicationDetails) ? $applicationDetails : [];
+        $personId = (int) ($application['person_id'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            foreach ([
+                'child_birth_date' => 'birth_date',
+                'child_birth_place' => 'child_birthplace',
+                'parents_union_type' => 'union_type',
+                'father_birthplace' => 'father_birthplace',
+                'mother_birthplace' => 'mother_birthplace',
+                'parents_origin' => 'parents_origin',
+                'parents_residence' => 'parents_residence',
+                'proxy_name' => 'proxy_name',
+            ] as $detailKey => $fieldName) {
+                if (isset($applicationDetails[$detailKey]) && is_scalar($applicationDetails[$detailKey])) {
+                    $formValues[$fieldName] = (string) $applicationDetails[$detailKey];
+                }
+            }
+            foreach (['father_name' => 'father', 'mother_maiden_name' => 'mother'] as $detailKey => $prefix) {
+                $name = trim((string) ($applicationDetails[$detailKey] ?? ''));
+                if ($name !== '') {
+                    $formValues[$prefix . '_first'] = $name;
+                }
+            }
+            $godfathers = [];
+            $godmothers = [];
+            foreach (($applicationDetails['godparents'] ?? []) as $godparent) {
+                if (!is_array($godparent)) {
+                    continue;
+                }
+                $role = (string) ($godparent['role'] ?? '');
+                $name = trim((string) ($godparent['full_name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                if ($role === 'godfather') {
+                    $godfathers[] = $godparent;
+                } elseif ($role === 'godmother') {
+                    $godmothers[] = $godparent;
+                }
+            }
+            foreach (['godfather' => $godfathers, 'godmother' => $godmothers] as $prefix => $rows) {
+                foreach ($rows as $index => $row) {
+                    $formValues[$prefix . '_first'][$index] = (string) $row['full_name'];
+                    $formValues[$prefix . '_residence'][$index] = '';
+                }
+            }
+        }
+    } else {
+        $errors[] = 'The requested baptism application could not be found.';
+        $applicationId = 0;
+    }
+}
+
+if (!$isEdit && $personId === 0 && !empty($_GET['person_id'])) {
+    $selectedId = filter_var($_GET['person_id'], FILTER_VALIDATE_INT);
+    if ($selectedId && $selectedId > 0) {
+        $personId = (int) $selectedId;
+    }
+}
+if ($personId > 0) {
+    $stmt = $pdo->prepare(
+        'SELECT id, first_name, middle_name, last_name, suffix, birth_date,
+                birth_place, father_name, mother_maiden_name
+         FROM persons WHERE id = ?'
+    );
+    $stmt->execute([$personId]);
+    $identity = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$identity) {
+        $errors[] = 'The selected person profile could not be found.';
+        $personId = 0;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     $errors[] = 'Security token expired or invalid — please reload the page and submit again.';
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf_verify()) {
-    require_role('secretary'); // encoding records is a secretary-only task (no priest login exists)
 
-    $entryNo          = trim($_POST['entry_no'] ?? '');
-    $baptismDate      = $_POST['baptism_date'] ?? '';
-    $baptismPlace     = trim($_POST['baptism_place'] ?? '');
-    $childBirthplace  = trim($_POST['child_birthplace'] ?? '');
-    $childName        = trim($_POST['child_full_name'] ?? '');
-    $childFirst = trim($_POST['child_first_name'] ?? ''); $childMiddle = trim($_POST['child_middle_name'] ?? ''); $childLast = trim($_POST['child_last_name'] ?? ''); $childSuffix = trim($_POST['child_suffix'] ?? '');
-    if ($childFirst !== '' || $childMiddle !== '' || $childLast !== '') $childName = compose_structured_name($childFirst, $childMiddle, $childLast, $childSuffix);
-    $childFirst = trim($_POST['child_first_name'] ?? '');
-    $childMiddle = trim($_POST['child_middle_name'] ?? '');
-    $childLast = trim($_POST['child_last_name'] ?? '');
-    $childSuffix = trim($_POST['child_suffix'] ?? '');
-    if ($childFirst !== '' || $childMiddle !== '' || $childLast !== '') $childName = compose_structured_name($childFirst, $childMiddle, $childLast, $childSuffix);
-    $birthDate        = $_POST['birth_date'] ?: null;
-    // Rule 7 note: legitimacy is NOT collected on new entries (project owner
-    // decision) — the column stays NULL; legacy digitized rows keep theirs.
-    $legitimacy       = null;
-    $fatherName       = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
-    $motherName       = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_name'] ?? '');
-    $parentsOrigin    = trim($_POST['parents_origin'] ?? '');
-    $parentsResidence = trim($_POST['parents_residence'] ?? '');
-    $ministerName     = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
-    $remarks          = trim($_POST['remarks'] ?? '');
-    $bookNo           = trim($_POST['book_no'] ?? '');
-    $pageNo           = trim($_POST['page_no'] ?? '');
-    $lineNo           = trim($_POST['line_no'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || isset($_POST['update_record'])) && csrf_verify()) {
+    $isPostEdit = isset($_POST['update_record']);
+    $postedEditId = (int) ($_POST['edit_id'] ?? 0);
+    $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
+    $baptismDate = trim((string) ($_POST['baptism_date'] ?? ''));
+    $baptismPlace = trim((string) ($_POST['baptism_place'] ?? ''));
+    $bookNo = trim((string) ($_POST['book_no'] ?? ''));
+    $pageNo = trim((string) ($_POST['page_no'] ?? ''));
+    $lineNo = trim((string) ($_POST['line_no'] ?? ''));
+    $unionType = trim((string) ($_POST['union_type'] ?? ''));
+    $fatherName = compose_person_name($_POST, 'father');
+    $motherName = compose_person_name($_POST, 'mother');
+    $ministerName = compose_person_name($_POST, 'minister');
+    $remarks = trim((string) ($_POST['remarks'] ?? ''));
+    $parentDetails = [];
+    foreach (['father_birthplace', 'mother_birthplace', 'parents_origin', 'parents_residence', 'proxy_name'] as $key) {
+        $value = trim((string) ($_POST[$key] ?? ''));
+        if ($value !== '') {
+            $parentDetails[$key] = $value;
+        }
+    }
+    $godparents = [];
+    foreach (['godfather', 'godmother'] as $role) {
+        $names = compose_person_name_rows_by_index($_POST, $role);
+        $residences = $_POST[$role . '_residence'] ?? [];
+        if (!is_array($residences)) {
+            $residences = [];
+        }
+        foreach ($names as $index => $name) {
+            $name = trim((string) $name);
+            if ($name === '') {
+                continue;
+            }
+            $godparents[] = [
+                'role' => $role,
+                'full_name' => $name,
+                'residence' => trim((string) ($residences[$index] ?? '')) ?: null,
+                'sort_order' => count($godparents) + 1,
+            ];
+        }
+    }
 
-    // Sponsors (Godfathers and Godmothers) - separate arrays for each type
-    $godfatherNames      = array_key_exists('godfather_first', $_POST)
-        ? compose_person_name_rows_by_index($_POST, 'godfather')
-        : ($_POST['godfather_name'] ?? []);
-    if (!is_array($godfatherNames)) { $godfatherNames = []; }
-    $godfatherResidences = $_POST['godfather_residence'] ?? [];
-    if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
-    $godmotherNames      = array_key_exists('godmother_first', $_POST)
-        ? compose_person_name_rows_by_index($_POST, 'godmother')
-        : ($_POST['godmother_name'] ?? []);
-    if (!is_array($godmotherNames)) { $godmotherNames = []; }
-    $godmotherResidences = $_POST['godmother_residence'] ?? [];
-    if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
-    
-    // Keep old field names for backward compatibility with database
-    $sponsorNames      = array_merge(is_array($godfatherNames) ? $godfatherNames : [], is_array($godmotherNames) ? $godmotherNames : []);
-    $sponsorResidences = array_merge(is_array($godfatherResidences) ? $godfatherResidences : [], is_array($godmotherResidences) ? $godmotherResidences : []);
+    if ($baptismDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $baptismDate)
+        || !checkdate((int) substr($baptismDate, 5, 2), (int) substr($baptismDate, 8, 2), (int) substr($baptismDate, 0, 4))) {
+        $errors[] = 'Enter a valid baptism date.';
+    }
+    if (!in_array($unionType, ['', 'legitimate', 'civil', 'natural'], true)) {
+        $errors[] = 'Choose a valid parents’ union type.';
+    }
+    if ($isPostEdit) {
+        if (!$editRecord || $postedEditId !== (int) $editRecord['id']) {
+            $errors[] = 'Invalid baptism record selected for update.';
+        }
+    } elseif (!$identity && (trim((string) ($_POST['child_first_name'] ?? '')) === ''
+        || trim((string) ($_POST['child_last_name'] ?? '')) === '')) {
+        $errors[] = 'Enter the child’s first and last name.';
+    }
 
-    if ($baptismDate === '') $errors[] = 'Baptism date is required.';
-    if ($childName === '')   $errors[] = "Child's full name is required.";
-
-    if (empty($errors)) {
+    if ($errors === []) {
         try {
             $pdo->beginTransaction();
-            $logbook = register_next_logbook_numbers($pdo, 'baptismal_records', true);
-            $bookNo = $logbook['book_no'];
-            $pageNo = $logbook['page_no'];
-            $lineNo = $logbook['line_no'];
-
-            // Make room for a mid-register insert when requested.
-            $shifted = 0;
-            if ($entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
-                $shifted = register_shift_entry_numbers($pdo, 'baptismal_records', $entryNo);
-            }
-
-            // Collect new parish form fields
-            $unionType       = $_POST['union_type'] ?: null;
-            $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
-            $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
-            $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
-            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
-                'first_name' => $childFirst,
-                'middle_name' => $childMiddle,
-                'last_name' => $childLast,
-                'suffix' => $childSuffix,
-                'birth_date' => $birthDate,
-                'birth_place' => $childBirthplace,
-                'father_name' => $fatherName,
-                'mother_maiden_name' => $motherMaidenName !== '' ? $motherMaidenName : $motherName,
-            ]);
-
-            $stmt = $pdo->prepare(
-                "INSERT INTO baptismal_records
-                    (entry_no, baptism_date, baptism_place, child_birthplace, child_full_name, birth_date, legitimacy, union_type,
-                     father_name, father_birthplace, mother_name, mother_maiden_name, mother_birthplace,
-                     parents_origin, parents_residence, minister_name, remarks,
-                     book_no, page_no, line_no, encoded_by, person_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            );
-            $stmt->execute([
-                $entryNo, $baptismDate, $baptismPlace, $childBirthplace, $childName, $birthDate, $legitimacy, $unionType,
-                $fatherName, $fatherBirthplace, $motherName, $motherMaidenName, $motherBirthplace,
-                $parentsOrigin, $parentsResidence, $ministerName, $remarks,
-                $bookNo, $pageNo, $lineNo, current_user()['id'], $personId,
-            ]);
-            $recordId = (int) $pdo->lastInsertId();
-            $pdo->prepare('UPDATE baptismal_records SET child_first_name = ?, child_middle_name = ?, child_last_name = ?, child_suffix = ? WHERE id = ?')
-                ->execute([$childFirst, $childMiddle, $childLast, $childSuffix, $recordId]);
-
-            // Insert godfathers (Ninong)
-            $sponsorStmt = $pdo->prepare(
-                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godfather')"
-            );
-            foreach ($godfatherNames as $i => $name) {
-                if (!is_string($name)) continue;
-                $name = trim($name);
-                if ($name === '') continue;
-                $sponsorStmt->execute([$recordId, $name, trim(isset($godfatherResidences[$i]) && is_string($godfatherResidences[$i]) ? $godfatherResidences[$i] : '')]);
-            }
-            
-            // Insert godmothers (Ninang)
-            $sponsorStmt2 = $pdo->prepare(
-                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godmother')"
-            );
-            foreach ($godmotherNames as $i => $name) {
-                if (!is_string($name)) continue;
-                $name = trim($name);
-                if ($name === '') continue;
-                $sponsorStmt2->execute([$recordId, $name, trim(isset($godmotherResidences[$i]) && is_string($godmotherResidences[$i]) ? $godmotherResidences[$i] : '')]);
-            }
-
-            log_activity($pdo, current_user()['id'], 'baptismal_record_encoded', 'baptismal_records', $recordId,
-                "Baptismal record encoded for {$childName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
-
-            $pdo->commit();
-
-            // If this entry was encoded from an approved baptismal application,
-            // close the loop: mark the application completed and audit the link.
-            $appDone = '';
-            if (!empty($_POST['from_application'])) {
-                $u = $pdo->prepare(
-                    "UPDATE sacrament_applications
-                        SET status = 'completed', date_processed = NOW(), processed_by = ?
-                      WHERE id = ? AND sacrament_type = 'baptismal' AND status IN ('approved','scheduled')"
-                );
-                $u->execute([current_user()['id'], (int) $_POST['from_application']]);
-                if ($u->rowCount()) {
-                    $appRow = $pdo->query("SELECT tracking_number, sacrament_type FROM sacrament_applications WHERE id = " . (int) $_POST['from_application'])->fetch();
-                    log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $_POST['from_application'],
-                        "Baptism encoded into register (record #{$recordId}); application completed");
-                    notify_sacrament_application_status($pdo, 'completed', (string) $appRow['sacrament_type'], (string) $appRow['tracking_number'], "Baptism encoded into register (record #{$recordId}).");
-                    $appDone = '&app_completed=1';
+            if ($isPostEdit) {
+                $savePersonId = (int) $editRecord['person_id'];
+            } else {
+                $savePersonId = posted_person_id($pdo, 'person_id');
+                if ($savePersonId === null) {
+                    $savePersonId = save_person_identity($pdo, null, [
+                        'first_name' => trim((string) ($_POST['child_first_name'] ?? '')),
+                        'middle_name' => trim((string) ($_POST['child_middle_name'] ?? '')),
+                        'last_name' => trim((string) ($_POST['child_last_name'] ?? '')),
+                        'suffix' => trim((string) ($_POST['child_suffix'] ?? '')),
+                        'birth_date' => trim((string) ($_POST['birth_date'] ?? '')),
+                        'birth_place' => trim((string) ($_POST['child_birthplace'] ?? '')),
+                        'father_name' => $fatherName,
+                        'mother_maiden_name' => $motherName,
+                        'baptismal_status' => 'baptized_catholic',
+                    ]);
                 }
             }
 
-            redirect_to('/admin/records/baptismal.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
-            exit;
-        } catch (Exception $e) {
-            $pdo->rollBack();
+            if (!$isPostEdit && $entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
+                baptismal_shift_entry_numbers($pdo, $entryNo);
+            }
+            if ($isPostEdit) {
+                $recordId = (int) $editRecord['id'];
+                $stmt = $pdo->prepare(
+                    "UPDATE sacrament_records
+                     SET person_id = ?, source = 'this_parish', event_date = ?, place = ?, minister_name = ?,
+                         entry_no = ?, book_no = ?, page_no = ?, line_no = ?, parents_union_type = ?,
+                         legitimacy = NULL, details = ?, remarks = ?, encoded_by = ?
+                     WHERE id = ? AND sacrament_type = 'baptism'"
+                );
+                $stmt->execute([
+                    $savePersonId, $baptismDate, $baptismPlace ?: null, $ministerName ?: null,
+                    $entryNo ?: null, $bookNo ?: null, $pageNo ?: null, $lineNo ?: null,
+                    $unionType !== '' ? $unionType : null,
+                    $parentDetails !== [] ? json_encode($parentDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) : null,
+                    $remarks ?: null, current_user()['id'], $recordId,
+                ]);
+                $pdo->prepare('DELETE FROM sacrament_participants WHERE record_id = ?')->execute([$recordId]);
+            } else {
+                $stmt = $pdo->prepare(
+                    "INSERT INTO sacrament_records
+                        (sacrament_type, person_id, source, event_date, place, minister_name,
+                         entry_no, book_no, page_no, line_no, parents_union_type, legitimacy,
+                         details, remarks, encoded_by)
+                     VALUES ('baptism', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)"
+                );
+                $stmt->execute([
+                    $savePersonId, $baptismDate, $baptismPlace ?: null, $ministerName ?: null,
+                    $entryNo ?: null, $bookNo ?: null, $pageNo ?: null, $lineNo ?: null,
+                    $unionType !== '' ? $unionType : null,
+                    $parentDetails !== [] ? json_encode($parentDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) : null,
+                    $remarks ?: null, current_user()['id'],
+                ]);
+                $recordId = (int) $pdo->lastInsertId();
+            }
+
+            $participantInsert = $pdo->prepare(
+                'INSERT INTO sacrament_participants (record_id, role, full_name, residence, sort_order)
+                 VALUES (?, ?, ?, ?, ?)'
+            );
+            foreach ($godparents as $godparent) {
+                $participantInsert->execute([
+                    $recordId, $godparent['role'], $godparent['full_name'],
+                    $godparent['residence'], $godparent['sort_order'],
+                ]);
+            }
+
+            if (!$isPostEdit && !empty($_POST['from_application'])) {
+                $postedApplicationId = filter_var($_POST['from_application'], FILTER_VALIDATE_INT);
+                $applicationLock = $pdo->prepare(
+                    "SELECT id, status FROM sacrament_applications
+                     WHERE id = ? AND sacrament_type = 'baptism' FOR UPDATE"
+                );
+                $applicationLock->execute([(int) $postedApplicationId]);
+                $linkedApplication = $applicationLock->fetch(PDO::FETCH_ASSOC);
+                if (!$linkedApplication) {
+                    throw new RuntimeException('The linked baptism application could not be found.');
+                }
+                $allowedNext = application_queue_next_statuses((string) $linkedApplication['status']);
+                if (in_array('completed', $allowedNext, true)) {
+                    $applicationUpdate = $pdo->prepare(
+                        "UPDATE sacrament_applications
+                         SET person_id = ?, record_id = ?, status = 'completed', processed_by = ?
+                         WHERE id = ? AND sacrament_type = 'baptism'"
+                    );
+                    $applicationUpdate->execute([$savePersonId, $recordId, current_user()['id'], (int) $linkedApplication['id']]);
+                } else {
+                    $applicationUpdate = $pdo->prepare(
+                        "UPDATE sacrament_applications
+                         SET person_id = ?, record_id = ?
+                         WHERE id = ? AND sacrament_type = 'baptism'"
+                    );
+                    $applicationUpdate->execute([$savePersonId, $recordId, (int) $linkedApplication['id']]);
+                }
+            }
+
+            log_activity(
+                $pdo,
+                current_user()['id'],
+                $isPostEdit ? 'baptism_record_updated' : 'baptism_record_encoded',
+                'sacrament_records',
+                $recordId,
+                $isPostEdit ? 'Baptism record updated.' : 'Baptism record encoded.'
+            );
+            $pdo->commit();
+            redirect_to($selfUrl . ($isPostEdit ? '?updated=1' : '?added=1'));
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Baptism record save failed: ' . $e->getMessage());
             $errors[] = 'Something went wrong while saving this record. Please try again.';
         }
     }
 }
 
-
-// --- Update an existing record (Edit button on a table row) -------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && csrf_verify()) {
-    require_role('secretary');
-
-    $editId           = (int) ($_POST['edit_id'] ?? 0);
-    $unionType        = $_POST['union_type'] ?: null;
-    $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
-    $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
-    $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
-    $godfatherNames      = array_key_exists('godfather_first', $_POST)
-        ? compose_person_name_rows_by_index($_POST, 'godfather')
-        : ($_POST['godfather_name'] ?? []);
-    if (!is_array($godfatherNames)) { $godfatherNames = []; }
-    $godfatherResidences = $_POST['godfather_residence'] ?? [];
-    if (!is_array($godfatherResidences)) { $godfatherResidences = []; }
-    $godmotherNames      = array_key_exists('godmother_first', $_POST)
-        ? compose_person_name_rows_by_index($_POST, 'godmother')
-        : ($_POST['godmother_name'] ?? []);
-    if (!is_array($godmotherNames)) { $godmotherNames = []; }
-    $godmotherResidences = $_POST['godmother_residence'] ?? [];
-    if (!is_array($godmotherResidences)) { $godmotherResidences = []; }
-    $entryNo          = trim($_POST['entry_no'] ?? '');
-    $baptismDate      = $_POST['baptism_date'] ?? '';
-    $baptismPlace     = trim($_POST['baptism_place'] ?? '');
-    $childBirthplace  = trim($_POST['child_birthplace'] ?? '');
-    $childName        = trim($_POST['child_full_name'] ?? '');
-    $childFirst       = trim($_POST['child_first_name'] ?? '');
-    $childMiddle      = trim($_POST['child_middle_name'] ?? '');
-    $childLast        = trim($_POST['child_last_name'] ?? '');
-    $childSuffix      = trim($_POST['child_suffix'] ?? '');
-    $birthDate        = $_POST['birth_date'] ?: null;
-    $legitimacy       = $_POST['legitimacy'] ?: null;
-    $fatherName       = compose_person_name($_POST, 'father') ?: trim($_POST['father_name'] ?? '');
-    $motherName       = compose_person_name($_POST, 'mother') ?: trim($_POST['mother_name'] ?? '');
-    $parentsOrigin    = trim($_POST['parents_origin'] ?? '');
-    $parentsResidence = trim($_POST['parents_residence'] ?? '');
-    $ministerName     = compose_person_name($_POST, 'minister') ?: trim($_POST['minister_name'] ?? '');
-    $remarks          = trim($_POST['remarks'] ?? '');
-    $bookNo           = trim($_POST['book_no'] ?? '');
-    $pageNo           = trim($_POST['page_no'] ?? '');
-    $lineNo           = trim($_POST['line_no'] ?? '');
-    $sponsorNames      = $_POST['sponsor_name'] ?? [];
-    $sponsorResidences = $_POST['sponsor_residence'] ?? [];
-
-    if ($baptismDate === '') $errors[] = 'Baptism date is required.';
-    if ($childName === '')   $errors[] = "Child's full name is required.";
-    if ($editId <= 0)        $errors[] = 'Invalid record selected for update.';
-
-    if (empty($errors)) {
-        try {
-            $pdo->beginTransaction();
-            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
-                'first_name' => $childFirst,
-                'middle_name' => $childMiddle,
-                'last_name' => $childLast,
-                'suffix' => $childSuffix,
-                'birth_date' => $birthDate,
-                'birth_place' => $childBirthplace,
-                'father_name' => $fatherName,
-                'mother_maiden_name' => $motherMaidenName !== '' ? $motherMaidenName : $motherName,
-            ]);
-
-            $stmt = $pdo->prepare(
-                "UPDATE baptismal_records
-                    SET entry_no = ?, baptism_date = ?, baptism_place = ?, child_birthplace = ?, child_full_name = ?, birth_date = ?,
-                        legitimacy = ?, union_type = ?, father_name = ?, father_birthplace = ?,
-                        mother_name = ?, mother_maiden_name = ?, mother_birthplace = ?, parents_origin = ?,
-                        parents_residence = ?, minister_name = ?, remarks = ?, book_no = ?,
-                        page_no = ?, line_no = ?, person_id = ?
-                  WHERE id = ?"
-            );
-            $stmt->execute([
-                $entryNo, $baptismDate, $baptismPlace, $childBirthplace, $childName, $birthDate, $legitimacy, $unionType,
-                $fatherName, $fatherBirthplace, $motherName, $motherMaidenName, $motherBirthplace, $parentsOrigin,
-                $parentsResidence, $ministerName, $remarks,
-                $bookNo, $pageNo, $lineNo, $personId, $editId,
-            ]);
-            $pdo->prepare('UPDATE baptismal_records SET child_first_name = ?, child_middle_name = ?, child_last_name = ?, child_suffix = ? WHERE id = ?')->execute([$childFirst, $childMiddle, $childLast, $childSuffix, $editId]);
-
-            // Replace the sponsor set wholesale with what was submitted.
-            $pdo->prepare("DELETE FROM baptismal_sponsors WHERE baptismal_record_id = ?")->execute([$editId]);
-            $gfStmt = $pdo->prepare(
-                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godfather')"
-            );
-            foreach ($godfatherNames as $i => $name) {
-                if (!is_string($name)) continue;
-                $name = trim($name);
-                if ($name === '') continue;
-                $gfStmt->execute([$editId, $name, trim(isset($godfatherResidences[$i]) && is_string($godfatherResidences[$i]) ? $godfatherResidences[$i] : '')]);
-            }
-            $gmStmt = $pdo->prepare(
-                "INSERT INTO baptismal_sponsors (baptismal_record_id, sponsor_name, sponsor_residence, sponsor_type) VALUES (?, ?, ?, 'godmother')"
-            );
-            foreach ($godmotherNames as $i => $name) {
-                if (!is_string($name)) continue;
-                $name = trim($name);
-                if ($name === '') continue;
-                $gmStmt->execute([$editId, $name, trim(isset($godmotherResidences[$i]) && is_string($godmotherResidences[$i]) ? $godmotherResidences[$i] : '')]);
-            }
-
-            log_activity($pdo, current_user()['id'], 'baptismal_record_updated', 'baptismal_records', $editId,
-                "Baptismal record updated for {$childName}");
-
-            $pdo->commit();
-            redirect_to('/admin/records/baptismal.php?updated=1');
-            exit;
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            $errors[] = 'Something went wrong while updating this record. Please try again.';
+$editRecord = $editRecord ?: null;
+$isEdit = $editRecord !== null;
+$identity = $identity ?: null;
+$suggest = $isEdit
+    ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
+    : baptismal_next_logbook_numbers($pdo);
+$nameFormValues = $formValues;
+if ($identity) {
+    foreach (['father' => 'father_name', 'mother' => 'mother_maiden_name'] as $prefix => $key) {
+        $parts = structured_name_parts((string) ($identity[$key] ?? ''));
+        foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+            $nameFormValues[$prefix . '_' . $part] ??= $parts[$index];
         }
     }
 }
-
-// Permanent deletion is intentionally unavailable; use Admin > Archive or Restore Record.
-
-// --- Edit mode: load the requested record into the encode form -----------
-$editRecord   = null;
-$editSponsors = [];
-$editGodfathers = [];
-$editGodmothers = [];
-if (isset($_GET['edit'])) {
-    $editId = (int) $_GET['edit'];
-    $stmt = $pdo->prepare("SELECT * FROM baptismal_records WHERE id = ?");
-    $stmt->execute([$editId]);
-    $editRecord = $stmt->fetch();
-    if (!$editRecord) {
-        redirect_to('/admin/records/baptismal.php');
-        exit;
-    }
-    $stmt = $pdo->prepare("SELECT sponsor_name, sponsor_residence, sponsor_type FROM baptismal_sponsors WHERE baptismal_record_id = ? ORDER BY id");
-    $stmt->execute([(int) $editRecord['id']]);
-    $editSponsors = $stmt->fetchAll();
-    foreach ($editSponsors as $sp) {
-        if (($sp['sponsor_type'] ?? 'godfather') === 'godmother') { $editGodmothers[] = $sp; }
-        else { $editGodfathers[] = $sp; }
+if ($isEdit) {
+    foreach (['father' => 'father_name', 'mother' => 'mother_maiden_name', 'minister' => 'minister_name'] as $prefix => $key) {
+        $parts = structured_name_parts((string) ($editRecord[$key] ?? ''));
+        foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+            $nameFormValues[$prefix . '_' . $part] ??= $parts[$index];
+        }
     }
 }
-$isEdit = $editRecord !== null;
-
-// Suggested next logbook numbers for the encode dialog (create mode only).
-$suggest = $isEdit
-    ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
-    : register_next_logbook_numbers($pdo, 'baptismal_records');
-$childParts = $isEdit ? structured_name_parts((string) $editRecord['child_full_name']) : ['', '', '', ''];
-$fatherParts = $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''];
-$motherParts = $isEdit ? structured_name_parts((string) ($editRecord['mother_name'] ?? '')) : ['', '', '', ''];
-$ministerParts = $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''];
-$nameFormValues = $_POST;
-foreach ([
-    'father' => $fatherParts,
-    'mother' => $motherParts,
-    'minister' => $ministerParts,
-] as $prefix => $parts) {
-    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
-        $nameFormValues[$prefix . '_' . $part] ??= $parts[$index];
-    }
+if (isset($_GET['added'])) {
+    $success = 'Baptismal record saved.';
+}
+if (isset($_GET['updated'])) {
+    $success = 'Baptismal record updated.';
 }
 
-if (isset($_GET['added'])) $success = 'Baptismal record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked baptismal application was marked completed.' : '');
-if (isset($_GET['updated'])) $success = 'Baptismal record updated.';
-if (isset($_GET['deleted'])) $success = 'Baptismal record deleted.';
-
-// --- Filter / paginate (shared component) --------------------------------
 $rfConfig = [
-    'date_column'    => 'baptism_date',
-    'search_columns' => ['child_full_name', 'father_name', 'mother_name', 'minister_name'],
-    'placeholder'    => 'Search child, father, mother, minister...',
-    'ranges'         => ['year', 'last_year', 'last5'],
+    'date_column' => 'sr.event_date',
+    'search_columns' => [
+        "CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix)",
+        'p.father_name', 'p.mother_maiden_name', 'sr.minister_name',
+    ],
+    'placeholder' => 'Search child, parents, minister...',
+    'ranges' => ['year', 'last_year', 'last5'],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
-
 $allowedSorts = ['register', 'book', 'book_desc', 'page', 'page_desc', 'line', 'line_desc', 'name', 'name_desc', 'date_desc', 'date_asc'];
-$sort = $_GET['sort'] ?? 'register';
+$sort = (string) ($_GET['sort'] ?? 'register');
 if (!in_array($sort, $allowedSorts, true)) {
     $sort = 'register';
 }
+$orderBy = match ($sort) {
+    'date_desc' => 'sr.event_date DESC, p.last_name, p.first_name',
+    'date_asc' => 'sr.event_date ASC, p.last_name, p.first_name',
+    'page_desc' => "CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC",
+    'page' => "CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED)",
+    'line_desc' => "CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC",
+    'line' => "CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED)",
+    'name_desc' => 'p.last_name DESC, p.first_name DESC, sr.book_no DESC',
+    'name' => 'p.last_name, p.first_name, sr.book_no',
+    'book_desc' => "CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC",
+    default => "CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED)",
+};
+$stmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM sacrament_records sr
+     JOIN persons p ON p.id = sr.person_id
+     WHERE sr.sacrament_type = 'baptism' {$rf['where']}"
+);
+$stmt->execute($rf['params']);
+$rfTotal = (int) $stmt->fetchColumn();
+$stmt = $pdo->prepare(
+    "SELECT sr.id, sr.event_date, sr.book_no, sr.page_no, sr.line_no,
+            p.first_name, p.middle_name, p.last_name, p.suffix
+     FROM sacrament_records sr
+     JOIN persons p ON p.id = sr.person_id
+     WHERE sr.sacrament_type = 'baptism' {$rf['where']}
+     ORDER BY {$orderBy} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
+);
+$stmt->execute($rf['params']);
+$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$persons = !$identity && !$isEdit ? person_identity_choices($pdo) : [];
+$isSecretary = (current_user()['role'] ?? '') === 'secretary';
+require_once __DIR__ . '/../../includes/admin-header.php';
+?>
+<div class="admin-list-page">
+    <div class="page-heading">
+        <h1>Baptismal Records</h1>
+        <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
+        <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
+    </div>
+    <p class="field-hint">The physical baptismal logbook remains canonical. Register entries are linked to read-only master person profiles.</p>
+    <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
+    <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
+    <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+    <div class="table-scroll">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th><a href="<?= e(baptismal_sort_url('book')) ?>">Book<?= baptismal_sort_indicator('book') ?></a></th>
+                    <th><a href="<?= e(baptismal_sort_url('page')) ?>">Page<?= baptismal_sort_indicator('page') ?></a></th>
+                    <th><a href="<?= e(baptismal_sort_url('line')) ?>">Line<?= baptismal_sort_indicator('line') ?></a></th>
+                    <th><a href="<?= e(baptismal_sort_url('name')) ?>">Name<?= baptismal_sort_indicator('name') ?></a></th>
+                    <th><a href="<?= e(baptismal_sort_url('date_desc')) ?>">Baptism Date<?= baptismal_sort_indicator('date_desc') ?></a></th>
+                    <th>Person</th>
+                    <th>Options</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (!$records): ?>
+                    <tr><td colspan="7" class="empty-table-row">No baptismal records found.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($records as $record): ?>
+                        <?php $displayName = trim(implode(' ', array_filter([$record['first_name'], $record['middle_name'], $record['last_name'], $record['suffix']]))); ?>
+                        <tr>
+                            <td><?= e($record['book_no'] ?: '—') ?></td>
+                            <td><?= e($record['page_no'] ?: '—') ?></td>
+                            <td><?= e($record['line_no'] ?: '—') ?></td>
+                            <td><strong><?= e($displayName) ?></strong></td>
+                            <td><?= e(date('M j, Y', strtotime($record['event_date']))) ?></td>
+                            <td><span class="link-status-badge link-status-linked">Linked</span></td>
+                            <td class="row-actions">
+                                <a class="btn btn-secondary btn-small" href="<?= e($selfUrl . '?edit=' . (int) $record['id']) ?>">Edit</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php rf_render_pagination($selfUrl, $rfTotal, $rf); ?>
+</div>
 
-if ($sort === 'date_desc') {
-    $orderClause = "ORDER BY baptism_date DESC, child_full_name ASC";
-} elseif ($sort === 'date_asc') {
-    $orderClause = "ORDER BY baptism_date ASC, child_full_name ASC";
-} elseif ($sort === 'page_desc') {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) DESC";
-} elseif ($sort === 'page') {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) ASC";
-} elseif ($sort === 'line_desc') {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) DESC";
-} elseif ($sort === 'line') {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) ASC";
-} elseif ($sort === 'name_desc') {
-    $orderClause = "ORDER BY child_full_name DESC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) DESC";
-} elseif ($sort === 'name') {
-    $orderClause = "ORDER BY child_full_name ASC, CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) ASC";
-} elseif ($sort === 'book_desc') {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) DESC";
-} else {
-    $orderClause = "ORDER BY CAST(COALESCE(NULLIF(book_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(page_no, ''), '0') AS UNSIGNED) ASC, CAST(COALESCE(NULLIF(line_no, ''), '0') AS UNSIGNED) ASC";
+<?php
+$recordDetails = $isEdit ? (json_decode((string) ($editRecord['details'] ?? ''), true) ?: []) : [];
+$suggestedEntry = $isEdit ? (string) ($editRecord['entry_no'] ?? '') : (string) $suggest['entry_no'];
+$gfRows = [];
+$gmRows = [];
+foreach ($editParticipants as $participant) {
+    $target = $participant['role'] === 'godmother' ? 'godmother' : 'godfather';
+    ${$target . 'Rows'}[] = $participant;
 }
+foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $prefix => $variable) {
+    if (isset($formValues[$prefix . '_first']) && is_array($formValues[$prefix . '_first'])) {
+        ${$variable} = array_fill(0, person_name_row_count($formValues, $prefix), []);
+        foreach (${$variable} as $index => &$unusedRow) {
+            $unusedRow = ['full_name' => compose_person_name_rows_by_index($formValues, $prefix)[$index] ?? '', 'residence' => $formValues[$prefix . '_residence'][$index] ?? ''];
+        }
+        unset($unusedRow);
+    }
+    if (!${$variable}) {
+        ${$variable} = [['full_name' => '', 'residence' => '']];
+    }
+}
+?>
+<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $errors || $applicationId) ? ' data-autoshow' : '' ?>>
+    <div class="dialog-head">
+        <h2><?= $isEdit ? 'Edit Baptism Record #' . (int) $editRecord['id'] : 'Encode New Baptism Record' ?></h2>
+        <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+        <?php if ($application): ?>
+            <p class="field-hint">Prefilled from application <?= e($application['request_no']) ?>. The linked application person, if any, is shown read-only.</p>
+            <?php if (empty($application['person_id'])): ?>
+                <p class="field-hint">Applicant-provided child name: <strong><?= e((string) ($applicationDetails['child_name'] ?? '')) ?></strong>. Split and confirm the name in the editable fields below; it is not split automatically.</p>
+            <?php endif; ?>
+        <?php endif; ?>
+        <?php if (!$isEdit && !$identity && $persons): ?>
+            <form method="get" action="<?= e($selfUrl) ?>" class="inline-fields">
+                <?php if ($applicationId): ?><input type="hidden" name="from_application" value="<?= $applicationId ?>"><?php endif; ?>
+                <label>Use an existing person profile
+                    <select name="person_id">
+                        <option value="">Create a new profile</option>
+                        <?php foreach ($persons as $personOption): ?>
+                            <?php $optionName = trim(implode(' ', array_filter([$personOption['first_name'], $personOption['middle_name'], $personOption['last_name'], $personOption['suffix']]))); ?>
+                            <option value="<?= (int) $personOption['id'] ?>"><?= e($optionName . (!empty($personOption['birth_date']) ? ' — born ' . $personOption['birth_date'] : '')) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <button type="submit" class="btn btn-secondary btn-small">Load profile</button>
+            </form>
+        <?php endif; ?>
+        <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
+        <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
+            <?= csrf_field() ?>
+            <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
+            <?php if ($identity): ?><input type="hidden" name="person_id" value="<?= (int) $identity['id'] ?>"><?php endif; ?>
+            <?php if ($applicationId): ?><input type="hidden" name="from_application" value="<?= $applicationId ?>"><?php endif; ?>
+            <input type="hidden" name="entry_no" value="<?= e($formValues['entry_no'] ?? $suggestedEntry) ?>">
+            <fieldset>
+                <legend>Logbook Reference</legend>
+                <div class="inline-fields">
+                    <label>Book No. <input type="text" name="book_no" value="<?= e($formValues['book_no'] ?? $editRecord['book_no'] ?? $suggest['book_no']) ?>" readonly></label>
+                    <label>Page <input type="text" name="page_no" value="<?= e($formValues['page_no'] ?? $editRecord['page_no'] ?? $suggest['page_no']) ?>" readonly></label>
+                    <label>Line <input type="text" name="line_no" value="<?= e($formValues['line_no'] ?? $editRecord['line_no'] ?? $suggest['line_no']) ?>" readonly></label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Child identity</legend>
+                <?php if ($identity): ?>
+                    <p><strong><?= e(person_identity_label($identity)) ?></strong></p>
+                    <p>Birth date: <?= e((string) ($identity['birth_date'] ?? 'Not recorded')) ?></p>
+                    <p>Birthplace: <?= e((string) ($identity['birth_place'] ?? 'Not recorded')) ?></p>
+                    <p class="field-hint">Identity is read-only from the master persons record.</p>
+                <?php else: ?>
+                    <div class="inline-fields structured-name-fields">
+                        <label>First Name <span class="required-marker">*</span> <input type="text" name="child_first_name" value="<?= e($formValues['child_first_name'] ?? '') ?>" required></label>
+                        <label>Middle Name <input type="text" name="child_middle_name" value="<?= e($formValues['child_middle_name'] ?? '') ?>"></label>
+                        <label>Surname <span class="required-marker">*</span> <input type="text" name="child_last_name" value="<?= e($formValues['child_last_name'] ?? '') ?>" required></label>
+                        <label>Suffix <input type="text" name="child_suffix" value="<?= e($formValues['child_suffix'] ?? '') ?>"></label>
+                    </div>
+                    <label>Birth Date <input type="date" name="birth_date" value="<?= e($formValues['birth_date'] ?? '') ?>"></label>
+                    <label>Birthplace <input type="text" name="child_birthplace" value="<?= e($formValues['child_birthplace'] ?? '') ?>"></label>
+                    <p class="field-hint">Saving creates a person profile in <code>persons</code>. A selected profile above is never updated here.</p>
+                <?php endif; ?>
+                <div class="inline-fields">
+                    <label>Baptism Date <span class="required-marker">*</span> <input type="date" name="baptism_date" value="<?= e($formValues['baptism_date'] ?? $editRecord['event_date'] ?? '') ?>" required></label>
+                    <label>Place of Baptism <input type="text" name="baptism_place" value="<?= e($formValues['baptism_place'] ?? $editRecord['place'] ?? '') ?>"></label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Parents</legend>
+                <?php if ($identity): ?>
+                    <p>Father: <?= e((string) ($identity['father_name'] ?? 'Not recorded')) ?></p>
+                    <p>Mother’s maiden name: <?= e((string) ($identity['mother_maiden_name'] ?? 'Not recorded')) ?></p>
+                    <p class="field-hint">Parent names are part of the person profile and are read-only when a person is linked.</p>
+                <?php else: ?>
+                    <?= person_name_fields('father', "Father's Name", $nameFormValues, false) ?>
+                    <?= person_name_fields('mother', "Mother's Maiden Name", $nameFormValues, false) ?>
+                <?php endif; ?>
+                <div class="inline-fields">
+                    <label>Father's Birthplace <input type="text" name="father_birthplace" value="<?= e($formValues['father_birthplace'] ?? $recordDetails['father_birthplace'] ?? '') ?>"></label>
+                    <label>Mother's Birthplace <input type="text" name="mother_birthplace" value="<?= e($formValues['mother_birthplace'] ?? $recordDetails['mother_birthplace'] ?? '') ?>"></label>
+                    <label>Parents' Origin <input type="text" name="parents_origin" value="<?= e($formValues['parents_origin'] ?? $recordDetails['parents_origin'] ?? '') ?>"></label>
+                    <label>Parents' Residence <input type="text" name="parents_residence" value="<?= e($formValues['parents_residence'] ?? $recordDetails['parents_residence'] ?? '') ?>"></label>
+                    <label>Proxy / Guardian Name <input type="text" name="proxy_name" value="<?= e($formValues['proxy_name'] ?? $recordDetails['proxy_name'] ?? '') ?>"></label>
+                </div>
+                <label>Parents' Union Type
+                    <select name="union_type">
+                        <?php foreach (['' => '-- Not specified --', 'legitimate' => 'Legitimate (Church Marriage)', 'civil' => 'Civil', 'natural' => 'Natural (Not Married)'] as $value => $label): ?>
+                            <option value="<?= e($value) ?>" <?= ($formValues['union_type'] ?? $editRecord['parents_union_type'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+            </fieldset>
+            <?php foreach (['godfather' => ['Godfathers (Ninong)', $godfatherRows], 'godmother' => ['Godmothers (Ninang)', $godmotherRows]] as $role => [$legend, $rows]): ?>
+                <fieldset>
+                    <legend><?= e($legend) ?></legend>
+                    <div data-repeat-group="<?= e($role) ?>" data-repeat-max="8">
+                        <?php foreach ($rows as $index => $participant): ?>
+                            <?php
+                            $parts = structured_name_parts((string) ($participant['full_name'] ?? ''));
+                            $rowValues = $formValues;
+                            foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
+                                $rowValues[$role . '_' . $part][$index] ??= $parts[$partIndex];
+                            }
+                            ?>
+                            <div class="godparent-row">
+                                <div class="inline-fields">
+                                    <?= person_name_fields($role, $role === 'godfather' ? 'Godfather Name' : 'Godmother Name', $rowValues, false, $index) ?>
+                                    <label>Residence <input type="text" name="<?= e($role) ?>_residence[]" value="<?= e($formValues[$role . '_residence'][$index] ?? $participant['residence'] ?? '') ?>"></label>
+                                </div>
+                                <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $index === 0 ? ' hidden' : '' ?>>Remove</button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="<?= e($role) ?>">Add another <?= e($role) ?></button>
+                </fieldset>
+            <?php endforeach; ?>
+            <fieldset>
+                <legend>Other</legend>
+                <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
+                <label>Remarks / Observanda <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+            </fieldset>
+            <button type="submit" name="<?= $isEdit ? 'update_record' : 'add_record' ?>" value="1" class="btn btn-primary"><?= $isEdit ? 'Update Record' : 'Save Record' ?></button>
+            <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+        </form>
+    </div>
+</dialog>
+<?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
 
+<?php
 function baptismal_sort_url(string $key): string
 {
-    global $basePath, $rf, $sort;
+    global $selfUrl, $rf, $sort;
     if ($key === 'date_desc' || $key === 'date_asc') {
         $next = $sort === 'date_desc' ? 'date_asc' : 'date_desc';
     } else {
@@ -446,8 +705,7 @@ function baptismal_sort_url(string $key): string
         'per_page' => $rf['per_page'] !== 10 ? (int) $rf['per_page'] : null,
         'sort' => $next,
     ], static fn ($value) => $value !== null && $value !== '');
-    $queryString = http_build_query($query);
-    return $basePath . '/admin/records/baptismal.php' . ($queryString !== '' ? '?' . $queryString : '');
+    return $selfUrl . ($query ? '?' . http_build_query($query) : '');
 }
 
 function baptismal_sort_indicator(string $key): string
@@ -466,253 +724,4 @@ function baptismal_sort_indicator(string $key): string
     }
     return ' <span class="sort-indicator sort-indicator-muted" aria-hidden="true">↕</span>';
 }
-
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM baptismal_records WHERE is_archived = 0 {$rf['where']}");
-$stmt->execute($rf['params']);
-$rfTotal = (int) $stmt->fetchColumn();
-
-$stmt = $pdo->prepare(
-    "SELECT * FROM baptismal_records WHERE is_archived = 0 {$rf['where']} {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
-);
-$stmt->execute($rf['params']);
-$records = $stmt->fetchAll();
-
-$isSecretary = (current_user()['role'] ?? '') === 'secretary';
-// Shared staff shell: top bar + sidebar + <head> (admin-footer.php closes the layout).
-require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <div class="page-heading">
-            <h1>Baptismal Records</h1>
-            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
-            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
-        </div>
-        <p class="field-hint">This is a digital index of the physical baptismal logbook, used for fast retrieval when matching certificate requests. The physical logbook remains the canonical record.</p>
-
-        <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
-
-                <?php rf_render_bar($basePath . '/admin/records/baptismal.php', $rfConfig, $rf); ?>
-        <div class="table-scroll">
-        <table id="record-table" class="admin-table">
-            <thead>
-                <tr>
-                    <th><a class="table-sort-link<?= $sort === 'book' ? ' is-active' : '' ?>" href="<?= e(baptismal_sort_url('book')) ?>">Book<?= baptismal_sort_indicator('book') ?></a></th>
-                    <th><a class="table-sort-link<?= $sort === 'page' ? ' is-active' : '' ?>" href="<?= e(baptismal_sort_url('page')) ?>">Page<?= baptismal_sort_indicator('page') ?></a></th>
-                    <th><a class="table-sort-link<?= $sort === 'line' ? ' is-active' : '' ?>" href="<?= e(baptismal_sort_url('line')) ?>">Line<?= baptismal_sort_indicator('line') ?></a></th>
-                    <th><a class="table-sort-link<?= $sort === 'name' ? ' is-active' : '' ?>" href="<?= e(baptismal_sort_url('name')) ?>">Full Name<?= baptismal_sort_indicator('name') ?></a></th>
-                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(baptismal_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date of Baptism<?= baptismal_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
-                    <th>Linked</th>
-                    <th>Options</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($records)): ?>
-                    <tr>
-                        <td colspan="7" class="empty-table-row">
-                            <div class="empty-state"><h2>No baptismal records found</h2><p><?= $rf['q'] !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
-                        </td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($records as $rec): ?>
-                        <tr>
-                            <td><?= e($rec['book_no'] ?: '—') ?></td>
-                            <td><?= e($rec['page_no'] ?: '—') ?></td>
-                            <td><?= e($rec['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e(display_name_with_middle_initial(
-                                (string) $rec['child_full_name'],
-                                isset($rec['child_first_name']) ? (string) $rec['child_first_name'] : null,
-                                isset($rec['child_middle_name']) ? (string) $rec['child_middle_name'] : null,
-                                isset($rec['child_last_name']) ? (string) $rec['child_last_name'] : null,
-                                isset($rec['child_suffix']) ? (string) $rec['child_suffix'] : null
-                            )) ?></strong></td>
-                            <td><?= e(date('M j, Y', strtotime($rec['baptism_date']))) ?></td>
-                            <?php $linkStatus = ((int) ($rec['person_id'] ?? 0)) > 0 ? 'linked' : 'unlinked'; ?>
-                            <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
-                            <td class="row-actions">
-                                <a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=baptismal&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a>
-                                <a href="<?= e($basePath . '/admin/records/view.php?type=baptismal&id=' . (int) $rec['id'] . '&return=' . urlencode($selfReturn)) ?>" class="btn btn-secondary btn-small">View record</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-        </div>
-        <?php rf_render_pagination($basePath . '/admin/records/baptismal.php', $rfTotal, $rf); ?>
-
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId) ? ' data-autoshow' : '' ?>>
-            <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['child_full_name']) : 'Encode New Entry' ?></h2>
-                <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
-            </div>
-            <div class="dialog-body">
-        <?php if ($isEdit): ?>
-            <p class="field-hint"><a href="<?= $basePath ?>/admin/records/baptismal.php">Cancel edit - back to adding a new entry.</a></p>
-        <?php else: ?>
-            <p class="field-hint">Use this to digitize an entry from the physical logbook. This does not replace the physical record.</p>
-        <?php endif; ?>
-        <?php if (!empty($errors)): ?>
-            <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
-        <?php endif; ?>
-        <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
-            <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
-            <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
-            <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>">
-            <?php if ($fromApplicationId): ?>
-                <input type="hidden" name="from_application" value="<?= (int) $fromApplicationId ?>">
-                <p class="field-hint">Pre-filled from baptismal application #<?= (int) $fromApplicationId ?> — review, add the logbook numbers, and save. Saving marks that application completed.</p>
-            <?php endif; ?>
-            <fieldset>
-                <legend>Logbook Reference</legend>
-                <div class="inline-fields">
-                    <label>Book No. <input autocomplete="off" type="text" name="book_no" value="<?= e($_POST['book_no'] ?? $editRecord['book_no'] ?? $suggest['book_no']) ?>"<?= !$isEdit ? ' readonly' : '' ?>></label>
-                    <label>Page <input autocomplete="off" type="text" name="page_no" value="<?= e($_POST['page_no'] ?? $editRecord['page_no'] ?? $suggest['page_no']) ?>"<?= !$isEdit ? ' readonly' : '' ?>></label>
-                    <label>Line <input autocomplete="off" type="text" name="line_no" value="<?= e($_POST['line_no'] ?? $editRecord['line_no'] ?? $suggest['line_no']) ?>"<?= !$isEdit ? ' readonly' : '' ?>></label>
-                </div>
-                <p class="field-hint">Book, page, and line identify the physical logbook location. The system Record ID is shown on the read-only record page.</p>
-            </fieldset>
-
-            <fieldset>
-                <legend>Child</legend>
-                <div class="inline-fields structured-name-fields">
-                    <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="child_first_name" value="<?= e($_POST['child_first_name'] ?? $editRecord['child_first_name'] ?? $childParts[0]) ?>" required></label>
-                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="child_middle_name" value="<?= e($_POST['child_middle_name'] ?? $editRecord['child_middle_name'] ?? $childParts[1]) ?>"></label>
-                    <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="child_last_name" value="<?= e($_POST['child_last_name'] ?? $editRecord['child_last_name'] ?? $childParts[2]) ?>" required></label>
-                    <label>Suffix <input autocomplete="off" type="text" name="child_suffix" value="<?= e($_POST['child_suffix'] ?? $editRecord['child_suffix'] ?? $childParts[3]) ?>"></label>
-                </div>
-                <input type="hidden" name="child_full_name" value="<?= e($_POST['child_full_name'] ?? $editRecord['child_full_name'] ?? '') ?>">
-                <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
-                    <label>Find possible people
-                        <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
-                    </label>
-                    <button type="button" class="btn btn-secondary btn-small" data-person-find>Find possible people</button>
-                    <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
-                    <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
-                    <div class="person-finder-results" data-person-results></div>
-                    <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
-                </div>
-                <div class="inline-fields">
-                    <label>Birth Date <input autocomplete="off" type="date" data-nudge name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
-                    <label>Birthplace <input autocomplete="off" type="text" name="child_birthplace" value="<?= e($_POST['child_birthplace'] ?? $editRecord['child_birthplace'] ?? '') ?>"></label>
-                    <label>Baptism Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="baptism_date" value="<?= e($_POST['baptism_date'] ?? $editRecord['baptism_date'] ?? '') ?>" required></label>
-                    <label>Place of Baptism <input autocomplete="off" type="text" data-nudge name="baptism_place" value="<?= e($_POST['baptism_place'] ?? $editRecord['baptism_place'] ?? '') ?>"></label>
-                </div>
-                
-            </fieldset>
-
-            <fieldset>
-                <legend>Parents</legend>
-                <div class="inline-fields">
-                    <?= person_name_fields('father', "Father's Name", $nameFormValues, false) ?>
-                    <label>Father's Birthplace <input autocomplete="off" type="text" name="father_birthplace" value="<?= e($_POST['father_birthplace'] ?? $editRecord['father_birthplace'] ?? '') ?>"></label>
-                </div>
-                <div class="inline-fields">
-                    <?= person_name_fields('mother', "Mother's Maiden Name", $nameFormValues, false) ?>
-                    <label>Mother's Birthplace <input autocomplete="off" type="text" name="mother_birthplace" value="<?= e($_POST['mother_birthplace'] ?? $editRecord['mother_birthplace'] ?? '') ?>"></label>
-                </div>
-                <div class="inline-fields">
-                    <label>Parents' Origin (Hometown) <input autocomplete="off" type="text" name="parents_origin" value="<?= e($_POST['parents_origin'] ?? $editRecord['parents_origin'] ?? '') ?>"></label>
-                    <label>Parents' Residence <input autocomplete="off" type="text" name="parents_residence" value="<?= e($_POST['parents_residence'] ?? $editRecord['parents_residence'] ?? '') ?>"></label>
-                </div>
-                <!-- Union type: Legitimate (married in church), Civil (married civilly), Natural (not married) -->
-                <label>Union Type
-                    <select name="union_type">
-                        <option value="" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === '' ? 'selected' : '' ?>>-- Not specified --</option>
-                        <option value="legitimate" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'legitimate' ? 'selected' : '' ?>>Legitimate (Church Marriage)</option>
-                        <option value="civil" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'civil' ? 'selected' : '' ?>>Civil (Civil Marriage)</option>
-                        <option value="natural" <?= ($_POST['union_type'] ?? $editRecord['union_type'] ?? '') === 'natural' ? 'selected' : '' ?>>Natural (Not Married)</option>
-                    </select>
-                </label>
-            </fieldset>
-
-            <!-- Godfathers (Ninong) - up to 8 -->
-            <?php
-            // Row source: values just submitted (validation re-render), then
-            // loaded edit sponsors (edit mode), else a single blank row.
-            // New rows are cloned client-side — see main.js, section 9.
-            $gfRows = $_POST['godfather_name'] ?? array_column($editGodfathers ?? [], 'sponsor_name');
-            if (array_key_exists('godfather_first', $_POST)) {
-                $gfRows = array_fill(0, person_name_row_count($_POST, 'godfather'), '');
-            }
-            if (!is_array($gfRows)) { $gfRows = []; }
-            $gfRows = array_values($gfRows);
-            $gfRes = $_POST['godfather_residence'] ?? array_column($editGodfathers ?? [], 'sponsor_residence');
-            if (!is_array($gfRes)) { $gfRes = []; }
-            $gfRes = array_values($gfRes);
-            if (count($gfRows) === 0) { $gfRows = ['']; }
-            $godfatherFormValues = $_POST;
-            foreach ($gfRows as $i => $rowName) {
-                $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
-                foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
-                    $godfatherFormValues['godfather_' . $part][$i] ??= $parts[$partIndex];
-                }
-            }
-            ?>
-            <fieldset>
-                <legend>Godfathers (Ninong) - Up to 8</legend>
-                <div data-repeat-group="godfather" data-repeat-max="8">
-                    <?php foreach ($gfRows as $i => $rowName): ?>
-                        <div class="godparent-row">
-                            <div class="inline-fields">
-                                <?= person_name_fields('godfather', 'Godfather Name', $godfatherFormValues, false, $i) ?>
-                                <label>Residence <input autocomplete="off" type="text" name="godfather_residence[]" value="<?= e(isset($gfRes[$i]) && is_string($gfRes[$i]) ? $gfRes[$i] : '') ?>"></label>
-                            </div>
-                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
-            </fieldset>
-
-            <!-- Godmothers (Ninang) - up to 8 -->
-            <?php
-            $gmRows = $_POST['godmother_name'] ?? array_column($editGodmothers ?? [], 'sponsor_name');
-            if (array_key_exists('godmother_first', $_POST)) {
-                $gmRows = array_fill(0, person_name_row_count($_POST, 'godmother'), '');
-            }
-            if (!is_array($gmRows)) { $gmRows = []; }
-            $gmRows = array_values($gmRows);
-            $gmRes = $_POST['godmother_residence'] ?? array_column($editGodmothers ?? [], 'sponsor_residence');
-            if (!is_array($gmRes)) { $gmRes = []; }
-            $gmRes = array_values($gmRes);
-            if (count($gmRows) === 0) { $gmRows = ['']; }
-            $godmotherFormValues = $_POST;
-            foreach ($gmRows as $i => $rowName) {
-                $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
-                foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
-                    $godmotherFormValues['godmother_' . $part][$i] ??= $parts[$partIndex];
-                }
-            }
-            ?>
-            <fieldset>
-                <legend>Godmothers (Ninang) - Up to 8</legend>
-                <div data-repeat-group="godmother" data-repeat-max="8">
-                    <?php foreach ($gmRows as $i => $rowName): ?>
-                        <div class="godparent-row">
-                            <div class="inline-fields">
-                                <?= person_name_fields('godmother', 'Godmother Name', $godmotherFormValues, false, $i) ?>
-                                <label>Residence <input autocomplete="off" type="text" name="godmother_residence[]" value="<?= e(isset($gmRes[$i]) && is_string($gmRes[$i]) ? $gmRes[$i] : '') ?>"></label>
-                            </div>
-                            <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godmother">Add another godmother</button>
-            </fieldset>
-
-            <fieldset>
-                <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
-                <label>Remarks / Observanda <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
-            </fieldset>
-
-            <?php if ($isEdit): ?>
-                <button type="submit" name="update_record" value="1" class="btn btn-primary">Update Record</button>
-            <?php else: ?>
-                <button type="submit" name="add_record" value="1" class="btn">Save Record</button>
-            <?php endif; ?>
-            <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
-        </form>
-        </div>
-        </dialog>
-
-    <?php require_once __DIR__ . '/../../includes/admin-footer.php';

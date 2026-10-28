@@ -74,7 +74,7 @@ $mappings = [
 // defined below but available, since function declarations in this file are
 // unconditional and top-level.
 $allPersons = $pdo->query(
-    'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
+    'SELECT id, first_name, middle_name, last_name, suffix, birth_date
      FROM persons ORDER BY last_name, first_name LIMIT 2000'
 )->fetchAll();
 
@@ -121,7 +121,7 @@ function mapper_suggestions(string $displayName, ?string $recordDate, array $all
     $scored = [];
     foreach ($allPersons as $p) {
         $text = mapper_normalize(implode(' ', array_filter([
-            $p['first_name'], $p['middle_name'], $p['last_name'], $p['maiden_name'],
+            $p['first_name'], $p['middle_name'], $p['last_name'],
         ])));
         if ($text === '') continue;
         $dist = levenshtein($needle, $text);
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     $allPersonsForBulk = $pdo->query(
-                        'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date FROM persons'
+                        'SELECT id, first_name, middle_name, last_name, suffix, birth_date FROM persons'
                     )->fetchAll();
                     $bulkRows = $pdo->query(mapper_row_sql($mapping, false))->fetchAll();
                     $eligible = [];
@@ -264,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isSameName = static function (array $p) use ($needle): bool {
                     if ($needle === '') return false;
                     $parts = implode(' ', array_filter([
-                        $p['first_name'], $p['middle_name'], $p['last_name'], $p['maiden_name'],
+                        $p['first_name'], $p['middle_name'], $p['last_name'],
                     ]));
                     return mapper_normalize(mapper_normalize($parts)) === $needle;
                 };
@@ -298,11 +298,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sourceBirthDate = $sourceStmt->fetchColumn() ?: null;
                     $stmt = $pdo->prepare(
                         'INSERT INTO persons
-                            (first_name, middle_name, last_name, suffix, maiden_name, sex, birth_date, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())'
+                            (first_name, middle_name, last_name, suffix, sex, birth_date, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, NOW())'
                     );
                     $stmt->execute([$first, $middle ?: null, $last ?: null, $suffix ?: null,
-                        $section === 'marriage_wife' ? $last : null,
                         $newPersonSex !== '' ? $newPersonSex : null, $sourceBirthDate]);
                     $personId = (int) $pdo->lastInsertId();
                     $actionName = 'create_person_and_map';
@@ -376,7 +375,6 @@ if ($activeSection === null) $activeSection = array_key_first($mappings);
 function mapper_person_label(array $p): string
 {
     $label = trim(implode(' ', array_filter([$p['first_name'], $p['middle_name'], $p['last_name'], $p['suffix']])));
-    if (!empty($p['maiden_name'])) $label .= ' (maiden: ' . $p['maiden_name'] . ')';
     $label .= !empty($p['birth_date'])
         ? ' — b. ' . date('M j, Y', strtotime($p['birth_date']))
         : ' — no birth date on file';
