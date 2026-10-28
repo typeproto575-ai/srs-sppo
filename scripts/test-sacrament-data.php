@@ -113,6 +113,50 @@ sd_save_record($pdo, ['sacrament_type' => 'baptism', 'person_id' => 8, 'event_da
     'entry_no' => 'old', 'book_no' => 'B-1', 'page_no' => '17', 'line_no' => '9']);
 check('next logbook: odd legacy numbering restarts at I/1/1', sd_next_logbook_numbers($pdo, 'baptism')['book_no'] === 'I');
 
+// --- certificate source
+$cs18 = sd_certificate_source($pdo, 18);
+check('cert source 18 is not null', $cs18 !== null);
+$keys18 = array_keys($cs18 ?? []);
+echo 'INFO  cert source 18 keys: ' . implode(', ', $keys18) . "\n";
+check('cert source 18 has child_full_name', array_key_exists('child_full_name', $cs18 ?? []));
+check('cert source 18 has baptism_date', array_key_exists('baptism_date', $cs18 ?? []));
+check('cert source 18 child_full_name is Roy Ramos Mendoza', ($cs18['child_full_name'] ?? '') === 'Roy Ramos Mendoza');
+
+$cs17 = sd_certificate_source($pdo, 17);
+check('cert source 17 is not null', $cs17 !== null);
+echo 'INFO  cert source 17 keys: ' . implode(', ', array_keys($cs17 ?? [])) . "\n";
+check('cert source 17 has husband_full_name', array_key_exists('husband_full_name', $cs17 ?? []));
+check('cert source 17 has wife_maiden_name', array_key_exists('wife_maiden_name', $cs17 ?? []));
+check('cert source 17 wife_maiden_name is birth surname (Ramos)', ($cs17['wife_maiden_name'] ?? '') === 'Ramos');
+
+$cs5 = sd_certificate_source($pdo, 5);
+check('cert source 5 is not null', $cs5 !== null);
+echo 'INFO  cert source 5 keys: ' . implode(', ', array_keys($cs5 ?? [])) . "\n";
+check('cert source 5 has communicant_full_name', array_key_exists('communicant_full_name', $cs5 ?? []));
+check('cert source 5 has communion_date', array_key_exists('communion_date', $cs5 ?? []));
+
+$cs32 = sd_certificate_source($pdo, 32);
+check('cert source 32 is not null', $cs32 !== null);
+echo 'INFO  cert source 32 keys: ' . implode(', ', array_keys($cs32 ?? [])) . "\n";
+check('cert source 32 has confirmand_full_name', array_key_exists('confirmand_full_name', $cs32 ?? []));
+
+// All four: no legitimacy key, and 'legitimacy' not in any value
+foreach ([18, 17, 5, 32] as $rid) {
+    $cs = sd_certificate_source($pdo, $rid);
+    check("cert source $rid has no legitimacy key", !array_key_exists('legitimacy', $cs ?? []));
+    $allValues = json_encode($cs);
+    check("cert source $rid has no 'legitimacy' in any value", strpos($allValues, 'legitimacy') === false);
+}
+
+// Missing record returns null
+check('cert source 99999 returns null', sd_certificate_source($pdo, 99999) === null);
+
+// Sponsors key present for records 17 and 18
+check('cert source 17 has sponsors key', array_key_exists('sponsors', $cs17 ?? []));
+check('cert source 18 has sponsors key', array_key_exists('sponsors', $cs18 ?? []));
+check('cert source 17 sponsors count is 4', count($cs17['sponsors'] ?? []) === 4);
+check('cert source 18 sponsors count is 2', count($cs18['sponsors'] ?? []) === 2);
+
 $pdo->rollBack();
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);

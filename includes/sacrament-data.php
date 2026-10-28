@@ -553,3 +553,43 @@ function sd_next_logbook_numbers(PDO $pdo, string $type): array
     }
     return ['entry_no' => $entryNo, 'book_no' => $roman, 'page_no' => (string) $page, 'line_no' => (string) $line];
 }
+
+function sd_certificate_source(PDO $pdo, int $recordId): ?array
+{
+    $record = sd_get_record($pdo, $recordId);
+    if (!$record) {
+        return null;
+    }
+
+    $person = sd_get_person($pdo, (int) ($record['person_id'] ?? 0));
+    $spouse = !empty($record['spouse_person_id'])
+        ? sd_get_person($pdo, (int) $record['spouse_person_id'])
+        : null;
+
+    switch ($record['sacrament_type'] ?? '') {
+        case 'baptism':
+            $record['child_full_name'] = $person ? sd_full_name($person) : null;
+            $record['baptism_date'] = $record['event_date'] ?? null;
+            break;
+        case 'first_communion':
+            $record['communicant_full_name'] = $person ? sd_full_name($person) : null;
+            $record['communion_date'] = $record['event_date'] ?? null;
+            break;
+        case 'confirmation':
+            $record['confirmand_full_name'] = $person ? sd_full_name($person) : null;
+            $record['confirmation_date'] = $record['event_date'] ?? null;
+            break;
+        case 'marriage':
+            $record['husband_full_name'] = $person ? sd_full_name($person) : null;
+            $record['wife_maiden_name'] = $spouse ? $spouse['last_name'] : null;
+            $record['marriage_date'] = $record['event_date'] ?? null;
+            break;
+    }
+
+    $record['sponsors'] = $record['participants'] ?? [];
+
+    // Never expose legitimacy
+    unset($record['legitimacy']);
+
+    return $record;
+}
