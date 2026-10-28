@@ -125,7 +125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if (empty($errors)) {
         try {
-            $personId = posted_person_id($pdo, 'person_id');
             $pdo->beginTransaction();
             $logbook = register_next_logbook_numbers($pdo, 'baptismal_records', true);
             $bookNo = $logbook['book_no'];
@@ -143,6 +142,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             $fatherBirthplace = trim($_POST['father_birthplace'] ?? '');
             $motherMaidenName = trim($_POST['mother_maiden_name'] ?? '');
             $motherBirthplace = trim($_POST['mother_birthplace'] ?? '');
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $childFirst,
+                'middle_name' => $childMiddle,
+                'last_name' => $childLast,
+                'suffix' => $childSuffix,
+                'birth_date' => $birthDate,
+                'birth_place' => $childBirthplace,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName !== '' ? $motherMaidenName : $motherName,
+            ]);
 
             $stmt = $pdo->prepare(
                 "INSERT INTO baptismal_records
@@ -268,8 +277,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     if (empty($errors)) {
         try {
-            $personId = posted_person_id($pdo, 'person_id');
             $pdo->beginTransaction();
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $childFirst,
+                'middle_name' => $childMiddle,
+                'last_name' => $childLast,
+                'suffix' => $childSuffix,
+                'birth_date' => $birthDate,
+                'birth_place' => $childBirthplace,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName !== '' ? $motherMaidenName : $motherName,
+            ]);
 
             $stmt = $pdo->prepare(
                 "UPDATE baptismal_records
@@ -570,7 +588,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
                     <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                     <div class="person-finder-results" data-person-results></div>
-                    <p class="field-hint">Review the possible matches and select a person only when you are sure. Leave blank if this record is not linked yet.</p>
+                    <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
                 </div>
                 <div class="inline-fields">
                     <label>Birth Date <input autocomplete="off" type="date" data-nudge name="birth_date" value="<?= e($_POST['birth_date'] ?? $editRecord['birth_date'] ?? '') ?>"></label>
