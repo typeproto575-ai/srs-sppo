@@ -30,10 +30,9 @@ CREATE TABLE users (
 -- 2. DIGITAL RECORD INDEXES (mirror the physical logbooks)
 -- =====================================================================
 
--- Shared identity index: one row per person appearing in the record
--- logbooks. The Person Mapper (admin/system/person-mapper.php) links
--- record rows to persons through the nullable *_person_id bridge
--- columns below (folded in from migrations/001).
+-- Master identity index: one row per person across all sacramental
+-- register tables. Sacrament tables keep source-register details and
+-- link back here; this table owns reusable biographical details.
 CREATE TABLE persons (
   id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   first_name       VARCHAR(150) NOT NULL,
@@ -44,12 +43,16 @@ CREATE TABLE persons (
   sex              ENUM('male','female') DEFAULT NULL,
   birth_date       DATE DEFAULT NULL,
   birth_place      VARCHAR(150) DEFAULT NULL,
+  father_name      VARCHAR(150) DEFAULT NULL,
+  mother_maiden_name VARCHAR(150) DEFAULT NULL,
   address          VARCHAR(255) DEFAULT NULL,
   contact_number   VARCHAR(30) DEFAULT NULL,
   email            VARCHAR(150) DEFAULT NULL,
   baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') DEFAULT NULL,
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_persons_name_birth (last_name, first_name, birth_date),
+  KEY idx_persons_maiden_name (maiden_name)
 ) ENGINE=InnoDB;
 
 -- --- Baptismal -------------------------------------------------------
@@ -83,10 +86,12 @@ CREATE TABLE baptismal_records (
   date_encoded      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by        INT UNSIGNED,
   certificate_request_id INT UNSIGNED,  -- reverse link: approved cert request that cited this record (set on match)
-  person_id         INT UNSIGNED,        -- bridge to persons.id (Person Mapper)
+  person_id         INT UNSIGNED,        -- master identity link
   mapper_skipped_at DATETIME NULL,
   book_verified_by  INT UNSIGNED,        -- secretary who confirmed this entry vs. the physical register (031)
   book_verified_at  DATETIME NULL,
+  KEY idx_baptismal_records_person_id (person_id),
+  CONSTRAINT fk_baptismal_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -126,10 +131,12 @@ CREATE TABLE confirmation_records (
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
-  person_id           INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
+  person_id           INT UNSIGNED,      -- master identity link
   mapper_skipped_at   DATETIME NULL,
   book_verified_by    INT UNSIGNED,      -- secretary who confirmed this entry vs. the physical register (031)
   book_verified_at    DATETIME NULL,
+  KEY idx_confirmation_records_person_id (person_id),
+  CONSTRAINT fk_confirmation_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
@@ -157,10 +164,12 @@ CREATE TABLE first_communion_records (
   date_encoded          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by            INT UNSIGNED,
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
-  person_id             INT UNSIGNED,    -- bridge to persons.id (Person Mapper)
+  person_id             INT UNSIGNED,    -- master identity link
   mapper_skipped_at     DATETIME NULL,
   book_verified_by      INT UNSIGNED,    -- secretary who confirmed this entry vs. the physical register (031)
   book_verified_at      DATETIME NULL,
+  KEY idx_first_communion_records_person_id (person_id),
+  CONSTRAINT fk_first_communion_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL,
   FOREIGN KEY (baptismal_record_id) REFERENCES baptismal_records(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
@@ -203,12 +212,16 @@ CREATE TABLE marriage_records (
   date_encoded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   encoded_by          INT UNSIGNED,
   certificate_request_id INT UNSIGNED, -- reverse link: approved cert request (set on match)
-  husband_person_id   INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
-  wife_person_id      INT UNSIGNED,      -- bridge to persons.id (Person Mapper)
+  husband_person_id   INT UNSIGNED,      -- master identity link
+  wife_person_id      INT UNSIGNED,      -- master identity link
   husband_mapper_skipped_at DATETIME NULL,
   wife_mapper_skipped_at    DATETIME NULL,
   book_verified_by     INT UNSIGNED,      -- secretary who confirmed this entry vs. the physical register (031)
   book_verified_at     DATETIME NULL,
+  KEY idx_marriage_records_husband_person_id (husband_person_id),
+  KEY idx_marriage_records_wife_person_id (wife_person_id),
+  CONSTRAINT fk_marriage_husband_person FOREIGN KEY (husband_person_id) REFERENCES persons(id) ON DELETE SET NULL,
+  CONSTRAINT fk_marriage_wife_person FOREIGN KEY (wife_person_id) REFERENCES persons(id) ON DELETE SET NULL,
   FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (book_verified_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -359,11 +372,17 @@ CREATE TABLE sacrament_applications (
   date_processed  DATETIME,
   anonymized_at   DATETIME NULL,
   processed_by    INT UNSIGNED,
+  person_id       INT UNSIGNED NULL,
+  spouse_person_id INT UNSIGNED NULL,
   paid_at         DATETIME NULL,             -- secretary marks payment received by hand (migration 035); no amount stored
   paid_by         INT UNSIGNED NULL,
   notes           TEXT,
   KEY idx_sacr_purge (status, date_processed, date_submitted, anonymized_at),
-  FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL
+  KEY idx_sacr_person (person_id),
+  KEY idx_sacr_spouse_person (spouse_person_id),
+  FOREIGN KEY (processed_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL,
+  FOREIGN KEY (spouse_person_id) REFERENCES persons(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE baptismal_applications (

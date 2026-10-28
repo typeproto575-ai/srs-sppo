@@ -170,6 +170,25 @@ foreach (array_merge($sections, $marriageRoles) as $label => $sec) {
     $linked[$label] = $rows;
     $totalLinked += count($rows);
 }
+$activeApplicationStmt = $pdo->prepare(
+    "SELECT DISTINCT sacrament_type
+     FROM sacrament_applications
+     WHERE (person_id = ? OR spouse_person_id = ?)
+       AND status NOT IN ('completed', 'rejected', 'cancelled')"
+);
+$activeApplicationStmt->execute([$personId, $personId]);
+$activeApplications = array_fill_keys($activeApplicationStmt->fetchAll(PDO::FETCH_COLUMN), true);
+$missingSacraments = [];
+foreach ([
+    'baptismal' => !empty($linked['Baptismal']),
+    'confirmation' => !empty($linked['Confirmation']),
+    'first_communion' => !empty($linked['First Communion']),
+    'marriage' => !empty($linked['As husband']) || !empty($linked['As wife']),
+] as $type => $hasRecord) {
+    if (!$hasRecord) {
+        $missingSacraments[$type] = isset($activeApplications[$type]);
+    }
+}
 
 $pageTitle = 'Person Profile';
 $baptismalStatus = !empty($linked['Baptismal']) ? 'Baptized Catholic' : 'Unknown';
@@ -213,6 +232,27 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <?php else: ?>
     <p class="field-hint">Remove all <?= (int) $totalLinked ?> linked record<?= $totalLinked === 1 ? '' : 's' ?> above before this person can be deleted.</p>
 <?php endif; ?>
+
+<section class="panel-card">
+    <h2>Apply for a missing sacrament</h2>
+    <?php if ($missingSacraments === []): ?>
+        <p class="field-hint">This person has a linked register record for each sacrament.</p>
+    <?php else: ?>
+        <ul>
+            <?php foreach ($missingSacraments as $type => $applicationInProgress): ?>
+                <li>
+                    <?= e(ucwords(str_replace('_', ' ', $type))) ?>
+                    <?php if ($applicationInProgress): ?>
+                        <span class="field-hint"> — an application is already in progress.</span>
+                    <?php else: ?>
+                        <a class="btn btn-small" href="<?= e($basePath . '/admin/requests/walk-in-application.php?sacrament_type=' . rawurlencode($type) . '&person_id=' . $personId) ?>">Apply for Sacrament</a>
+                    <?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+        <p class="field-hint">The staff application form will prefill available identity details; complete the remaining requirements and verify them with the applicant.</p>
+    <?php endif; ?>
+</section>
 
 <?php foreach ($sections as $label => $sec): $rows = $linked[$label]; ?>
     <h2><?= e($label) ?></h2>

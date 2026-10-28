@@ -161,6 +161,9 @@ if ($applicantAge !== null) {
 <?php if ($app['notes']): ?><tr><th>Notes</th><td><?= e($app['notes']) ?></td></tr><?php endif; ?>
 </tbody></table>
 </div>
+<?php if (!empty($app['person_id'])): ?>
+<p class="field-hint">Linked master person: <a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $app['person_id']) ?>">View person profile</a></p>
+<?php endif; ?>
 
 <?php if ($prereqNotice): ?>
     <div class="alert alert-warning"><p><?= e($prereqNotice) ?></p>
@@ -206,4 +209,10 @@ $fcGate = can_approve_sacrament_application($pdo, $applicationId, 'first_communi
 </select>
 <button type="submit" name="update_status" value="1" class="btn btn-small" data-confirm="Update this application's status?">Update</button>
 </form>
+<?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
+<div class="action-cta">
+    <a class="btn btn-small" href="<?= $basePath ?>/admin/records/first-communion.php?from_application=<?= (int) $app['id'] ?>">Encode into First Communion register (pre-filled)</a>
+    <span class="field-hint">Review the application details against the source register; saving completes the application.</span>
+</div>
+<?php endif; ?>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

@@ -10,7 +10,7 @@ Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may 
 
 A web-based **Schedule and Record System** for **Saint Patrick's Parish Office**, Dingalan, Aurora (Philippines) — a capstone project.
 
-It is a **digital index and office workflow** for sacramental records that still live in physical logbooks. It is not a parishioner account portal, not a payment system, and not a replacement for the handwritten registers.
+It is a **digital index and office workflow** for sacramental records that still live in physical logbooks. The database is a single MySQL database with a centralized `persons` master identity table; Baptism, Confirmation, First Communion, and Marriage tables store event/register-specific details and link to that shared identity. They are not separate databases. It is not a parishioner account portal, not a payment system, and not a replacement for the handwritten registers.
 
 **Stack:** Plain PHP (no framework), MySQL/MariaDB, XAMPP. No Composer packages unless explicitly added.
 
@@ -29,6 +29,7 @@ It is a **digital index and office workflow** for sacramental records that still
 7. **`legitimacy` on `baptismal_records` is internal-only.** Never put it on public queries, certificates, or reports. New encodes store `NULL`; legacy rows may still have a value, editable only in the baptismal record form.
 8. **Physical logbooks remain canonical.** Digital rows must keep `book_no` / `page_no` / `line_no` on Baptism, Confirmation, First Communion, and Marriage.
 9. **An online submission is not an official record.** Public forms write `submission_channel = 'online'`. Walk-in encoders write `'onsite'`. The secretary still verifies requirements and identity before processing or release.
+10. **Staff register entries use the master person index.** When encoding a new sacramental register entry, staff search for and select an existing person when one matches. If there is no match, the save creates a linked person profile. Matching by name alone never merges records. Historical rows may remain unlinked until reviewed. Selecting a known profile fills missing biographical details while keeping register-specific source data in its sacrament table.
 
 ---
 

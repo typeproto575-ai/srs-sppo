@@ -48,6 +48,20 @@ function generate_tracking_token(): string
 
     return $token;
 }
+
+function application_queue_next_statuses(string $status): array
+{
+    return [
+        'new' => ['reviewing', 'rejected'],
+        'reviewing' => ['requirements_pending', 'approved', 'rejected'],
+        'requirements_pending' => ['reviewing', 'approved', 'rejected'],
+        'approved' => ['scheduled', 'rejected'],
+        'scheduled' => ['completed', 'rejected'],
+        'completed' => [],
+        'rejected' => [],
+    ][$status] ?? [];
+}
+
 /**
  * True when an exception is a MySQL duplicate-key error (driver code 1062).
  * That is the signal that a generated tracking number lost a race with a
@@ -163,17 +177,15 @@ function is_outside_eligibility(PDO $pdo, string $sacramentType, int $age): bool
  */
 function log_activity(PDO $pdo, ?int $userId, string $action, ?string $targetTable = null, ?int $targetId = null, ?string $description = null, ?string $reason = null): void
 {
-    $role = null;
-    if (function_exists('current_user') && current_user()) {
-        $role = current_user()['role'] ?? null;
-    }
+    $user = function_exists('current_user') ? current_user() : null;
+    $actorName = $user['full_name'] ?? null;
     $ip = client_ip();
     $agent = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500) ?: null;
     $stmt = $pdo->prepare(
-        "INSERT INTO audit_logs (user_id, role_snapshot, action, target_table, target_id, description, ip_address, user_agent, reason)
+        "INSERT INTO audit_logs (user_id, actor_name, action, target_table, target_id, description, ip_address, user_agent, reason)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
-    $stmt->execute([$userId, $role, $action, $targetTable, $targetId, $description, $ip, $agent, $reason]);
+    $stmt->execute([$userId, $actorName, $action, $targetTable, $targetId, $description, $ip, $agent, $reason]);
 }
 /**
  * Record a failed login/tracking attempt for rate limiting.
@@ -1427,9 +1439,8 @@ function notify_certificate_requester_status(PDO $pdo, int $requestId, string $s
  * Used by generate.php and history.php so both pages enforce the exact
  * same rules — never hand-code a status comparison in a page.
  *
- * Flow: pending -> under_review -> approved -> ready_for_pickup -> released
- * (printing does NOT change the request status; it only advances the
- *  generation log's print_status generated -> printed).
+ * Includes the V2 certificate_requests flow and retained V1 status values
+ * used by legacy certificate pages.
  *
  * @param string $from Current status value.
  * @param string $to   Target status value.
@@ -1438,7 +1449,11 @@ function notify_certificate_requester_status(PDO $pdo, int $requestId, string $s
 function cert_request_transition_valid(string $from, string $to): bool
 {
     static $map = [
-        'pending'                    => ['under_review', 'awaiting_payment', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
+        'new'                       => ['matched', 'rejected'],
+        'matched'                   => ['for_signature', 'rejected'],
+        'for_signature'             => ['ready', 'rejected'],
+        'ready'                     => ['released', 'rejected'],
+        'pending'                   => ['under_review', 'awaiting_payment', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
         'submitted'                 => ['under_review', 'awaiting_payment', 'requirements_pending', 'awaiting_onsite_verification', 'rejected', 'cancelled'],
         'under_review'              => ['awaiting_payment', 'requirements_pending', 'requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
         'requirements_pending'      => ['requirements_incomplete', 'awaiting_onsite_verification', 'approved', 'rejected', 'cancelled'],
@@ -1458,24 +1473,26 @@ function cert_request_transition_valid(string $from, string $to): bool
 /**
  * Payment gate for ONLINE certificate requests.
  *
- * Online submissions pause at "awaiting payment" once a register match is
- * found. Payment happens outside the system and is recorded by hand
- * (paid_at / paid_by). Until the secretary marks the payment received, the
- * request may not advance into review, approval, processing or pickup.
- * Reject/cancel stay allowed at any time. Onsite rows and rows that never
- * entered "awaiting payment" are never gated.
+ * V2 online requests remain matched until payment is recorded; legacy rows
+ * retain their awaiting_payment gate. Payment is recorded by hand.
  *
  * @param array  $req The current certificate_requests row (needs status,
- *                    submission_channel, paid_at).
+ *                    channel/submission_channel, paid_at).
  * @param string $to  Target status being attempted.
  * @return array      ['ok' => bool, 'reason' => string]
  */
 function cert_request_payment_gate(array $req, string $to): array
 {
-    if (($req['submission_channel'] ?? 'onsite') !== 'online') {
+    $channel = $req['channel'] ?? $req['submission_channel'] ?? 'onsite';
+    if ($channel !== 'online') {
         return ['ok' => true];
     }
-    if (($req['status'] ?? '') !== 'awaiting_payment') {
+    $status = $req['status'] ?? '';
+    $awaitingV2ProcessingPayment = array_key_exists('channel', $req)
+        && $status === 'matched'
+        && $to === 'for_signature';
+    $awaitingLegacyPayment = $status === 'awaiting_payment';
+    if (!$awaitingV2ProcessingPayment && !$awaitingLegacyPayment) {
         return ['ok' => true];
     }
     if (!empty($req['paid_at'])) {

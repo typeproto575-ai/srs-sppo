@@ -27,6 +27,34 @@ $pageTitle = 'First Communion Records';
 $errors  = [];
 $success = null;
 
+$fromApplicationId = 0;
+if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $applicationStmt = $pdo->prepare(
+        "SELECT sa.id AS application_id, sa.tracking_number, sa.status, sa.person_id,
+                fca.applicant_full_name, fca.baptismal_record_id
+         FROM sacrament_applications sa
+         JOIN first_communion_applications fca ON fca.application_id = sa.id
+         WHERE sa.id = ? AND sa.sacrament_type = 'first_communion'
+           AND sa.status IN ('approved', 'scheduled')"
+    );
+    $applicationStmt->execute([(int) $_GET['from_application']]);
+    $application = $applicationStmt->fetch();
+    if ($application) {
+        $fromApplicationId = (int) $application['application_id'];
+        [$first, $middle, $last, $suffix] = structured_name_parts((string) $application['applicant_full_name']);
+        $_POST['communicant_full_name'] = (string) $application['applicant_full_name'];
+        $_POST['communicant_first_name'] = $first;
+        $_POST['communicant_middle_name'] = $middle;
+        $_POST['communicant_last_name'] = $last;
+        $_POST['communicant_suffix'] = $suffix;
+        $_POST['person_id'] = (string) ($application['person_id'] ?? '');
+        $_POST['baptismal_record_id'] = (string) ($application['baptismal_record_id'] ?? '');
+        $_POST['remarks'] = 'Encoded from application ' . $application['tracking_number'];
+    } else {
+        $errors[] = 'Only an approved or scheduled First Communion application can be encoded into the register.';
+    }
+}
+
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -62,7 +90,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         try {
             $pdo->beginTransaction();
             $baptismalRecordId = posted_baptismal_record_id($pdo);
-            $personId = posted_person_id($pdo, 'person_id');
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $communicantFirst,
+                'middle_name' => $communicantMiddle,
+                'last_name' => $communicantLast,
+                'suffix' => $communicantSuffix,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName,
+            ]);
             $logbook = register_next_logbook_numbers($pdo, 'first_communion_records', true);
             $bookNo = $logbook['book_no'];
             $pageNo = $logbook['page_no'];
@@ -93,7 +128,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "First Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
             $pdo->commit();
-            redirect_to('/admin/records/first-communion.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
+            $appDone = '';
+            if (!empty($_POST['from_application'])) {
+                $applicationId = (int) $_POST['from_application'];
+                $completed = $pdo->prepare(
+                    "UPDATE sacrament_applications SET status = 'completed', date_processed = NOW(), processed_by = ?
+                     WHERE id = ? AND sacrament_type = 'first_communion' AND status IN ('approved', 'scheduled')"
+                );
+                $completed->execute([current_user()['id'], $applicationId]);
+                if ($completed->rowCount()) {
+                    $appRow = $pdo->prepare('SELECT tracking_number, sacrament_type FROM sacrament_applications WHERE id = ?');
+                    $appRow->execute([$applicationId]);
+                    $applicationInfo = $appRow->fetch();
+                    log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', $applicationId,
+                        "First Communion encoded into register (record #{$recordId}); application completed.");
+                    notify_sacrament_application_status($pdo, 'completed', (string) $applicationInfo['sacrament_type'], (string) $applicationInfo['tracking_number'], "First Communion encoded into register (record #{$recordId}).");
+                    $appDone = '&app_completed=1';
+                }
+            }
+            redirect_to('/admin/records/first-communion.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -126,7 +179,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     if (empty($errors)) {
         try {
-            $personId = posted_person_id($pdo, 'person_id');
+            $pdo->beginTransaction();
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $communicantFirst,
+                'middle_name' => $communicantMiddle,
+                'last_name' => $communicantLast,
+                'suffix' => $communicantSuffix,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName,
+            ]);
             $baptismalRecordId = posted_baptismal_record_id($pdo);
             $stmt = $pdo->prepare(
                     "UPDATE first_communion_records
@@ -145,9 +206,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
             log_activity($pdo, current_user()['id'], 'first_communion_record_updated', 'first_communion_records', $editId,
                 "First Communion record updated for {$communicantName}");
 
+            $pdo->commit();
             redirect_to('/admin/records/first-communion.php?updated=1');
             exit;
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             $errors[] = 'Something went wrong while updating this record. Please try again.';
         }
     }
@@ -186,6 +249,7 @@ foreach ([
 }
 
 if (isset($_GET['added'])) $success = 'First Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['app_completed'])) $success = 'First Communion record saved and application completed.';
 if (isset($_GET['updated'])) $success = 'First Communion record updated.';
 if (isset($_GET['deleted'])) $success = 'First Communion record deleted.';
 
@@ -360,6 +424,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>">
+            <input type="hidden" name="from_application" value="<?= (int) ($_POST['from_application'] ?? $fromApplicationId) ?>">
             <fieldset>
                 <legend>Logbook Reference</legend>
                 <div class="inline-fields">
@@ -387,7 +452,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
                     <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                     <div class="person-finder-results" data-person-results></div>
-                    <p class="field-hint">Review the possible matches and select a person only when you are sure. Leave blank if this record is not linked yet.</p>
+                    <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
                 </div>
                 <label>Date of First Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
                 <label>Residence (Domicile) / Address <input autocomplete="off" type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>

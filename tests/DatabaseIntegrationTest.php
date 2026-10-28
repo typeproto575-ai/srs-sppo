@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/retention-purge.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/backup.php';
 require_once __DIR__ . '/../includes/database-upgrades.php';
+require_once __DIR__ . '/../includes/person-linking.php';
 
 final class DatabaseIntegrationTest extends TestCase
 {
@@ -55,7 +56,7 @@ final class DatabaseIntegrationTest extends TestCase
     {
         $requiredColumns = [
             'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at', 'requester_mailing_address'],
-            'sacrament_applications' => ['paid_at', 'anonymized_at'],
+            'sacrament_applications' => ['paid_at', 'anonymized_at', 'person_id', 'spouse_person_id'],
             'confirmation_applications' => ['baptism_date', 'baptism_parish_name', 'baptism_parish_address'],
             'first_communion_applications' => ['applicant_gender', 'psa_birth_certificate_status', 'parental_consent'],
             'marriage_applications' => ['groom_current_address', 'groom_confirmed', 'civil_marriage_date', 'groom_banns_status'],
@@ -80,6 +81,68 @@ final class DatabaseIntegrationTest extends TestCase
         );
         $statement->execute(['srs_schema_migrations']);
         self::assertSame(1, (int) $statement->fetchColumn(), 'Missing database-upgrade history table.');
+    }
+
+    public function testSacramentalRegistersReferenceTheMasterPersonTable(): void
+    {
+        $links = [
+            'sacrament_applications' => ['person_id', 'spouse_person_id'],
+            'baptismal_records' => ['person_id'],
+            'confirmation_records' => ['person_id'],
+            'first_communion_records' => ['person_id'],
+            'marriage_records' => ['husband_person_id', 'wife_person_id'],
+        ];
+
+        foreach (['father_name', 'mother_maiden_name'] as $column) {
+            $statement = $this->pdo->prepare(
+                'SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+            );
+            $statement->execute(['persons', $column]);
+            self::assertSame(1, (int) $statement->fetchColumn(), "Missing master profile column: persons.{$column}");
+        }
+
+        foreach ($links as $table => $columns) {
+            foreach ($columns as $column) {
+                $statement = $this->pdo->prepare(
+                    'SELECT COUNT(*) FROM information_schema.key_column_usage
+                     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
+                       AND referenced_table_name = ? AND referenced_column_name = ?'
+                );
+                $statement->execute([$table, $column, 'persons', 'id']);
+                self::assertSame(1, (int) $statement->fetchColumn(), "Missing master identity link: {$table}.{$column}");
+            }
+        }
+    }
+
+    public function testSavingSacramentalIdentityReusesMasterPerson(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $identity = [
+                'first_name' => 'Integration',
+                'middle_name' => 'Master',
+                'last_name' => 'Person',
+                'birth_date' => '2000-01-02',
+                'birth_place' => 'Dingalan',
+                'father_name' => 'Parent One',
+                'mother_maiden_name' => 'Parent Two',
+            ];
+            $personId = save_person_identity($this->pdo, null, $identity);
+            $samePersonId = save_person_identity($this->pdo, $personId, [
+                'first_name' => 'Integration',
+                'middle_name' => 'Master',
+                'last_name' => 'Person',
+                'birth_date' => '2000-01-02',
+            ]);
+
+            self::assertSame($personId, $samePersonId);
+            $statement = $this->pdo->prepare('SELECT COUNT(*) FROM persons WHERE id = ?');
+            $statement->execute([$personId]);
+            self::assertSame(1, (int) $statement->fetchColumn());
+        } finally {
+            $this->pdo->rollBack();
+        }
     }
 
     public function testDatabaseUpgradeChecksAndRecordsCanonicalSchemaIdempotently(): void

@@ -54,6 +54,43 @@ function confirmation_birthdate_is_valid(string $birthdate): bool
     return $date !== false && $date->format('Y-m-d') === $birthdate && !is_future_date($birthdate);
 }
 
+$fromApplicationId = 0;
+if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $applicationStmt = $pdo->prepare(
+        "SELECT sa.id AS application_id, sa.tracking_number, sa.status, sa.person_id,
+                ca.applicant_full_name, ca.applicant_birthdate, ca.father_full_name,
+                ca.mother_maiden_name, ca.sponsor_name, ca.baptismal_record_id
+         FROM sacrament_applications sa
+         JOIN confirmation_applications ca ON ca.application_id = sa.id
+         WHERE sa.id = ? AND sa.sacrament_type = 'confirmation'
+           AND sa.status IN ('approved', 'scheduled')"
+    );
+    $applicationStmt->execute([(int) $_GET['from_application']]);
+    $application = $applicationStmt->fetch();
+    if ($application) {
+        $fromApplicationId = (int) $application['application_id'];
+        [$first, $middle, $last, $suffix] = structured_name_parts((string) $application['applicant_full_name']);
+        $_POST['confirmand_full_name'] = (string) $application['applicant_full_name'];
+        $_POST['confirmand_first_name'] = $first;
+        $_POST['confirmand_middle_name'] = $middle;
+        $_POST['confirmand_last_name'] = $last;
+        $_POST['confirmand_suffix'] = $suffix;
+        $_POST['birthdate'] = (string) ($application['applicant_birthdate'] ?? '');
+        $_POST['person_id'] = (string) ($application['person_id'] ?? '');
+        $_POST['baptismal_record_id'] = (string) ($application['baptismal_record_id'] ?? '');
+        $_POST['sponsor_name'] = (string) ($application['sponsor_name'] ?? '');
+        $_POST['remarks'] = 'Encoded from application ' . $application['tracking_number'];
+        foreach (['father' => 'father_full_name', 'mother' => 'mother_maiden_name'] as $prefix => $column) {
+            $parts = structured_name_parts((string) ($application[$column] ?? ''));
+            foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                $_POST[$prefix . '_' . $part] = $parts[$index];
+            }
+        }
+    } else {
+        $errors[] = 'Only an approved or scheduled confirmation application can be encoded into the register.';
+    }
+}
+
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -100,7 +137,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
         try {
             $pdo->beginTransaction();
             $baptismalRecordId = posted_baptismal_record_id($pdo);
-            $personId = posted_person_id($pdo, 'person_id');
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $confirmandFirst,
+                'middle_name' => $confirmandMiddle,
+                'last_name' => $confirmandLast,
+                'suffix' => $confirmandSuffix,
+                'birth_date' => $birthdate !== '' ? $birthdate : null,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName,
+            ]);
             $logbook = register_next_logbook_numbers($pdo, 'confirmation_records', true);
             $bookNo = $logbook['book_no'];
             $pageNo = $logbook['page_no'];
@@ -138,7 +183,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 "Confirmation record encoded for {$confirmandName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
 
             $pdo->commit();
-            redirect_to('/admin/records/confirmation.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : ''));
+            $appDone = '';
+            if (!empty($_POST['from_application'])) {
+                $applicationId = (int) $_POST['from_application'];
+                $completed = $pdo->prepare(
+                    "UPDATE sacrament_applications SET status = 'completed', date_processed = NOW(), processed_by = ?
+                     WHERE id = ? AND sacrament_type = 'confirmation' AND status IN ('approved', 'scheduled')"
+                );
+                $completed->execute([current_user()['id'], $applicationId]);
+                if ($completed->rowCount()) {
+                    $appRow = $pdo->prepare('SELECT tracking_number, sacrament_type FROM sacrament_applications WHERE id = ?');
+                    $appRow->execute([$applicationId]);
+                    $applicationInfo = $appRow->fetch();
+                    log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', $applicationId,
+                        "Confirmation encoded into register (record #{$recordId}); application completed.");
+                    notify_sacrament_application_status($pdo, 'completed', (string) $applicationInfo['sacrament_type'], (string) $applicationInfo['tracking_number'], "Confirmation encoded into register (record #{$recordId}).");
+                    $appDone = '&app_completed=1';
+                }
+            }
+            redirect_to('/admin/records/confirmation.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -185,7 +248,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     if (empty($errors)) {
         try {
-            $personId = posted_person_id($pdo, 'person_id');
+            $pdo->beginTransaction();
+            $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
+                'first_name' => $confirmandFirst,
+                'middle_name' => $confirmandMiddle,
+                'last_name' => $confirmandLast,
+                'suffix' => $confirmandSuffix,
+                'birth_date' => $birthdate !== '' ? $birthdate : null,
+                'father_name' => $fatherName,
+                'mother_maiden_name' => $motherMaidenName,
+            ]);
             $baptismalRecordId = posted_baptismal_record_id($pdo);
             $stmt = $pdo->prepare(
                 "UPDATE confirmation_records
@@ -202,17 +274,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 $editId,
             ]);
             $pdo->prepare('UPDATE confirmation_records SET confirmand_first_name = ?, confirmand_middle_name = ?, confirmand_last_name = ?, confirmand_suffix = ? WHERE id = ?')->execute([$confirmandFirst, $confirmandMiddle, $confirmandLast, $confirmandSuffix, $editId]);
-            if ($personId !== null && $birthdate !== '') {
-                $pdo->prepare('UPDATE persons SET birth_date = ? WHERE id = ? AND birth_date IS NULL')
-                    ->execute([$birthdate, $personId]);
-            }
-
             log_activity($pdo, current_user()['id'], 'confirmation_record_updated', 'confirmation_records', $editId,
                 "Confirmation record updated for {$confirmandName}");
 
+            $pdo->commit();
             redirect_to('/admin/records/confirmation.php?updated=1');
             exit;
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             error_log('SRS-SPPO confirmation record update failed: ' . $e->getMessage());
             $errors[] = 'Something went wrong while updating this record. Please try again.';
         }
@@ -253,6 +322,7 @@ foreach ([
 }
 
 if (isset($_GET['added'])) $success = 'Confirmation record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['app_completed'])) $success = 'Confirmation record saved and application completed.';
 if (isset($_GET['updated'])) $success = 'Confirmation record updated.';
 if (isset($_GET['deleted'])) $success = 'Confirmation record deleted.';
 
@@ -453,7 +523,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
                     <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                     <div class="person-finder-results" data-person-results></div>
-                    <p class="field-hint">Review the possible matches and select a person only when you are sure. Leave blank if this record is not linked yet.</p>
+                    <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
                 </div>
                 <div class="inline-fields">
                     <label>Birthdate <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="birthdate" value="<?= e($_POST['birthdate'] ?? $editRecord['birthdate'] ?? '') ?>"></label>
@@ -493,6 +563,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
             </fieldset>
 
+            <input type="hidden" name="from_application" value="<?= (int) ($_POST['from_application'] ?? $fromApplicationId) ?>">
             <?php if ($isEdit): ?>
                 <button type="submit" name="update_record" value="1" class="btn btn-primary">Update Record</button>
             <?php else: ?>

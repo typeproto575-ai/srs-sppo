@@ -15,6 +15,16 @@
   database. It deletes existing sacramental, request, application, and person
   rows before inserting demo data. Never run it against a real parish or
   hosted database.
+- **Quick process demo:** `database/seed_process_demo.sql` adds a small set of
+  fictional, clearly labeled records without clearing existing data. Use it
+  only on a local/demo database. Existing databases need the relevant schema
+  updates, including migrations 039, 045, and 046. It can be run repeatedly
+  without resetting statuses.
+- **Defense walkthrough:** `database/seed_defense_demo.sql` is a broader,
+  additive fictional dataset for local presentations. It does not create staff
+  accounts or reset existing statuses. See `docs/DEMO_WALKTHROUGH.md` for the
+  current routes, supported status names, and safe import steps. Do not use any
+  demo seed on a live parish database.
 
 The application does not run updates automatically during ordinary requests.
 The protected upgrade page supports only the named compatibility updates
@@ -53,11 +63,24 @@ The person-registry sequence documents the original rollout:
    match alone is not reliable proof of identity.
 4. `003a_validate_person_identity_links.sql` is a read-only report for
    repeated names, missing links, and orphan links.
-5. `004_harden_person_identity_links.sql` adds foreign keys. This is optional
-   hardening, not part of the current canonical/live database design described
-   here, which keeps the links nullable and relies on application-managed
-   integrity. Do not run it without reviewing the target database and
-   confirming that the application is ready for the changed behavior.
+5. `004_harden_person_identity_links.sql` adds foreign keys and search indexes
+   for the person links. The canonical fresh-install schema includes these
+   constraints while allowing legacy rows to remain unlinked. On an existing
+   database, validate orphan links and check for the constraints before
+   applying 004; do not run it blindly or duplicate its constraints.
+6. `039_master_person_profile.sql` adds reusable parent-name fields to
+   `persons` and fills only blank profile values from already linked register
+   rows. It deliberately does not link records by name. New staff-encoded
+   register entries create a master person profile when no existing identity
+   is selected; online submissions are not automatically made into profiles
+   before staff review.
+7. `045_link_sacrament_applications_to_persons.sql` adds nullable, staff-
+   confirmed person links to sacrament applications. The second link supports
+   the other party in a marriage application. Existing applications remain
+   unlinked until reviewed; the migration does not infer identities from names.
+8. `046_confirmation_application_profile_fields.sql` adds optional identity,
+   family, and preparation fields to existing Confirmation applications to
+   match the canonical schema.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support

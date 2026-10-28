@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Avoid duplicate submissions while leaving the review modal's two-step
     // flow in control of its own submit handling. This runs after confirmation
     // handlers so cancelling a confirmation never disables the button.
-    document.querySelectorAll('form:not([data-review])').forEach(function (form) {
+    document.querySelectorAll('form:not([data-review]):not([data-person-match-widget])').forEach(function (form) {
         form.addEventListener('submit', function (ev) {
             if (ev.defaultPrevented) return;
             var button = ev.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
@@ -213,9 +213,210 @@ document.addEventListener('DOMContentLoaded', function () {
         var search = finder.querySelector('[data-person-search]');
         var findButton = finder.querySelector('[data-person-find]');
         var hiddenId = finder.querySelector('[data-person-id]');
+        var birthDateSearch = finder.querySelector('[data-person-birth-date]');
         var selection = finder.querySelector('[data-person-selection]');
         var resultsBox = finder.querySelector('[data-person-results]');
         if (!form || !search || !findButton || !hiddenId || !selection || !resultsBox) return;
+
+        if (finder.dataset.matchWidget === 'true') {
+            var createToggle = finder.querySelector('[data-person-create-toggle]');
+            var createPanel = finder.querySelector('[data-person-create-panel]');
+            var createButton = finder.querySelector('[data-person-create]');
+            var linkEndpoint = form.dataset.personLinkEndpoint;
+            var latestMatchSearch = 0;
+            var clearMatch = document.createElement('button');
+            clearMatch.type = 'button';
+            clearMatch.className = 'btn btn-secondary btn-small person-finder-clear';
+            clearMatch.textContent = 'Clear link';
+            clearMatch.hidden = true;
+
+            function matchName(person) {
+                return [person.first_name, person.middle_name, person.last_name, person.suffix]
+                    .filter(Boolean).join(' ');
+            }
+
+            function renderMatchSelection(person, message) {
+                selection.textContent = '';
+                if (!hiddenId.value) {
+                    clearMatch.hidden = true;
+                    selection.appendChild(clearMatch);
+                    return;
+                }
+                var name = document.createElement('strong');
+                name.textContent = 'Linked: ' + (person ? matchName(person) : search.value) + ' (#' + hiddenId.value + ')';
+                var state = document.createElement('span');
+                state.textContent = message || 'This application is linked to the master person profile.';
+                selection.appendChild(name);
+                selection.appendChild(state);
+                selection.appendChild(clearMatch);
+                clearMatch.hidden = false;
+            }
+
+            function showMatchError(message) {
+                resultsBox.textContent = message;
+                resultsBox.setAttribute('role', 'alert');
+            }
+
+            function postMatch(action) {
+                var body = new FormData(form);
+                body.set(action, '1');
+                return fetch(linkEndpoint, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    body: body
+                }).then(function (response) {
+                    return response.json().catch(function () {
+                        throw new Error('The server returned an unreadable response.');
+                    }).then(function (data) {
+                        if (!response.ok) throw new Error(data.error || 'The person could not be linked.');
+                        return data;
+                    });
+                });
+            }
+
+            function linkMatch(person) {
+                hiddenId.value = person.id;
+                findButton.disabled = true;
+                resultsBox.textContent = 'Linking person profile...';
+                postMatch('link_application_person')
+                    .then(function (data) {
+                        search.value = matchName(data.person);
+                        renderMatchSelection(data.person, data.message);
+                        resultsBox.textContent = data.message;
+                        resultsBox.removeAttribute('role');
+                        if (createPanel) createPanel.hidden = true;
+                    })
+                    .catch(function (error) {
+                        hiddenId.value = '';
+                        renderMatchSelection();
+                        showMatchError(error.message);
+                    })
+                    .finally(function () { findButton.disabled = false; });
+            }
+
+            function renderMatchResults(people) {
+                resultsBox.textContent = '';
+                resultsBox.removeAttribute('role');
+                if (!people.length) {
+                    resultsBox.textContent = 'No matching people found. Check the spelling and birth date before creating a new profile.';
+                    return;
+                }
+                people.forEach(function (person) {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'person-finder-result';
+                    var name = document.createElement('strong');
+                    name.textContent = matchName(person) || 'Unnamed person';
+                    var details = document.createElement('span');
+                    var parentNames = [person.father_name, person.mother_maiden_name].filter(Boolean).join(' / ');
+                    details.textContent = [
+                        person.birth_date ? 'Born ' + person.birth_date : '',
+                        parentNames ? 'Parents: ' + parentNames : '',
+                        person.address || ''
+                    ].filter(Boolean).join(' · ');
+                    button.appendChild(name);
+                    button.appendChild(details);
+                    button.addEventListener('click', function () { linkMatch(person); });
+                    resultsBox.appendChild(button);
+                });
+            }
+
+            function searchMatches() {
+                var requestNumber = ++latestMatchSearch;
+                var query = search.value.trim();
+                var birthDate = birthDateSearch ? birthDateSearch.value : '';
+                if (!query && !birthDate) {
+                    findButton.disabled = false;
+                    resultsBox.textContent = 'Enter a surname or date of birth to search.';
+                    return;
+                }
+                var params = new URLSearchParams({ q: query, birth_date: birthDate });
+                findButton.disabled = true;
+                resultsBox.textContent = 'Searching master persons...';
+                fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
+                    .then(function (response) {
+                        return response.json().then(function (data) {
+                            if (!response.ok) throw new Error(data.error || 'Person search failed.');
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        if (requestNumber === latestMatchSearch) renderMatchResults(data.results || []);
+                    })
+                    .catch(function (error) {
+                        if (requestNumber === latestMatchSearch) showMatchError(error.message || 'Person search is unavailable.');
+                    })
+                    .finally(function () {
+                        if (requestNumber === latestMatchSearch) findButton.disabled = false;
+                    });
+            }
+
+            var matchSearchTimer = null;
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                searchMatches();
+            });
+            findButton.addEventListener('click', searchMatches);
+            search.addEventListener('input', function () {
+                latestMatchSearch++;
+                hiddenId.value = '';
+                renderMatchSelection();
+                window.clearTimeout(matchSearchTimer);
+                matchSearchTimer = window.setTimeout(searchMatches, 300);
+            });
+            if (birthDateSearch) {
+                birthDateSearch.addEventListener('change', function () {
+                    latestMatchSearch++;
+                    hiddenId.value = '';
+                    renderMatchSelection();
+                    window.clearTimeout(matchSearchTimer);
+                    searchMatches();
+                });
+            }
+            if (createToggle && createPanel) {
+                createToggle.addEventListener('click', function () {
+                    createPanel.hidden = !createPanel.hidden;
+                    if (!createPanel.hidden) {
+                        var firstName = createPanel.querySelector('[name="new_first_name"]');
+                        if (firstName) firstName.focus();
+                    }
+                });
+            }
+            if (createButton && createPanel) {
+                createButton.addEventListener('click', function () {
+                    if (hiddenId.value) {
+                        showMatchError('Clear the current person link before creating a new profile.');
+                        return;
+                    }
+                    if (!createPanel.querySelector('[name="new_first_name"]').reportValidity()
+                        || !createPanel.querySelector('[name="new_last_name"]').reportValidity()) return;
+                    createButton.disabled = true;
+                    resultsBox.textContent = 'Creating and linking person profile...';
+                    postMatch('create_person')
+                        .then(function (data) {
+                            hiddenId.value = data.person.id;
+                            search.value = matchName(data.person);
+                            renderMatchSelection(data.person, data.message);
+                            resultsBox.textContent = data.message;
+                            resultsBox.removeAttribute('role');
+                            createPanel.hidden = true;
+                        })
+                        .catch(function (error) { showMatchError(error.message); })
+                        .finally(function () { createButton.disabled = false; });
+                });
+            }
+            clearMatch.addEventListener('click', function () {
+                latestMatchSearch++;
+                hiddenId.value = '';
+                search.value = '';
+                if (birthDateSearch) birthDateSearch.value = '';
+                renderMatchSelection();
+                resultsBox.textContent = '';
+            });
+            renderMatchSelection();
+            return;
+        }
 
         var clear = document.createElement('button');
         clear.type = 'button';
@@ -229,9 +430,42 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function namePrefix() {
+            if (finder.dataset.namePrefix) return finder.dataset.namePrefix;
             if (form.querySelector('[name="child_first_name"]')) return 'child';
             if (form.querySelector('[name="confirmand_first_name"]')) return 'confirmand';
             return 'communicant';
+        }
+
+        function fillIfBlank(name, value) {
+            var input = form.querySelector('[name="' + name + '"]');
+            if (input && !input.value.trim() && value) input.value = value;
+        }
+
+        function fillFromProfile(name, value) {
+            var input = form.querySelector('[name="' + name + '"]');
+            if (input && value) input.value = value;
+        }
+
+        function structuredParts(fullName) {
+            var parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+            var suffix = '';
+            if (parts.length && ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'].indexOf(parts[parts.length - 1].toLowerCase()) !== -1) {
+                suffix = parts.pop();
+            }
+            return {
+                first: parts.shift() || '',
+                middle: parts.length > 1 ? parts.slice(0, -1).join(' ') : '',
+                last: parts.length ? parts[parts.length - 1] : '',
+                suffix: suffix
+            };
+        }
+
+        function fillParentName(prefix, fullName) {
+            var parts = structuredParts(fullName);
+            fillFromProfile(prefix + '_first', parts.first);
+            fillFromProfile(prefix + '_middle', parts.middle);
+            fillFromProfile(prefix + '_last', parts.last);
+            fillFromProfile(prefix + '_suffix', parts.suffix);
         }
 
         function renderSelection() {
@@ -273,14 +507,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.addEventListener('click', function () {
                     hiddenId.value = record.id;
                     search.value = name.textContent;
-                    var birthdateInput = form.querySelector('[name="birthdate"]');
+                    var prefix = namePrefix();
+                    var personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    if (prefix === 'wife' && record.maiden_name) personName.last = record.maiden_name;
+                    fillFromProfile(prefix + '_first_name', personName.first);
+                    fillFromProfile(prefix + '_middle_name', personName.middle);
+                    fillFromProfile(prefix + '_last_name', personName.last);
+                    fillFromProfile(prefix + '_suffix', personName.suffix);
+                    var birthField = finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : 'birthdate');
+                    fillFromProfile(birthField, record.birth_date);
+                    fillFromProfile(finder.dataset.birthPlaceField || 'child_birthplace', record.birth_place);
+                    fillParentName('father', record.father_name);
+                    fillParentName('mother', record.mother_maiden_name);
                     var birthdateUnknown = form.querySelector('[name="birthdate_not_recorded"]');
-                    if (birthdateInput && !birthdateInput.value && record.birth_date) {
-                        birthdateInput.value = record.birth_date;
-                        if (birthdateUnknown) birthdateUnknown.checked = false;
-                    }
+                    if (birthdateUnknown && record.birth_date) birthdateUnknown.checked = false;
                     renderSelection();
                     resultsBox.textContent = 'Person selected. Review the identity before saving.';
+                    if (finder.dataset.linkOnSelect === 'true') form.requestSubmit();
                 });
                 resultsBox.appendChild(button);
             });
@@ -288,17 +531,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function searchPeople() {
             var prefix = namePrefix();
-            var birthField = prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : '';
+            var birthField = finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : '');
+            var query = search.value.trim();
+            var requestedBirthDate = birthDateSearch ? birthDateSearch.value : (birthField ? field(birthField) : '');
             var params = new URLSearchParams({
                 first_name: field(prefix + '_first_name'),
                 middle_name: field(prefix + '_middle_name'),
                 last_name: field(prefix + '_last_name'),
                 suffix: field(prefix + '_suffix'),
-                birth_date: birthField ? field(birthField) : ''
+                birth_date: requestedBirthDate
             });
+            if (query) {
+                params.set('q', query);
+            }
             if (!params.get('first_name') && !params.get('middle_name') && !params.get('last_name') && !params.get('birth_date')) {
-                resultsBox.textContent = 'Enter a name or birth date before searching.';
-                return;
+                if (!params.get('q')) {
+                    resultsBox.textContent = 'Enter a name or birth date before searching.';
+                    return;
+                }
             }
             findButton.disabled = true;
             resultsBox.textContent = 'Searching possible people...';
@@ -311,6 +561,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
             var searchTimer = null;
             findButton.addEventListener('click', searchPeople);
+            search.addEventListener('input', function () {
+                clearStaleSelection();
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(searchPeople, 300);
+            });
+            if (birthDateSearch) {
+                birthDateSearch.addEventListener('change', function () {
+                    clearStaleSelection();
+                    window.clearTimeout(searchTimer);
+                    searchPeople();
+                });
+            }
 
         clear.addEventListener('click', function () {
             hiddenId.value = '';
@@ -323,6 +585,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var input = form.querySelector('[name="' + namePrefix() + '_' + part + '"]');
             if (input) input.addEventListener('input', function () {
                 clearStaleSelection();
+                search.value = '';
                 window.clearTimeout(searchTimer);
                 searchTimer = window.setTimeout(searchPeople, 600);
             });

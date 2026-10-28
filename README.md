@@ -31,9 +31,21 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    `database/seed_demo_data.sql` if you want sample records. It deletes all
    rows from the sacramental-record, request, application, and persons tables
    it targets before reseeding; never run it on a populated, real, or hosted
-   database. It does not create a login. Create the first administrator from
-   the project root with `php scripts/create-admin.php`; the CLI requires a
-   password of at least 12 characters.
+   database. For a small, non-resetting walkthrough dataset instead, import
+   `database/seed_process_demo.sql` after the current schema is installed.
+   It adds clearly labeled fictional records and is safe to rerun without
+   resetting their workflow statuses. Its tracking numbers are
+   `DEMO-BAP-001`, `DEMO-CONF-001`, `DEMO-FC-001`, `DEMO-MARR-001`, and
+   `DEMO-CERT-001`. Match Eva Demo Santos using birth date `2014-06-15`.
+   For a comprehensive, still-additive defense dataset, import
+   `database/seed_defense_demo.sql` and follow
+   [`docs/DEMO_WALKTHROUGH.md`](docs/DEMO_WALKTHROUGH.md). Both seeds are only
+   for a local/demo database. Existing databases must have the required schema
+   updates (including migrations 039, 045, and 046) before importing. Neither seed
+   creates a login. Create a secretary account from the project root with
+   `php scripts/create-admin.php`; the CLI requires a password of at least 12
+   characters. The current schema has a `secretary` role, not a separate
+   `admin` role.
 7. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
 8. For an existing database, sign in as secretary and open
@@ -70,6 +82,25 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    PHP `mail()` is restricted. Test delivery to an address you control and
    check **System → Email Log** before relying on notifications.
 
+## Quick process demo
+
+After importing `database/seed_process_demo.sql` on a local/demo database:
+
+1. Open **Admin → Requests → Online Submissions** to see all five `DEMO-*`
+   tracking numbers.
+2. In the application queue, match `DEMO-CONF-001` and `DEMO-FC-001` to
+   **Eva Demo Santos**, born `2014-06-15`.
+3. Match both applicants separately on `DEMO-MARR-001`: **Marco Demo Reyes**
+   (born `1997-04-20`) and **Nina Demo Cruz** (born `1998-09-08`).
+4. Open Eva's person profile from **System → Persons**. Her Baptism record is
+   linked; the other sacrament actions show how an existing identity can be
+   reused instead of re-entered.
+5. Open `DEMO-CERT-001` in the certificate queue and match it to her
+   `DEMO-B-001` Baptism register entry.
+
+All records are fictional and start as reviewable submissions. The seed does
+not create staff login credentials or complete any workflow automatically.
+
 ## Folder structure
 
 ```
@@ -86,7 +117,8 @@ srs-sppo/
 │   └── auth.php                         session guard (require_login / require_role)
 ├── database/
 │   ├── srs_sppo_schema.sql        full DB schema
-│   └── seed_demo_data.sql        optional demo dataset
+│   ├── seed_process_demo.sql      quick, non-resetting walkthrough data
+│   └── seed_demo_data.sql         larger destructive demo reset
 ├── migrations/                    reviewed database upgrades
 ├── scripts/                       setup and maintenance commands
 ├── tests/                         automated tests

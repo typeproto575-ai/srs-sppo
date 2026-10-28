@@ -716,6 +716,117 @@ textarea {
     margin-left: auto;
 }
 
+.person-match-create {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 7px;
+}
+
+.person-match-create legend {
+    padding: 0 0.35rem;
+    font-weight: 600;
+}
+
+.application-review-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.application-review-card {
+    display: grid;
+    gap: 1rem;
+    padding: 1.1rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: var(--admin-panel);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.application-review-card > header,
+.application-review-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.application-review-card > header h2,
+.application-review-card section h3 {
+    margin: 0;
+}
+
+.application-review-card > header p {
+    margin: 0.35rem 0 0;
+    color: var(--admin-muted);
+}
+
+.application-review-card section {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.application-person-match-grid,
+.application-requirements-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    gap: 0.75rem;
+}
+
+.person-match-form,
+.application-requirement-form {
+    padding: 0.75rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-panel-weak);
+}
+
+.application-details-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: 0.6rem;
+    margin: 0;
+}
+
+.application-details-list > div {
+    padding: 0.65rem 0.75rem;
+    border-radius: 7px;
+    background: var(--admin-panel-weak);
+    overflow-wrap: anywhere;
+}
+
+.application-details-list dt {
+    color: var(--admin-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.application-details-list dd {
+    margin: 0.2rem 0 0;
+    white-space: pre-wrap;
+}
+
+.application-requirement-form {
+    display: grid;
+    align-content: start;
+    gap: 0.55rem;
+}
+
+.application-review-actions {
+    justify-content: flex-start;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--admin-border);
+}
+
+.application-review-actions form {
+    display: flex;
+    align-items: end;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
 .mapper-person-assign-form {
     align-items: stretch;
     flex-direction: column;

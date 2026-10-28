@@ -5,6 +5,7 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
+require_once __DIR__ . '/../includes/person-linking.php';
 
 final class FunctionsTest extends TestCase
 {
@@ -12,6 +13,13 @@ final class FunctionsTest extends TestCase
     {
         self::assertTrue(cert_request_transition_valid('pending', 'under_review'));
         self::assertFalse(cert_request_transition_valid('released', 'approved'));
+        self::assertTrue(cert_request_transition_valid('new', 'matched'));
+        self::assertTrue(cert_request_transition_valid('matched', 'for_signature'));
+        self::assertTrue(cert_request_transition_valid('for_signature', 'ready'));
+        self::assertTrue(cert_request_transition_valid('ready', 'released'));
+        self::assertTrue(cert_request_transition_valid('new', 'rejected'));
+        self::assertFalse(cert_request_transition_valid('new', 'for_signature'));
+        self::assertFalse(cert_request_transition_valid('released', 'ready'));
     }
 
     public function testCertificatePaymentGate(): void
@@ -27,6 +35,18 @@ final class FunctionsTest extends TestCase
             'status' => 'awaiting_payment',
             'paid_at' => '2026-10-14 05:00:00',
         ], 'approved')['ok']);
+
+        self::assertFalse(cert_request_payment_gate([
+            'channel' => 'online',
+            'status' => 'matched',
+            'paid_at' => null,
+        ], 'for_signature')['ok']);
+
+        self::assertTrue(cert_request_payment_gate([
+            'channel' => 'online',
+            'status' => 'matched',
+            'paid_at' => '2026-10-14 05:00:00',
+        ], 'for_signature')['ok']);
     }
 
     public function testSacramentApplicationRules(): void
@@ -49,6 +69,48 @@ final class FunctionsTest extends TestCase
         self::assertNotNull(safe_internal_return_url('/admin/requests/queue.php?status=pending'));
         self::assertNull(safe_internal_return_url('https://example.com/admin/queue.php'));
         self::assertNull(safe_internal_return_url('/admin/../../outside.php'));
+    }
+
+    public function testSavingRegisterIdentityCreatesAndReusesMasterPerson(): void
+    {
+        if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+            self::markTestSkipped('PDO SQLite is required for the in-memory person profile test.');
+        }
+
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec(
+            'CREATE TABLE persons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                middle_name TEXT,
+                last_name TEXT,
+                suffix TEXT,
+                maiden_name TEXT,
+                sex TEXT,
+                birth_date TEXT,
+                birth_place TEXT,
+                father_name TEXT,
+                mother_maiden_name TEXT
+            )'
+        );
+        $identity = [
+            'first_name' => 'Maria',
+            'middle_name' => 'Teresa',
+            'last_name' => 'Santos',
+            'birth_date' => '2000-01-02',
+            'birth_place' => 'Dingalan',
+            'father_name' => 'Juan Santos',
+            'mother_maiden_name' => 'Rosa Cruz',
+        ];
+
+        $personId = save_person_identity($pdo, null, $identity);
+        $samePersonId = save_person_identity($pdo, $personId, $identity);
+
+        self::assertSame($personId, $samePersonId);
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM persons')->fetchColumn());
+        $profile = $pdo->query('SELECT * FROM persons')->fetch(PDO::FETCH_ASSOC);
+        self::assertSame('Juan Santos', $profile['father_name']);
+        self::assertSame('Rosa Cruz', $profile['mother_maiden_name']);
     }
 
     public function testTrackingTokenUsesRandomLookingUnambiguousFormat(): void

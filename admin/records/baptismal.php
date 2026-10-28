@@ -25,21 +25,6 @@ $identity = null;
 $formValues = $_POST;
 $isEdit = isset($_GET['edit']);
 
-if (!function_exists('application_queue_next_statuses')) {
-    function application_queue_next_statuses(string $status): array
-    {
-        return [
-            'new' => ['reviewing', 'rejected'],
-            'reviewing' => ['requirements_pending', 'approved', 'rejected'],
-            'requirements_pending' => ['reviewing', 'approved', 'rejected'],
-            'approved' => ['scheduled', 'rejected'],
-            'scheduled' => ['completed', 'rejected'],
-            'completed' => [],
-            'rejected' => [],
-        ][$status] ?? [];
-    }
-}
-
 function baptismal_next_logbook_numbers(PDO $pdo): array
 {
     $stmt = $pdo->query(

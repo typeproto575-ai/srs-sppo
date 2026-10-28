@@ -12,6 +12,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/person-linking.php';
 require_role('secretary');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
@@ -109,6 +110,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
+            $husbandPersonId = save_person_identity($pdo, posted_person_id($pdo, 'husband_person_id'), [
+                'first_name' => $husbandFirst,
+                'middle_name' => $husbandMiddle,
+                'last_name' => $husbandLast,
+                'suffix' => $husbandSuffix,
+                'sex' => 'male',
+                'birth_date' => $husbandBirthdate,
+                'birth_place' => $husbandBirthplace,
+            ]);
+            $wifePersonId = save_person_identity($pdo, posted_person_id($pdo, 'wife_person_id'), [
+                'first_name' => $wifeFirst,
+                'middle_name' => $wifeMiddle,
+                'last_name' => $wifeLast,
+                'suffix' => $wifeSuffix,
+                'maiden_name' => $wifeLast,
+                'sex' => 'female',
+                'birth_date' => $wifeBirthdate,
+                'birth_place' => $wifeBirthplace,
+            ]);
             $logbook = register_next_logbook_numbers($pdo, 'marriage_records', true);
             $bookNo = $logbook['book_no'];
             $pageNo = $logbook['page_no'];
@@ -126,15 +146,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                      husband_birthplace, husband_civil_status, husband_age, husband_origin, husband_residence,
                      husband_parents_name, wife_birthdate, wife_birthplace, wife_civil_status, wife_age,
                      wife_origin, wife_residence, wife_parents_name, officiating_minister, remarks,
-                     book_no, page_no, line_no, encoded_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     book_no, page_no, line_no, encoded_by, husband_person_id, wife_person_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $entryNo, $marriageDate, $husbandName, $wifeMaidenName, $husbandBirthdate,
                 $husbandBirthplace, $husbandCivilStatus, $husbandAge, $husbandOrigin, $husbandResidence,
                 $husbandParents, $wifeBirthdate, $wifeBirthplace, $wifeCivilStatus, $wifeAge,
                 $wifeOrigin, $wifeResidence, $wifeParents, $ministerName, $remarks,
-                $bookNo, $pageNo, $lineNo, current_user()['id'],
+                $bookNo, $pageNo, $lineNo, current_user()['id'], $husbandPersonId, $wifePersonId,
             ]);
             $recordId = (int) $pdo->lastInsertId();
             $pdo->prepare('UPDATE marriage_records SET husband_first_name = ?, husband_middle_name = ?, husband_last_name = ?, husband_suffix = ?, wife_first_name = ?, wife_middle_name = ?, wife_last_name = ?, wife_suffix = ? WHERE id = ?')
@@ -230,6 +250,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
+            $husbandPersonId = save_person_identity($pdo, posted_person_id($pdo, 'husband_person_id'), [
+                'first_name' => $husbandFirst,
+                'middle_name' => $husbandMiddle,
+                'last_name' => $husbandLast,
+                'suffix' => $husbandSuffix,
+                'sex' => 'male',
+                'birth_date' => $husbandBirthdate,
+                'birth_place' => $husbandBirthplace,
+            ]);
+            $wifePersonId = save_person_identity($pdo, posted_person_id($pdo, 'wife_person_id'), [
+                'first_name' => $wifeFirst,
+                'middle_name' => $wifeMiddle,
+                'last_name' => $wifeLast,
+                'suffix' => $wifeSuffix,
+                'maiden_name' => $wifeLast,
+                'sex' => 'female',
+                'birth_date' => $wifeBirthdate,
+                'birth_place' => $wifeBirthplace,
+            ]);
 
             $stmt = $pdo->prepare(
                 "UPDATE marriage_records
@@ -238,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                         husband_origin = ?, husband_residence = ?, husband_parents_name = ?, wife_birthdate = ?,
                         wife_birthplace = ?, wife_civil_status = ?, wife_age = ?, wife_origin = ?,
                         wife_residence = ?, wife_parents_name = ?, officiating_minister = ?, remarks = ?, book_no = ?,
-                        page_no = ?, line_no = ?
+                        page_no = ?, line_no = ?, husband_person_id = ?, wife_person_id = ?
                   WHERE id = ?"
             );
             $stmt->execute([
@@ -246,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 $husbandBirthplace, $husbandCivilStatus, $husbandAge, $husbandOrigin, $husbandResidence,
                 $husbandParents, $wifeBirthdate, $wifeBirthplace, $wifeCivilStatus, $wifeAge,
                 $wifeOrigin, $wifeResidence, $wifeParents, $ministerName, $remarks,
-                $bookNo, $pageNo, $lineNo, $editId,
+                $bookNo, $pageNo, $lineNo, $husbandPersonId, $wifePersonId, $editId,
             ]);
             $pdo->prepare('UPDATE marriage_records SET husband_first_name = ?, husband_middle_name = ?, husband_last_name = ?, husband_suffix = ?, wife_first_name = ?, wife_middle_name = ?, wife_last_name = ?, wife_suffix = ? WHERE id = ?')->execute([$husbandFirst, $husbandMiddle, $husbandLast, $husbandSuffix, $wifeFirst, $wifeMiddle, $wifeLast, $wifeSuffix, $editId]);
 
@@ -517,6 +556,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <label>Birthdate <input autocomplete="off" type="date" name="husband_birthdate" value="<?= e($_POST['husband_birthdate'] ?? $editRecord['husband_birthdate'] ?? '') ?>"></label>
                     <label>Birthplace <input autocomplete="off" type="text" name="husband_birthplace" value="<?= e($_POST['husband_birthplace'] ?? $editRecord['husband_birthplace'] ?? '') ?>"></label>
                 </div>
+                <div class="person-finder" data-person-finder data-name-prefix="husband" data-birth-field="husband_birthdate" data-birth-place-field="husband_birthplace" data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+                    <label>Find an existing person
+                        <input autocomplete="off" type="search" data-person-search placeholder="Search the master person index">
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-small" data-person-find>Find person</button>
+                    <input type="hidden" name="husband_person_id" data-person-id value="<?= e($_POST['husband_person_id'] ?? $editRecord['husband_person_id'] ?? '') ?>">
+                    <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
+                    <div class="person-finder-results" data-person-results></div>
+                    <p class="field-hint">If there is no match, saving creates a master person profile for the husband.</p>
+                </div>
             </fieldset>
 
             <fieldset>
@@ -531,6 +580,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div class="inline-fields">
                     <label>Birthdate <input autocomplete="off" type="date" name="wife_birthdate" value="<?= e($_POST['wife_birthdate'] ?? $editRecord['wife_birthdate'] ?? '') ?>"></label>
                     <label>Birthplace <input autocomplete="off" type="text" name="wife_birthplace" value="<?= e($_POST['wife_birthplace'] ?? $editRecord['wife_birthplace'] ?? '') ?>"></label>
+                </div>
+                <div class="person-finder" data-person-finder data-name-prefix="wife" data-birth-field="wife_birthdate" data-birth-place-field="wife_birthplace" data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+                    <label>Find an existing person
+                        <input autocomplete="off" type="search" data-person-search placeholder="Search the master person index">
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-small" data-person-find>Find person</button>
+                    <input type="hidden" name="wife_person_id" data-person-id value="<?= e($_POST['wife_person_id'] ?? $editRecord['wife_person_id'] ?? '') ?>">
+                    <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
+                    <div class="person-finder-results" data-person-results></div>
+                    <p class="field-hint">If there is no match, saving creates a master person profile for the wife.</p>
                 </div>
             </fieldset>
 

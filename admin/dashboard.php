@@ -23,18 +23,18 @@ $pageTitle = 'Admin Dashboard';
 // ---- Quick stats -----------------------------------------------------------
 // Count of certificate requests still awaiting processing.
 $pendingCount = $pdo->query(
-    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'pending'"
+    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'new'"
 )->fetch()['c'];
 
 // Count of sacrament applications just submitted (awaiting initial review).
 $applicationsPendingCount = $pdo->query(
-    "SELECT COUNT(*) c FROM sacrament_applications WHERE status = 'submitted'"
+    "SELECT COUNT(*) c FROM sacrament_applications WHERE status = 'new'"
 )->fetch()['c'];
 
 // --- Needs-attention counts -------------------------------------------------
 // Certificates printed/generated and waiting to be claimed at the counter.
 $readyForPickupCount = (int) $pdo->query(
-    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'ready_for_pickup'"
+    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'ready'"
 )->fetch()['c'];
 
 // Applications mid-review (documents / interview / banns / seminar /
@@ -43,20 +43,23 @@ $readyForPickupCount = (int) $pdo->query(
 // unfiltered, because the queue filters by one exact status at a time.)
 $underReviewCount = (int) $pdo->query(
     "SELECT COUNT(*) c FROM sacrament_applications
-     WHERE status IN ('documents_pending','interview_scheduled','banns_in_progress','seminar_pending','ready_for_approval')"
+     WHERE status IN ('reviewing','requirements_pending','approved','scheduled')"
 )->fetch()['c'];
 
 // ---- Archive registry totals ------------------------------------------------
-// Live COUNT(*) per digitised logbook for the registry grid below.
-// is intentionally excluded from the active admin dashboard while the feature
-// remains disabled, but the data remains in the database unchanged.
-// Table names come from a hardcoded list (never user input), so no
-// parameterisation is needed.
-$registryCounts = [];
-foreach (['baptismal_records', 'confirmation_records', 'first_communion_records', 'marriage_records'] as $registryTable) {
-    $registryCounts[$registryTable] = (int) $pdo->query(
-        "SELECT COUNT(*) c FROM {$registryTable}"
-    )->fetch()['c'];
+$registryCounts = [
+    'baptism' => 0,
+    'confirmation' => 0,
+    'first_communion' => 0,
+    'marriage' => 0,
+];
+$registryStmt = $pdo->query(
+    'SELECT sacrament_type, COUNT(*) AS record_count
+     FROM sacrament_records
+     GROUP BY sacrament_type'
+);
+foreach ($registryStmt->fetchAll(PDO::FETCH_ASSOC) as $registryRow) {
+    $registryCounts[$registryRow['sacrament_type']] = (int) $registryRow['record_count'];
 }
 
 // Shared top bar + sidebar + opening layout markup.
@@ -86,13 +89,13 @@ require_once __DIR__ . '/../includes/admin-header.php';
                     <p class="stat-number"><?= (int) $pendingCount ?></p>
                     <p class="stat-label">Pending Certificate Requests</p>
                 </a>
-                <a class="stat-card stat-tone-amber" href="<?= $basePath ?>/admin/requests/applications-queue.php?status=submitted">
+                <a class="stat-card stat-tone-amber" href="<?= $basePath ?>/admin/requests/applications-queue.php?status=new">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
                     <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
                     <p class="stat-label">New Sacrament Applications</p>
                 </a>
                 <!-- Needs-attention cards: claim-ready output and in-progress reviews -->
-                <a class="stat-card stat-tone-blue" href="<?= $basePath ?>/admin/requests/queue.php?status=ready_for_pickup">
+                <a class="stat-card stat-tone-blue" href="<?= $basePath ?>/admin/requests/queue.php?status=ready">
                     <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
                     <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
                     <p class="stat-label">Ready for Pickup</p>
@@ -111,22 +114,22 @@ require_once __DIR__ . '/../includes/admin-header.php';
                     <a class="registry-card" href="<?= $basePath ?>/admin/records/baptismal.php">
                         <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
                         <h3>Baptismal</h3>
-                        <span class="registry-count"><?= (int) $registryCounts['baptismal_records'] ?></span>
+                        <span class="registry-count"><?= (int) $registryCounts['baptism'] ?></span>
                     </a>
                     <a class="registry-card" href="<?= $basePath ?>/admin/records/confirmation.php">
                         <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
                         <h3>Confirmation</h3>
-                        <span class="registry-count"><?= (int) $registryCounts['confirmation_records'] ?></span>
+                        <span class="registry-count"><?= (int) $registryCounts['confirmation'] ?></span>
                     </a>
                     <a class="registry-card" href="<?= $basePath ?>/admin/records/first-communion.php">
                         <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v4a6 6 0 0 1-12 0z"/><path d="M12 13v6M8 21h8"/></svg></span>
                         <h3>First Communion</h3>
-                        <span class="registry-count"><?= (int) $registryCounts['first_communion_records'] ?></span>
+                        <span class="registry-count"><?= (int) $registryCounts['first_communion'] ?></span>
                     </a>
                     <a class="registry-card" href="<?= $basePath ?>/admin/records/marriage.php">
                         <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="13" r="6"/><circle cx="15" cy="13" r="6"/></svg></span>
                         <h3>Marriage</h3>
-                        <span class="registry-count"><?= (int) $registryCounts['marriage_records'] ?></span>
+                        <span class="registry-count"><?= (int) $registryCounts['marriage'] ?></span>
                     </a>
                 </div>
             </div><!-- /.registry-summary -->

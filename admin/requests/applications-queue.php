@@ -107,19 +107,6 @@ function application_queue_person_match(array $application, array $details, stri
     ];
 }
 
-function application_queue_next_statuses(string $status): array
-{
-    return [
-        'new' => ['reviewing', 'rejected'],
-        'reviewing' => ['requirements_pending', 'approved', 'rejected'],
-        'requirements_pending' => ['reviewing', 'approved', 'rejected'],
-        'approved' => ['scheduled', 'rejected'],
-        'scheduled' => ['completed', 'rejected'],
-        'completed' => [],
-        'rejected' => [],
-    ][$status] ?? [];
-}
-
 function application_queue_return_url_from_post(array $allowedKeys): string
 {
     $rawQuery = (string) ($_POST['return_query'] ?? '');

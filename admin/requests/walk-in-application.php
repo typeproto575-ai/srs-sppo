@@ -21,12 +21,90 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/person-linking.php';
 require_role('secretary');
 
 // Page title shown in the browser tab
 $pageTitle = 'Encode Walk-in Application';
 $errors = [];
 $trackingNumber = null;
+
+// A staff-only profile action can start this form with a known person. Keep
+// the profile ID attached to the intake application; staff still complete
+// sacrament-specific requirements and verify details onsite.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['person_id'])) {
+    $prefillPersonId = filter_var($_GET['person_id'], FILTER_VALIDATE_INT);
+    $prefillType = (string) ($_GET['sacrament_type'] ?? '');
+    if (!$prefillPersonId || !in_array($prefillType, ['baptismal', 'confirmation', 'first_communion', 'marriage'], true)) {
+        $errors[] = 'The selected person or sacrament is invalid.';
+    } else {
+        $personStmt = $pdo->prepare(
+            "SELECT p.*,
+                    COALESCE(p.birth_date,
+                        (SELECT br.birth_date FROM baptismal_records br WHERE br.person_id = p.id AND br.birth_date IS NOT NULL ORDER BY br.id LIMIT 1),
+                        (SELECT cr.birthdate FROM confirmation_records cr WHERE cr.person_id = p.id AND cr.birthdate IS NOT NULL ORDER BY cr.id LIMIT 1),
+                        (SELECT mr.husband_birthdate FROM marriage_records mr WHERE mr.husband_person_id = p.id AND mr.husband_birthdate IS NOT NULL ORDER BY mr.id LIMIT 1),
+                        (SELECT mr.wife_birthdate FROM marriage_records mr WHERE mr.wife_person_id = p.id AND mr.wife_birthdate IS NOT NULL ORDER BY mr.id LIMIT 1)
+                    ) AS effective_birth_date,
+                    COALESCE(NULLIF(p.birth_place, ''),
+                        (SELECT br.birth_place FROM baptismal_records br WHERE br.person_id = p.id AND br.birth_place IS NOT NULL ORDER BY br.id LIMIT 1),
+                        (SELECT mr.husband_birthplace FROM marriage_records mr WHERE mr.husband_person_id = p.id AND mr.husband_birthplace IS NOT NULL ORDER BY mr.id LIMIT 1),
+                        (SELECT mr.wife_birthplace FROM marriage_records mr WHERE mr.wife_person_id = p.id AND mr.wife_birthplace IS NOT NULL ORDER BY mr.id LIMIT 1)
+                    ) AS effective_birth_place
+             FROM persons p WHERE p.id = ?"
+        );
+        $personStmt->execute([$prefillPersonId]);
+        $prefillPerson = $personStmt->fetch();
+        if (!$prefillPerson) {
+            $errors[] = 'That person profile no longer exists.';
+        } else {
+            if (trim((string) ($prefillPerson['last_name'] ?? '')) === '') {
+                [$first, $middle, $last, $suffix] = structured_name_parts((string) ($prefillPerson['first_name'] ?? ''));
+            } else {
+                [$first, $middle, $last, $suffix] = [
+                    (string) ($prefillPerson['first_name'] ?? ''),
+                    (string) ($prefillPerson['middle_name'] ?? ''),
+                    (string) ($prefillPerson['last_name'] ?? ''),
+                    (string) ($prefillPerson['suffix'] ?? ''),
+                ];
+            }
+            $_POST['sacrament_type'] = $prefillType;
+            $_POST['walk_in_phase'] = '2';
+            $personNamePrefix = $prefillType === 'baptismal' ? 'child' : 'applicant';
+            if ($prefillType === 'marriage') {
+                $personNamePrefix = ($prefillPerson['sex'] ?? '') === 'female' ? 'bride' : 'groom';
+                $_POST[$personNamePrefix === 'bride' ? 'spouse_person_id' : 'person_id'] = $prefillPersonId;
+            } else {
+                $_POST['person_id'] = $prefillPersonId;
+            }
+            $_POST[$personNamePrefix . '_first'] = $first;
+            $_POST[$personNamePrefix . '_middle'] = $middle;
+            $_POST[$personNamePrefix . '_last'] = $last;
+            $_POST[$personNamePrefix . '_suffix'] = $suffix;
+            if ($prefillType === 'baptismal') {
+                $_POST['child_birthdate'] = (string) ($prefillPerson['effective_birth_date'] ?? '');
+                $_POST['child_birthplace'] = (string) ($prefillPerson['effective_birth_place'] ?? '');
+            } elseif ($prefillType === 'marriage') {
+                $_POST[$personNamePrefix . '_birthdate'] = (string) ($prefillPerson['effective_birth_date'] ?? '');
+                $_POST[$personNamePrefix . '_birthplace'] = (string) ($prefillPerson['effective_birth_place'] ?? '');
+            } else {
+                $_POST['applicant_birthdate'] = (string) ($prefillPerson['effective_birth_date'] ?? '');
+            }
+            foreach (['father' => 'father_name', 'mother' => 'mother_maiden_name'] as $namePrefix => $profileColumn) {
+                $parts = structured_name_parts((string) ($prefillPerson[$profileColumn] ?? ''));
+                foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                    $_POST[$namePrefix . '_' . $part] = $parts[$index];
+                }
+            }
+            $guardianName = (string) ($prefillPerson['father_name'] ?? '');
+            if ($guardianName === '') $guardianName = (string) ($prefillPerson['mother_maiden_name'] ?? '');
+            $guardianParts = structured_name_parts($guardianName);
+            foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                $_POST['parent_guardian_' . $part] = $guardianParts[$index];
+            }
+        }
+    }
+}
 
 // --- Handle form submission ----------------------------------------------
 // CSRF guard: reject any POST whose token is missing or stale (see
@@ -62,8 +140,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $paidBy = $markPaid ? current_user()['id'] : null;
 
         // Insert into the shared sacrament_applications table
-        $stmt = $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, notes, paid_at, paid_by) VALUES (?, 'onsite', ?, ?, ?, ?)");
-        $stmt->execute([$trackingNumber, $sacramentType, trim($_POST['notes'] ?? ''), $paidAt, $paidBy]);
+        $personId = posted_person_id($pdo, 'person_id');
+        $spousePersonId = $sacramentType === 'marriage' ? posted_person_id($pdo, 'spouse_person_id') : null;
+        $stmt = $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, notes, person_id, spouse_person_id, paid_at, paid_by) VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$trackingNumber, $sacramentType, trim($_POST['notes'] ?? ''), $personId, $spousePersonId, $paidAt, $paidBy]);
         $applicationId = (int) $pdo->lastInsertId();
 
         // --- Handle type-specific insertion and file uploads -------------
@@ -258,6 +338,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         <form autocomplete="off" method="post" action="" class="walk-in-form walk-in-wizard" data-walk-in-kind="application">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
             <input type="hidden" name="walk_in_phase" value="<?= e((string) ($_POST['walk_in_phase'] ?? '1')) ?>" data-walk-in-current-step>
+            <input type="hidden" name="person_id" value="<?= e((string) ($_POST['person_id'] ?? '')) ?>">
+            <input type="hidden" name="spouse_person_id" value="<?= e((string) ($_POST['spouse_person_id'] ?? '')) ?>">
             <fieldset data-walk-in-phase="type">
                 <legend>Sacrament Type</legend>
                 <label>Type *
