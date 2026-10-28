@@ -1,11 +1,11 @@
 ﻿<?php
 /**
  * =====================================================================
- * SRS-SPPO RECORD FORM (admin, schema v2) — BAPTISM ONLY in this task
+ * SRS-SPPO RECORD FORM (admin, schema v2) — baptism, first communion, confirmation
  * =====================================================================
- * Purpose: Create or edit a baptismal sacrament record linked to a person.
- *          Identity is read-only for an existing person; for a new person
- *          the form collects identity plus the record in one submit.
+ * Purpose: Create or edit a sacrament record linked to a person.
+ *          Baptism can create a new person. First communion and confirmation
+ *          require an existing person (person must already exist).
  *
  * Access: Secretary only (require_role('secretary')).
  * =====================================================================
@@ -23,7 +23,7 @@ $type = trim((string) ($_GET['type'] ?? 'baptism'));
 $personId = (int) ($_GET['person_id'] ?? 0);
 $editId = (int) ($_GET['edit'] ?? 0);
 
-if ($type !== 'baptism') {
+if ($type === 'marriage') {
     $pageTitle = 'Record Form';
     require_once __DIR__ . '/../../includes/admin-header.php';
     ?>
@@ -35,12 +35,26 @@ if ($type !== 'baptism') {
     return;
 }
 
+if (!in_array($type, ['baptism', 'first_communion', 'confirmation'], true)) {
+    $pageTitle = 'Record Form';
+    require_once __DIR__ . '/../../includes/admin-header.php';
+    ?>
+    <h1>Not built yet</h1>
+    <p class="field-hint">The <?= e(sd_type_label($type)) ?> form is not available in this version yet.</p>
+    <a class="btn btn-small" href="<?= e($basePath) ?>/admin/dashboard.php">Back to dashboard</a>
+    <?php
+    require_once __DIR__ . '/../../includes/admin-footer.php';
+    return;
+}
+
+$isBaptism = ($type === 'baptism');
+
 // ---- Load existing record when editing ----
 $existingRecord = null;
 $existingParticipants = [];
 if ($editId > 0) {
     $existingRecord = sd_get_record($pdo, $editId);
-    if ($existingRecord && (string) ($existingRecord['sacrament_type'] ?? '') === 'baptism') {
+    if ($existingRecord && (string) ($existingRecord['sacrament_type'] ?? '') === $type) {
         $existingRecord = sd_decode_record($existingRecord);
         $existingParticipants = sd_get_participants($pdo, $editId);
         if ($personId < 1 && !empty($existingRecord['person_id'])) {
@@ -62,7 +76,49 @@ if ($personId > 0) {
 
 $notice = null;
 $noticeType = null;
-$matchBox = null; // possible-match list for new person
+$matchBox = null;
+
+// ---- Person search when person_id missing for non-baptism types ----
+if (!$isBaptism && $personId < 1 && $editId < 1) {
+    $searchQuery = trim((string) ($_GET['q'] ?? ''));
+    $searchResults = [];
+    if ($searchQuery !== '') {
+        $searchResults = sd_search_persons($pdo, $searchQuery);
+    }
+    $pageTitle = sd_type_label($type) . ' Record';
+    require_once __DIR__ . '/../../includes/admin-header.php';
+    ?>
+    <h1>New <?= e(sd_type_label($type)) ?> record</h1>
+    <p class="field-hint">Choose an existing person first. This form does not create new persons.</p>
+    <form method="get" action="<?= e($basePath) ?>/admin/records/record-form.php" class="search-form" style="display:flex;gap:.5rem;align-items:center;margin-bottom:1rem;">
+        <input type="hidden" name="type" value="<?= e($type) ?>">
+        <input type="text" name="q" value="<?= e($searchQuery) ?>" placeholder="Search by name or birth year" autofocus style="flex:1;padding:.5rem .75rem;">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+    <?php if ($searchQuery !== ''): ?>
+        <?php if (empty($searchResults)): ?>
+            <p class="field-hint">No match found.</p>
+        <?php else: ?>
+            <div class="table-scroll">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th>Birth date</th><th>Birth place</th><th></th></tr></thead>
+                    <tbody>
+                        <?php foreach ($searchResults as $p): ?>
+                            <tr>
+                                <td><?= e($p['full_name']) ?></td>
+                                <td><?= e($p['birth_date'] ? date('M j, Y', strtotime($p['birth_date'])) : '—') ?></td>
+                                <td><?= e($p['birth_place'] ?: '—') ?></td>
+                                <td><a class="btn btn-small" href="<?= e($basePath) ?>/admin/records/record-form.php?type=<?= urlencode($type) ?>&person_id=<?= (int) $p['id'] ?>">Select</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    <?php endif; ?>
+    <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
+    <?php return; ?>
+<?php }
 
 // ---- POST handling ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -73,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = trim((string) ($_POST['action'] ?? 'save'));
         $confirmNew = (string) ($_POST['confirm_new'] ?? '') === '1';
 
-        // Collect identity (only used when no person_id exists yet)
+        // Collect identity (only used for baptism new person)
         $firstName = trim((string) ($_POST['first_name'] ?? ''));
         $middleName = trim((string) ($_POST['middle_name'] ?? ''));
         $lastName = trim((string) ($_POST['last_name'] ?? ''));
@@ -101,30 +157,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $parentsOrigin = trim((string) ($_POST['parents_origin'] ?? ''));
         $parentsResidence = trim((string) ($_POST['parents_residence'] ?? ''));
         $proxyName = trim((string) ($_POST['proxy_name'] ?? ''));
+        $domicile = trim((string) ($_POST['domicile'] ?? ''));
 
         $remarks = trim((string) ($_POST['remarks'] ?? ''));
 
-        // Godparents: 4 rows
+        // Godparents (baptism only): 4 rows
         $participants = [];
-        for ($i = 0; $i < 4; $i++) {
-            $role = trim((string) ($_POST['gp_role'][$i] ?? ''));
-            $gpName = trim((string) ($_POST['gp_name'][$i] ?? ''));
-            $gpResidence = trim((string) ($_POST['gp_residence'][$i] ?? ''));
-            if ($role === '' && $gpName === '' && $gpResidence === '') {
-                continue;
+        if ($isBaptism) {
+            for ($i = 0; $i < 4; $i++) {
+                $role = trim((string) ($_POST['gp_role'][$i] ?? ''));
+                $gpName = trim((string) ($_POST['gp_name'][$i] ?? ''));
+                $gpResidence = trim((string) ($_POST['gp_residence'][$i] ?? ''));
+                if ($role === '' && $gpName === '' && $gpResidence === '') {
+                    continue;
+                }
+                if ($role !== '' || $gpName !== '') {
+                    $participants[] = [
+                        'role' => $role !== '' ? $role : null,
+                        'full_name' => $gpName !== '' ? $gpName : null,
+                        'residence' => $gpResidence !== '' ? $gpResidence : null,
+                    ];
+                }
             }
-            if ($role !== '' || $gpName !== '') {
+        }
+
+        // Sponsor (confirmation only): 1 row
+        if ($type === 'confirmation') {
+            $sponsorName = trim((string) ($_POST['sponsor_name'] ?? ''));
+            $sponsorResidence = trim((string) ($_POST['sponsor_residence'] ?? ''));
+            if ($sponsorName !== '' || $sponsorResidence !== '') {
                 $participants[] = [
-                    'role' => $role !== '' ? $role : null,
-                    'full_name' => $gpName !== '' ? $gpName : null,
-                    'residence' => $gpResidence !== '' ? $gpResidence : null,
+                    'role' => 'sponsor',
+                    'full_name' => $sponsorName !== '' ? $sponsorName : null,
+                    'residence' => $sponsorResidence !== '' ? $sponsorResidence : null,
                 ];
             }
         }
 
-        // New person: possible-match check
+        // New person: possible-match check (baptism only)
         $effectivePersonId = $personId;
-        if ($effectivePersonId < 1 && $lastName !== '') {
+        $matchBox = null;
+        if ($isBaptism && $effectivePersonId < 1 && $lastName !== '') {
             $searchQuery = $lastName;
             if ($birthDate !== '') {
                 $searchQuery .= ' ' . $birthDate;
@@ -136,8 +209,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($matchBox === null) {
-            // Create new person if needed
-            if ($effectivePersonId < 1) {
+            // Create new person if needed (baptism only)
+            if ($isBaptism && $effectivePersonId < 1) {
                 $personData = [
                     'first_name' => $firstName,
                     'last_name' => $lastName,
@@ -163,14 +236,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($effectivePersonId > 0 && $matchBox === null) {
                 // Build details array (omit blanks)
                 $details = [];
-                if ($fatherBirthplace !== '') $details['father_birthplace'] = $fatherBirthplace;
-                if ($motherBirthplace !== '') $details['mother_birthplace'] = $motherBirthplace;
-                if ($parentsOrigin !== '') $details['parents_origin'] = $parentsOrigin;
-                if ($parentsResidence !== '') $details['parents_residence'] = $parentsResidence;
-                if ($proxyName !== '') $details['proxy_name'] = $proxyName;
+                if ($isBaptism) {
+                    if ($fatherBirthplace !== '') $details['father_birthplace'] = $fatherBirthplace;
+                    if ($motherBirthplace !== '') $details['mother_birthplace'] = $motherBirthplace;
+                    if ($parentsOrigin !== '') $details['parents_origin'] = $parentsOrigin;
+                    if ($parentsResidence !== '') $details['parents_residence'] = $parentsResidence;
+                    if ($proxyName !== '') $details['proxy_name'] = $proxyName;
+                }
+                if ($type === 'first_communion' && $domicile !== '') {
+                    $details['domicile'] = $domicile;
+                }
 
                 $recordData = [
-                    'sacrament_type' => 'baptism',
+                    'sacrament_type' => $type,
                     'person_id' => $effectivePersonId,
                     'source' => $source,
                     'event_date' => $eventDate,
@@ -180,18 +258,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'book_no' => $bookNo,
                     'page_no' => $pageNo,
                     'line_no' => $lineNo,
-                    'parents_union_type' => $parentsUnion,
                     'details' => $details,
                     'remarks' => $remarks,
                 ];
+                if ($isBaptism) {
+                    $recordData['parents_union_type'] = $parentsUnion;
+                }
                 if ($editId > 0) {
                     $recordData['id'] = $editId;
                 }
 
                 try {
                     $recordId = sd_save_record($pdo, $recordData, $participants, (int) current_user()['id']);
-                    $action = $editId > 0 ? 'record.update' : 'record.create';
-                    log_activity($pdo, (int) current_user()['id'], $action, 'sacrament_records', $recordId, 'Baptism record saved');
+                    $actionLabel = $editId > 0 ? 'record.update' : 'record.create';
+                    $typeLabel = sd_type_label($type);
+                    log_activity($pdo, (int) current_user()['id'], $actionLabel, 'sacrament_records', $recordId, $typeLabel . ' record saved');
                     redirect_to('/admin/system/person-profile.php?id=' . $effectivePersonId . '&saved=1');
                 } catch (InvalidArgumentException $e) {
                     $notice = $e->getMessage();
@@ -208,18 +289,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ---- Prefill for edit mode ----
 $prefill = [];
+$prefillDetails = [];
 if ($existingRecord) {
     $prefill = $existingRecord;
     $prefillDetails = $existingRecord['details'] ?? [];
-} else {
-    $prefillDetails = [];
 }
 
 // ---- Prefill logbook numbers for new records ----
 $logbookDefaults = ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
 if ($editId < 1) {
     try {
-        $logbookDefaults = sd_next_logbook_numbers($pdo, 'baptism');
+        $logbookDefaults = sd_next_logbook_numbers($pdo, $type);
     } catch (Throwable $e) {
         // keep defaults
     }
@@ -228,14 +308,14 @@ if ($editId < 1) {
 // ---- Prerequisite warnings ----
 $warnings = [];
 if ($personId > 0) {
-    $warnings = sd_prerequisite_warnings($pdo, $personId, 'baptism');
+    $warnings = sd_prerequisite_warnings($pdo, $personId, $type);
 }
 
-$pageTitle = 'Baptism Record';
+$pageTitle = sd_type_label($type) . ' Record';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 
-<h1><?= e($editId > 0 ? 'Edit baptism record' : 'New baptism record') ?></h1>
+<h1><?= e($editId > 0 ? 'Edit ' . sd_type_label($type) . ' record' : 'New ' . sd_type_label($type) . ' record') ?></h1>
 <?php if ($notice): ?>
     <p class="alert alert-<?= e($noticeType) ?>"><?= e($notice) ?></p>
 <?php endif; ?>
@@ -263,30 +343,29 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php foreach (['first_name','middle_name','last_name','suffix','sex','birth_date','birth_place','father_name','mother_maiden_name','address','event_date','place','minister_name','source','parents_union_type','entry_no','book_no','page_no','line_no','father_birthplace','mother_birthplace','parents_origin','parents_residence','proxy_name','remarks'] as $f): ?>
                 <input type="hidden" name="<?= e($f) ?>" value="<?= e((string) ($_POST[$f] ?? '')) ?>">
             <?php endforeach; ?>
-            <?php for ($i = 0; $i < 4; $i++): ?>
-                <input type="hidden" name="gp_role[<?= $i ?>]" value="<?= e((string) ($_POST['gp_role'][$i] ?? '')) ?>">
-                <input type="hidden" name="gp_name[<?= $i ?>]" value="<?= e((string) ($_POST['gp_name'][$i] ?? '')) ?>">
-                <input type="hidden" name="gp_residence[<?= $i ?>]" value="<?= e((string) ($_POST['gp_residence'][$i] ?? '')) ?>">
-            <?php endfor; ?>
             <button type="submit" class="btn btn-small">No, this is a different person</button>
         </form>
     </div>
 <?php endif; ?>
 
+<?php if ($person || $personId > 0): ?>
+    <?php if ($person): ?>
+        <p class="field-hint"><strong><?= e(sd_full_name($person)) ?></strong> &middot; born <?= e($person['birth_date'] ? date('M j, Y', strtotime($person['birth_date'])) : 'not specified') ?> &middot; <?= e($person['birth_place'] ?: 'no birth place') ?></p>
+        <p class="field-hint">Father: <?= e($person['father_name'] ?: 'not specified') ?> &middot; Mother: <?= e($person['mother_maiden_name'] ?: 'not specified') ?></p>
+    <?php endif; ?>
+<?php endif; ?>
+
 <form method="post" class="form-grid">
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="save">
+    <?php if ($personId > 0): ?>
+        <input type="hidden" name="person_id" value="<?= (int) $personId ?>">
+    <?php endif; ?>
 
-    <!-- A. Person (identity) -->
-    <section class="panel-card">
-        <h2>Person (identity)</h2>
-        <?php if ($person || $personId > 0): ?>
-            <?php if ($person): ?>
-                <p class="field-hint"><strong><?= e(sd_full_name($person)) ?></strong> &middot; born <?= e($person['birth_date'] ? date('M j, Y', strtotime($person['birth_date'])) : 'not specified') ?> &middot; <?= e($person['birth_place'] ?: 'no birth place') ?></p>
-                <p class="field-hint">Father: <?= e($person['father_name'] ?: 'not specified') ?> &middot; Mother: <?= e($person['mother_maiden_name'] ?: 'not specified') ?></p>
-            <?php endif; ?>
-            <input type="hidden" name="person_id" value="<?= (int) $personId ?>">
-        <?php else: ?>
+    <!-- A. Person (identity) — baptism only, when no person exists yet -->
+    <?php if ($isBaptism && !$person && $personId < 1): ?>
+        <section class="panel-card">
+            <h2>Person (identity)</h2>
             <div class="form-grid view-grid">
                 <div class="field"><label class="field-label">First name (required)</label><input type="text" name="first_name" value="<?= e((string) ($_POST['first_name'] ?? '')) ?>" required></div>
                 <div class="field"><label class="field-label">Middle name</label><input type="text" name="middle_name" value="<?= e((string) ($_POST['middle_name'] ?? '')) ?>"></div>
@@ -305,8 +384,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div class="field"><label class="field-label">Mother's maiden name</label><input type="text" name="mother_maiden_name" value="<?= e((string) ($_POST['mother_maiden_name'] ?? '')) ?>"></div>
                 <div class="field"><label class="field-label">Address</label><input type="text" name="address" value="<?= e((string) ($_POST['address'] ?? '')) ?>"></div>
             </div>
-        <?php endif; ?>
-    </section>
+        </section>
+    <?php endif; ?>
 
     <!-- B. Record -->
     <section class="panel-card">
@@ -320,14 +399,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <label><input type="radio" name="source" value="this_parish"<?= $src === 'this_parish' ? ' checked' : '' ?>> This parish</label>
                 <label><input type="radio" name="source" value="other_parish"<?= $src === 'other_parish' ? ' checked' : '' ?>> Other parish</label>
             </div>
-            <div class="field"><label class="field-label">Parents' marital status</label>
-                <select name="parents_union_type">
-                    <option value=""<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === '') ? ' selected' : '' ?>>— not specified —</option>
-                    <option value="legitimate"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'legitimate') ? ' selected' : '' ?>>Church married</option>
-                    <option value="civil"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'civil') ? ' selected' : '' ?>>Civilly married</option>
-                    <option value="natural"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'natural') ? ' selected' : '' ?>>Unmarried</option>
-                </select>
-            </div>
+            <?php if ($isBaptism): ?>
+                <div class="field"><label class="field-label">Parents' marital status</label>
+                    <select name="parents_union_type">
+                        <option value=""<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === '') ? ' selected' : '' ?>>— not specified —</option>
+                        <option value="legitimate"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'legitimate') ? ' selected' : '' ?>>Church married</option>
+                        <option value="civil"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'civil') ? ' selected' : '' ?>>Civilly married</option>
+                        <option value="natural"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'natural') ? ' selected' : '' ?>>Unmarried</option>
+                    </select>
+                </div>
+            <?php endif; ?>
+            <?php if ($type === 'first_communion'): ?>
+                <div class="field"><label class="field-label">Domicile</label><input type="text" name="domicile" value="<?= e((string) ($_POST['domicile'] ?? ($prefillDetails['domicile'] ?? ''))) ?>"></div>
+            <?php endif; ?>
+            <?php if ($type === 'confirmation'): ?>
+                <div class="field"><label class="field-label">Sponsor name</label><input type="text" name="sponsor_name" value="<?= e((string) ($_POST['sponsor_name'] ?? '')) ?>"></div>
+                <div class="field"><label class="field-label">Sponsor residence</label><input type="text" name="sponsor_residence" value="<?= e((string) ($_POST['sponsor_residence'] ?? '')) ?>"></div>
+            <?php endif; ?>
         </div>
     </section>
 
@@ -342,47 +430,48 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
     </section>
 
-    <!-- D. Details (JSON keys) -->
-    <section class="panel-card">
-        <h2>Details</h2>
-        <div class="form-grid view-grid">
-            <div class="field"><label class="field-label">Father's birthplace</label><input type="text" name="father_birthplace" value="<?= e((string) ($_POST['father_birthplace'] ?? ($prefillDetails['father_birthplace'] ?? ''))) ?>"></div>
-            <div class="field"><label class="field-label">Mother's birthplace</label><input type="text" name="mother_birthplace" value="<?= e((string) ($_POST['mother_birthplace'] ?? ($prefillDetails['mother_birthplace'] ?? ''))) ?>"></div>
-            <div class="field"><label class="field-label">Parents' origin</label><input type="text" name="parents_origin" value="<?= e((string) ($_POST['parents_origin'] ?? ($prefillDetails['parents_origin'] ?? ''))) ?>"></div>
-            <div class="field"><label class="field-label">Parents' residence</label><input type="text" name="parents_residence" value="<?= e((string) ($_POST['parents_residence'] ?? ($prefillDetails['parents_residence'] ?? ''))) ?>"></div>
-            <div class="field"><label class="field-label">Proxy name</label><input type="text" name="proxy_name" value="<?= e((string) ($_POST['proxy_name'] ?? ($prefillDetails['proxy_name'] ?? ''))) ?>"></div>
-        </div>
-    </section>
-
-    <!-- E. Godparents -->
-    <section class="panel-card">
-        <h2>Godparents</h2>
-        <?php
-        $gpRows = [];
-        if (!empty($existingParticipants)) {
-            foreach ($existingParticipants as $p) {
-                $gpRows[] = $p;
-            }
-        }
-        // Pad to 4 rows
-        while (count($gpRows) < 4) {
-            $gpRows[] = ['role' => '', 'full_name' => '', 'residence' => ''];
-        }
-        ?>
-        <?php for ($i = 0; $i < 4; $i++): ?>
-            <div class="form-grid view-grid" style="margin-bottom:.5rem;">
-                <div class="field"><label class="field-label">Role</label>
-                    <select name="gp_role[<?= $i ?>]">
-                        <option value=""<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === '') ? ' selected' : '' ?>>— select —</option>
-                        <option value="godfather"<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === 'godfather') ? ' selected' : '' ?>>Godfather</option>
-                        <option value="godmother"<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === 'godmother') ? ' selected' : '' ?>>Godmother</option>
-                    </select>
-                </div>
-                <div class="field"><label class="field-label">Full name</label><input type="text" name="gp_name[<?= $i ?>]" value="<?= e((string) ($_POST['gp_name'][$i] ?? ($gpRows[$i]['full_name'] ?? ''))) ?>"></div>
-                <div class="field"><label class="field-label">Residence</label><input type="text" name="gp_residence[<?= $i ?>]" value="<?= e((string) ($_POST['gp_residence'][$i] ?? ($gpRows[$i]['residence'] ?? ''))) ?>"></div>
+    <!-- D. Details (JSON keys) — baptism only -->
+    <?php if ($isBaptism): ?>
+        <section class="panel-card">
+            <h2>Details</h2>
+            <div class="form-grid view-grid">
+                <div class="field"><label class="field-label">Father's birthplace</label><input type="text" name="father_birthplace" value="<?= e((string) ($_POST['father_birthplace'] ?? ($prefillDetails['father_birthplace'] ?? ''))) ?>"></div>
+                <div class="field"><label class="field-label">Mother's birthplace</label><input type="text" name="mother_birthplace" value="<?= e((string) ($_POST['mother_birthplace'] ?? ($prefillDetails['mother_birthplace'] ?? ''))) ?>"></div>
+                <div class="field"><label class="field-label">Parents' origin</label><input type="text" name="parents_origin" value="<?= e((string) ($_POST['parents_origin'] ?? ($prefillDetails['parents_origin'] ?? ''))) ?>"></div>
+                <div class="field"><label class="field-label">Parents' residence</label><input type="text" name="parents_residence" value="<?= e((string) ($_POST['parents_residence'] ?? ($prefillDetails['parents_residence'] ?? ''))) ?>"></div>
+                <div class="field"><label class="field-label">Proxy name</label><input type="text" name="proxy_name" value="<?= e((string) ($_POST['proxy_name'] ?? ($prefillDetails['proxy_name'] ?? ''))) ?>"></div>
             </div>
-        <?php endfor; ?>
-    </section>
+        </section>
+
+        <!-- E. Godparents -->
+        <section class="panel-card">
+            <h2>Godparents</h2>
+            <?php
+            $gpRows = [];
+            if (!empty($existingParticipants)) {
+                foreach ($existingParticipants as $p) {
+                    $gpRows[] = $p;
+                }
+            }
+            while (count($gpRows) < 4) {
+                $gpRows[] = ['role' => '', 'full_name' => '', 'residence' => ''];
+            }
+            ?>
+            <?php for ($i = 0; $i < 4; $i++): ?>
+                <div class="form-grid view-grid" style="margin-bottom:.5rem;">
+                    <div class="field"><label class="field-label">Role</label>
+                        <select name="gp_role[<?= $i ?>]">
+                            <option value=""<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === '') ? ' selected' : '' ?>>— select —</option>
+                            <option value="godfather"<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === 'godfather') ? ' selected' : '' ?>>Godfather</option>
+                            <option value="godmother"<?= (($_POST['gp_role'][$i] ?? ($gpRows[$i]['role'] ?? '')) === 'godmother') ? ' selected' : '' ?>>Godmother</option>
+                        </select>
+                    </div>
+                    <div class="field"><label class="field-label">Full name</label><input type="text" name="gp_name[<?= $i ?>]" value="<?= e((string) ($_POST['gp_name'][$i] ?? ($gpRows[$i]['full_name'] ?? ''))) ?>"></div>
+                    <div class="field"><label class="field-label">Residence</label><input type="text" name="gp_residence[<?= $i ?>]" value="<?= e((string) ($_POST['gp_residence'][$i] ?? ($gpRows[$i]['residence'] ?? ''))) ?>"></div>
+                </div>
+            <?php endfor; ?>
+        </section>
+    <?php endif; ?>
 
     <!-- F. Remarks -->
     <section class="panel-card">
@@ -391,7 +480,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </section>
 
     <div style="margin-top:1rem;">
-        <button type="submit" class="btn btn-primary">Save baptism</button>
+        <button type="submit" class="btn btn-primary">Save <?= e(sd_type_label($type)) ?></button>
         <a href="<?= e($basePath) ?>/admin/dashboard.php" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
