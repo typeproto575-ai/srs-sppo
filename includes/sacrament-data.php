@@ -471,3 +471,17 @@ function sd_verify_book_entry(PDO $pdo, int $recordId, int $userId): void
     $pdo->prepare('UPDATE sacrament_records SET book_verified_by = ?, book_verified_at = NOW() WHERE id = ?')
         ->execute([$userId, $recordId]);
 }
+
+/**
+ * Number of sacrament records per type, for the dashboard counts.
+ * Returns ['baptism' => n, 'first_communion' => n, 'confirmation' => n, 'marriage' => n].
+ */
+function sd_count_records_by_type(PDO $pdo): array
+{
+    $counts = array_fill_keys(SD_TYPES, 0);
+    $stmt = $pdo->query('SELECT sacrament_type, COUNT(*) AS n FROM sacrament_records GROUP BY sacrament_type');
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $counts[$row['sacrament_type']] = (int) $row['n'];
+    }
+    return $counts;
+}

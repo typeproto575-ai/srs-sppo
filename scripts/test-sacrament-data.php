@@ -18,6 +18,7 @@ function throws(callable $fn): bool {
 }
 
 $pdo->beginTransaction();
+check('count by type matches the seed', sd_count_records_by_type($pdo) === ['baptism' => 14, 'first_communion' => 9, 'confirmation' => 7, 'marriage' => 3]);
 
 // --- search
 check('search "dela Cruz" finds 2 people', count(sd_search_persons($pdo, 'dela Cruz')) === 2);
@@ -96,6 +97,7 @@ check('bad date rejected', throws(fn() => sd_save_record($pdo, ['sacrament_type'
 check('bad type rejected', throws(fn() => sd_save_record($pdo, ['sacrament_type' => 'burial', 'person_id' => 8, 'event_date' => '2020-01-01'])));
 check('bad participant role rejected', throws(fn() => sd_save_record($pdo, ['sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2020-01-01'], [['role' => 'dj', 'full_name' => 'X']])));
 check('type cannot be changed on update', throws(fn() => sd_save_record($pdo, ['id' => $id, 'sacrament_type' => 'baptism', 'person_id' => 8, 'event_date' => '2020-01-01'])));
+
 
 $pdo->rollBack();
 echo "\n$pass passed, $fail failed\n";
