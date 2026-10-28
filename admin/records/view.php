@@ -333,7 +333,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h2>Person links</h2>
                 <?php if (!$personLabels): ?>
                     <p class="field-hint">No shared person identity is linked yet.</p>
-                    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-mapper.php?section=' . urlencode($mapperSection) . '&highlight=' . (int)$recordId) ?>">Link in Person Mapper</a>
                 <?php else: ?>
                     <?php foreach ($personLabels as $link): ?>
                         <div class="record-person-link">

@@ -93,23 +93,20 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
 
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
-    $trackUrl = rtrim(MAIL_SITE_URL, '/') . base_path() . '/public/track-request.php';
     $body = "Dear Parishioner,\r\n\r\n"
         . "The parish office has recorded your " . $kind . ".\r\n\r\n"
         . "Your tracking number is: " . $trackingNumber . "\r\n\r\n"
-        . "Track your request at:\r\n" . $trackUrl . "\r\n\r\n"
-        . "Please keep this tracking number. Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
+        . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
 
 function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
-    $trackUrl = rtrim(MAIL_SITE_URL, '/') . base_path() . '/public/track-request.php';
+    $paymentNote = '';
     // Payment happens outside the system. When the stage is "Awaiting Payment",
     // explain the offline options plainly with no amounts — the parish confirms
     // the fee directly.
-    $paymentNote = '';
     if (strcasecmp($humaneStatus, 'Awaiting Payment') === 0) {
         $paymentNote = "\r\n\r\n"
             . "Payment is made outside this website; the office never takes payment online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once your payment is recorded.";
@@ -118,7 +115,6 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
         . "This is an update on your " . $kind . " (tracking number: " . $trackingNumber . ").\r\n\r\n"
         . "Current stage: " . $humaneStatus . "\r\n"
         . $paymentNote . "\r\n\r\n"
-        . "For details, visit:\r\n" . $trackUrl . "\r\n\r\n"
         . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);

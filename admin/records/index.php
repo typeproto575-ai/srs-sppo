@@ -180,7 +180,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <p class="hero-eyebrow">Register index</p>
                 <h1>All Records</h1>
             </div>
-            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-mapper.php') ?>">Person Mapper</a>
         </div>
         <p class="field-hint">Search across the digital index, then open the register-specific editor to verify the physical logbook reference.</p>
 

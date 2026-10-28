@@ -52,9 +52,6 @@ $basePath       = $basePath ?? base_path();
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
-                    <li>Keep the tracking number and the same email address. Check your status any time on the
-                        <a href="<?= $basePath ?>/public/track-request.php">Track a Request or Application</a>
-                        page using this number <em>and</em> the email you provided.</li>
                     <?php if ($successIsApplication): ?>
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>

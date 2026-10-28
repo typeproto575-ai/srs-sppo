@@ -124,7 +124,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         </details>
 
         <!-- Records section -->
-        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/person-mapper.php', '/admin/system/persons.php') ?>>
+        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/persons.php') ?>>
             <summary class="sidebar-group-title" title="Records"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6M9 11h6"/></svg></span><span class="sidebar-group-label">Records</span></summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php') ?> title="All Records" data-compact="AR"><span class="sidebar-link-glyph" aria-hidden="true">AR</span><span class="sidebar-link-label">All Records</span></a></li>
@@ -132,7 +132,6 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?> title="Confirmation" data-compact="CO"><span class="sidebar-link-glyph" aria-hidden="true">CO</span><span class="sidebar-link-label">Confirmation</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?> title="First Communion" data-compact="FC"><span class="sidebar-link-glyph" aria-hidden="true">FC</span><span class="sidebar-link-label">First Communion</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?> title="Marriage" data-compact="MA"><span class="sidebar-link-glyph" aria-hidden="true">MA</span><span class="sidebar-link-label">Marriage</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/person-mapper.php"<?= $isActive('/admin/system/person-mapper.php') ?> title="Person Linking" data-compact="PL"><span class="sidebar-link-glyph" aria-hidden="true">PL</span><span class="sidebar-link-label">Person Linking</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/system/persons.php"<?= $isActive('/admin/system/persons.php') ?> title="Persons" data-compact="PE"><span class="sidebar-link-glyph" aria-hidden="true">PE</span><span class="sidebar-link-label">Persons</span></a></li>
             </ul>
         </details>
@@ -166,7 +165,6 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
                 <li><a href="<?= $basePath ?>/admin/system/archive-record.php"<?= $isActive('/admin/system/archive-record.php') ?> title="Archive / Restore" data-compact="AR"><span class="sidebar-link-glyph" aria-hidden="true">AR</span><span class="sidebar-link-label">Archive / Restore</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/email-delivery.php"<?= $isActive('/admin/email-delivery.php') ?> title="Email Log" data-compact="EL"><span class="sidebar-link-glyph" aria-hidden="true">EL</span><span class="sidebar-link-label">Email Log</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?> title="Audit Log" data-compact="AL"><span class="sidebar-link-glyph" aria-hidden="true">AL</span><span class="sidebar-link-label">Audit Log</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/database-upgrades.php"<?= $isActive('/admin/system/database-upgrades.php') ?> title="Database Setup" data-compact="DS"><span class="sidebar-link-glyph" aria-hidden="true">DS</span><span class="sidebar-link-label">Database Setup</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/system/retention-purge.php"<?= $isActive('/admin/system/retention-purge.php') ?> title="Clean Up Old Data" data-compact="CD"><span class="sidebar-link-glyph" aria-hidden="true">CD</span><span class="sidebar-link-label">Clean Up Old Data</span></a></li>
             </ul>
         </details>

@@ -28,7 +28,7 @@ $stmt = $pdo->prepare('SELECT * FROM persons WHERE id = ?');
 $stmt->execute([$personId]);
 $person = $stmt->fetch();
 if (!$person) {
-    redirect_to('/admin/system/person-mapper.php');
+    redirect_to('/admin/system/persons.php');
 }
 
 // Built here (not beside the display code) because the unlink handler below
@@ -194,7 +194,6 @@ $pageTitle = 'Person Profile';
 $baptismalStatus = !empty($linked['Baptismal']) ? 'Baptized Catholic' : 'Unknown';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<p><a href="<?= $basePath ?>/admin/system/person-mapper.php">&larr; Back to Person Mapper</a></p>
 <h1><?= e($personLabel) ?></h1>
 <?php if ($actionError): ?><p class="alert alert-error"><?= e($actionError) ?></p><?php endif; ?>
 <?php if (isset($_GET['unlinked'])): ?><p class="alert alert-success">Link removed. The record is back in the mapping queue.</p><?php endif; ?>

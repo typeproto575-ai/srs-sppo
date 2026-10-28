@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retention_confirmed']
 <?php if ($dry === null): ?>
     <div class="flash flash-error">
         The system could not check whether cleanup is available. Ask your system administrator
-        to review <a href="<?= e($basePath) ?>/admin/system/database-upgrades.php">System &gt; Database Setup</a>,
+        to review System &gt; Database Setup,
         then try again. Do not continue if this warning remains.
     </div>
 <?php else: ?>

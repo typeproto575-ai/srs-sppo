@@ -101,7 +101,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <div class="page-heading">
     <h1>Persons</h1>
-    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-mapper.php') ?>">Back to Person Linking</a>
 </div>
 
 <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
