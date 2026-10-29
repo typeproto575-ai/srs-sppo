@@ -127,21 +127,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     || ($claimantType === 'representative' && ($representativeName === '' || $representativeRelationship === ''))) {
                     throw new DomainException('Verify the claimant’s valid ID and provide representative details when applicable.');
                 }
-                $update = $pdo->prepare(
-                    "UPDATE certificate_requests
-                     SET status = 'released', claimant_type = ?, representative_name = ?, representative_relationship = ?,
-                         claimant_notes = ?, id_verified = 1, paid_at = COALESCE(paid_at, NOW()), paid_by = COALESCE(paid_by, ?), released_by = ?, released_at = NOW()
-                     WHERE id = ?"
-                );
-                $update->execute([
+                if (empty($current['paid_at']) && !$paidNow) {
+                    throw new DomainException('Record the payment before releasing the certificate.');
+                }
+                if ($claimantType === 'representative' && !$repDocsReceived) {
+                    throw new DomainException("Confirm that the representative's ID, the signed authorization letter and a copy of the subject's ID were received.");
+                }
+                $setParts = [
+                    "status = 'released'",
+                    'claimant_type = ?',
+                    'representative_name = ?',
+                    'representative_relationship = ?',
+                    'claimant_notes = ?',
+                    'id_verified = 1',
+                ];
+                $params = [
                     $claimantType,
                     $claimantType === 'representative' ? $representativeName : null,
                     $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
                     $claimantNotes !== '' ? $claimantNotes : null,
-                    empty($current['paid_at']) ? $userId : null,
-                    $userId,
-                    $requestId,
-                ]);
+                ];
+                if (empty($current['paid_at']) && $paidNow) {
+                    $setParts[] = 'paid_at = NOW()';
+                    $setParts[] = 'paid_by = ?';
+                    $params[] = $userId;
+                }
+                $setParts[] = 'released_by = ?';
+                $setParts[] = 'released_at = NOW()';
+                $params[] = $userId;
+                $params[] = $requestId;
+                $update = $pdo->prepare(
+                    'UPDATE certificate_requests SET ' . implode(', ', $setParts) . ' WHERE id = ?'
+                );
+                $update->execute($params);
                 log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released after claimant identity verification.');
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
