@@ -469,7 +469,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php $linkStatus = ((int) ($rec['person_id'] ?? 0)) > 0 ? 'linked' : 'unlinked'; ?>
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= $linkStatus === 'linked' ? 'Linked' : 'Unlinked' ?></span></td>
                             <td class="row-actions">
-                                <a href="<?= $basePath ?>/admin/certificates/generate.php?record_type=confirmation&record_id=<?= (int) $rec['id'] ?>" class="btn btn-success btn-small">Generate</a>
                                 <a href="<?= e($basePath . '/admin/records/view.php?type=confirmation&id=' . (int) $rec['id'] . '&return=' . urlencode($selfReturn)) ?>" class="btn btn-secondary btn-small">View record</a>
                             </td>
                         </tr>

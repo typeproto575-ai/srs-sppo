@@ -131,7 +131,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
                         <span class="note">Recorded from origin certificate</span>
                     <?php elseif (sd_can_print_certificate($record)): ?>
-                        <a class="btn btn-small" href="<?= e($basePath . '/admin/certificates/sacramental-certificate.php?record_id=' . (int) $record['id']) ?>">Print certificate</a>
+                        <span class="note">Print from a certificate request</span>
                     <?php elseif (empty($record['book_verified_at'])): ?>
                         <form method="post" style="display:inline;" data-confirm="Mark this book entry as verified against the physical register?">
                             <?= csrf_field() ?>
@@ -172,7 +172,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
                         <span class="note">Recorded from origin certificate</span>
                     <?php elseif (sd_can_print_certificate($record)): ?>
-                        <a class="btn btn-small" href="<?= e($basePath . '/admin/certificates/sacramental-certificate.php?record_id=' . (int) $record['id']) ?>">Print certificate</a>
+                        <span class="note">Print from a certificate request</span>
                     <?php elseif (empty($record['book_verified_at'])): ?>
                         <form method="post" style="display:inline;" data-confirm="Mark this book entry as verified against the physical register?">
                             <?= csrf_field() ?>

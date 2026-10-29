@@ -280,7 +280,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><strong><?= e($recordDisplayName) ?></strong></td>
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
-                            <td class="row-actions"><a class="btn btn-success btn-small" href="<?= e($basePath . '/admin/certificates/generate.php?record_type=' . urlencode($record['record_type']) . '&record_id=' . (int) $record['id']) ?>">Generate</a> <a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a></td>
+                            <td class="row-actions"><a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
