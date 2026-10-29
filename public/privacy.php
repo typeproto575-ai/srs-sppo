@@ -109,7 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <li>be informed about how your data is processed;</li>
                 <li>access the data we hold about you;</li>
                 <li>object to the processing, or withdraw your consent;</li>
-                <li>ask us to correct inaccurate data (you can use the <a href="<?= e($basePath . '/public/correction-request.php') ?>">Request Correction</a> page);</li>
+                <li>ask us to correct inaccurate data (contact the parish office);</li>
                 <li>ask us to block or remove data, where the law allows;</li>
                 <li>claim compensation for damages from unlawful use of your data; and</li>
                 <li>receive your data in a usable format, where applicable.</li>

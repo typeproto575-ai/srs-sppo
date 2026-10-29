@@ -85,23 +85,17 @@ require_once __DIR__ . '/../includes/header.php';
             <p>Send an online request for a Baptismal, Confirmation, First Communion, or Marriage certificate.</p>
             <span class="service-link">Request a certificate &rarr;</span>
         </a>
-        <a class="service-card service-card-accent" href="<?= $basePath ?>/public/sacrament-application.php">
+        <a class="service-card" href="<?= $basePath ?>/public/certificate-request.php">
             <span class="service-number">02</span>
-            <h3>Apply for a Sacrament</h3>
-            <p>Send your information online for parish review, then follow the secretary's instructions for requirements and preparation.</p>
-            <span class="service-link">View applications &rarr;</span>
+            <h3>Request a certificate</h3>
+            <p>Request a certified copy of a baptism, confirmation, first communion, or marriage record.</p>
+            <span class="service-link">Request a certificate &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/track-request.php">
             <span class="service-number">03</span>
             <h3>Track an online submission</h3>
             <p>Already submitted online or received a tracking number from the secretary? Check its current processing stage with your email address.</p>
             <span class="service-link">Track a request &rarr;</span>
-        </a>
-        <a class="service-card service-card-accent" href="<?= $basePath ?>/public/correction-request.php">
-            <span class="service-number">04</span>
-            <h3>Request a certificate correction</h3>
-            <p>If an issued certificate has an error, submit a correction request with your tracking number and explain the needed change.</p>
-            <span class="service-link">Submit a correction request &rarr;</span>
         </a>
     </div>
 </section>
