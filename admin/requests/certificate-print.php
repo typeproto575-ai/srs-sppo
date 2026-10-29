@@ -253,8 +253,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="print_certificate" value="1">
             <?php if ($req['sacrament_type'] === 'baptism'): ?>
-                <button type="submit" name="print_mode" value="overlay" class="btn btn-primary">Print on Blank Stock</button>
-                <button type="submit" name="print_mode" value="full" class="btn btn-secondary">Print Full Certificate</button>
+                <button type="submit" name="print_mode" value="overlay" class="btn btn-primary" data-preserve-submit>Print on Blank Stock</button>
+                <button type="submit" name="print_mode" value="full" class="btn btn-secondary" data-preserve-submit>Print Full Certificate</button>
             <?php else: ?>
                 <button type="submit" class="btn btn-primary">Print Certificate</button>
             <?php endif; ?>
