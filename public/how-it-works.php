@@ -93,16 +93,6 @@ require_once __DIR__ . '/../includes/header.php';
         <p>Need proof of a sacrament that already took place? Request a certified copy.</p>
         <a href="<?= $basePath ?>/public/certificate-request.php" class="btn btn-secondary">Request a Certificate</a>
     </div>
-    <div class="path-card">
-        <h3>Sacrament Application</h3>
-        <p>Preparing to receive Baptism, Confirmation, First Communion, or Marriage? Send your details before your office visit.</p>
-        <a href="<?= $basePath ?>/public/sacrament-application.php" class="btn btn-secondary">Start an Application</a>
-    </div>
-    <div class="path-card">
-        <h3>Correction Request</h3>
-        <p>Already received a certificate with a wrong detail? Report it here.</p>
-        <a href="<?= $basePath ?>/public/correction-request.php" class="btn btn-secondary">Request a Correction</a>
-    </div>
 </div>
 
 <!-- Final calls-to-action -->

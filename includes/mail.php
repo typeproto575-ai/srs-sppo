@@ -151,7 +151,7 @@ function mail_certificate_request_received(string $toEmail, string $requesterNam
     $pdo = $GLOBALS['pdo'] ?? null;
     $body = "Dear " . $requesterName . ",\r\n\r\n"
         . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
-        . "Next step: bring your reference number and visit the parish office to pay at the counter. Processing begins only after payment is recorded.\r\n\r\n"
+        . "Next step: visit the parish office, give your full name at the counter, and pay. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When you pick it up, bring:\r\n"
         . "- Your valid government ID.\r\n"

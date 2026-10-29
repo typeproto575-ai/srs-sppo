@@ -17,11 +17,11 @@ $values = [
     'mother_maiden_name' => '',
     'event_date' => '',
     'requester_name' => '',
-    'requester_relationship' => 'self',
+    'requester_relationship' => '',
     'requester_relationship_other' => '',
     'requester_email' => '',
     'requester_contact_number' => '',
-    'purpose' => 'School',
+    'purpose' => '',
     'purpose_other' => '',
 ];
 $errors = [];
@@ -218,7 +218,7 @@ require_once __DIR__ . '/../includes/header.php';
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
 
         <div id="marriage-only" <?= $values['certificate_type'] === 'marriage' ? '' : 'hidden' ?>>
-            <label for="spouse_name">Bride\'s full name *</label>
+            <label for="spouse_name">Bride's full name *</label>
             <input type="text" id="spouse_name" name="spouse_name" maxlength="150" value="<?= e($values['spouse_name']) ?>">
             <label for="marriage_date">Date of marriage (optional)</label>
             <input type="date" id="marriage_date" name="marriage_date" value="<?= e($values['marriage_date']) ?>">
@@ -227,10 +227,10 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="birth_date">Date of birth (optional)</label>
         <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>">
 
-        <label for="father_name">Father\'s full name (optional)</label>
+        <label for="father_name">Father's full name (optional)</label>
         <input type="text" id="father_name" name="father_name" maxlength="150" value="<?= e($values['father_name']) ?>">
 
-        <label for="mother_maiden_name">Mother\'s maiden name (optional)</label>
+        <label for="mother_maiden_name">Mother's maiden name (optional)</label>
         <input type="text" id="mother_maiden_name" name="mother_maiden_name" maxlength="150" value="<?= e($values['mother_maiden_name']) ?>">
 
         <label for="event_date">Approximate date of the sacrament (optional)</label>
@@ -241,6 +241,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <label for="requester_relationship">Your relationship to the person named *</label>
         <select id="requester_relationship" name="requester_relationship" required>
+            <option value="" <?= $values['requester_relationship'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="self" <?= $values['requester_relationship'] === 'self' ? 'selected' : '' ?>>Self</option>
             <option value="parent" <?= $values['requester_relationship'] === 'parent' ? 'selected' : '' ?>>Parent</option>
             <option value="guardian" <?= $values['requester_relationship'] === 'guardian' ? 'selected' : '' ?>>Guardian</option>
@@ -262,6 +263,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <label for="purpose">Purpose *</label>
         <select id="purpose" name="purpose" required>
+            <option value="" <?= $values['purpose'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="School" <?= $values['purpose'] === 'School' ? 'selected' : '' ?>>School</option>
             <option value="Employment" <?= $values['purpose'] === 'Employment' ? 'selected' : '' ?>>Employment</option>
             <option value="Passport" <?= $values['purpose'] === 'Passport' ? 'selected' : '' ?>>Passport</option>

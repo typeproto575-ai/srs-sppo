@@ -56,7 +56,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>A preferred baptism date, if you have one. The parish office confirms the schedule.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the office will explain any documents or preparation needed for your family.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/baptismal.php" class="btn btn-small">Open Baptism Application</a>
             </div>
         </div>
 
@@ -73,7 +72,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Baptismal and Confirmation certificates, a PSA civil-status document (such as a CENOMAR), or marriage-license documents if requested by the parish.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the parish office will explain document requirements, preparation, interviews, and scheduling. A wedding date is not confirmed by this form.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Open Marriage Application</a>
             </div>
         </div>
         <div class="ledger-row">
@@ -86,7 +84,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
                 <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Open Confirmation Application</a>
             </div>
         </div>
         <div class="ledger-row">
@@ -99,7 +96,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
                 <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Open First Communion Application</a>
             </div>
         </div>
     </div>
