@@ -566,10 +566,30 @@ function sd_certificate_source(PDO $pdo, int $recordId): ?array
         ? sd_get_person($pdo, (int) $record['spouse_person_id'])
         : null;
 
+    $record['father_name'] = $person['father_name'] ?? null;
+    $record['mother_maiden_name'] = $person['mother_maiden_name'] ?? null;
+
+    $participantNamesForRoles = static function (array $roles) use ($record): array {
+        $names = [];
+        foreach ($record['participants'] ?? [] as $participant) {
+            if (!in_array($participant['role'] ?? '', $roles, true)) {
+                continue;
+            }
+            $name = trim((string) ($participant['full_name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+        return $names;
+    };
+
     switch ($record['sacrament_type'] ?? '') {
         case 'baptism':
             $record['child_full_name'] = $person ? sd_full_name($person) : null;
             $record['baptism_date'] = $record['event_date'] ?? null;
+            $record['birth_date'] = $person['birth_date'] ?? null;
+            $record['birth_place'] = $person['birth_place'] ?? null;
+            $record['sponsor_names'] = $participantNamesForRoles(['godfather', 'godmother', 'sponsor', 'principal_sponsor']);
             break;
         case 'first_communion':
             $record['communicant_full_name'] = $person ? sd_full_name($person) : null;
@@ -578,10 +598,12 @@ function sd_certificate_source(PDO $pdo, int $recordId): ?array
         case 'confirmation':
             $record['confirmand_full_name'] = $person ? sd_full_name($person) : null;
             $record['confirmation_date'] = $record['event_date'] ?? null;
+            $sponsorNames = $participantNamesForRoles(['sponsor', 'principal_sponsor']);
+            $record['sponsor_name'] = $sponsorNames === [] ? null : implode(', ', $sponsorNames);
             break;
         case 'marriage':
             $record['husband_full_name'] = $person ? sd_full_name($person) : null;
-            $record['wife_maiden_name'] = $spouse ? $spouse['last_name'] : null;
+            $record['wife_maiden_name'] = $spouse ? sd_full_name($spouse) : null;
             $record['marriage_date'] = $record['event_date'] ?? null;
             break;
     }
