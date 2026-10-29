@@ -371,6 +371,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if (in_array($req['status'], ['new', 'matched'], true)): ?>
         <?php $searchQ = trim((string) ($_GET['q'] ?? $req['subject_name'])); ?>
         <form method="get" action="<?= e($detailUrl) ?>" class="stacked-form" style="margin-bottom:1rem;">
+            <input type="hidden" name="id" value="<?= (int) $requestId ?>">
             <label for="q">Search person by name</label>
             <input type="text" id="q" name="q" value="<?= e($searchQ) ?>">
             <button type="submit" class="btn btn-secondary">Search</button>
