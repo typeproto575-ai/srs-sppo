@@ -1434,15 +1434,15 @@ function notify(PDO $pdo, string $type, string $title, string $message, string $
  *
  * @param PDO    $pdo          Active DB connection.
  * @param string $newStatus    The status just written (must be in the notifications.type ENUM).
- * @param string $sacramentType   'baptismal', 'confirmation', 'first_communion', 'marriage'.
- * @param string $trackingNumber   application tracking_number (from sa.*).
+ * @param string $sacramentType   'baptism', 'confirmation', 'first_communion', 'marriage'.
+ * @param string $requestNo       application request_no (from sacrament_applications).
  * @param string $extra        Optional suffix appended after the first sentence.
  */
 function notify_sacrament_application_status(
     PDO $pdo,
     string $newStatus,
     string $sacramentType,
-    string $trackingNumber,
+    string $requestNo,
     string $extra = ''
 ): void {
     $kind = ucwords(str_replace('_', ' ', $sacramentType));
@@ -1451,7 +1451,7 @@ function notify_sacrament_application_status(
         $pdo,
         'application_' . $newStatus,
         'Application ' . $state,
-        "{$kind} application ({$trackingNumber}) is now {$state}" . ($extra !== '' ? '. ' . $extra : ''),
+        "{$kind} application ({$requestNo}) is now {$state}" . ($extra !== '' ? '. ' . $extra : ''),
         '/admin/requests/applications-queue.php?status=' . urlencode($newStatus)
     );
 
@@ -1460,29 +1460,29 @@ function notify_sacrament_application_status(
     // email delivery log; a mail failure must never block the status change.
     $emails = [];
     try {
-        if ($sacramentType === 'marriage') {
-            $stmt = $pdo->prepare('SELECT ma.application_id, groom_email, bride_email FROM marriage_applications ma JOIN sacrament_applications sa ON sa.id = ma.application_id WHERE sa.tracking_number = ?');
-            $stmt->execute([$trackingNumber]);
-            $row = $stmt->fetch() ?: [];
-            $emails = [$row['groom_email'] ?? '', $row['bride_email'] ?? ''];
-            $applicationId = (int) ($row['application_id'] ?? 0);
-        } else {
-            $table = [
-                'baptismal' => 'baptismal_applications',
-                'confirmation' => 'confirmation_applications',
-                'first_communion' => 'first_communion_applications',
-            ][$sacramentType] ?? null;
-            if ($table) {
-                $stmt = $pdo->prepare("SELECT a.application_id, email FROM {$table} a JOIN sacrament_applications sa ON sa.id = a.application_id WHERE sa.tracking_number = ?");
-                $stmt->execute([$trackingNumber]);
-                $row = $stmt->fetch() ?: [];
-                $emails = [($row['email'] ?? '')];
-                $applicationId = (int) ($row['application_id'] ?? 0);
+        $stmt = $pdo->prepare('SELECT id, applicant_email, details FROM sacrament_applications WHERE request_no = ? LIMIT 1');
+        $stmt->execute([$requestNo]);
+        $row = $stmt->fetch() ?: [];
+        $applicationId = (int) ($row['id'] ?? 0);
+        $emails[] = (string) ($row['applicant_email'] ?? '');
+        // Marriage may carry a second email inside details JSON; none in seed schema,
+        // so only read if a real key exists.
+        $details = [];
+        if (isset($row['details']) && is_string($row['details'])) {
+            $decoded = json_decode($row['details'], true);
+            if (is_array($decoded)) $details = $decoded;
+        } elseif (is_array($row['details'] ?? null)) {
+            $details = $row['details'];
+        }
+        foreach (['bride_email', 'spouse_email', 'groom_email'] as $key) {
+            if (isset($details[$key]) && is_string($details[$key]) && filter_var($details[$key], FILTER_VALIDATE_EMAIL)) {
+                $emails[] = $details[$key];
             }
         }
+        $emails = array_values(array_unique(array_filter($emails, static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL))));
         $kind .= ' Application';
-        foreach (array_unique(array_filter($emails)) as $email) {
-            mail_status_update($email, $trackingNumber, $state, $kind, $pdo, 'sacrament_application', $applicationId ?? null);
+        foreach ($emails as $email) {
+            mail_status_update($email, $requestNo, $state, $kind, $pdo, 'sacrament_application', $applicationId ?: null);
         }
     } catch (Throwable $e) {
         error_log('SRS-SPPO application status email failed: ' . $e->getMessage());
