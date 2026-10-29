@@ -145,7 +145,7 @@ function application_queue_next_statuses(string $status): array
         'new' => ['reviewing', 'rejected'],
         'reviewing' => ['requirements_pending', 'approved', 'rejected'],
         'requirements_pending' => ['reviewing', 'approved', 'rejected'],
-        'approved' => ['scheduled', 'rejected'],
+        'approved' => ['scheduled', 'completed', 'rejected'],
         'scheduled' => ['completed', 'rejected'],
         'completed' => [],
         'rejected' => [],

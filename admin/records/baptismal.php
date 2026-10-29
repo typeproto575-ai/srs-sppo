@@ -346,10 +346,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                 ]);
             }
 
+            $completedApplicationRequestNo = null;
             if (!$isPostEdit && !empty($_POST['from_application'])) {
                 $postedApplicationId = filter_var($_POST['from_application'], FILTER_VALIDATE_INT);
                 $applicationLock = $pdo->prepare(
-                    "SELECT id, status FROM sacrament_applications
+                    "SELECT id, request_no, status FROM sacrament_applications
                      WHERE id = ? AND sacrament_type = 'baptism' FOR UPDATE"
                 );
                 $applicationLock->execute([(int) $postedApplicationId]);
@@ -365,6 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                          WHERE id = ? AND sacrament_type = 'baptism'"
                     );
                     $applicationUpdate->execute([$savePersonId, $recordId, current_user()['id'], (int) $linkedApplication['id']]);
+                    $completedApplicationRequestNo = (string) $linkedApplication['request_no'];
                 } else {
                     $applicationUpdate = $pdo->prepare(
                         "UPDATE sacrament_applications
@@ -384,6 +386,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                 $isPostEdit ? 'Baptism record updated.' : 'Baptism record encoded.'
             );
             $pdo->commit();
+            if ($completedApplicationRequestNo !== null) {
+                try {
+                    notify_sacrament_application_status($pdo, 'completed', 'baptism', $completedApplicationRequestNo, "Baptism encoded into register (record #{$recordId}).");
+                } catch (Throwable $e) {
+                    error_log('Baptism application completion notification failed: ' . $e->getMessage());
+                }
+            }
             redirect_to($selfUrl . ($isPostEdit ? '?updated=1' : '?added=1'));
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
