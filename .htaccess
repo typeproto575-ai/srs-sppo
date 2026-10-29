@@ -76,3 +76,11 @@ RedirectMatch 403 (^|/)scripts/document_project\.php$
 
 # Disable directory listings
 Options -Indexes
+
+# Preserve the legacy online-requests URL as the online certificate queue.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^public/track-request\.php$ public/certificate-request.php?track=1 [L,QSA]
+    RewriteCond %{REQUEST_URI} ^(.*/)admin/requests/online-requests\.php$
+    RewriteRule ^admin/requests/online-requests\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1admin/requests/queue.php?channel=online [R=302,L,QSA]
+</IfModule>

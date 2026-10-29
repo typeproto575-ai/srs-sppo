@@ -18,8 +18,6 @@ require_role('secretary');
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
 
-$pageTitle = 'Certificate Requests Queue';
-
 // Status changes are handled on certificate-detail.php (which enforces
 // transition validation and captures rejection reasons). The queue is a
 // read-only navigational list — no inline POST handler here.
@@ -29,6 +27,7 @@ $pageTitle = 'Certificate Requests Queue';
 $filterStatus = $_GET['status'] ?? '';
 $filterSacrament = $_GET['sacrament'] ?? '';
 $filterChannel = $_GET['channel'] ?? '';
+$pageTitle = ($filterChannel === 'online') ? 'Online Certificate Requests' : 'Certificate Requests Queue';
 $allowedRequestStatuses = ['new', 'matched', 'for_signature', 'ready', 'released', 'rejected'];
 $allowedSacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
 
@@ -113,8 +112,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <header class="admin-queue-heading">
             <div>
                 <p class="admin-queue-kicker">Requests</p>
-                <h1>Certificate requests</h1>
-                <p>Find a request, review its details, and continue to the next processing step.</p>
+                <h1><?= $filterChannel === 'online' ? 'Online certificate requests' : 'Certificate requests' ?></h1>
+                <p><?= $filterChannel === 'online'
+                    ? 'Review certificate requests submitted online and continue to the next processing step.'
+                    : 'Find a request, review its details, and continue to the next processing step.' ?></p>
             </div>
             <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> requests match the current filters">
                 <strong><?= (int) $totalRows ?></strong>

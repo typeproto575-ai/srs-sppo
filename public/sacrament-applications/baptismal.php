@@ -4,15 +4,14 @@
  * SRS-SPPO BAPTISMAL SACRAMENT APPLICATION (public form)
  * =====================================================================
  * Purpose: Online application to HAVE A CHILD BAPTIZED at the parish.
- *          Inserts a shared row into sacrament_applications plus the
- *          details row in baptismal_applications and one row per
- *          godparent in baptismal_application_godparents.
+ *          Inserts an unverified intake row into the v2
+ *          sacrament_applications table. No person profile is created.
  * Flow:    Enters as 'submitted'; the secretary reviews it in
  *          admin/requests/applications-queue.php. No online ID upload â€”
  *          identity is verified in person at pickup.
  * Limit:   Successful submissions are capped at 5 per email address and 20
  *          per client IP over a rolling 24 hours; the accounting row lives
- *          in submission_rate_limits (migrations/018_add_submission_rate_limits.sql).
+ *          using the shared public-submission guard.
  * =====================================================================
  */
 
@@ -139,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stepData[$k] = $v;
                 }
                 $formData = array_merge($formData, $stepData);
+                public_prefill_person_parents($formData);
                 $app['current_step'] = min($currentStep + 1, STEP_COUNT);
             } else {
                 $app['current_step'] = max($currentStep - 1, STEP_APP_DETAILS);
@@ -153,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stepData[$key] = $value;
             }
             $formData = array_merge($formData, $stepData);
+            public_prefill_person_parents($formData);
         }
     }
     // ------------------------------------------------------------------
@@ -180,6 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $godfatherNames      = compose_person_name_rows($formData, 'godfather');
             $godmotherNames      = compose_person_name_rows($formData, 'godmother');
+            $childPersonId = null;
 
             if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
             if (fd('child_last', $formData) === '') $errors[] = "Child's last name is required.";
@@ -200,6 +202,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
                 if (($e = validate_person_name_fields($formData, $prefix, $label, false)) !== null) $errors[] = $e;
             }
+            if (fd('child_person_id', $formData) !== '') {
+                try {
+                    $childPersonId = public_selected_person_id(
+                        $pdo,
+                        $formData['child_person_id'],
+                        fd('child_first', $formData),
+                        fd('child_middle', $formData),
+                        fd('child_last', $formData),
+                        fd('child_suffix', $formData),
+                        $childBirthdate
+                    );
+                } catch (InvalidArgumentException $e) {
+                    $errors[] = $e->getMessage();
+                }
+            }
             $errors = array_merge(
                 $errors,
                 validate_person_name_rows($formData, 'godfather', 'Godfather'),
@@ -215,41 +232,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if (empty($errors)) {
                         $pdo->beginTransaction();
-                        $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-                        $stmt = $pdo->prepare("INSERT INTO sacrament_applications
-                            (tracking_number, submission_channel, sacrament_type, status)
-                            VALUES (?, 'online', 'baptismal', 'awaiting_payment')");
-                        $stmt->execute([$trackingNumber]);
-                        $applicationId = (int) $pdo->lastInsertId();
-
-                        $stmt = $pdo->prepare("INSERT INTO baptismal_applications
-                            (application_id, child_full_name, child_birthdate, child_birthplace,
-                             father_full_name, mother_maiden_name, parents_union_type, parent_guardian_name,
-                             contact_number, email, preferred_date)
-                            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)");
-                        $stmt->execute([
-                            $applicationId, $childName, $childBirthdate, $childBirthplace,
-                            $fatherName, $motherMaidenName, $parentGuardian,
-                            $contactNumber, $email, $preferredDate ?: null,
-                        ]);
-                        $baptismalApplicationId = (int) $pdo->lastInsertId();
-
-                        $godparentStmt = $pdo->prepare("INSERT INTO baptismal_application_godparents
-                            (baptismal_application_id, godparent_name, godparent_type)
-                            VALUES (?, ?, ?)");
-                        foreach ([
-                            ['names' => $godfatherNames, 'type' => 'godfather'],
-                            ['names' => $godmotherNames, 'type' => 'godmother'],
-                        ] as $group) {
-                            foreach ($group['names'] as $i => $name) {
-                                if (!is_scalar($name) || trim((string) $name) === '') continue;
-                                $godparentStmt->execute([
-                                    $baptismalApplicationId,
-                                    trim((string) $name),
-                                    $group['type'],
-                                ]);
+                        $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
+                        $godparents = [];
+                        foreach (['godfather' => $godfatherNames, 'godmother' => $godmotherNames] as $role => $names) {
+                            foreach ($names as $name) {
+                                if (is_scalar($name) && trim((string) $name) !== '') {
+                                    $godparents[] = ['role' => $role, 'full_name' => trim((string) $name)];
+                                }
                             }
                         }
+                        $details = [
+                            'child_name' => $childName,
+                            'child_birth_date' => $childBirthdate,
+                            'child_birthplace' => $childBirthplace,
+                            'father_name' => $fatherName,
+                            'mother_maiden_name' => $motherMaidenName,
+                            'parent_guardian_name' => $parentGuardian,
+                            'godparents' => $godparents,
+                        ];
+                        $requirements = [
+                            'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
+                        ];
+                        $stmt = $pdo->prepare(
+                            "INSERT INTO sacrament_applications
+                             (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
+                              applicant_contact, preferred_date, status, details, requirements, privacy_consent_at)
+                             VALUES (?, 'online', 'baptism', ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                        );
+                        $stmt->execute([
+                            $trackingNumber,
+                            $childPersonId,
+                            $childName,
+                            $email,
+                            $contactNumber,
+                            $preferredDate ?: null,
+                            json_encode($details, JSON_UNESCAPED_UNICODE),
+                            json_encode($requirements, JSON_UNESCAPED_UNICODE),
+                        ]);
+                        $applicationId = (int) $pdo->lastInsertId();
 
                         log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal application submitted for {$childName}");
                         notify($pdo, 'application_new', 'New sacrament application', "Baptismal application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
@@ -295,7 +315,12 @@ require_once __DIR__ . '/../../includes/header.php';
 if ($currentStep === STEP_COUNT + 1): ?>
     <div class="success-panel">
         <h1>Application Submitted</h1>
-        <?php $successHeading = 'Keep this tracking number'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
+        <?php
+        $successHeading = 'Keep this tracking number';
+        $successIsApplication = true;
+        $successRequiredDocuments = ['Child’s PSA Birth Certificate', 'Valid ID for the parent or guardian'];
+        require __DIR__ . '/../../includes/submission-success.php';
+        ?>
         <a href="baptismal.php?reset=1" class="btn">Start New Application</a>
     </div>
 </section>
@@ -336,6 +361,17 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <label>Date of Birth
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
             </label>
+            <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
+            <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
+            <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
+            <div class="public-person-lookup" data-public-person-lookup
+                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                 data-name-inputs="child_first,child_middle,child_last,child_suffix"
+                 data-birth-field="child_birthdate" data-person-id-field="child_person_id"
+                 data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match.</p>
+                <div data-person-results aria-live="polite"></div>
+            </div>
             <label>Place of Birth
                 <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>

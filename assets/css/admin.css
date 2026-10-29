@@ -808,6 +808,18 @@ textarea {
     white-space: pre-wrap;
 }
 
+.prefill-workflow-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.prefill-workflow-notice p {
+    margin: 0;
+}
+
 .application-requirement-form {
     display: grid;
     align-content: start;
@@ -2084,10 +2096,26 @@ textarea {
 
     .site-master-header {
         padding: 0.7rem 0.85rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.55rem 0.8rem;
+    }
+
+    .header-brand-wrap {
+        flex: 1 1 100%;
     }
 
     .header-home-brand {
-        max-width: 150px;
+        max-width: none;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        line-height: 1.2;
+    }
+
+    .master-profile {
+        width: 100%;
+        justify-content: flex-start;
     }
 
     .master-utilities {
@@ -2162,9 +2190,33 @@ textarea {
 
 .table-scroll {
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-color: #78917f #f3efe8;
+    scrollbar-width: thin;
     background: var(--admin-panel);
     border: 1px solid var(--admin-border);
     border-radius: 12px;
+}
+
+.table-scroll:focus-visible {
+    outline: 3px solid var(--admin-amber);
+    outline-offset: 2px;
+}
+
+.table-scroll::before {
+    content: "Swipe or scroll horizontally to view all columns";
+    display: none;
+}
+
+.application-detail-values {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding-left: 1.15rem;
+}
+
+.application-detail-values ul {
+    margin-top: 0.25rem;
 }
 /* The wrapper's overflow-x only has something to scroll if the table is
    allowed to keep its natural (content) width instead of shrinking to fit
@@ -2178,6 +2230,32 @@ textarea {
 .unified-records-table th { padding: 0.85rem 0.9rem; }
 .unified-records-table tbody tr:hover { background: #faf8f3; }
 .unified-records-table th { white-space: nowrap; }
+
+@media (max-width: 640px) {
+    .table-scroll > .admin-table {
+        display: table;
+        max-width: none;
+        overflow: visible;
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 640px) {
+    .table-scroll::before {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        padding: 0.45rem 0.7rem;
+        border-bottom: 1px solid var(--admin-border);
+        background: var(--admin-panel);
+        color: var(--admin-muted);
+        font-size: 0.76rem;
+        font-weight: 600;
+    }
+}
 .table-filter-menu { position: relative; display: inline-block; }
 .table-filter-summary { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--admin-muted); cursor: pointer; list-style: none; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .table-filter-summary::-webkit-details-marker { display: none; }

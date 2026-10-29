@@ -33,6 +33,42 @@ function application_queue_label(string $value): string
     return ucwords(str_replace('_', ' ', $value));
 }
 
+function application_queue_render_detail_value(mixed $value): void
+{
+    if (is_array($value)) {
+        if ($value === []) {
+            echo '—';
+            return;
+        }
+
+        $isList = array_is_list($value);
+        echo '<ul class="application-detail-values">';
+        foreach ($value as $key => $nestedValue) {
+            echo '<li>';
+            if (!$isList) {
+                echo '<strong>' . e(application_queue_label((string) $key)) . ':</strong> ';
+            }
+            application_queue_render_detail_value($nestedValue);
+            echo '</li>';
+        }
+        echo '</ul>';
+        return;
+    }
+
+    if ($value === null || $value === '') {
+        echo '—';
+        return;
+    }
+
+    if (is_bool($value)) {
+        echo $value ? 'Yes' : 'No';
+        return;
+    }
+
+    $text = (string) $value;
+    echo e(str_contains($text, '_') ? application_queue_label($text) : $text);
+}
+
 function application_queue_requirement_label(string $sacramentType, string $requirementKey): string
 {
     $labels = [
@@ -565,18 +601,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <section aria-label="Application details">
                         <h3>Submitted details</h3>
                         <dl class="application-details-list">
-                            <?php foreach ($details as $key => $value): ?>
-                                <div>
-                                    <dt><?= e(application_queue_label((string) $key)) ?></dt>
-                                    <dd><?php
-                                        if (is_scalar($value) || $value === null) {
-                                            echo e((string) ($value ?? '—'));
-                                        } else {
-                                            echo e((string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                                        }
-                                    ?></dd>
-                                </div>
-                            <?php endforeach; ?>
+                            <?php if ($details !== []): ?>
+                                <?php foreach ($details as $key => $value): ?>
+                                    <div>
+                                        <dt><?= e(application_queue_label((string) $key)) ?></dt>
+                                        <dd><?php application_queue_render_detail_value($value); ?></dd>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
+                            <?php endif; ?>
                         </dl>
                     </section>
 
@@ -615,7 +649,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <label>Note
                                         <input type="text" name="requirement_note" maxlength="500" value="<?= e((string) ($requirement['note'] ?? '')) ?>">
                                     </label>
-                                    <button type="submit" class="btn btn-small">Save</button>
+                                    <button type="submit" class="btn btn-small" aria-label="Save <?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?> checklist item">Save requirement</button>
                                 </form>
                                 <?php endif; ?>
                             <?php endforeach; ?>

@@ -452,7 +452,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
                 <?php rf_render_bar($basePath . '/admin/records/marriage.php', $rfConfig, $rf); ?>
-        <div class="table-scroll">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Marriage register records; scroll horizontally to view all columns">
         <table class="admin-table">
             <thead>
                 <tr>

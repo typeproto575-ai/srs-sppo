@@ -70,7 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stepFields = [
             CONF_STEP_DETAILS => [
                 'applicant_first', 'applicant_middle', 'applicant_last', 'applicant_suffix',
-                'applicant_birthdate',
+                'applicant_birthdate', 'applicant_person_id',
+                'father_first', 'father_middle', 'father_last', 'father_suffix',
+                'mother_first', 'mother_middle', 'mother_last', 'mother_suffix',
                 'parent_guardian_first', 'parent_guardian_middle', 'parent_guardian_last', 'parent_guardian_suffix',
             ],
             CONF_STEP_BAPTISM => ['baptized_here'],
@@ -140,6 +142,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
         if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
         if (($formData['privacy_consent'] ?? '') !== '1') $errors[] = 'Please agree to the Privacy Notice before submitting.';
+        $personId = null;
+        if (!empty($formData['applicant_person_id'])) {
+            try {
+                $personId = public_selected_person_id(
+                    $pdo,
+                    $formData['applicant_person_id'],
+                    cfd('applicant_first', $formData),
+                    cfd('applicant_middle', $formData),
+                    cfd('applicant_last', $formData),
+                    cfd('applicant_suffix', $formData),
+                    $applicantBirthdate
+                );
+            } catch (InvalidArgumentException $e) {
+                $errors[] = $e->getMessage();
+            }
+        }
 
         if (!$errors) {
             $submissionCap = public_submission_allowed($pdo, [$email]);
@@ -150,11 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$errors) {
             try {
-                // All inserts run inside ONE transaction owned by retry_on_duplicate,
-                // which regenerates the tracking number and retries on a duplicate-key
-                // race (tracking_number is UNIQUE). New online confirmation
-                // applications leave the baptismal certificate checklist pending
-                // until the secretary verifies the document in person.
                 $applicationId = null;
                 $trackingNumber = retry_on_duplicate($pdo, function () use (
                     $pdo,
@@ -164,31 +177,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $contactNumber,
                     $email,
                     $baptizedHere,
+                    $personId,
                     &$applicationId
                 ): string {
-                    $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-
-                    $stmt = $pdo->prepare("INSERT INTO sacrament_applications
-                        (tracking_number, submission_channel, sacrament_type, status)
-                        VALUES (?, 'online', 'confirmation', 'awaiting_payment')");
-                    $stmt->execute([$trackingNumber]);
-                    $applicationId = (int) $pdo->lastInsertId();
-
-                    $stmt2 = $pdo->prepare("INSERT INTO confirmation_applications
-                        (application_id, applicant_full_name, applicant_birthdate,
-                         parent_guardian_name, contact_number, email, baptized_here)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt2->execute([
-                        $applicationId,
+                    $requestNo = generate_request_no($pdo, 'sacrament_applications');
+                    $details = [
+                        'applicant_full_name' => $applicantName,
+                        'birth_date' => $applicantBirthdate,
+                        'father_name' => compose_person_name($formData, 'father'),
+                        'mother_maiden_name' => compose_person_name($formData, 'mother'),
+                        'parent_guardian_name' => $parentGuardian,
+                        'baptized_here' => $baptizedHere,
+                    ];
+                    $requirements = [
+                        'origin_baptismal_certificate' => [
+                            'status' => $baptizedHere === 'this_parish' ? 'not_applicable' : 'not_received',
+                            'note' => '',
+                        ],
+                        'confirmation_sponsor_details' => ['status' => 'not_received', 'note' => ''],
+                    ];
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO sacrament_applications
+                         (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
+                          applicant_contact, status, details, requirements, privacy_consent_at)
+                         VALUES (?, 'online', 'confirmation', ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                    );
+                    $stmt->execute([
+                        $requestNo,
+                        $personId,
                         $applicantName,
-                        $applicantBirthdate,
-                        $parentGuardian,
-                        $contactNumber,
                         $email,
-                        ($baptizedHere === 'this_parish') ? 1 : 0,
+                        $contactNumber,
+                        json_encode($details, JSON_UNESCAPED_UNICODE),
+                        json_encode($requirements, JSON_UNESCAPED_UNICODE),
                     ]);
-
-                    return $trackingNumber;
+                    $applicationId = (int) $pdo->lastInsertId();
+                    return $requestNo;
                 });
 
                 log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation application submitted for {$applicantName}");
@@ -221,7 +245,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php if ($trackingNumber !== null): ?>
     <div class="success-panel">
         <h1>Confirmation Application Submitted</h1>
-        <?php $successHeading = 'Keep this tracking number'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
+        <?php
+        $successHeading = 'Keep this tracking number';
+        $successIsApplication = true;
+        $successRequiredDocuments = ['Baptismal certificate from the origin parish if baptized elsewhere', 'Confirmation sponsor details'];
+        require __DIR__ . '/../../includes/submission-success.php';
+        ?>
         <a class="btn" href="confirmation.php?reset=1">Start a New Application</a>
     </div>
 <?php else: ?>
@@ -260,6 +289,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label>Birthdate *
                 <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
             </label>
+            <input type="hidden" name="applicant_person_id" value="<?= $wv('applicant_person_id') ?>">
+            <div class="public-person-lookup" data-public-person-lookup
+                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                 data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
+                 data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
+                 data-father-inputs="father_first,father_middle,father_last,father_suffix"
+                 data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
+                <p class="field-hint">Search the parish person index by full name and date of birth. A match will fill the applicant’s details; you can also continue without a match.</p>
+                <div data-person-results aria-live="polite"></div>
+            </div>
+            <?= person_name_fields('father', "Father's name", $formData, false) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
             <label>Parent/Guardian Name * <span class="field-hint">(if an adult applicant, you may enter your own name)</span>
                 <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             </label>

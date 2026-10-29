@@ -1559,4 +1559,150 @@ document.addEventListener('DOMContentLoaded', function () {
         showStep(currentInput.value || '1');
     });
 
+    // ---- 6) Public master-person lookup -------------------------------
+    document.querySelectorAll('[data-public-person-lookup]').forEach(function (widget) {
+        var form = widget.closest('form');
+        var resultsBox = widget.querySelector('[data-person-results]');
+        var endpoint = widget.getAttribute('data-endpoint');
+        var nameInputs = (widget.getAttribute('data-name-inputs') || '').split(',').filter(Boolean);
+        var birthField = widget.getAttribute('data-birth-field');
+        var personIdField = widget.getAttribute('data-person-id-field');
+        if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
+
+        function field(name) {
+            return Array.prototype.find.call(form.elements, function (element) {
+                return element.name === name;
+            }) || null;
+        }
+
+        function value(name) {
+            var input = field(name);
+            return input ? input.value.trim() : '';
+        }
+
+        function splitName(name) {
+            var parts = name.trim().split(/\s+/).filter(Boolean);
+            var suffix = '';
+            if (parts.length && /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) {
+                suffix = parts.pop();
+            }
+            return [parts.shift() || '', parts.length > 1 ? parts.slice(0, -1).join(' ') : '', parts.length ? parts[parts.length - 1] : '', suffix];
+        }
+
+        function fillName(fieldNames, fullName) {
+            if (!fieldNames.length || !fullName) return;
+            if (fieldNames.length === 1) {
+                var single = field(fieldNames[0]);
+                if (single) single.value = fullName;
+                return;
+            }
+            var parts = splitName(fullName);
+            fieldNames.forEach(function (name, index) {
+                var input = field(name);
+                if (input) input.value = parts[index] || '';
+            });
+        }
+
+        function personName(person) {
+            return [person.first_name, person.middle_name, person.last_name, person.suffix].filter(Boolean).join(' ');
+        }
+
+        function fillParent(person, side) {
+            var fullName = side === 'father' ? person.father_name : person.mother_maiden_name;
+            var inputNames = (widget.getAttribute('data-' + side + '-inputs') || '').split(',').filter(Boolean);
+            fillName(inputNames, fullName);
+            var valueField = widget.getAttribute('data-' + side + '-value-field');
+            var hiddenValue = valueField ? field(valueField) : null;
+            if (hiddenValue) hiddenValue.value = fullName || '';
+        }
+
+        var searchTimer = null;
+        var selected = false;
+        function runSearch() {
+            var fullName = nameInputs.map(value).filter(Boolean).join(' ');
+            var birthDate = value(birthField);
+            resultsBox.replaceChildren();
+            if (fullName.trim().split(/\s+/).length < 2 || !birthDate) {
+                resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
+                return;
+            }
+
+            var status = document.createElement('p');
+            status.className = 'field-hint';
+            status.textContent = 'Searching parish records…';
+            resultsBox.appendChild(status);
+            var url = new URL(endpoint, window.location.href);
+            url.searchParams.set('person_lookup', '1');
+            url.searchParams.set('name', fullName);
+            url.searchParams.set('birth_date', birthDate);
+            fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (response) {
+                    return response.json().then(function (payload) {
+                        if (!response.ok) throw new Error(payload.error || 'Search is temporarily unavailable.');
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    resultsBox.replaceChildren();
+                    if (!payload.results || !payload.results.length) {
+                        resultsBox.textContent = 'No matching person was found. You can continue and the parish office can review the details.';
+                        return;
+                    }
+                    var heading = document.createElement('p');
+                    heading.className = 'field-hint';
+                    heading.textContent = 'Select the matching parish record:';
+                    resultsBox.appendChild(heading);
+                    payload.results.forEach(function (person) {
+                        var button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'public-person-result';
+                        button.textContent = personName(person) + ' · ' + person.birth_date;
+                        button.addEventListener('click', function () {
+                            fillName(nameInputs, personName(person));
+                            var dob = field(birthField);
+                            if (dob) dob.value = person.birth_date || '';
+                            var idInput = field(personIdField);
+                            if (idInput) idInput.value = String(person.id);
+                            fillParent(person, 'father');
+                            fillParent(person, 'mother');
+                            var requesterField = widget.getAttribute('data-requester-name-field');
+                            var relationshipField = widget.getAttribute('data-relationship-field');
+                            if (requesterField && relationshipField && value(relationshipField) === 'self') {
+                                var requester = field(requesterField);
+                                if (requester) requester.value = personName(person);
+                            }
+                            resultsBox.replaceChildren();
+                            var confirmation = document.createElement('p');
+                            confirmation.className = 'person-lookup-selection';
+                            confirmation.textContent = 'Selected a matching parish profile. Review the filled details before continuing.';
+                            resultsBox.appendChild(confirmation);
+                            selected = true;
+                        });
+                        resultsBox.appendChild(button);
+                    });
+                })
+                .catch(function (error) {
+                    resultsBox.textContent = error.message || 'Person search is temporarily unavailable.';
+                });
+        }
+
+        function scheduleSearch() {
+            var idInput = field(personIdField);
+            if (selected && idInput) {
+                idInput.value = '';
+                selected = false;
+                resultsBox.textContent = 'Details changed. Search again to link a matching parish profile.';
+            }
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 350);
+        }
+
+        nameInputs.concat([birthField]).forEach(function (name) {
+            var input = field(name);
+            if (!input) return;
+            input.addEventListener('input', scheduleSearch);
+            input.addEventListener('change', scheduleSearch);
+        });
+    });
+
 });

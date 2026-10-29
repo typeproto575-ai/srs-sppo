@@ -106,18 +106,51 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
     return true;
 }
 
+function mail_request_documents(string $kind): array
+{
+    return match ($kind) {
+        'Baptismal Application' => [
+            'Child’s PSA Birth Certificate.',
+            'Valid ID for the parent or guardian.',
+        ],
+        'First Communion Application' => [
+            'Baptismal Certificate (original copy if the applicant was baptized elsewhere).',
+            'Proof of catechetical formation.',
+        ],
+        'Confirmation Application' => [
+            'Baptismal Certificate from the origin parish if baptized elsewhere.',
+            'Confirmation sponsor details.',
+        ],
+        'Holy Matrimony Application' => [
+            'PSA CENOMAR for both applicants.',
+            'Baptismal Certificates for both applicants.',
+            'Origin parish transfer or permission letter when either applicant’s records are from another parish.',
+            'Pre-Cana seminar requirements.',
+        ],
+        default => [
+            'Valid ID matching the person or applicant record.',
+            'For an authorized representative, a signed authorization letter and the required IDs.',
+            'Original supporting documents and origin parish transfer or permission letters when requested.',
+        ],
+    };
+}
+
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
+    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $body = "Dear Parishioner,\r\n\r\n"
         . "The parish office has recorded your " . $kind . ".\r\n\r\n"
-        . "Your tracking number is: " . $trackingNumber . "\r\n\r\n"
-        . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
+        . "Your tracking number is: " . $trackingNumber . "\r\n"
+        . "To check the status, use this number together with this email address on the parish tracking page.\r\n\r\n"
+        . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
+        . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
 
 function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
+    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $paymentNote = '';
     // Payment happens outside the system. When the stage is "Awaiting Payment",
     // explain the offline options plainly with no amounts — the parish confirms
@@ -130,6 +163,7 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
         . "This is an update on your " . $kind . " (tracking number: " . $trackingNumber . ").\r\n\r\n"
         . "Current stage: " . $humaneStatus . "\r\n"
         . $paymentNote . "\r\n\r\n"
+        . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
         . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);
@@ -146,17 +180,27 @@ function mail_password_reset(string $to, string $resetUrl, ?PDO $pdo = null, ?in
     return send_mail($to, 'Secretary password reset', $body, $pdo, 'password_reset', 'users', $userId);
 }
 
-function mail_certificate_request_received(string $toEmail, string $requesterName, string $certificateType): bool
+function mail_certificate_request_received(
+    string $toEmail,
+    string $requesterName,
+    string $certificateType,
+    string $requestNo,
+    ?PDO $pdo = null,
+    ?int $requestId = null
+): bool
 {
-    $pdo = $GLOBALS['pdo'] ?? null;
+    $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $body = "Dear " . $requesterName . ",\r\n\r\n"
         . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
+        . "Your tracking number is: " . $requestNo . "\r\n"
+        . "To check the status, use this number together with this email address on the parish tracking page.\r\n\r\n"
         . "Next step: visit the parish office, give your full name at the counter, and pay. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When you pick it up, bring:\r\n"
         . "- Your valid government ID.\r\n"
-        . "- If someone else picks it up for you: their valid ID, a signed authorization letter from you, and a copy of the valid ID of the person named in the certificate.\r\n\r\n"
+        . "- If someone else picks it up for you: their valid ID, a signed authorization letter from you, and a copy of the valid ID of the person named in the certificate.\r\n"
+        . "- For a record from another parish, bring the original supporting document and transfer or permission letter when requested.\r\n\r\n"
         . "Nothing is uploaded or emailed. You show your documents at the counter.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office";
-    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', null, null, null);
+    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $requestNo);
 }

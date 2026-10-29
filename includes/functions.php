@@ -56,6 +56,75 @@ function public_request_throttled(PDO $pdo, string $email, int $max = 3, int $mi
     return (int) $stmt->fetchColumn() >= $max;
 }
 
+function public_selected_person_id(
+    PDO $pdo,
+    mixed $rawId,
+    string $firstName,
+    string $middleName,
+    string $lastName,
+    string $suffix,
+    string $birthDate
+): ?int {
+    if (!is_scalar($rawId) || trim((string) $rawId) === '') {
+        return null;
+    }
+
+    $personId = filter_var($rawId, FILTER_VALIDATE_INT);
+    if (!$personId || $personId < 1) {
+        throw new InvalidArgumentException('Choose a valid master person profile.');
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id FROM persons
+         WHERE id = ?
+           AND first_name = ?
+           AND COALESCE(middle_name, \'\') = ?
+           AND last_name = ?
+           AND COALESCE(suffix, \'\') = ?
+           AND birth_date = ?
+         LIMIT 1'
+    );
+    $stmt->execute([
+        (int) $personId,
+        trim($firstName),
+        trim($middleName),
+        trim($lastName),
+        trim($suffix),
+        $birthDate,
+    ]);
+
+    if (!$stmt->fetchColumn()) {
+        throw new InvalidArgumentException('The selected person no longer matches these details. Search again.');
+    }
+
+    return (int) $personId;
+}
+
+function public_prefill_person_parents(array &$formData): void
+{
+    foreach (['father' => 'selected_father_name', 'mother' => 'selected_mother_maiden_name'] as $prefix => $sourceKey) {
+        $fullName = is_scalar($formData[$sourceKey] ?? null) ? trim((string) $formData[$sourceKey]) : '';
+        if ($fullName === '') {
+            continue;
+        }
+
+        $parts = structured_name_parts($fullName);
+        $keys = [$prefix . '_first', $prefix . '_middle', $prefix . '_last', $prefix . '_suffix'];
+        $hasExistingName = false;
+        foreach ($keys as $key) {
+            if (is_scalar($formData[$key] ?? null) && trim((string) $formData[$key]) !== '') {
+                $hasExistingName = true;
+                break;
+            }
+        }
+        if (!$hasExistingName) {
+            foreach ($keys as $index => $key) {
+                $formData[$key] = $parts[$index];
+            }
+        }
+    }
+}
+
 function generate_tracking_token(): string
 {
     $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1330,7 +1399,8 @@ function notify(PDO $pdo, string $type, string $title, string $message, string $
 {
     try {
         $stmt = $pdo->prepare(
-            'INSERT INTO notifications (type, title, message, link) VALUES (?, ?, ?, ?)'
+            "INSERT INTO notifications (channel, type, title, message, link)
+             VALUES ('inapp', ?, ?, ?, ?)"
         );
         $stmt->execute([$type, $title, $message, $link]);
         $insertedId = (int) $pdo->lastInsertId();

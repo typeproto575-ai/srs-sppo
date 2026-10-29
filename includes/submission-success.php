@@ -11,7 +11,7 @@
  *          email, or photograph before navigating away.
  *
  * Contract (set by the calling page before including):
- *   $trackingNumber  - (required) the generated tracking number
+ *   $trackingNumber  - (required) the generated public tracking number
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
  *   $successIsApplication - (optional) show sacrament-application next steps
@@ -34,6 +34,7 @@ if (empty($trackingNumber)) {
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
 $successIsApplication = $successIsApplication ?? false;
+$successRequiredDocuments = is_array($successRequiredDocuments ?? null) ? $successRequiredDocuments : [];
 $basePath       = $basePath ?? base_path();
 ?>
         <div class="submission-success" id="submission-success">
@@ -41,7 +42,7 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <p class="submission-tracking" id="submission-tracking-number"><?= e($trackingNumber) ?></p>
-                <button type="button" class="btn btn-secondary btn-small" id="copy-tracking-btn">Copy Number</button>
+                <button type="button" class="btn btn-secondary btn-small" id="copy-tracking-btn">Copy Tracking Number</button>
             </div>
 
             <div class="submission-next-steps">
@@ -60,7 +61,19 @@ $basePath       = $basePath ?? base_path();
                 </ol>
             </div>
 
-            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Write this tracking number down before leaving this page.</p>
+            <?php if ($successRequiredDocuments !== []): ?>
+                <section class="submission-documents" aria-label="Documents to prepare">
+                    <h3>Documents to prepare</h3>
+                    <ul>
+                        <?php foreach ($successRequiredDocuments as $document): ?>
+                            <li><?= e($document) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </section>
+            <?php endif; ?>
+
+            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Keep this tracking number and the email address you used to track its status.</p>
+            <a class="btn btn-secondary" href="<?= e($basePath . '/public/track-request.php?request_no=' . rawurlencode((string) $trackingNumber)) ?>">Track this request</a>
         </div>
         <script>
         (function () {
@@ -72,7 +85,7 @@ $basePath       = $basePath ?? base_path();
                     var text = document.getElementById('submission-tracking-number').textContent.trim();
                     function done(ok) {
                         btn.textContent = ok ? 'Copied!' : 'Copy failed';
-                        setTimeout(function () { btn.textContent = 'Copy Number'; }, 2000);
+                        setTimeout(function () { btn.textContent = 'Copy Tracking Number'; }, 2000);
                     }
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallback(text)); });

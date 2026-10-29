@@ -5,11 +5,136 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/mail.php';
 
 $basePath = $basePath ?? base_path();
-$pageTitle = 'Request a Certificate';
+$trackMode = ($_GET['track'] ?? '') === '1';
+$pageTitle = $trackMode ? 'Track a Request or Application' : 'Request a Certificate';
+$trackingNumber = null;
+$trackAttempted = false;
+$trackResult = null;
+$trackError = '';
+
+if (($_GET['person_lookup'] ?? '') === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, private');
+    header('X-Content-Type-Options: nosniff');
+
+    $now = time();
+    $attempts = $_SESSION['public_person_lookup_attempts'] ?? [];
+    $attempts = is_array($attempts) ? array_values(array_filter($attempts, static fn($time) => is_int($time) && $time > $now - 900)) : [];
+    if (count($attempts) >= 30) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Search limit reached. Please wait before trying again.']);
+        exit;
+    }
+    $attempts[] = $now;
+    $_SESSION['public_person_lookup_attempts'] = $attempts;
+
+    $fullName = trim(is_string($_GET['name'] ?? null) ? $_GET['name'] : '');
+    $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
+    $parts = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $date = DateTime::createFromFormat('Y-m-d', $birthDate);
+    if (count($parts) < 2 || strlen($fullName) > 150 || !$date || $date->format('Y-m-d') !== $birthDate) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Enter a full name and valid date of birth to search.']);
+        exit;
+    }
+
+    $parts = array_values(array_filter($parts, static fn($part) => strlen($part) >= 2));
+    if (count($parts) < 2) {
+        echo json_encode(['results' => []]);
+        exit;
+    }
+
+    $conditions = [];
+    $params = [$birthDate];
+    foreach ($parts as $part) {
+        $conditions[] = "(first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR suffix LIKE ?)";
+        $term = '%' . addcslashes($part, '\\_%') . '%';
+        array_push($params, $term, $term, $term, $term);
+    }
+    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, father_name, mother_maiden_name
+            FROM persons
+            WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
+            ORDER BY last_name, first_name
+            LIMIT 5';
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $results = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
+            $results[] = [
+                'id' => (int) $person['id'],
+                'first_name' => $person['first_name'],
+                'middle_name' => $person['middle_name'] ?? '',
+                'last_name' => $person['last_name'],
+                'suffix' => $person['suffix'] ?? '',
+                'birth_date' => $person['birth_date'],
+                'father_name' => $person['father_name'] ?? '',
+                'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
+            ];
+        }
+        echo json_encode(['results' => $results], JSON_UNESCAPED_UNICODE);
+    } catch (PDOException $e) {
+        error_log('SRS-SPPO public person lookup failed: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => 'Person search is temporarily unavailable. Please try again later.']);
+    }
+    exit;
+}
+
+$trackValues = ['request_no' => '', 'email' => ''];
+if ($trackMode && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $trackAttempted = true;
+    if (csrf_verify()) {
+        $trackValues['request_no'] = trim(is_string($_POST['request_no'] ?? null) ? $_POST['request_no'] : '');
+        $trackValues['email'] = trim(is_string($_POST['email'] ?? null) ? $_POST['email'] : '');
+        $now = time();
+        $attempts = $_SESSION['public_tracking_attempts'] ?? [];
+        $attempts = is_array($attempts) ? array_values(array_filter($attempts, static fn($time) => is_int($time) && $time > $now - 900)) : [];
+        if (count($attempts) >= 20) {
+            http_response_code(429);
+            $trackError = 'Search limit reached. Please wait before trying again.';
+        } else {
+            $attempts[] = $now;
+            $_SESSION['public_tracking_attempts'] = $attempts;
+        }
+        if ($trackError === '' && $trackValues['request_no'] !== '' && $trackValues['email'] !== ''
+            && strlen($trackValues['request_no']) <= 20
+            && filter_var($trackValues['email'], FILTER_VALIDATE_EMAIL)) {
+            $stmt = $pdo->prepare(
+                "SELECT request_no, sacrament_type, status, requirements, 'application' AS request_kind,
+                        NULL AS requester_relationship
+                 FROM sacrament_applications
+                 WHERE request_no = ? AND LOWER(applicant_email) = LOWER(?) AND channel = 'online'
+                 UNION ALL
+                 SELECT request_no, sacrament_type, status, NULL AS requirements, 'certificate' AS request_kind,
+                        requester_relationship
+                 FROM certificate_requests
+                 WHERE request_no = ? AND LOWER(requester_email) = LOWER(?) AND channel = 'online'
+                 LIMIT 1"
+            );
+            $stmt->execute([
+                $trackValues['request_no'],
+                $trackValues['email'],
+                $trackValues['request_no'],
+                $trackValues['email'],
+            ]);
+            $trackResult = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+    } else {
+        $trackError = 'Your session expired. Refresh the page and try again.';
+    }
+}
+
+$submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
+if ($submitted && is_string($_SESSION['certificate_success'] ?? null)) {
+    $trackingNumber = $_SESSION['certificate_success'];
+    unset($_SESSION['certificate_success']);
+}
 
 $values = [
     'certificate_type' => '',
     'subject_name' => '',
+    'person_id' => '',
     'spouse_name' => '',
     'marriage_date' => '',
     'birth_date' => '',
@@ -25,9 +150,8 @@ $values = [
     'purpose_other' => '',
 ];
 $errors = [];
-$submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
     if (!csrf_verify()) {
         $errors[] = 'Your session expired. Please refresh the page and try again.';
     } else {
@@ -35,6 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
             if (isset($_POST[$key]) && is_string($_POST[$key])) {
                 $values[$key] = trim($_POST[$key]);
             }
+        }
+        if ($values['requester_relationship'] === 'self') {
+            $values['requester_name'] = $values['subject_name'];
         }
         $honeypot = (isset($_POST['website']) && is_string($_POST['website'])) ? trim($_POST['website']) : '';
         if ($honeypot !== '') {
@@ -49,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
             'marriage' => 'Marriage',
         ];
         $purposeLabels = ['School', 'Employment', 'Passport', 'Marriage', 'Personal records', 'Other'];
-        $relationships = ['self', 'parent', 'guardian', 'spouse', 'sibling', 'child', 'other'];
+        $relationships = ['self', 'parent', 'sibling', 'child', 'other'];
 
         if (!isset($typeLabels[$values['certificate_type']])) {
             $errors[] = 'Choose a certificate type.';
@@ -79,12 +206,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if (!in_array($values['requester_relationship'], $relationships, true)) {
             $errors[] = 'Choose your relationship to the person named.';
         }
-        if ($values['requester_relationship'] === 'other' && $values['requester_relationship_other'] === '') {
-            $errors[] = 'Describe your relationship.';
-        }
-        if ($values['requester_relationship_other'] !== '' && strlen($values['requester_relationship_other']) > 100) {
-            $errors[] = 'The relationship description must be 100 characters or fewer.';
-        }
         if ($values['requester_email'] === '' || !filter_var($values['requester_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Enter a valid email address.';
         }
@@ -102,6 +223,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         }
         if (empty($_POST['privacy_consent'])) {
             $errors[] = 'You must agree to the privacy notice.';
+        }
+
+        $selectedPersonId = null;
+        if ($values['person_id'] !== '') {
+            [$personFirst, $personMiddle, $personLast, $personSuffix] = structured_name_parts($values['subject_name']);
+            try {
+                $selectedPersonId = public_selected_person_id(
+                    $pdo,
+                    $values['person_id'],
+                    $personFirst,
+                    $personMiddle,
+                    $personLast,
+                    $personSuffix,
+                    $values['birth_date']
+                );
+            } catch (InvalidArgumentException $e) {
+                $errors[] = $e->getMessage();
+            }
         }
 
         if (empty($errors)) {
@@ -131,18 +270,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                     }
                 }
                 $subjectDetails = empty($details) ? null : json_encode($details, JSON_UNESCAPED_UNICODE);
-                $requesterRelationshipOther = ($values['requester_relationship'] === 'other') ? $values['requester_relationship_other'] : null;
+                $requesterRelationshipOther = ($values['requester_relationship'] === 'other') ? 'Authorized Representative' : null;
                 $purposeValue = $values['purpose'];
                 $purposeOther = ($values['purpose'] === 'Other') ? $values['purpose_other'] : null;
                 $requesterContact = ($values['requester_contact_number'] !== '') ? $values['requester_contact_number'] : null;
                 $readableType = $typeLabels[$values['certificate_type']];
 
                 $inserted = false;
+                $requestId = null;
                 try {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
-                            $stmt = $pdo->prepare("INSERT INTO certificate_requests (request_no, channel, sacrament_type, subject_name, subject_details, requester_name, requester_relationship, requester_relationship_other, requester_email, requester_contact_number, purpose, purpose_other, privacy_consent_at, status) VALUES (?, 'online', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'new')");
+                            $stmt = $pdo->prepare("INSERT INTO certificate_requests (request_no, channel, sacrament_type, subject_name, subject_details, requester_name, requester_relationship, requester_relationship_other, requester_email, requester_contact_number, purpose, purpose_other, privacy_consent_at, person_id, status) VALUES (?, 'online', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')");
                             $stmt->execute([
                                 $requestNo,
                                 $values['certificate_type'],
@@ -155,7 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $requesterContact,
                                 $purposeValue,
                                 $purposeOther,
+                                $selectedPersonId,
                             ]);
+                            $requestId = (int) $pdo->lastInsertId();
                             $inserted = true;
                             break;
                         } catch (PDOException $e) {
@@ -172,10 +314,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
 
                 if ($inserted) {
                     try {
-                        mail_certificate_request_received($values['requester_email'], $values['requester_name'], $readableType . ' certificate');
+                        mail_certificate_request_received(
+                            $values['requester_email'],
+                            $values['requester_name'],
+                            $readableType,
+                            $requestNo,
+                            $pdo,
+                            $requestId
+                        );
                     } catch (Throwable $e) {
                         error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
                     }
+                    $_SESSION['certificate_success'] = $requestNo;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
                     exit;
                 }
@@ -186,10 +336,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
-<?php if ($submitted): ?>
+<?php if ($trackMode): ?>
+<?php
+$statusLabels = [
+    'new' => 'Submitted / Pending Review',
+    'reviewing' => 'Under Review',
+    'requirements_pending' => 'Action Required: Documents Missing',
+    'approved' => 'Approved',
+    'scheduled' => 'Scheduled',
+    'completed' => 'Completed / Issued',
+    'rejected' => 'Rejected',
+    'matched' => 'Under Processing',
+    'for_signature' => 'Pending Priest Signature',
+    'ready' => 'Ready for Pickup',
+    'released' => 'Completed / Issued',
+];
+$sacramentLabels = [
+    'baptism' => 'Baptism',
+    'baptismal' => 'Baptism',
+    'first_communion' => 'First Communion',
+    'confirmation' => 'Confirmation',
+    'marriage' => 'Marriage',
+];
+$requirementLabels = [
+    'psa_birth_certificate' => 'Child’s PSA Birth Certificate',
+    'origin_baptismal_certificate' => 'Original Baptismal Certificate from the origin parish',
+    'catechism_completion' => 'Proof of catechetical formation',
+    'confirmation_sponsor_details' => 'Confirmation sponsor details',
+    'psa_cenomar_groom' => 'Groom’s PSA CENOMAR',
+    'psa_cenomar_bride' => 'Bride’s PSA CENOMAR',
+    'origin_baptismal_certificate_groom' => 'Groom’s Baptismal Certificate',
+    'origin_baptismal_certificate_bride' => 'Bride’s Baptismal Certificate',
+    'transfer_letter' => 'Origin parish transfer or permission letter when either applicant’s records are from another parish',
+    'pre_cana_seminar' => 'Pre-Cana seminar requirements',
+];
+$requirementsBySacrament = [
+    'baptism' => ['psa_birth_certificate'],
+    'first_communion' => ['origin_baptismal_certificate', 'catechism_completion'],
+    'confirmation' => ['origin_baptismal_certificate', 'confirmation_sponsor_details'],
+    'marriage' => [
+        'psa_cenomar_groom',
+        'psa_cenomar_bride',
+        'origin_baptismal_certificate_groom',
+        'origin_baptismal_certificate_bride',
+        'transfer_letter',
+        'pre_cana_seminar',
+    ],
+];
+$requiredDocuments = ['Valid ID matching the person or applicant record'];
+if ($trackResult && $trackResult['request_kind'] === 'application') {
+    $applicationRequirements = json_decode((string) ($trackResult['requirements'] ?? ''), true);
+    $applicationRequirements = is_array($applicationRequirements) ? $applicationRequirements : [];
+    foreach ($requirementsBySacrament[$trackResult['sacrament_type']] ?? [] as $key) {
+        $requirement = $applicationRequirements[$key] ?? [];
+        $status = is_array($requirement) ? ($requirement['status'] ?? 'not_received') : 'not_received';
+        if (!in_array($status, ['received', 'verified', 'not_applicable'], true)) {
+            $requiredDocuments[] = $requirementLabels[$key];
+        }
+    }
+} elseif ($trackResult) {
+    if ($trackResult['requester_relationship'] === 'other') {
+        $requiredDocuments[] = 'For an authorized representative: signed authorization letter, representative’s valid ID, and a copy of the named person’s valid ID';
+    }
+    $requiredDocuments[] = 'Original supporting document and origin parish transfer or permission letter when requested for an external record';
+}
+?>
+<section class="card tracking-panel">
+    <h1>Track a Request or Application</h1>
+    <p>Enter the tracking number and the email address used when submitting. We show only the current status.</p>
+    <?php if ($trackError !== ''): ?><div class="alert alert-error" role="alert"><?= e($trackError) ?></div><?php endif; ?>
+    <?php if ($trackAttempted && $trackError === ''): ?>
+        <?php if ($trackResult): ?>
+            <div class="tracking-result" role="status">
+                <h2><?= e($sacramentLabels[$trackResult['sacrament_type']] ?? 'Parish request') ?></h2>
+                <p><strong>Tracking number:</strong> <?= e($trackResult['request_no']) ?></p>
+                <p><strong>Status:</strong> <?= e($statusLabels[$trackResult['status']] ?? 'Under Review') ?></p>
+                <h3>Documents to prepare</h3>
+                <ul><?php foreach ($requiredDocuments as $document): ?><li><?= e($document) ?></li><?php endforeach; ?></ul>
+            </div>
+        <?php else: ?>
+            <p class="alert alert-info" role="status">We could not find a matching request. Check the reference number and submission email, then try again.</p>
+        <?php endif; ?>
+    <?php endif; ?>
+    <form method="post" action="<?= e($basePath . '/public/track-request.php') ?>" class="stacked-form">
+        <?= csrf_field() ?>
+        <label for="track-request-no">Tracking number</label>
+        <input id="track-request-no" name="request_no" maxlength="20" required value="<?= e($trackValues['request_no'] ?: (is_string($_GET['request_no'] ?? null) ? $_GET['request_no'] : '')) ?>">
+        <label for="track-email">Submission email</label>
+        <input type="email" id="track-email" name="email" maxlength="150" required value="<?= e($trackValues['email']) ?>">
+        <button class="btn" type="submit">Check status</button>
+    </form>
+</section>
+<?php elseif ($submitted): ?>
 <section class="card">
     <h1>Thank you</h1>
-    <p>Thank you. We received your request. Please visit the parish office to pay at the counter before processing begins; your request is pre-filled there so nothing needs to be retyped. We will email you when it is signed and ready for pickup.</p>
+    <?php if ($trackingNumber): ?>
+        <?php
+        $successHeading = 'Keep this tracking number';
+        $successIsApplication = false;
+        $successRequiredDocuments = [
+            'Valid ID matching the person named on the record',
+            'For an authorized representative: signed authorization letter, representative’s valid ID, and a copy of the named person’s valid ID',
+            'Original supporting document and origin parish transfer or permission letter when requested for an external record',
+        ];
+        require __DIR__ . '/../includes/submission-success.php';
+        ?>
+    <?php else: ?>
+        <p>Thank you. We received your request. Please visit the parish office to pay at the counter before processing begins; your request is pre-filled there so nothing needs to be retyped. We will email you when it is signed and ready for pickup.</p>
+    <?php endif; ?>
 </section>
 <?php else: ?>
 <section class="card">
@@ -226,6 +480,15 @@ require_once __DIR__ . '/../includes/header.php';
 
         <label for="birth_date">Date of birth (optional)</label>
         <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>">
+        <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
+        <div class="public-person-lookup" data-public-person-lookup
+             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+             data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
+             data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
+             data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
+            <p class="field-hint">Search the parish person index by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
+            <div data-person-results aria-live="polite"></div>
+        </div>
 
         <label for="father_name">Father's full name (optional)</label>
         <input type="text" id="father_name" name="father_name" maxlength="150" value="<?= e($values['father_name']) ?>">
@@ -244,16 +507,11 @@ require_once __DIR__ . '/../includes/header.php';
             <option value="" <?= $values['requester_relationship'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="self" <?= $values['requester_relationship'] === 'self' ? 'selected' : '' ?>>Self</option>
             <option value="parent" <?= $values['requester_relationship'] === 'parent' ? 'selected' : '' ?>>Parent</option>
-            <option value="guardian" <?= $values['requester_relationship'] === 'guardian' ? 'selected' : '' ?>>Guardian</option>
-            <option value="spouse" <?= $values['requester_relationship'] === 'spouse' ? 'selected' : '' ?>>Spouse</option>
             <option value="sibling" <?= $values['requester_relationship'] === 'sibling' ? 'selected' : '' ?>>Sibling</option>
             <option value="child" <?= $values['requester_relationship'] === 'child' ? 'selected' : '' ?>>Child</option>
-            <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Other</option>
+            <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Authorized Representative</option>
         </select>
-        <div id="relationship-other" <?= $values['requester_relationship'] === 'other' ? '' : 'hidden' ?>>
-            <label for="requester_relationship_other">Describe your relationship *</label>
-            <input type="text" id="requester_relationship_other" name="requester_relationship_other" maxlength="100" value="<?= e($values['requester_relationship_other']) ?>">
-        </div>
+        <p class="field-hint" data-self-id-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>For Self, bring a valid ID that matches the person named on the record.</p>
 
         <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
@@ -282,6 +540,7 @@ require_once __DIR__ . '/../includes/header.php';
             <li>Your online submission becomes a pre-filled request at the counter, so you will not need to retype anything.</li>
             <li>If you pick it up yourself, bring your valid government ID.</li>
             <li>If someone else picks it up for you, they bring their own valid ID, a signed authorization letter from you, and a copy of the valid ID of the person named in the certificate.</li>
+            <li>For a record from another parish, bring the original supporting document and transfer or permission letter when requested.</li>
             <li>Nothing is uploaded online. You show your documents at the counter.</li>
         </ul>
 
@@ -305,9 +564,19 @@ require_once __DIR__ . '/../includes/header.php';
             }
             typeSelect.addEventListener('change', updateType);
             updateType();
-            document.getElementById('requester_relationship').addEventListener('change', function () {
-                document.getElementById('relationship-other').hidden = this.value !== 'other';
-            });
+            var relationship = document.getElementById('requester_relationship');
+            var requesterName = document.getElementById('requester_name');
+            var subjectName = document.getElementById('subject_name');
+            var selfIdNote = document.querySelector('[data-self-id-note]');
+            if (relationship && requesterName && subjectName) {
+                relationship.addEventListener('change', function () {
+                    if (selfIdNote) selfIdNote.hidden = this.value !== 'self';
+                    if (this.value === 'self') requesterName.value = subjectName.value;
+                });
+                subjectName.addEventListener('input', function () {
+                    if (relationship.value === 'self') requesterName.value = this.value;
+                });
+            }
             document.getElementById('purpose').addEventListener('change', function () {
                 document.getElementById('purpose-other').hidden = this.value !== 'Other';
             });

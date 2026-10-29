@@ -37,32 +37,25 @@ if (!in_array($sort, $allowedSorts, true)) {
 }
 
 $recordSql = <<<'SQL'
-SELECT 'baptismal' AS record_type, id, child_full_name AS record_name,
-       baptism_date AS event_date, entry_no, book_no, page_no, line_no,
-       person_id, certificate_request_id, child_first_name AS record_first_name,
-       child_middle_name AS record_middle_name, child_last_name AS record_last_name,
-       child_suffix AS record_suffix, NULL AS spouse_first_name, NULL AS spouse_middle_name,
-       NULL AS spouse_last_name, NULL AS spouse_suffix
-  FROM baptismal_records WHERE is_archived = 0
-UNION ALL
-SELECT 'confirmation', id, confirmand_full_name, confirmation_date,
-       entry_no, book_no, page_no, line_no, person_id, certificate_request_id,
-       confirmand_first_name, confirmand_middle_name, confirmand_last_name,
-       confirmand_suffix, NULL, NULL, NULL, NULL
-  FROM confirmation_records WHERE is_archived = 0
-UNION ALL
-SELECT 'first_communion', id, communicant_full_name, communion_date,
-       entry_no, book_no, page_no, line_no, person_id, certificate_request_id,
-       communicant_first_name, communicant_middle_name, communicant_last_name,
-       communicant_suffix, NULL, NULL, NULL, NULL
-  FROM first_communion_records WHERE is_archived = 0
-UNION ALL
-SELECT 'marriage', id,
-       CONCAT(husband_full_name, ' & ', wife_maiden_name), marriage_date,
-       entry_no, book_no, page_no, line_no, NULL, certificate_request_id,
-       husband_first_name, husband_middle_name, husband_last_name, husband_suffix,
-       wife_first_name, wife_middle_name, wife_last_name, wife_suffix
-  FROM marriage_records WHERE is_archived = 0
+SELECT CASE sr.sacrament_type
+           WHEN 'baptism' THEN 'baptismal'
+           ELSE sr.sacrament_type
+       END AS record_type,
+       sr.id,
+       CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS record_name,
+       sr.event_date, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
+       sr.person_id,
+       p.first_name AS record_first_name,
+       p.middle_name AS record_middle_name,
+       p.last_name AS record_last_name,
+       p.suffix AS record_suffix,
+       spouse.first_name AS spouse_first_name,
+       spouse.middle_name AS spouse_middle_name,
+       spouse.last_name AS spouse_last_name,
+       spouse.suffix AS spouse_suffix
+  FROM sacrament_records sr
+  JOIN persons p ON p.id = sr.person_id
+  LEFT JOIN persons spouse ON spouse.id = sr.spouse_person_id
 SQL;
 
 $where = [];
@@ -219,7 +212,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php endif; ?>
         </div>
 
-        <div class="table-scroll">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="All sacrament records; scroll horizontally to view all columns">
             <table class="admin-table unified-records-table">
                 <thead>
                     <tr>

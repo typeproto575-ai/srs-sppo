@@ -79,17 +79,17 @@ require_once __DIR__ . '/../includes/header.php';
         <p class="section-intro">Choose a service, send your information for parish review, and keep your tracking number. The parish office makes the final decision.</p>
     </div>
     <div class="service-grid">
-        <a class="service-card" href="<?= $basePath ?>/public/requirements.php">
+        <a class="service-card" href="<?= $basePath ?>/public/requirements.php#application-preparation-heading">
             <span class="service-number">01</span>
-            <h3>Request a certificate</h3>
-            <p>Send an online request for a Baptismal, Confirmation, First Communion, or Marriage certificate.</p>
-            <span class="service-link">Request a certificate &rarr;</span>
+            <h3>Apply for a sacrament</h3>
+            <p>Start a Baptism, First Communion, Confirmation, or Church Wedding application for parish review.</p>
+            <span class="service-link">Explore sacrament applications &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/certificate-request.php">
             <span class="service-number">02</span>
-            <h3>Request a certificate</h3>
+            <h3>Request a certificate copy</h3>
             <p>Request a certified copy of a baptism, confirmation, first communion, or marriage record.</p>
-            <span class="service-link">Request a certificate &rarr;</span>
+            <span class="service-link">Request a certificate copy &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/track-request.php">
             <span class="service-number">03</span>

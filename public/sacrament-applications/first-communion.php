@@ -50,6 +50,7 @@ if ($isWizardNavigation && csrf_verify()) {
             $formData[$key] = (string) $value;
         }
     }
+    public_prefill_person_parents($formData);
     if ($currentStep === 4) {
         foreach (['confession_completed', 'parental_consent', 'privacy_consent'] as $checkbox) {
             $formData[$checkbox] = ($_POST[$checkbox] ?? '') === '1' ? '1' : '0';
@@ -116,13 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     $contact = trim($_POST['contact_number'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $baptizedHere = $_POST['baptized_here'] ?? '';
-    // Office checklist values are controlled by the secretary after physical
-    // documents are received; public submissions always start as pending.
-    $psaStatus = 'pending';
-    $baptismalStatus = 'pending';
-    $catecheticalStatus = 'pending';
     $confession = ($_POST['confession_completed'] ?? '') === '1' ? 1 : 0;
     $consent = ($_POST['parental_consent'] ?? '') === '1' ? 1 : 0;
+    $personId = null;
 
     if (trim((string) ($formData['applicant_first'] ?? '')) === '') $errors[] = "Applicant's first name is required.";
     if (trim((string) ($formData['applicant_last'] ?? '')) === '') $errors[] = "Applicant's last name is required.";
@@ -139,6 +136,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
     if (!$consent) $errors[] = 'Parent/Guardian consent is required.';
     if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
+    if (!empty($formData['applicant_person_id'])) {
+        try {
+            $personId = public_selected_person_id(
+                $pdo,
+                $formData['applicant_person_id'],
+                (string) ($formData['applicant_first'] ?? ''),
+                (string) ($formData['applicant_middle'] ?? ''),
+                (string) ($formData['applicant_last'] ?? ''),
+                (string) ($formData['applicant_suffix'] ?? ''),
+                $birthdate
+            );
+        } catch (InvalidArgumentException $e) {
+            $errors[] = $e->getMessage();
+        }
+    }
 
     if (!$errors) {
         $cap = public_submission_allowed($pdo, [$email]);
@@ -147,23 +159,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if (!$errors) {
         try {
             $pdo->beginTransaction();
-            $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-            // Online pre-application pauses at "awaiting payment": payment is
-            // handled outside the system and marked paid by hand later.
-            $pdo->prepare("INSERT INTO sacrament_applications (tracking_number, submission_channel, sacrament_type, status) VALUES (?, 'online', 'first_communion', 'awaiting_payment')")->execute([$trackingNumber]);
+            $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
+            $details = [
+                'candidate_name' => $name,
+                'candidate_birth_date' => $birthdate,
+                'father_name' => $father,
+                'mother_maiden_name' => $mother,
+                'parent_guardian_name' => $parent,
+                'baptized_here' => $baptizedHere,
+                'confession_completed' => (bool) $confession,
+                'parental_consent' => (bool) $consent,
+            ];
+            $requirements = [
+                'origin_baptismal_certificate' => [
+                    'status' => $baptizedHere === 'this_parish' ? 'not_applicable' : 'not_received',
+                    'note' => '',
+                ],
+                'catechism_completion' => ['status' => 'not_received', 'note' => ''],
+            ];
+            $stmt = $pdo->prepare(
+                "INSERT INTO sacrament_applications
+                 (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
+                  applicant_contact, status, details, requirements, privacy_consent_at)
+                 VALUES (?, 'online', 'first_communion', ?, ?, ?, ?, 'new', ?, ?, NOW())"
+            );
+            $stmt->execute([
+                $trackingNumber,
+                $personId,
+                $name,
+                $email,
+                $contact,
+                json_encode($details, JSON_UNESCAPED_UNICODE),
+                json_encode($requirements, JSON_UNESCAPED_UNICODE),
+            ]);
             $applicationId = (int) $pdo->lastInsertId();
-            $stmt = $pdo->prepare("INSERT INTO first_communion_applications
-                (application_id, applicant_full_name, applicant_birthdate, parent_guardian_name,
-                 father_full_name, mother_maiden_name, contact_number, email,
-                 baptized_here, baptismal_cert_status,
-                 psa_birth_certificate_status, catechetical_formation_status, confession_completed, parental_consent)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$applicationId, $name, $birthdate, $parent, $father, $mother, $contact, $email, $baptizedHere === 'this_parish' ? 1 : 0, $baptismalStatus, $psaStatus, $catecheticalStatus, $confession, $consent]);
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion application submitted for {$name}");
             notify($pdo, 'application_new', 'New sacrament application', "First Communion application for {$name} ({$trackingNumber})", '/admin/requests/applications-queue.php');
             record_public_submission($pdo, [$email], 'application_first_communion');
             $pdo->commit();
-            if (mail_request_received($email, $trackingNumber, 'First Communion Application')) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
+            if (mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
             unset($_SESSION['first_communion_app']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -182,7 +216,12 @@ function selectedv(string $key, string $value): string { global $formData; retur
     <h1>Application for the Sacrament of First Holy Communion</h1>
     <p>Formularyo para sa Unang Banal na Komunyon</p>
     <?php if ($trackingNumber): ?>
-        <?php $successHeading = 'Your application has been submitted'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
+        <?php
+        $successHeading = 'Your application has been submitted';
+        $successIsApplication = true;
+        $successRequiredDocuments = ['Baptismal certificate (original copy if the applicant was baptized elsewhere)', 'Proof of catechetical formation'];
+        require __DIR__ . '/../../includes/submission-success.php';
+        ?>
     <?php else: ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
             <ol class="request-steps" aria-label="Application progress">
@@ -205,6 +244,17 @@ function selectedv(string $key, string $value): string { global $formData; retur
                             <label>Suffix <span class="field-hint">(optional)</span> <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= oldv('applicant_suffix') ?>"></label>
                         </div>
                         <label>Date of Birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
+                        <input type="hidden" name="applicant_person_id" value="<?= oldv('applicant_person_id') ?>">
+                        <input type="hidden" name="selected_father_name" value="<?= oldv('selected_father_name') ?>">
+                        <input type="hidden" name="selected_mother_maiden_name" value="<?= oldv('selected_mother_maiden_name') ?>">
+                        <div class="public-person-lookup" data-public-person-lookup
+                             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                             data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
+                             data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
+                             data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+                            <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match.</p>
+                            <div data-person-results aria-live="polite"></div>
+                        </div>
                     </fieldset>
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>

@@ -484,7 +484,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
     <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
     <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-    <div class="table-scroll">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Baptismal register records; scroll horizontally to view all columns">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -525,8 +525,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <?php
 $recordDetails = $isEdit ? (json_decode((string) ($editRecord['details'] ?? ''), true) ?: []) : [];
 $suggestedEntry = $isEdit ? (string) ($editRecord['entry_no'] ?? '') : (string) $suggest['entry_no'];
-$gfRows = [];
-$gmRows = [];
+$godfatherRows = [];
+$godmotherRows = [];
 foreach ($editParticipants as $participant) {
     $target = $participant['role'] === 'godmother' ? 'godmother' : 'godfather';
     ${$target . 'Rows'}[] = $participant;
