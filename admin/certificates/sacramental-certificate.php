@@ -30,7 +30,11 @@ function sc_svg_text(string $text, float $x, float $y, float $size, float $width
     $fill = $attrs['fill'] ?? '#222222';
     $anchor = $attrs['anchor'] ?? 'start';
     $letterSpacing = isset($attrs['letter_spacing']) ? ' letter-spacing="' . sc_svg_number((float) $attrs['letter_spacing']) . '"' : '';
-    $textLength = $width > 0 ? ' textLength="' . sc_svg_number($width) . '" lengthAdjust="spacing"' : '';
+    if (!empty($attrs['max'])) {
+        $textLength = ' data-max-width="' . sc_svg_number($width) . '"';
+    } else {
+        $textLength = $width > 0 ? ' textLength="' . sc_svg_number($width) . '" lengthAdjust="spacing"' : '';
+    }
     return '<text x="' . sc_svg_number($x) . '" y="' . sc_svg_number($y) . '" font-family="' . sc_svg_escape($family)
         . '" font-weight="' . $weight . '" font-size="' . sc_svg_number($size) . '" fill="' . sc_svg_escape($fill)
         . '" text-anchor="' . sc_svg_escape($anchor) . '"' . $textLength . '>' . sc_svg_escape($text) . '</text>';
@@ -89,35 +93,36 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $out[] = '<rect width="100" height="150" fill="#fff"/>';
     $out[] = '<g class="sc-template">';
     $out[] = '<g transform="translate(85.667 104.667) scale(131.31)"><path d="' . $logo['mark'] . '" fill="' . $watermark . '"/></g>';
-    $out[] = '<g transform="translate(20.8 10.954) scale(20.8)" fill="' . $green . '"><path d="' . $logo['ring'] . '" fill-rule="evenodd"/><path d="' . $logo['mark'] . '"/></g>';
-    $out[] = sc_svg_rule(34.667, 8.383, 10, $green, .217) . sc_svg_rule(76.833, 8.383, 10, $green, .217);
-    $out[] = sc_svg_rule(34.583, 13.306, 5.5, $green, .217) . sc_svg_rule(81.417, 13.306, 5.5, $green, .217);
+    $out[] = '<g transform="translate(20.8 16.3) scale(20.8)" fill="' . $green . '"><path d="' . $logo['ring'] . '" fill-rule="evenodd"/><path d="' . $logo['mark'] . '"/></g>';
+    $out[] = sc_svg_rule(34.667, 12.6, 10, $green, .217) . sc_svg_rule(76.833, 12.6, 10, $green, .217);
+    $out[] = sc_svg_rule(34.583, 20.2, 5.5, $green, .217) . sc_svg_rule(81.417, 20.2, 5.5, $green, .217);
     $out[] = '</g>';
-    $out[] = sc_svg_text('SACRAMENTAL', 33.5, 6.35, 4.15, 33, ['fill' => '#4e5051', 'letter_spacing' => .1]);
-    $out[] = sc_svg_text('CERTIFICATE', 58, 6.35, 4.15, 28, ['fill' => '#4e5051', 'letter_spacing' => .1]);
-    $out[] = sc_svg_text('PRELATURE OF INFANTA', 42.5, 9, 2.083, 28, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04]);
-    $out[] = sc_svg_text('ST. PATRICK PARISH', 34.5, 11.778, 4.6, 39, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04]);
-    $out[] = sc_svg_text('Dingalan, 3207 Aurora Province, Philippines', 39.5, 13.807, 2.354, 42, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted]);
-    $out[] = sc_svg_text('This is to certify that', 35, 19, 3.1, 30, ['fill' => $ink, 'anchor' => 'middle']);
-    $out[] = sc_svg_text($subject !== '' ? $subject : '—', 50, 25, 3.25, 78, ['fill' => '#000', 'anchor' => 'middle', 'weight' => 600]);
-    $out[] = sc_svg_rule(11.5, 26, 77, $ink);
-    $out[] = sc_svg_text($dateLabel, 50, 31, 2.75, 76, ['fill' => $ink, 'anchor' => 'middle']);
-    $out[] = sc_svg_text(sacramental_certificate_date($date), 50, 36.5, 3.15, 45, ['fill' => '#000', 'anchor' => 'middle', 'weight' => 600]);
-    $out[] = sc_svg_rule(27.5, 38, 45, $ink);
-    $out[] = sc_svg_text($title, 50, 45, 3.65, 52, ['fill' => $ink, 'anchor' => 'middle', 'weight' => 600, 'letter_spacing' => .06]);
-    $out[] = sc_svg_text('According to the sacramental records of this parish', 50, 49, 2.5, 70, ['fill' => $ink, 'anchor' => 'middle']);
+    $out[] = sc_svg_text('SACRAMENTAL CERTIFICATE', 33.5, 9.0, 3.4, 54, ['fill' => '#4e5051', 'letter_spacing' => .1, 'max' => true]);
+    $out[] = sc_svg_text('PRELATURE OF INFANTA', 60.75, 13.4, 2.083, 30, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04, 'anchor' => 'middle', 'max' => true]);
+    $out[] = sc_svg_text('ST. PATRICK PARISH', 34.5, 18.0, 4.6, 53, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04, 'max' => true]);
+    $out[] = sc_svg_text('Dingalan, 3207 Aurora Province, Philippines', 40.7, 20.9, 2.354, 40.6, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'max' => true]);
+    $dy = 9.2;
+    $out[] = sc_svg_text('This is to certify that', 50, 19 + $dy, 3.1, 30, ['fill' => $ink, 'anchor' => 'middle', 'max' => true]);
+    $subjSize = mb_strlen($subject) > 32 ? 2.5 : 3.25;
+    $out[] = sc_svg_text($subject !== '' ? $subject : '?', 50, 25 + $dy, $subjSize, 78, ['fill' => '#000', 'anchor' => 'middle', 'weight' => 600, 'max' => true]);
+    $out[] = sc_svg_rule(11.5, 26 + $dy, 77, $ink);
+    $out[] = sc_svg_text($dateLabel, 50, 31 + $dy, 2.75, 76, ['fill' => $ink, 'anchor' => 'middle', 'max' => true]);
+    $out[] = sc_svg_text(sacramental_certificate_date($date), 50, 36.5 + $dy, 3.15, 45, ['fill' => '#000', 'anchor' => 'middle', 'weight' => 600, 'max' => true]);
+    $out[] = sc_svg_rule(27.5, 38 + $dy, 45, $ink);
+    $out[] = sc_svg_text($title, 50, 45 + $dy, 3.65, 52, ['fill' => $ink, 'anchor' => 'middle', 'weight' => 600, 'letter_spacing' => .06, 'max' => true]);
+    $out[] = sc_svg_text('According to the sacramental records of this parish', 50, 49 + $dy, 2.5, 70, ['fill' => $ink, 'anchor' => 'middle', 'max' => true]);
 
-    $y = 57;
+    $y = 57 + $dy;
     foreach ($rows as [$label, $value]) {
-        $out[] = sc_svg_text($label, 12, $y, 2.05, 25, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted]);
-        $out[] = sc_svg_text((string) $value, 38, $y, 2.65, 50, ['fill' => '#000']);
+        $out[] = sc_svg_text($label, 12, $y, 2.05, 25, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'max' => true]);
+        $out[] = sc_svg_text((string) $value, 38, $y, 2.65, 50, ['fill' => '#000', 'max' => true]);
         $out[] = sc_svg_rule(37.5, $y + .7, 52, $ink, .15);
         $y += 6.1;
     }
-    $out[] = sc_svg_text('Issued this ' . date('F j, Y') . ' at St. Patrick Parish Office, Dingalan, Aurora.', 50, 88, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle']);
-    $out[] = sc_svg_text('Valid only with the signature of the Parish Priest and the parish seal.', 50, 91.5, 2.2, 77, ['fill' => $muted, 'anchor' => 'middle']);
-    $out[] = sc_svg_rule(57.667, 103, 35.667, $ink);
-    $out[] = sc_svg_text('PARISH PRIEST', 75.5, 106, 2.1, 27, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle', 'letter_spacing' => .08]);
+    $out[] = sc_svg_text('Issued this ' . date('F j, Y') . ' at St. Patrick Parish Office, Dingalan, Aurora.', 50, 88 + $dy, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    $out[] = sc_svg_text('Valid only with the signature of the Parish Priest and the parish seal.', 50, 91.5 + $dy, 2.2, 77, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    $out[] = sc_svg_rule(57.667, 103 + $dy, 35.667, $ink);
+    $out[] = sc_svg_text('PARISH PRIEST', 75.5, 106 + $dy, 2.1, 27, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle', 'letter_spacing' => .08, 'max' => true]);
     $out[] = '</svg>';
     return implode("\n", $out);
 }
@@ -136,15 +141,21 @@ function sacramental_certificate_fit_script(): string
 <script>
 (function () {
     function fit() {
-        document.querySelectorAll('.sc-svg text').forEach(function (t) {
-            var max = parseFloat(t.getAttribute('textLength') || '0');
-            if (!max || !t.getComputedTextLength) return;
+        document.querySelectorAll('.sc-svg text[data-max-width]').forEach(function (t) {
+            t.removeAttribute('textLength');
+            if (!t.getComputedTextLength) return;
+            var max = parseFloat(t.getAttribute('data-max-width') || '0');
+            if (!max) return;
             var len = t.getComputedTextLength();
-            if (len > max) t.setAttribute('textLength', max.toFixed(3));
+            if (len > max) {
+                t.setAttribute('textLength', max.toFixed(3));
+                t.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+            }
         });
     }
     document.addEventListener('DOMContentLoaded', fit);
     window.addEventListener('load', fit);
+    if (document.fonts && document.fonts.ready) { document.fonts.ready.then(fit); }
     window.addEventListener('beforeprint', fit);
 })();
 </script>
