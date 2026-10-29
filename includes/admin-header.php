@@ -112,37 +112,8 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <details class="sidebar-group" data-sidebar-group="requests" name="admin-sidebar"<?= $groupIsOpen('/admin/requests/') ?>>
             <summary class="sidebar-group-title" title="Requests"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v12h-4l-2 3h-4l-2-3H4z"/><path d="M4 12h5l2 3h2l2-3h5"/></svg></span><span class="sidebar-group-label">Requests</span></summary>
             <ul class="sidebar-menu">
-                <li><a href="<?= $basePath ?>/admin/requests/online-requests.php"<?= $isActive('/admin/requests/online-requests.php') ?> title="Online Submissions" data-compact="ON"><span class="sidebar-link-glyph" aria-hidden="true">ON</span><span class="sidebar-link-label">Online Submissions</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?> title="Certificate Requests" data-compact="CR"><span class="sidebar-link-glyph" aria-hidden="true">CR</span><span class="sidebar-link-label">Certificate Requests</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?> title="Sacrament Applications" data-compact="SA"><span class="sidebar-link-glyph" aria-hidden="true">SA</span><span class="sidebar-link-label">Sacrament Applications</span></a></li>
-                <?php if ($isSecretary): ?>
-                    <!-- Secretary-only walk-in encoding tools -->
-                    <li><a href="<?= $basePath ?>/admin/requests/walk-in-encode.php"<?= $isActive('/admin/requests/walk-in-encode.php') ?> title="Walk-in Request" data-compact="WR"><span class="sidebar-link-glyph" aria-hidden="true">WR</span><span class="sidebar-link-label">Walk-in Request</span></a></li>
-                    <li><a href="<?= $basePath ?>/admin/requests/walk-in-application.php"<?= $isActive('/admin/requests/walk-in-application.php') ?> title="Walk-in Application" data-compact="WA"><span class="sidebar-link-glyph" aria-hidden="true">WA</span><span class="sidebar-link-label">Walk-in Application</span></a></li>
-                <?php endif; ?>
-            </ul>
-        </details>
-
-        <!-- Records section -->
-        <details class="sidebar-group" data-sidebar-group="records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/system/persons.php') ?>>
-            <summary class="sidebar-group-title" title="Records"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6M9 11h6"/></svg></span><span class="sidebar-group-label">Records</span></summary>
-            <ul class="sidebar-menu sidebar-submenu">
-                <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php') ?> title="All Records" data-compact="AR"><span class="sidebar-link-glyph" aria-hidden="true">AR</span><span class="sidebar-link-label">All Records</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/records/baptismal.php"<?= $isActive('/admin/records/baptismal.php') ?> title="Baptismal" data-compact="BA"><span class="sidebar-link-glyph" aria-hidden="true">BA</span><span class="sidebar-link-label">Baptismal</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/records/confirmation.php"<?= $isActive('/admin/records/confirmation.php') ?> title="Confirmation" data-compact="CO"><span class="sidebar-link-glyph" aria-hidden="true">CO</span><span class="sidebar-link-label">Confirmation</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/records/first-communion.php"<?= $isActive('/admin/records/first-communion.php') ?> title="First Communion" data-compact="FC"><span class="sidebar-link-glyph" aria-hidden="true">FC</span><span class="sidebar-link-label">First Communion</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/records/marriage.php"<?= $isActive('/admin/records/marriage.php') ?> title="Marriage" data-compact="MA"><span class="sidebar-link-glyph" aria-hidden="true">MA</span><span class="sidebar-link-label">Marriage</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/persons.php"<?= $isActive('/admin/system/persons.php') ?> title="Persons" data-compact="PE"><span class="sidebar-link-glyph" aria-hidden="true">PE</span><span class="sidebar-link-label">Persons</span></a></li>
-            </ul>
-        </details>
-
-        <!-- Certificate generation section -->
-        <details class="sidebar-group" data-sidebar-group="certificates" name="admin-sidebar"<?= $groupIsOpen('/admin/certificates/', '/admin/corrections/') ?>>
-            <summary class="sidebar-group-title" title="Certificates"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="6"/><path d="m8.5 14-1 7 4.5-2.5 4.5 2.5-1-7M12 6.5l.8 1.6 1.7.2-1.2 1.2.3 1.7-1.6-.8-1.6.8.3-1.7-1.2-1.2 1.7-.2z"/></svg></span><span class="sidebar-group-label">Certificates</span></summary>
-            <ul class="sidebar-menu sidebar-submenu">
-                <li><a href="<?= $basePath ?>/admin/certificates/generate.php"<?= $isActive('/admin/certificates/generate.php') ?> title="Generate / Preview" data-compact="GP"><span class="sidebar-link-glyph" aria-hidden="true">GP</span><span class="sidebar-link-label">Generate / Preview</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/certificates/history.php"<?= $isActive('/admin/certificates/history.php') ?> title="Print / Pickup History" data-compact="PH"><span class="sidebar-link-glyph" aria-hidden="true">PH</span><span class="sidebar-link-label">Print / Pickup History</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/corrections/correction-list.php"<?= $isActive('/admin/corrections/correction-list.php') ?> title="Correction Requests" data-compact="CO"><span class="sidebar-link-glyph" aria-hidden="true">CO</span><span class="sidebar-link-label">Correction Requests</span></a></li>
             </ul>
         </details>
 
@@ -151,21 +122,16 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <summary class="sidebar-group-title" title="Schedule"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span><span class="sidebar-group-label">Schedule</span></summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/schedule/calendar.php"<?= $isActive('/admin/schedule/calendar.php') ?> title="Calendar" data-compact="CA"><span class="sidebar-link-glyph" aria-hidden="true">CA</span><span class="sidebar-link-label">Calendar</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/schedule/booking-conflicts.php"<?= $isActive('/admin/schedule/booking-conflicts.php') ?> title="Booking Conflicts" data-compact="BC"><span class="sidebar-link-glyph" aria-hidden="true">BC</span><span class="sidebar-link-label">Booking Conflicts</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/schedule/announcements.php"<?= $isActive('/admin/schedule/announcements.php') ?> title="Announcements" data-compact="AN"><span class="sidebar-link-glyph" aria-hidden="true">AN</span><span class="sidebar-link-label">Announcements</span></a></li>
             </ul>
         </details>
 
         <?php if ($isSecretary): ?>
-        <details class="sidebar-group" data-sidebar-group="system" name="admin-sidebar"<?= $groupIsOpen('/admin/system/', '/admin/email-delivery.php') ?>>
+        <details class="sidebar-group" data-sidebar-group="system" name="admin-sidebar"<?= $groupIsOpen('/admin/system/') ?>>
             <summary class="sidebar-group-title" title="System"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.6.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.6-.9l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.9l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.6-.9l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.6.9l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1-.1 1.8z"/></svg></span><span class="sidebar-group-label">System</span></summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?> title="Accounts" data-compact="AC"><span class="sidebar-link-glyph" aria-hidden="true">AC</span><span class="sidebar-link-label">Accounts</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?> title="Backup" data-compact="BU"><span class="sidebar-link-glyph" aria-hidden="true">BU</span><span class="sidebar-link-label">Backup</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/archive-record.php"<?= $isActive('/admin/system/archive-record.php') ?> title="Archive / Restore" data-compact="AR"><span class="sidebar-link-glyph" aria-hidden="true">AR</span><span class="sidebar-link-label">Archive / Restore</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/email-delivery.php"<?= $isActive('/admin/email-delivery.php') ?> title="Email Log" data-compact="EL"><span class="sidebar-link-glyph" aria-hidden="true">EL</span><span class="sidebar-link-label">Email Log</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?> title="Audit Log" data-compact="AL"><span class="sidebar-link-glyph" aria-hidden="true">AL</span><span class="sidebar-link-label">Audit Log</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/system/retention-purge.php"<?= $isActive('/admin/system/retention-purge.php') ?> title="Clean Up Old Data" data-compact="CD"><span class="sidebar-link-glyph" aria-hidden="true">CD</span><span class="sidebar-link-label">Clean Up Old Data</span></a></li>
             </ul>
         </details>
         <?php endif; ?>
