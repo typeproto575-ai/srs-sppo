@@ -35,6 +35,27 @@ function generate_tracking_number(PDO $pdo, string $table = 'certificate_request
     return $prefix . generate_tracking_token();
 }
 
+function generate_request_no(PDO $pdo, string $table = 'certificate_requests'): string
+{
+    $prefixes = ['certificate_requests' => 'CR', 'sacrament_applications' => 'SA'];
+    if (!isset($prefixes[$table])) {
+        throw new InvalidArgumentException('Unknown table for request number.');
+    }
+    $prefix = $prefixes[$table] . '-' . date('Y') . '-';
+    $stmt = $pdo->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(request_no, '-', -1) AS UNSIGNED)) FROM `$table` WHERE request_no LIKE ?");
+    $stmt->execute([$prefix . '%']);
+    $next = ((int) $stmt->fetchColumn()) + 1;
+    return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+}
+
+function public_request_throttled(PDO $pdo, string $email, int $max = 3, int $minutes = 60): bool
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM certificate_requests '
+        . 'WHERE LOWER(requester_email) = LOWER(?) AND created_at >= (NOW() - INTERVAL ' . (int) $minutes . ' MINUTE)');
+    $stmt->execute([$email]);
+    return (int) $stmt->fetchColumn() >= $max;
+}
+
 function generate_tracking_token(): string
 {
     $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
