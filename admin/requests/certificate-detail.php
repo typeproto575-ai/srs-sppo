@@ -49,8 +49,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $action = certificate_detail_post_string('action');
             $userId = (int) current_user()['id'];
             $message = '';
+            $redirectToDetail = false;
 
             if ($action === 'link_record') {
+                if (empty($current['paid_at'])) {
+                    throw new DomainException('Record the payment first. Processing starts after payment.');
+                }
                 $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
                 if (!$recordId || !in_array($current['status'], ['new', 'matched'], true)) {
                     throw new DomainException('Select a valid sacramental record for a request that can be matched.');
@@ -117,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $representativeRelationship = certificate_detail_post_string('representative_relationship');
                 $claimantNotes = certificate_detail_post_string('claimant_notes');
                 $idVerified = certificate_detail_post_string('id_verified') === '1';
-                $paidNow = certificate_detail_post_string('paid_now') === '1';
+
                 $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
                 if (!cert_request_transition_valid($current['status'], 'released')) {
                     throw new DomainException('Only a Ready request can be released.');
@@ -127,8 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     || ($claimantType === 'representative' && ($representativeName === '' || $representativeRelationship === ''))) {
                     throw new DomainException('Verify the claimant’s valid ID and provide representative details when applicable.');
                 }
-                if (empty($current['paid_at']) && !$paidNow) {
-                    throw new DomainException('Record the payment before releasing the certificate.');
+                if (empty($current['paid_at'])) {
+                    throw new DomainException('Payment has not been recorded.');
                 }
                 if ($claimantType === 'representative' && !$repDocsReceived) {
                     throw new DomainException("Confirm that the representative's ID, the signed authorization letter and a copy of the subject's ID were received.");
@@ -147,11 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
                     $claimantNotes !== '' ? $claimantNotes : null,
                 ];
-                if (empty($current['paid_at']) && $paidNow) {
-                    $setParts[] = 'paid_at = NOW()';
-                    $setParts[] = 'paid_by = ?';
-                    $params[] = $userId;
-                }
+
                 $setParts[] = 'released_by = ?';
                 $setParts[] = 'released_at = NOW()';
                 $params[] = $userId;
@@ -178,15 +178,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!empty($current['paid_at']) || in_array($current['status'], ['released', 'rejected'], true)) {
                     throw new DomainException('Payment cannot be recorded for this request in its current state.');
                 }
-                $update = $pdo->prepare('UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ?');
+                $update = $pdo->prepare('UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ? AND paid_at IS NULL');
                 $update->execute([$userId, $requestId]);
                 log_activity($pdo, $userId, 'certificate.payment', 'certificate_requests', $requestId, 'Payment received and recorded.');
                 $message = 'Payment has been recorded.';
+                $redirectToDetail = true;
             } else {
                 throw new DomainException('The requested action is not supported.');
             }
 
             $pdo->commit();
+            if ($redirectToDetail) {
+                redirect_to('/admin/requests/certificate-detail.php?id=' . $requestId);
+            }
             if ($action === 'mark_ready' && !empty($req['requester_email'])) {
                 $sacramentLabel = sd_type_label($req['sacrament_type']);
                 $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
@@ -291,7 +295,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <dt>Relationship</dt><dd><?= e(certificate_detail_label((string) $req['requester_relationship'])) ?><?= $req['requester_relationship_other'] ? ' — ' . e($req['requester_relationship_other']) : '' ?></dd>
         <dt>Email</dt><dd><?= e($req['requester_email']) ?></dd>
         <dt>Contact</dt><dd><?= e($req['requester_contact_number'] ?: 'Not provided') ?></dd>
-        <dt>Payment</dt><dd><?= $req['paid_at'] ? 'Recorded on ' . e($req['paid_at']) : 'Not recorded' ?></dd>
+        <dt>Payment</dt><dd><?= $req['paid_at'] ? 'Payment: recorded on ' . e($req['paid_at']) : 'Payment: not yet recorded' ?></dd>
         <?php if (!empty($req['certificate_no'])): ?>
             <dt>Certificate number</dt><dd><?= e($req['certificate_no']) ?></dd>
         <?php endif; ?>
@@ -449,9 +453,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label><input type="checkbox" name="rep_docs_received" value="1"> I received the representative's valid ID, the signed authorization letter and a copy of the subject's valid ID.</label>
             <label for="claimant_notes">Pickup notes (optional)</label>
             <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
-            <?php if (empty($req['paid_at'])): ?>
-                <label><input type="checkbox" name="paid_now" value="1"> Payment received</label>
-            <?php else: ?>
+            <?php if (!empty($req['paid_at'])): ?>
                 <p class="field-hint">Payment recorded on <?= e($req['paid_at']) ?></p>
             <?php endif; ?>
             <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID.</label>

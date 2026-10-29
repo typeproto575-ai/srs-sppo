@@ -82,7 +82,7 @@ One row per sacrament event. The physical logbook stays canonical, so book/page/
 | place, minister_name | VARCHAR(150) | yes | |
 | entry_no, book_no, page_no, line_no | VARCHAR(20) | yes | Logbook coordinates |
 | parents_union_type | ENUM('legitimate','civil','natural') | yes | Baptism only. Staff-facing "parents' marital status" |
-| legitimacy | ENUM('legitimate','illegitimate') | yes | Baptism only. **INTERNAL. Never display, email or print.** Derived from the union type by the backend |
+| legitimacy | ENUM('legitimate','illegitimate') | yes | Baptism only. **INTERNAL. Never display, email or print.** New entries store NULL; it is not derived from `parents_union_type`. Kept only for legacy logbook notation |
 | details | JSON | yes | See section 4.1 |
 | remarks | TEXT | yes | |
 | book_verified_by, book_verified_at | FK users, DATETIME | yes | Secretary confirmed the entry against the physical register |
@@ -208,7 +208,7 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 
 ## 5. Status flows
 
-**Certificate:** `new` → `matched` (secretary linked a person and record, book entry verified) → `for_signature` (printed) → `ready` (priest signed, email sent) → `released` (counter check done). `rejected` is possible before release.
+**Certificate:** `new` (payment recorded first) → `matched` (secretary linked a person and record, book entry verified; refused until `paid_at` is set) → `for_signature` (printed) → `ready` (priest signed, email sent) → `released` (counter check done). `rejected` is possible before release.
 
 **Application:** `new` → `reviewing` → `requirements_pending` (back and forth with `reviewing`) → `approved` → `scheduled` → `completed`. `rejected` is possible before completion.
 
@@ -221,5 +221,5 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 6. Release requires `claimant_type` and `id_verified = 1`; a representative also needs `representative_name`.
 7. Prerequisites and marriage requirements (CENOMAR, origin baptismal certificate, transfer letter, one party a registered parishioner) are flagged for the secretary, not auto-blocked.
 8. Identity verification is in two stages: Stage 1 the relationship choice plus the upfront pickup notice online; Stage 2 the counter ID check at release.
-9. No monetary amounts are stored. Payment is a manual `paid_at` stamp.
+9. No monetary amounts are stored. Payment is a manual `paid_at` stamp, recorded at the counter before processing starts (the parish's real rule).
 10. Retention: the backend job sets `anonymized_at` on old requests; sacrament records are never purged.

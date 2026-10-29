@@ -42,7 +42,7 @@ Work is local first (branch `rebuild-v2`). The hosted site (`stpatricksparish.me
 5. **Release requires** `claimant_type` and `id_verified = 1`. A representative also needs `representative_name`.
 6. **The Person Matcher widget stays** on the application and online-request review screens. Search `persons` by surname and birth date; link in one click; allow two links for marriage (groom and bride).
 7. **Prefill is one click.** "Prefill Register Form" carries `from_application=<id>` plus the linked `person_id`s into the register form. No retyping of identity.
-8. **No money amounts anywhere.** Payment is the manual `paid_at` / `paid_by` stamp.
+8. **No money amounts anywhere.** Payment is the manual `paid_at` / `paid_by` stamp, recorded at the counter before processing: matching is refused until `paid_at` is set, and release also requires it.
 9. **Unknown means NULL.** Do not add "not recorded" flags.
 10. **Sacrament records are never purged.** Retention only sets `anonymized_at` on old requests.
 11. **Profile query** for one person: `WHERE person_id = ? OR spouse_person_id = ?`.
@@ -51,7 +51,7 @@ Work is local first (branch `rebuild-v2`). The hosted site (`stpatricksparish.me
 
 **Intake → register:** public submit (application) → secretary opens review → Person Matcher links `person_id` (or creates a new `persons` row) → status moves along → Prefill Register Form → secretary saves a `sacrament_records` row → application `record_id` set, status `completed`.
 
-**Certificate:** `new` → `matched` (person and record linked, book entry verified) → `for_signature` (printed) → `ready` (priest signed on paper, `signed_at`, "ready" email) → `released` (counter ID check). `rejected` is allowed before release.
+**Certificate:** `new` (payment is recorded first, before any processing) → `matched` (person and record linked, book entry verified) → `for_signature` (printed) → `ready` (priest signed on paper, `signed_at`, "ready" email) → `released` (counter ID check). `rejected` is allowed before release.
 
 **Two-stage identity check:** Stage 1 is the online relationship choice plus the upfront pickup notice ("Valid Government ID on pickup; a representative also brings an authorization letter and their own ID"). Stage 2 is the counter check recorded in `certificate_requests`.
 
