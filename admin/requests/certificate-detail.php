@@ -250,7 +250,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <h1><?= e($req['request_no']) ?></h1>
         <p><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
     </div>
-    <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Back to queue</a>
+    <div>
+        <?php if (!empty($req['record_id']) && in_array((string) $req['status'], ['for_signature', 'ready', 'released'], true)): ?>
+            <a class="btn btn-primary" href="<?= e($basePath . '/admin/requests/certificate-print.php?id=' . (int) $req['id']) ?>">Print certificate</a>
+        <?php endif; ?>
+        <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Back to queue</a>
+    </div>
 </section>
 
 <?php if ($notice): ?>
