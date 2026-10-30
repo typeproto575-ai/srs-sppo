@@ -1,7 +1,7 @@
 ﻿<?php
 /**
  * SRS-SPPO PUBLIC HOME PAGE
- * Public information hub for online intake, parish requirements, and tracking.
+ * Public information hub for online intake and parish requirements.
  * Parishioners do not create accounts; online submissions are requests for secretary review only.
  */
 require_once __DIR__ . '/../config/database.php';

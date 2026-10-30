@@ -21,7 +21,7 @@ $pageTitle = $pageTitle ?? "St. Patrick's Parish Office";
 // Subfolder-safe URL prefix used for every asset and internal link.
 $basePath  = $basePath ?? base_path();
 $pageDescriptions = [
-    'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and track its status.",
+    'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and receive updates by email or contact the office with your reference number.",
     'Requirements' => 'Review parish office requirements before requesting a sacramental certificate or applying for a sacrament.',
     'Parish Office Services' => 'Request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick Parish Office.',
     'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, First Communion, or Marriage preparation for parish review.',

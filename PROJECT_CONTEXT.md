@@ -39,7 +39,7 @@ It is a **digital index and office workflow** for sacramental records that still
 Parishioner (optional)          Parish office
   online pre-application   OR   walk-in encoding
            \                   /
-            tracking number
+            reference number
                     |
             secretary review
             (requirements, register match)

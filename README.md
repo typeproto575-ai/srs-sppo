@@ -112,7 +112,7 @@ srs-sppo/
 │   ├── header.php / footer.php          shared public-facing layout
 │   ├── admin-header.php / admin-footer.php  shared staff layout (top bar + sidebar)
 │   ├── application-tabs.php             tab nav between sacrament application forms
-│   ├── functions.php                    helpers: base_path/redirect_to, CSRF, tracking
+│   ├── functions.php                    helpers: base_path/redirect_to, CSRF, reference
 │   │                                    numbers, age/eligibility check, audit logging, e()
 │   └── auth.php                         session guard (require_login / require_role)
 ├── database/
@@ -144,8 +144,8 @@ srs-sppo/
 
 ## What's built
 
-- **Live public intake:** Four certificate-request forms and four sacrament-application forms: Baptismal, Confirmation, First Communion, and Marriage.
-- **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, tracking/status lookup, correction requests, and the shared System tools. All staff accounts use the same parish secretary access level.
+- **Live public intake:** One unified certificate-request form and four sacrament-application forms: Baptismal, Confirmation, First Communion, and Marriage.
+- **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, request status management, correction requests, and the shared System tools. Applicants receive updates by email when available or contact the Parish Office with their reference number. All staff accounts use the same parish secretary access level.
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 

@@ -131,7 +131,7 @@ require_once __DIR__ . '/../includes/header.php';
     <h2 id="what-to-bring-heading">When you visit the office</h2>
     <ul class="req-list">
         <li>Bring only the documents the parish office asks you to provide.</li>
-        <li>Quote your reference number (shown on your submission confirmation) when contacting the office.</li>
+        <li>When contacting the Parish Office about your request, quote the reference number shown on your submission confirmation.</li>
     </ul>
     <p class="field-hint">Document requirements and schedules may change. The parish secretary's confirmation is the final guide for your case.</p>
 </section>

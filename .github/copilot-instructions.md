@@ -4,7 +4,7 @@
 This project is a **Parish Management & Digital Request System** handling four core Catholic sacraments and parish services: **Baptism, First Communion, Confirmation, and Marriage**.
 
 The system consists of two primary operational interfaces:
-1. **Public Online Web Portal:** For parishioners/clients to submit certificate requests (e.g., Baptismal Certificate), schedule parish services (e.g., Weddings), and track request status online.
+1. **Public Online Web Portal:** For parishioners/clients to submit certificate requests (e.g., Baptismal Certificate), schedule parish services (e.g., Weddings), and receive updates from the Parish Office by email or by contacting the office with their reference number.
 2. **Parish Office Admin/Secretary Interface:** For parish staff to manage, verify, process, generate, and track requests, payments, document requirements, and signatures.
 
 ---
@@ -23,7 +23,7 @@ The system consists of two primary operational interfaces:
 
 ### 2. Streamlined Request & Tracking Workflow
 - **Upfront Document Requirements:**
-  - On the online confirmation screen, tracking portal, and email notifications, display all required documents explicitly (e.g., Valid ID, Authorization Letter if picking up for someone else, Original Copy of External Documents).
+  - On the online confirmation screen and email notifications, display all required documents explicitly (e.g., Valid ID, Authorization Letter if picking up for someone else, Original Copy of External Documents).
   - Do not surprise clients with unstated document requirements when they arrive at the office.
 - **Status Lifecycle:**
   - Maintain a clean request lifecycle with unambiguous statuses:
@@ -52,4 +52,4 @@ The system consists of two primary operational interfaces:
 ## Coding Guidelines for Copilot
 - When writing database migrations, models, or schema designs, prioritize a **normalized relational structure** centered on a unified `Person` model.
 - When generating UI forms or API endpoints, enforce **auto-complete/search endpoints** to prevent duplicate data entry.
-- When writing workflow controllers, ensure request status transitions are explicit and log status updates for customer-facing tracking.
+- When writing workflow controllers, ensure request status transitions are explicit and log status updates for applicant email notifications and staff review.

@@ -52,9 +52,9 @@ dataset into a live parish database.
   announcements, missing default public-site settings, and clearly marked
   sample audit rows.
 
-The sample tracking numbers are:
+The sample request reference numbers are:
 
-| Tracking number | Sample |
+| Reference number | Sample |
 |---|---|
 | `SPPO-APP-2026-BAPDEFENSEABCDEF` | New-child Baptism application |
 | `SPPO-APP-2026-CNFDEFENSABCDEFG` | Confirmation application |

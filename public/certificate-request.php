@@ -318,7 +318,7 @@ require_once __DIR__ . '/../includes/header.php';
         require __DIR__ . '/../includes/submission-success.php';
         ?>
     <?php else: ?>
-        <p>Thank you. We received your request. Please visit the parish office to pay at the counter before processing begins; your request is pre-filled there so nothing needs to be retyped. We will email you when it is signed and ready for pickup.</p>
+        <p>Thank you. We received your request. Please visit the parish office to pay at the counter before processing begins; your request is pre-filled there so nothing needs to be retyped. The Parish Office may email you when it is signed and ready for pickup. If you have questions, contact the office.</p>
     <?php endif; ?>
 </section>
 <?php else: ?>

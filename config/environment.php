@@ -55,8 +55,8 @@ define(
 // email removed), never deleted. Rate-limit rows are deleted.
 // Defaults are proposals only — confirm the periods with the parish.
 //   SRS_RETENTION_SUBMISSIONS_MONTHS : 60  (5 years — certificates get
-//       re-requested years later; the tracking number still resolves, but
-//       names/phones need not survive that long)
+//       re-requested years later; the reference number helps the office
+//       identify the request, but names/phones need not survive that long)
 //   SRS_RETENTION_AUDIT_MONTHS : 36  (3 years — accountability needs history,
 //       but IPs and tracking|email strings are the highest-risk fields)
 //   SRS_RETENTION_RATELIMIT_DAYS : 30  (caps are 24h rolling; 30 days is

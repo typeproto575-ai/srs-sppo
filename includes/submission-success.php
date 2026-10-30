@@ -17,13 +17,11 @@
  *   $successIsApplication - (optional) show sacrament-application next steps
  *   $basePath        - falls back to base_path()
  *
- * Scope note: the panel points at the public tracking page - never a
- * download/print-your-certificate flow (certificates are picked up and
- * printed at the counter per project rules). The action buttons here are
- * visitor-side conveniences only: "Send to Email" opens the visitor's
- * own mail app (with a Gmail-on-the-web fallback link) with this
- * confirmation pre-filled - the parish never handles the recipient
- * address; "Copy" duplicates the number on the spot.
+ * Certificates are picked up and printed at the counter per project rules.
+ * The action buttons here are visitor-side conveniences only: "Send to
+ * Email" opens the visitor's own mail app (with a Gmail-on-the-web fallback
+ * link) with this confirmation pre-filled - the parish never handles the
+ * recipient address; "Copy" duplicates the reference number on the spot.
  * =====================================================================
  */
 
@@ -49,14 +47,14 @@ $basePath       = $basePath ?? base_path();
                 <h3>What happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
-                    <li>The parish office reviews your application and contacts you about requirements, payment, preparation, and scheduling.</li>
+                    <li>The Parish Office reviews your application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used.</li>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
                     <?php if ($successIsApplication): ?>
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>
-                    <li>If requirements are needed, bring your supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still contact the Parish Office with questions. When the status shows <strong>Ready for Pickup</strong>, bring valid ID and claim the printed certificate in person.</li>
+                    <li>The Parish Office may email you when there is an update. You may also contact the office with this reference number and the email address you used. Bring any requested documents and valid ID to collect the printed certificate in person.</li>
                     <?php endif; ?>
                 </ol>
             </div>
@@ -72,7 +70,7 @@ $basePath       = $basePath ?? base_path();
                 </section>
             <?php endif; ?>
 
-            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Keep this reference number for your records.</p>
+            <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Keep this reference number for your records.</p>
         </div>
         <script>
         (function () {
