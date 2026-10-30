@@ -958,12 +958,23 @@ function register_build_entry_no(array $parts, int $number): string
  * suggestion restarts at Book "I", Page 1, Line 1. Suggestions only —
  * the encode dialog fields remain fully editable.
  *
- * @param string $table Register table name — page-authored, never user input.
+ * @param string $sacramentType V2 sacrament type to number.
  */
-function register_next_logbook_numbers(PDO $pdo, string $table, bool $lockRows = false): array
+function register_next_logbook_numbers(PDO $pdo, string $sacramentType, bool $lockRows = false): array
 {
+    if (!in_array($sacramentType, ['baptism', 'first_communion', 'confirmation', 'marriage'], true)) {
+        throw new InvalidArgumentException('Choose a valid sacrament type for logbook numbering.');
+    }
+
     $lock = $lockRows ? ' FOR UPDATE' : '';
-    $row = $pdo->query("SELECT entry_no, book_no, page_no, line_no FROM {$table} ORDER BY id DESC LIMIT 1{$lock}")->fetch();
+    $stmt = $pdo->prepare(
+        "SELECT entry_no, book_no, page_no, line_no
+         FROM sacrament_records
+         WHERE sacrament_type = ? AND source = 'this_parish'
+         ORDER BY id DESC LIMIT 1{$lock}"
+    );
+    $stmt->execute([$sacramentType]);
+    $row = $stmt->fetch();
     if (!$row) return ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
 
     $entryNo = '';
@@ -998,27 +1009,37 @@ function register_next_logbook_numbers(PDO $pdo, string $table, bool $lockRows =
 }
 
 /**
- * Make room for $entryNo: every row in $table whose entry number shares the
- * same prefix and whose number is >= $entryNo's gets bumped up by one, so
+ * Make room for $entryNo: every row of the sacrament type whose entry number
+ * shares the same prefix and whose number is >= $entryNo's gets bumped up by one, so
  * the new entry can take its number. Rows with a different numbering
  * format are left untouched. Returns how many rows were renumbered.
  *
- * @param string $table Register table name — page-authored, never user input.
+ * @param string $sacramentType V2 sacrament type to shift.
  */
-function register_shift_entry_numbers(PDO $pdo, string $table, string $entryNo): int
+function register_shift_entry_numbers(PDO $pdo, string $sacramentType, string $entryNo): int
 {
+    if (!in_array($sacramentType, ['baptism', 'first_communion', 'confirmation', 'marriage'], true)) {
+        throw new InvalidArgumentException('Choose a valid sacrament type for logbook numbering.');
+    }
+
     $incoming = register_parse_entry_no($entryNo);
     if (!$incoming) return 0;
 
-    $stmt = $pdo->prepare("SELECT id, entry_no FROM {$table} WHERE entry_no LIKE ?");
-    $stmt->execute([$incoming['prefix'] . '%']);
-    $upd = $pdo->prepare("UPDATE {$table} SET entry_no = ? WHERE id = ?");
+    $stmt = $pdo->prepare(
+        "SELECT id, entry_no FROM sacrament_records
+         WHERE sacrament_type = ? AND source = 'this_parish' AND entry_no LIKE ?"
+    );
+    $stmt->execute([$sacramentType, $incoming['prefix'] . '%']);
+    $upd = $pdo->prepare(
+        "UPDATE sacrament_records SET entry_no = ?
+         WHERE id = ? AND sacrament_type = ? AND source = 'this_parish'"
+    );
 
     $shifted = 0;
     foreach ($stmt->fetchAll() as $row) {
         $parts = register_parse_entry_no((string) $row['entry_no']);
         if (!$parts || $parts['prefix'] !== $incoming['prefix'] || $parts['number'] < $incoming['number']) continue;
-        $upd->execute([register_build_entry_no($parts, $parts['number'] + 1), (int) $row['id']]);
+        $upd->execute([register_build_entry_no($parts, $parts['number'] + 1), (int) $row['id'], $sacramentType]);
         $shifted++;
     }
     return $shifted;
