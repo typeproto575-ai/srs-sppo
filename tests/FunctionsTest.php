@@ -17,6 +17,7 @@ final class FunctionsTest extends TestCase
         self::assertTrue(cert_request_transition_valid('matched', 'for_signature'));
         self::assertTrue(cert_request_transition_valid('for_signature', 'ready'));
         self::assertTrue(cert_request_transition_valid('ready', 'released'));
+        self::assertTrue(cert_request_transition_valid('ready_for_pickup', 'released'));
         self::assertTrue(cert_request_transition_valid('new', 'rejected'));
         self::assertFalse(cert_request_transition_valid('new', 'for_signature'));
         self::assertFalse(cert_request_transition_valid('released', 'ready'));

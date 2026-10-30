@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if (!in_array($claimantType, ['self', 'representative'], true)
                     || certificate_detail_post_string('id_verified') !== '1'
-                    || ($claimantType === 'representative' && ($representativeName === '' || $representativeRelationship === ''))) {
+                    || ($claimantType === 'representative' && $representativeName === '')) {
                     throw new DomainException('Verify the claimant’s valid ID and provide representative details when applicable.');
                 }
                 if (empty($current['paid_at'])) {
@@ -160,7 +160,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'UPDATE certificate_requests SET ' . implode(', ', $setParts) . ' WHERE id = ?'
                 );
                 $update->execute($params);
-                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released after claimant identity verification.');
+                $claimantDescription = $claimantType === 'representative' ? 'an authorized representative' : 'the requester/subject';
+                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . ' after claimant identity verification.');
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
                 $reason = certificate_detail_post_string('rejection_reason');
@@ -196,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
                     . "Please bring: a valid government-issued photo ID.\n"
                     . "If someone else will claim it for you, they must bring: their own valid government ID, a signed authorization letter from you, and a copy of your valid ID.\n"
-                    . "The fee is paid at pickup.";
+                    . "Payment must be recorded by the Parish Office before processing begins.";
                 try {
                     send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId);
                 } catch (Throwable $e) {
@@ -446,18 +447,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <option value="self">Requester / subject</option>
                 <option value="representative">Authorized representative</option>
             </select>
-            <label for="representative_name">Representative name (if applicable)</label>
-            <input type="text" id="representative_name" name="representative_name" maxlength="150">
-            <label for="representative_relationship">Representative relationship (optional)</label>
-            <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
-            <p class="field-hint">Representative must bring: (1) their own valid government ID, (2) a signed authorization letter from the subject, (3) a copy of the subject's valid ID.</p>
-            <label><input type="checkbox" name="rep_docs_received" value="1"> I received the representative's valid ID, the signed authorization letter and a copy of the subject's valid ID.</label>
+            <p id="claimant-guidance" class="field-hint">For self pickup, verify that the requester/subject's valid government ID matches the request.</p>
+            <div id="representative-fields">
+                <label for="representative_name">Representative name</label>
+                <input type="text" id="representative_name" name="representative_name" maxlength="150">
+                <label for="representative_relationship">Representative relationship (optional)</label>
+                <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
+                <p class="field-hint">A representative must bring their own valid government ID, a signed authorization letter from the subject, and a copy of the subject's valid ID.</p>
+                <label><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the representative's valid ID, the signed authorization letter and a copy of the subject's valid ID.</label>
+            </div>
             <label for="claimant_notes">Pickup notes (optional)</label>
             <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
             <?php if (!empty($req['paid_at'])): ?>
                 <p class="field-hint">Payment recorded on <?= e($req['paid_at']) ?></p>
             <?php endif; ?>
-            <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID.</label>
+            <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid government ID. For self pickup, it matches the requester/subject; for a representative, it matches the representative.</label>
             <button type="submit" class="btn">Verify ID and Release</button>
         </form>
     <?php elseif (in_array($req['status'], ['released', 'rejected'], true)): ?>
@@ -502,5 +506,29 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </ul>
     <?php endif; ?>
 </section>
+
+<script>
+(() => {
+    const claimantType = document.getElementById('claimant_type');
+    const representativeFields = document.getElementById('representative-fields');
+    const representativeName = document.getElementById('representative_name');
+    const representativeDocs = document.getElementById('rep_docs_received');
+    const claimantGuidance = document.getElementById('claimant-guidance');
+    if (!claimantType || !representativeFields || !representativeName || !representativeDocs || !claimantGuidance) return;
+
+    const updateClaimantFields = () => {
+        const isRepresentative = claimantType.value === 'representative';
+        representativeFields.hidden = !isRepresentative;
+        representativeName.required = isRepresentative;
+        representativeDocs.required = isRepresentative;
+        claimantGuidance.textContent = isRepresentative
+            ? "Verify the representative's own valid government ID and receive the signed authorization letter and a copy of the subject's valid ID."
+            : "For self pickup, verify that the requester/subject's valid government ID matches the request.";
+    };
+
+    claimantType.addEventListener('change', updateClaimantFields);
+    updateClaimantFields();
+})();
+</script>
 
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
