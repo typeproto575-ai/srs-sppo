@@ -958,7 +958,10 @@ function register_build_entry_no(array $parts, int $number): string
  * suggestion restarts at Book "I", Page 1, Line 1. Suggestions only —
  * the encode dialog fields remain fully editable.
  *
- * @param string $sacramentType V2 sacrament type to number.
+ * @param PDO $pdo Database connection.
+ * @param 'baptism'|'first_communion'|'confirmation'|'marriage' $sacramentType V2 sacrament type to number.
+ * @param bool $lockRows Lock the latest register row for a transactional insert.
+ * @return array{entry_no:string,book_no:string,page_no:string,line_no:string}
  */
 function register_next_logbook_numbers(PDO $pdo, string $sacramentType, bool $lockRows = false): array
 {
@@ -1014,7 +1017,10 @@ function register_next_logbook_numbers(PDO $pdo, string $sacramentType, bool $lo
  * the new entry can take its number. Rows with a different numbering
  * format are left untouched. Returns how many rows were renumbered.
  *
- * @param string $sacramentType V2 sacrament type to shift.
+ * @param PDO $pdo Database connection.
+ * @param 'baptism'|'first_communion'|'confirmation'|'marriage' $sacramentType V2 sacrament type to shift.
+ * @param string $entryNo Entry number to make room for.
+ * @return int Number of entries renumbered.
  */
 function register_shift_entry_numbers(PDO $pdo, string $sacramentType, string $entryNo): int
 {
