@@ -183,6 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
         $cap = public_submission_allowed($pdo, [$groomEmail, $brideEmail]);
         if (!$cap['ok']) $errors[] = $cap['reason'];
     }
+    $isSecretary = (current_user()['role'] ?? '') === 'secretary';
+    $channel     = $isSecretary ? 'onsite' : 'online';
     if (!$errors) {
         try {
             $pdo->beginTransaction();
@@ -242,10 +244,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                  (request_no, channel, sacrament_type, person_id, spouse_person_id, applicant_name,
                   applicant_email, applicant_contact, preferred_date, preferred_time, status,
                   details, requirements, privacy_consent_at)
-                 VALUES (?, 'online', 'marriage', ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                 VALUES (?, ?, 'marriage', ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
             );
             $stmt->execute([
                 $trackingNumber,
+                $channel,
                 $groomPersonId,
                 $bridePersonId,
                 $groomName,
@@ -259,11 +262,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony application submitted for ' . $groomName . ' & ' . $brideName);
             notify($pdo, 'application_new', 'New sacrament application', "Holy Matrimony application ({$trackingNumber})", '/admin/requests/applications-queue.php');
-            record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
+            if ($channel === 'online') {
+                record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
+            }
             $pdo->commit();
             unset($_SESSION['marriage_app']);
-            if (mail_request_received($groomEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
-            if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
+            if ($isSecretary) {
+                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                exit;
+            }
+            if ($channel === 'online') {
+                if (mail_request_received($groomEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
+                if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
+            }
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $trackingNumber = null; error_log('Holy Matrimony application failed: ' . $e->getMessage()); $errors[] = 'Something went wrong while submitting your application. Please try again.';

@@ -461,6 +461,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <h1>Sacrament applications</h1>
             <p>Review applications, link master person profiles, track requirements, and continue the application lifecycle.</p>
         </div>
+        <div class="admin-queue-actions">
+            <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in application</a>
+        </div>
         <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> applications match the current filters">
             <strong><?= (int) $totalRows ?></strong>
             <span><?= $totalRows === 1 ? 'application' : 'applications' ?></span>

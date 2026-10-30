@@ -178,6 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email           = fd('email',                 $formData);
             $preferredDate   = $formData['preferred_date'] ?? null;
             $privacyConsent  = $formData['privacy_consent'] ?? '';
+            $isSecretary     = (current_user()['role'] ?? '') === 'secretary';
+            $channel         = $isSecretary ? 'onsite' : 'online';
 
             $godfatherNames      = compose_person_name_rows($formData, 'godfather');
             $godmotherNames      = compose_person_name_rows($formData, 'godmother');
@@ -257,10 +259,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             "INSERT INTO sacrament_applications
                              (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
                               applicant_contact, preferred_date, status, details, requirements, privacy_consent_at)
-                             VALUES (?, 'online', 'baptism', ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                             VALUES (?, ?, 'baptism', ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
                         );
                         $stmt->execute([
                             $trackingNumber,
+                            $channel,
                             $childPersonId,
                             $childName,
                             $email,
@@ -273,11 +276,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal application submitted for {$childName}");
                         notify($pdo, 'application_new', 'New sacrament application', "Baptismal application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
-                        record_public_submission($pdo, [$email], 'application_baptismal');
+                        if ($channel === 'online') {
+                            record_public_submission($pdo, [$email], 'application_baptismal');
+                        }
                         $pdo->commit();
 
+                        if ($isSecretary) {
+                            redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                            exit;
+                        }
+
                         try {
-                            if (mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
+                            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
                                 log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                             }
                         } catch (Throwable $e) {

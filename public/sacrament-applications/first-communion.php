@@ -156,6 +156,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
         $cap = public_submission_allowed($pdo, [$email]);
         if (!$cap['ok']) $errors[] = $cap['reason'];
     }
+    $isSecretary = (current_user()['role'] ?? '') === 'secretary';
+    $channel     = $isSecretary ? 'onsite' : 'online';
     if (!$errors) {
         try {
             $pdo->beginTransaction();
@@ -181,10 +183,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                 "INSERT INTO sacrament_applications
                  (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
                   applicant_contact, status, details, requirements, privacy_consent_at)
-                 VALUES (?, 'online', 'first_communion', ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                 VALUES (?, ?, 'first_communion', ?, ?, ?, ?, 'new', ?, ?, NOW())"
             );
             $stmt->execute([
                 $trackingNumber,
+                $channel,
                 $personId,
                 $name,
                 $email,
@@ -195,9 +198,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion application submitted for {$name}");
             notify($pdo, 'application_new', 'New sacrament application', "First Communion application for {$name} ({$trackingNumber})", '/admin/requests/applications-queue.php');
-            record_public_submission($pdo, [$email], 'application_first_communion');
+            if ($channel === 'online') {
+                record_public_submission($pdo, [$email], 'application_first_communion');
+            }
             $pdo->commit();
-            if (mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
+            if ($isSecretary) {
+                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                exit;
+            }
+            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
             unset($_SESSION['first_communion_app']);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();

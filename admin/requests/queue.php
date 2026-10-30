@@ -117,6 +117,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     ? 'Review certificate requests submitted online and continue to the next processing step.'
                     : 'Find a request, review its details, and continue to the next processing step.' ?></p>
             </div>
+            <div class="admin-queue-actions">
+                <a href="<?= e($basePath . '/public/certificate-request.php') ?>" class="btn btn-secondary">New walk-in request</a>
+            </div>
             <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> requests match the current filters">
                 <strong><?= (int) $totalRows ?></strong>
                 <span><?= $totalRows === 1 ? 'request' : 'requests' ?></span>

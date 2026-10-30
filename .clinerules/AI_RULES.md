@@ -36,7 +36,7 @@ Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me
 ## 4. Hard rules
 
 1. **Identity lives only in `persons`** (name, birth, parents, address, contact). Register and application forms show it read-only for an existing person. Never copy identity fields into another table.
-2. **Public forms write only to `sacrament_applications` or `certificate_requests`.** They never write to `persons` or `sacrament_records`. Only the secretary's approval does.
+2. **Public forms write only to `sacrament_applications` or `certificate_requests`.** They never write to `persons` or `sacrament_records`. Only the secretary's approval does. The same forms may be used by a logged-in secretary; in that case `channel` is derived server-side from the session (`onsite`), never from a POST field or query string.
 3. **`sacrament_records.legitimacy` is internal.** Never select it into any public page, email, certificate, PDF, JSON response for the public site or default staff list. New entries store NULL: staff never type it and it is NOT derived from `parents_union_type`.
 4. **Certificates print only** for `source = 'this_parish'` records with `book_verified_at` set.
 5. **Release requires** `claimant_type` and `id_verified = 1`. A representative also needs `representative_name`.

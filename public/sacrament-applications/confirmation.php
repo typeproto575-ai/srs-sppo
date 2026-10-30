@@ -166,6 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        $isSecretary = (current_user()['role'] ?? '') === 'secretary';
+        $channel     = $isSecretary ? 'onsite' : 'online';
+
         if (!$errors) {
             try {
                 $applicationId = null;
@@ -178,7 +181,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $email,
                     $baptizedHere,
                     $personId,
-                    &$applicationId
+                    $channel,
+                     &$applicationId
+                     
                 ): string {
                     $requestNo = generate_request_no($pdo, 'sacrament_applications');
                     $details = [
@@ -200,10 +205,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         "INSERT INTO sacrament_applications
                          (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
                           applicant_contact, status, details, requirements, privacy_consent_at)
-                         VALUES (?, 'online', 'confirmation', ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                         VALUES (?, ?, 'confirmation', ?, ?, ?, ?, 'new', ?, ?, NOW())"
                     );
                     $stmt->execute([
                         $requestNo,
+                        $channel,  
                         $personId,
                         $applicantName,
                         $email,
@@ -217,10 +223,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation application submitted for {$applicantName}");
                 notify($pdo, 'application_new', 'New sacrament application', "Confirmation application for {$applicantName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
-                record_public_submission($pdo, [$email], 'application_confirmation');
+                if ($channel === 'online') {
+                    record_public_submission($pdo, [$email], 'application_confirmation');
+                }
+
+                if ($isSecretary) {
+                    redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                    exit;
+                }
 
                 try {
-                    if (mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId)) {
+                    if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId)) {
                         log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                     }
                 } catch (Throwable $e) {

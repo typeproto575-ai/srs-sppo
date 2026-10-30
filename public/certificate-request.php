@@ -196,8 +196,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
         }
 
         if (empty($errors)) {
+            $isSecretary = (current_user()['role'] ?? '') === 'secretary';
+            $channel     = $isSecretary ? 'onsite' : 'online';
             $email = $values['requester_email'];
-            if (public_request_throttled($pdo, $email)) {
+            if ($channel === 'online' && public_request_throttled($pdo, $email)) {
                 $errors[] = 'We already received several requests from this email. Please wait a while, or visit the parish office.';
             } else {
                 $details = [];
@@ -234,9 +236,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
-                            $stmt = $pdo->prepare("INSERT INTO certificate_requests (request_no, channel, sacrament_type, subject_name, subject_details, requester_name, requester_relationship, requester_relationship_other, requester_email, requester_contact_number, purpose, purpose_other, privacy_consent_at, person_id, status) VALUES (?, 'online', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')");
+                            $stmt = $pdo->prepare("INSERT INTO certificate_requests (request_no, channel, sacrament_type, subject_name, subject_details, requester_name, requester_relationship, requester_relationship_other, requester_email, requester_contact_number, purpose, purpose_other, privacy_consent_at, person_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')");
                             $stmt->execute([
                                 $requestNo,
+                                $channel,
                                 $values['certificate_type'],
                                 $values['subject_name'],
                                 $subjectDetails,
@@ -265,17 +268,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
                 }
 
                 if ($inserted) {
-                    try {
-                        mail_certificate_request_received(
-                            $values['requester_email'],
-                            $values['requester_name'],
-                            $readableType,
-                            $requestNo,
-                            $pdo,
-                            $requestId
-                        );
-                    } catch (Throwable $e) {
-                        error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
+                    if ($channel === 'online') {
+                        try {
+                            mail_certificate_request_received(
+                                $values['requester_email'],
+                                $values['requester_name'],
+                                $readableType,
+                                $requestNo,
+                                $pdo,
+                                $requestId
+                            );
+                        } catch (Throwable $e) {
+                            error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
+                        }
+                    }
+                    if ($isSecretary) {
+                        redirect_to('/admin/requests/queue.php?added=' . rawurlencode($requestNo));
+                        exit;
                     }
                     $_SESSION['certificate_success'] = $requestNo;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
