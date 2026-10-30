@@ -53,7 +53,6 @@
  * RELATED FILES:
  *   - includes/record-lookup.php           (matching rules + search limiter)
  *   - includes/requester-mode.php          (self / someone-else choice)
- *   - public/track-request.php             (status lookup by tracking number)
  *   - admin/requests/queue.php             (secretary processes the request)
  *   - admin/certificates/generate.php      (uses matched_record_id)
  *

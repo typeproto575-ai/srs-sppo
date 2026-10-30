@@ -23,7 +23,7 @@ It is a **digital index and office workflow** for sacramental records that still
 1. **No monetary/fee/currency data anywhere.** No fields, tables, or logic for payment; the system never takes money and stores no amount. Payment is made **outside the system, before processing** — at the parish office, by contacting the parish, or through someone near the parish — and is recorded only as a **manual status**: the secretary marks it paid by hand (`paid_at` + `paid_by`; no amount). Online rows pause at `awaiting_payment` until the secretary records payment (`cert_request_payment_gate()` / `sacrament_application_payment_gate()` block progress until then).
 2. **Identity verification is in person.** No public form collects a photo or scan of a valid ID. The claimant presents ID at the office. This keeps ID images out of the database (RA 10173).
 3. **Eligibility/prerequisite checks flag, never auto-block.** Age ranges and prior-sacrament checks warn the secretary. They must not silently reject a submission. See `is_outside_eligibility()` in `includes/functions.php`.
-4. **No parishioner accounts.** Visitors never log in. They receive a tracking number and use that **plus the recorded email** on `public/track-request.php`.
+4. **No parishioner accounts.** Visitors never log in. The parish office contacts them using the contact details they provided.
 5. **No priest login.** Canonical clearance (banns, pre-Cana, interview) is data the secretary records after confirming with the priest outside the system. There is no `/priest/` app. (`audit_logs.role_snapshot` may still contain a leftover `'priest'` enum value from older rows; do not revive a priest user role.)
 6. **Certificates are printed and picked up in person.** No public download of the finished certificate, and no public certificate-verification page: a certificate carries no QR code or verification token.
 7. **`legitimacy` on `baptismal_records` is internal-only.** Never put it on public queries, certificates, or reports. New encodes store `NULL`; legacy rows may still have a value, editable only in the baptismal record form.
@@ -121,10 +121,9 @@ Password recovery: `admin/forgot-password.php` + `admin/reset-password.php`. Tok
 | `public/sacrament-applications/marriage.php` | Online Marriage application |
 | `public/sacrament-applications/confirmation.php` | Online Confirmation application |
 | `public/sacrament-applications/first-communion.php` | Online First Communion application |
-| `public/track-request.php` | Status by tracking number + email |
 | `public/correction-request.php` | Report an error on an issued certificate |
 
-Public nav: Home, How It Works, Requirements, Office Services, Track a Request or Application, Request Correction.
+Public nav: Home, How It Works, Requirements, Office Services, Request Correction.
 
 ---
 
@@ -176,7 +175,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 ## Conventions — follow these
 
 - **Public form insert:** validate server-side → `public_submission_allowed()` (Marriage: groom **and** bride emails) → one PDO transaction (shared row, `lastInsertId()`, extension rows) → `log_activity()` → `record_public_submission()` before commit → `retry_on_duplicate()` for tracking-number races. Copy `public/certificate-requests/baptismal.php`. Set `submission_channel` to `'online'` on public forms and `'onsite'` on walk-in encoders.
-- **Tracking numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament applications use `SPPO-APP-YYYY-` plus the token so public tracking can distinguish them. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
+- **Reference numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament applications use `SPPO-APP-YYYY-` plus the token so records can be distinguished. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
 - **Success panel:** `includes/submission-success.php`. Print there = confirmation page only, never a certificate.
 - **CSRF:** every POST uses `csrf_field()` / `csrf_verify()`.
 - **SQL:** PDO native prepared statements. Output: `e()`.

@@ -246,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="success-panel">
         <h1>Confirmation Application Submitted</h1>
         <?php
-        $successHeading = 'Keep this tracking number';
+        $successHeading = 'Keep this reference number';
         $successIsApplication = true;
         $successRequiredDocuments = ['Baptismal certificate from the origin parish if baptized elsewhere', 'Confirmation sponsor details'];
         require __DIR__ . '/../../includes/submission-success.php';

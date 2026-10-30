@@ -59,7 +59,6 @@ require_once __DIR__ . '/../includes/header.php';
         <p class="hero-sub"><?= e($settings['hero_subtitle_text']) ?></p>
         <div class="hero-actions">
             <a href="<?= $basePath ?>/public/requirements.php" class="btn">View Requirements &amp; Get Started</a>
-            <a href="<?= $basePath ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
         </div>
     </div>
     <aside class="portal-hero-note" aria-label="Important parish office note">
@@ -76,7 +75,7 @@ require_once __DIR__ . '/../includes/header.php';
             <p class="section-kicker">Parish office services</p>
             <h2 id="services-heading">What do you need?</h2>
         </div>
-        <p class="section-intro">Choose a service, send your information for parish review, and keep your tracking number. The parish office makes the final decision.</p>
+        <p class="section-intro">Choose a service and send your information for parish review. The parish office makes the final decision.</p>
     </div>
     <div class="service-grid">
         <a class="service-card" href="<?= $basePath ?>/public/requirements.php#application-preparation-heading">
@@ -90,12 +89,6 @@ require_once __DIR__ . '/../includes/header.php';
             <h3>Request a certificate copy</h3>
             <p>Request a certified copy of a baptism, confirmation, first communion, or marriage record.</p>
             <span class="service-link">Request a certificate copy &rarr;</span>
-        </a>
-        <a class="service-card" href="<?= $basePath ?>/public/track-request.php">
-            <span class="service-number">03</span>
-            <h3>Track an online submission</h3>
-            <p>Already submitted online or received a tracking number from the secretary? Check its current processing stage with your email address.</p>
-            <span class="service-link">Track a request &rarr;</span>
         </a>
     </div>
 </section>

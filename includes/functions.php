@@ -4,7 +4,7 @@
  * SRS-SPPO SHARED HELPER FUNCTIONS
  * =====================================================================
  * Purpose: One place for small utilities used across the whole system:
- *   - generate_tracking_number() : unique request tracking codes
+ *   - generate_reference_number() : unique request reference codes
  *   - calculate_age()            : age from a birthdate
  *   - is_outside_eligibility()   : age-range flagging for sacraments
  *   - log_activity()             : audit-trail writer
@@ -21,7 +21,7 @@ require_once __DIR__ . '/../config/environment.php';
 require_once __DIR__ . '/mail.php';
 
 /**
- * Generate a tracking number with a random, non-sequential suffix.
+ * Generate a reference number with a random, non-sequential suffix.
  */
 function generate_tracking_number(PDO $pdo, string $table = 'certificate_requests'): string
 {
@@ -154,7 +154,7 @@ function application_queue_next_statuses(string $status): array
 
 /**
  * True when an exception is a MySQL duplicate-key error (driver code 1062).
- * That is the signal that a generated tracking number lost a race with a
+ * That is the signal that a generated reference number lost a race with a
  * concurrent submission, so the insert should be retried with a fresh number.
  */
 function is_duplicate_key_error(Exception $e): bool
@@ -176,7 +176,7 @@ function is_duplicate_key_error(Exception $e): bool
  *
  * @param PDO      $pdo         Database connection
  * @param callable $body        Closure performing the inserts (returns the
- *                              tracking number, or any value, on success)
+ *                              reference number, or any value, on success)
  * @param int      $maxAttempts Total attempts including the first (default 5)
  * @return mixed                Whatever the body returned on success
  * @throws Exception            The last error if all attempts collided, or
@@ -212,7 +212,7 @@ function retry_on_duplicate(PDO $pdo, callable $body, int $maxAttempts = 5): mix
     }
 
     // Every attempt collided — surface the final duplicate-key error.
-    throw $lastError ?? new Exception('Duplicate tracking number retries exhausted.');
+    throw $lastError ?? new Exception('Duplicate reference number retries exhausted.');
 }
 
 /**
@@ -294,7 +294,7 @@ function record_attempt(PDO $pdo, string $identifier): void
  * Check whether an identifier has too many recent failed attempts.
  *
  * @param PDO    $pdo           Database connection
- * @param string $identifier    Username (login) or tracking+email (track-request) or IP
+ * @param string $identifier    Username (login) or reference+email or IP
  * @param int    $maxAttempts   Maximum allowed attempts within the window
  * @param int    $windowMinutes Time window in minutes
  * @return bool True if the identifier is rate-limited (too many attempts)

@@ -100,12 +100,7 @@ the system:
 2. Open `/public/certificate-request.php`, then choose a certificate type.
    The actual Baptism form is `/public/certificate-requests/baptismal.php`.
    Show its displayed requirements before submission.
-3. Open `/public/track-request.php` and look up
-   `SPPO-2026-CERTDEFENSABCDEF` using `eva.family@demo.test` to demonstrate
-   status tracking. The tracker requires both tracking number and submission
-   email. Public tracking reflects the stored workflow status; it does not
-   promise that payment or approval happens automatically.
-4. Open `/public/sacrament-application.php` and follow a link to one of the
+3. Open `/public/sacrament-application.php` and follow a link to one of the
    forms under `/public/sacrament-applications/`. Explain that public
    submissions are stored as intake applications for staff review, separate
    from the official registers.

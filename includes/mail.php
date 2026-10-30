@@ -140,8 +140,8 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $body = "Dear Parishioner,\r\n\r\n"
         . "The parish office has recorded your " . $kind . ".\r\n\r\n"
-        . "Your tracking number is: " . $trackingNumber . "\r\n"
-        . "To check the status, use this number together with this email address on the parish tracking page.\r\n\r\n"
+        . "Your reference number is: " . $trackingNumber . "\r\n"
+        . "Quote this reference number when contacting the parish office.\r\n\r\n"
         . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
         . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
@@ -160,11 +160,11 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
             . "Payment is made outside this website; the office never takes payment online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once your payment is recorded.";
     }
     $body = "Dear Parishioner,\r\n\r\n"
-        . "This is an update on your " . $kind . " (tracking number: " . $trackingNumber . ").\r\n\r\n"
+        . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
         . "Current stage: " . $humaneStatus . "\r\n"
         . $paymentNote . "\r\n\r\n"
         . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
-        . "If your certificate is ready for pickup, please visit the parish office with your tracking number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
+        . "If your certificate is ready for pickup, please visit the parish office with your reference number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);
 }
@@ -192,8 +192,8 @@ function mail_certificate_request_received(
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $body = "Dear " . $requesterName . ",\r\n\r\n"
         . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
-        . "Your tracking number is: " . $requestNo . "\r\n"
-        . "To check the status, use this number together with this email address on the parish tracking page.\r\n\r\n"
+        . "Your reference number is: " . $requestNo . "\r\n"
+        . "Quote this reference number when contacting the parish office.\r\n\r\n"
         . "Next step: visit the parish office, give your full name at the counter, and pay. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When you pick it up, bring:\r\n"

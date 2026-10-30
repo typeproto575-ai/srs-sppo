@@ -335,7 +335,7 @@ function retention_execute(PDO $pdo, ?int $actorId): array
             }
         }
 
-        // Counts-only audit line. No names, emails, tracking numbers or IPs.
+        // Counts-only audit line. No names, emails, reference numbers or IPs.
         $summary = [];
         foreach ($done as $bucket => $n) {
             $summary[] = $bucket . '=' . (int) $n;

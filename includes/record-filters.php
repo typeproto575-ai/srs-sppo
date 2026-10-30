@@ -89,7 +89,7 @@ function rf_default_ranges(): array
 function rf_parse(array $config): array
 {
     $search = trim($_GET['q'] ?? '');
-    // Tracking numbers are generated uppercase; normalize tracking-shaped searches without changing name searches.
+    // Reference numbers are generated uppercase; normalize reference-shaped searches without changing name searches.
     if (preg_match('/^SPPO(-[A-Z]+)?-\d{4}-\d{6}(-[A-Z0-9]{4,6})?$/i', $search)) {
         $search = strtoupper($search);
     }

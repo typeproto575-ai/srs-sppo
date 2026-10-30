@@ -5,12 +5,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/mail.php';
 
 $basePath = $basePath ?? base_path();
-$trackMode = ($_GET['track'] ?? '') === '1';
-$pageTitle = $trackMode ? 'Track a Request or Application' : 'Request a Certificate';
+$pageTitle = 'Request a Certificate';
 $trackingNumber = null;
-$trackAttempted = false;
-$trackResult = null;
-$trackError = '';
 
 if (($_GET['person_lookup'] ?? '') === '1') {
     header('Content-Type: application/json; charset=utf-8');
@@ -79,50 +75,6 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         echo json_encode(['error' => 'Person search is temporarily unavailable. Please try again later.']);
     }
     exit;
-}
-
-$trackValues = ['request_no' => '', 'email' => ''];
-if ($trackMode && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $trackAttempted = true;
-    if (csrf_verify()) {
-        $trackValues['request_no'] = trim(is_string($_POST['request_no'] ?? null) ? $_POST['request_no'] : '');
-        $trackValues['email'] = trim(is_string($_POST['email'] ?? null) ? $_POST['email'] : '');
-        $now = time();
-        $attempts = $_SESSION['public_tracking_attempts'] ?? [];
-        $attempts = is_array($attempts) ? array_values(array_filter($attempts, static fn($time) => is_int($time) && $time > $now - 900)) : [];
-        if (count($attempts) >= 20) {
-            http_response_code(429);
-            $trackError = 'Search limit reached. Please wait before trying again.';
-        } else {
-            $attempts[] = $now;
-            $_SESSION['public_tracking_attempts'] = $attempts;
-        }
-        if ($trackError === '' && $trackValues['request_no'] !== '' && $trackValues['email'] !== ''
-            && strlen($trackValues['request_no']) <= 20
-            && filter_var($trackValues['email'], FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare(
-                "SELECT request_no, sacrament_type, status, requirements, 'application' AS request_kind,
-                        NULL AS requester_relationship
-                 FROM sacrament_applications
-                 WHERE request_no = ? AND LOWER(applicant_email) = LOWER(?) AND channel = 'online'
-                 UNION ALL
-                 SELECT request_no, sacrament_type, status, NULL AS requirements, 'certificate' AS request_kind,
-                        requester_relationship
-                 FROM certificate_requests
-                 WHERE request_no = ? AND LOWER(requester_email) = LOWER(?) AND channel = 'online'
-                 LIMIT 1"
-            );
-            $stmt->execute([
-                $trackValues['request_no'],
-                $trackValues['email'],
-                $trackValues['request_no'],
-                $trackValues['email'],
-            ]);
-            $trackResult = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        }
-    } else {
-        $trackError = 'Your session expired. Refresh the page and try again.';
-    }
 }
 
 $submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
@@ -336,103 +288,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
-<?php if ($trackMode): ?>
-<?php
-$statusLabels = [
-    'new' => 'Submitted / Pending Review',
-    'reviewing' => 'Under Review',
-    'requirements_pending' => 'Action Required: Documents Missing',
-    'approved' => 'Approved',
-    'scheduled' => 'Scheduled',
-    'completed' => 'Completed / Issued',
-    'rejected' => 'Rejected',
-    'matched' => 'Under Processing',
-    'for_signature' => 'Pending Priest Signature',
-    'ready' => 'Ready for Pickup',
-    'released' => 'Completed / Issued',
-];
-$sacramentLabels = [
-    'baptism' => 'Baptism',
-    'baptismal' => 'Baptism',
-    'first_communion' => 'First Communion',
-    'confirmation' => 'Confirmation',
-    'marriage' => 'Marriage',
-];
-$requirementLabels = [
-    'psa_birth_certificate' => 'Child’s PSA Birth Certificate',
-    'origin_baptismal_certificate' => 'Original Baptismal Certificate from the origin parish',
-    'catechism_completion' => 'Proof of catechetical formation',
-    'confirmation_sponsor_details' => 'Confirmation sponsor details',
-    'psa_cenomar_groom' => 'Groom’s PSA CENOMAR',
-    'psa_cenomar_bride' => 'Bride’s PSA CENOMAR',
-    'origin_baptismal_certificate_groom' => 'Groom’s Baptismal Certificate',
-    'origin_baptismal_certificate_bride' => 'Bride’s Baptismal Certificate',
-    'transfer_letter' => 'Origin parish transfer or permission letter when either applicant’s records are from another parish',
-    'pre_cana_seminar' => 'Pre-Cana seminar requirements',
-];
-$requirementsBySacrament = [
-    'baptism' => ['psa_birth_certificate'],
-    'first_communion' => ['origin_baptismal_certificate', 'catechism_completion'],
-    'confirmation' => ['origin_baptismal_certificate', 'confirmation_sponsor_details'],
-    'marriage' => [
-        'psa_cenomar_groom',
-        'psa_cenomar_bride',
-        'origin_baptismal_certificate_groom',
-        'origin_baptismal_certificate_bride',
-        'transfer_letter',
-        'pre_cana_seminar',
-    ],
-];
-$requiredDocuments = ['Valid ID matching the person or applicant record'];
-if ($trackResult && $trackResult['request_kind'] === 'application') {
-    $applicationRequirements = json_decode((string) ($trackResult['requirements'] ?? ''), true);
-    $applicationRequirements = is_array($applicationRequirements) ? $applicationRequirements : [];
-    foreach ($requirementsBySacrament[$trackResult['sacrament_type']] ?? [] as $key) {
-        $requirement = $applicationRequirements[$key] ?? [];
-        $status = is_array($requirement) ? ($requirement['status'] ?? 'not_received') : 'not_received';
-        if (!in_array($status, ['received', 'verified', 'not_applicable'], true)) {
-            $requiredDocuments[] = $requirementLabels[$key];
-        }
-    }
-} elseif ($trackResult) {
-    if ($trackResult['requester_relationship'] === 'other') {
-        $requiredDocuments[] = 'For an authorized representative: signed authorization letter, representative’s valid ID, and a copy of the named person’s valid ID';
-    }
-    $requiredDocuments[] = 'Original supporting document and origin parish transfer or permission letter when requested for an external record';
-}
-?>
-<section class="card tracking-panel">
-    <h1>Track a Request or Application</h1>
-    <p>Enter the tracking number and the email address used when submitting. We show only the current status.</p>
-    <?php if ($trackError !== ''): ?><div class="alert alert-error" role="alert"><?= e($trackError) ?></div><?php endif; ?>
-    <?php if ($trackAttempted && $trackError === ''): ?>
-        <?php if ($trackResult): ?>
-            <div class="tracking-result" role="status">
-                <h2><?= e($sacramentLabels[$trackResult['sacrament_type']] ?? 'Parish request') ?></h2>
-                <p><strong>Tracking number:</strong> <?= e($trackResult['request_no']) ?></p>
-                <p><strong>Status:</strong> <?= e($statusLabels[$trackResult['status']] ?? 'Under Review') ?></p>
-                <h3>Documents to prepare</h3>
-                <ul><?php foreach ($requiredDocuments as $document): ?><li><?= e($document) ?></li><?php endforeach; ?></ul>
-            </div>
-        <?php else: ?>
-            <p class="alert alert-info" role="status">We could not find a matching request. Check the reference number and submission email, then try again.</p>
-        <?php endif; ?>
-    <?php endif; ?>
-    <form method="post" action="<?= e($basePath . '/public/track-request.php') ?>" class="stacked-form">
-        <?= csrf_field() ?>
-        <label for="track-request-no">Tracking number</label>
-        <input id="track-request-no" name="request_no" maxlength="20" required value="<?= e($trackValues['request_no'] ?: (is_string($_GET['request_no'] ?? null) ? $_GET['request_no'] : '')) ?>">
-        <label for="track-email">Submission email</label>
-        <input type="email" id="track-email" name="email" maxlength="150" required value="<?= e($trackValues['email']) ?>">
-        <button class="btn" type="submit">Check status</button>
-    </form>
-</section>
-<?php elseif ($submitted): ?>
+<?php if ($submitted): ?>
 <section class="card">
     <h1>Thank you</h1>
     <?php if ($trackingNumber): ?>
         <?php
-        $successHeading = 'Keep this tracking number';
+        $successHeading = 'Keep this reference number';
         $successIsApplication = false;
         $successRequiredDocuments = [
             'Valid ID matching the person named on the record',

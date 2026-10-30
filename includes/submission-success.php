@@ -6,12 +6,12 @@
  * Purpose: The "your request was received" confirmation shown after any
  *          public form (certificate request or sacrament application)
  *          saves successfully. Deliberately more prominent than an
- *          inline alert: the tracking number is the parishioner's only
+ *          inline alert: the reference number is the parishioner's only
  *          key to their request, so the panel makes it easy to copy,
  *          email, or photograph before navigating away.
  *
  * Contract (set by the calling page before including):
- *   $trackingNumber  - (required) the generated public tracking number
+ *   $trackingNumber  - (required) the generated public reference number
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
  *   $successIsApplication - (optional) show sacrament-application next steps
@@ -27,7 +27,7 @@
  * =====================================================================
  */
 
-// Guard: only renders when a tracking number actually exists.
+// Guard: only renders when a reference number actually exists.
 if (empty($trackingNumber)) {
     return;
 }
@@ -42,7 +42,7 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <p class="submission-tracking" id="submission-tracking-number"><?= e($trackingNumber) ?></p>
-                <button type="button" class="btn btn-secondary btn-small" id="copy-tracking-btn">Copy Tracking Number</button>
+                <button type="button" class="btn btn-secondary btn-small" id="copy-tracking-btn">Copy Reference Number</button>
             </div>
 
             <div class="submission-next-steps">
@@ -72,8 +72,7 @@ $basePath       = $basePath ?? base_path();
                 </section>
             <?php endif; ?>
 
-            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Keep this tracking number and the email address you used to track its status.</p>
-            <a class="btn btn-secondary" href="<?= e($basePath . '/public/track-request.php?request_no=' . rawurlencode((string) $trackingNumber)) ?>">Track this request</a>
+            <p class="field-hint">We will use the email address you provided for request updates when email delivery is available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. Keep this reference number for your records.</p>
         </div>
         <script>
         (function () {
@@ -85,7 +84,7 @@ $basePath       = $basePath ?? base_path();
                     var text = document.getElementById('submission-tracking-number').textContent.trim();
                     function done(ok) {
                         btn.textContent = ok ? 'Copied!' : 'Copy failed';
-                        setTimeout(function () { btn.textContent = 'Copy Tracking Number'; }, 2000);
+                        setTimeout(function () { btn.textContent = 'Copy Reference Number'; }, 2000);
                     }
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallback(text)); });

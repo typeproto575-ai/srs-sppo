@@ -63,7 +63,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="purposes">
             <h2 class="legal-clause__title">Why We Use Your Data</h2>
             <ol class="legal-subclauses">
-                <li>To receive an online pre-application or an onsite request/application and issue a tracking number.</li>
+                <li>To receive an online pre-application or an onsite request/application and issue a reference number.</li>
                 <li>To review and verify submitted details against the parish register during staff review. Public pages never reveal whether a register record exists.</li>
                 <li>To contact you about status, missing information, and pickup.</li>
                 <li>To keep parish sacramental records.</li>

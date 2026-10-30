@@ -131,8 +131,7 @@ require_once __DIR__ . '/../includes/header.php';
     <h2 id="what-to-bring-heading">When you visit the office</h2>
     <ul class="req-list">
         <li>Bring only the documents the parish office asks you to provide.</li>
-        <li>Bring your tracking number when contacting the office or collecting a certificate.</li>
-        <li>Use the same email address with your tracking number to check an online request.</li>
+        <li>Quote your reference number (shown on your submission confirmation) when contacting the office.</li>
     </ul>
     <p class="field-hint">Document requirements and schedules may change. The parish secretary's confirmation is the final guide for your case.</p>
 </section>
@@ -143,7 +142,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="hero-actions">
         <a href="https://www.facebook.com/profile.php?id=61575322479373" class="btn" target="_blank" rel="noopener noreferrer">Visit our Facebook Page</a>
         <a href="<?= e($basePath) ?>/public/how-it-works.php" class="btn btn-secondary">How It Works</a>
-        <a href="<?= e($basePath) ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
     </div>
 </section>
 

@@ -316,7 +316,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
     <div class="success-panel">
         <h1>Application Submitted</h1>
         <?php
-        $successHeading = 'Keep this tracking number';
+        $successHeading = 'Keep this reference number';
         $successIsApplication = true;
         $successRequiredDocuments = ['Child’s PSA Birth Certificate', 'Valid ID for the parent or guardian'];
         require __DIR__ . '/../../includes/submission-success.php';

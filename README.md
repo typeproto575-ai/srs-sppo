@@ -34,7 +34,7 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    database. For a small, non-resetting walkthrough dataset instead, import
    `database/seed_process_demo.sql` after the current schema is installed.
    It adds clearly labeled fictional records and is safe to rerun without
-   resetting their workflow statuses. Its tracking numbers are
+   resetting their workflow statuses. Its reference numbers are
    `DEMO-BAP-001`, `DEMO-CONF-001`, `DEMO-FC-001`, `DEMO-MARR-001`, and
    `DEMO-CERT-001`. Match Eva Demo Santos using birth date `2014-06-15`.
    For a comprehensive, still-additive defense dataset, import
@@ -87,7 +87,7 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 After importing `database/seed_process_demo.sql` on a local/demo database:
 
 1. Open **Admin → Requests → Online Submissions** to see all five `DEMO-*`
-   tracking numbers.
+   reference numbers.
 2. In the application queue, match `DEMO-CONF-001` and `DEMO-FC-001` to
    **Eva Demo Santos**, born `2014-06-15`.
 3. Match both applicants separately on `DEMO-MARR-001`: **Marco Demo Reyes**
@@ -128,8 +128,7 @@ srs-sppo/
 │   ├── certificate-requests/     one form per sacrament (Baptismal, Confirmation, First Communion, Marriage)
 │   ├── sacrament-applications/   Baptism, Confirmation, First Communion, Marriage
 │   ├── how-it-works.php          explained workflow for parishioners
-│   ├── requirements.php          documentary requirements per sacrament
-│   └── track-request.php         look up status by tracking number + email
+│   └── requirements.php          documentary requirements per sacrament
 ├── admin/                        secretary only, login required
 │   ├── login.php / logout.php / dashboard.php
 │   ├── requests/                 queues + walk-in encoding + marriage detail page
