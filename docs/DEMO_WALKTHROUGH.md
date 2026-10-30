@@ -97,9 +97,10 @@ the system:
 
 1. Open `/public/index.php` and point out the public announcements, office
    details, certificate requests, and sacrament applications.
-2. Open `/public/certificate-request.php`, then choose a certificate type.
-   The actual Baptism form is `/public/certificate-requests/baptismal.php`.
-   Show its displayed requirements before submission.
+2. Open `/public/certificate-request.php?type=baptism` to see the unified
+   certificate form with Baptism selected. Other supported types are
+   `first_communion`, `confirmation`, and `marriage`. Show its displayed
+   requirements before submission.
 3. Open one of the forms under `/public/sacrament-applications/`. Explain that public
    submissions are stored as intake applications for staff review, separate
    from the official registers.

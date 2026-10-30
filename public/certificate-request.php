@@ -101,9 +101,21 @@ $values = [
     'purpose' => '',
     'purpose_other' => '',
 ];
+$certificateTypes = [
+    'baptism' => 'Baptism',
+    'first_communion' => 'First Communion',
+    'confirmation' => 'Confirmation',
+    'marriage' => 'Marriage',
+];
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $requestedType = $_GET['type'] ?? null;
+    if (is_string($requestedType) && isset($certificateTypes[$requestedType])) {
+        $values['certificate_type'] = $requestedType;
+    }
+}
 $errors = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
     if (!csrf_verify()) {
         $errors[] = 'Your session expired. Please refresh the page and try again.';
     } else {
@@ -121,16 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
             exit;
         }
 
-        $typeLabels = [
-            'baptism' => 'Baptism',
-            'first_communion' => 'First Communion',
-            'confirmation' => 'Confirmation',
-            'marriage' => 'Marriage',
-        ];
         $purposeLabels = ['School', 'Employment', 'Passport', 'Marriage', 'Personal records', 'Other'];
         $relationships = ['self', 'parent', 'sibling', 'child', 'other'];
 
-        if (!isset($typeLabels[$values['certificate_type']])) {
+        if (!isset($certificateTypes[$values['certificate_type']])) {
             $errors[] = 'Choose a certificate type.';
         }
         if ($values['subject_name'] === '') {
@@ -228,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted && !$trackMode) {
                 $purposeValue = $values['purpose'];
                 $purposeOther = ($values['purpose'] === 'Other') ? $values['purpose_other'] : null;
                 $requesterContact = ($values['requester_contact_number'] !== '') ? $values['requester_contact_number'] : null;
-                $readableType = $typeLabels[$values['certificate_type']];
+                $readableType = $certificateTypes[$values['certificate_type']];
 
                 $inserted = false;
                 $requestId = null;
@@ -332,10 +338,9 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="certificate_type">Certificate type *</label>
         <select id="certificate_type" name="certificate_type" required>
             <option value="">-- Select --</option>
-            <option value="baptism" <?= $values['certificate_type'] === 'baptism' ? 'selected' : '' ?>>Baptism</option>
-            <option value="first_communion" <?= $values['certificate_type'] === 'first_communion' ? 'selected' : '' ?>>First Communion</option>
-            <option value="confirmation" <?= $values['certificate_type'] === 'confirmation' ? 'selected' : '' ?>>Confirmation</option>
-            <option value="marriage" <?= $values['certificate_type'] === 'marriage' ? 'selected' : '' ?>>Marriage</option>
+            <?php foreach ($certificateTypes as $type => $label): ?>
+                <option value="<?= e($type) ?>" <?= $values['certificate_type'] === $type ? 'selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
         </select>
 
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>

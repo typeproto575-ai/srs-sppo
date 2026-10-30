@@ -1125,8 +1125,7 @@ html, body {
 
 
 /* =====================================================================
-   Certificate request flow (find record -> confirm -> contact)
-   Used by public/certificate-requests/baptismal.php.
+   Certificate request form steps and progress indicators.
    ===================================================================== */
 .request-context { margin: 0 0 1rem; color: #6b6355; font-size: 0.9rem; }
 .request-steps {

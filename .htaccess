@@ -80,7 +80,14 @@ Options -Indexes
 # Preserve the legacy online-requests URL as the online certificate queue.
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^public/track-request\.php$ public/certificate-request.php?track=1 [L,QSA]
+    RewriteCond %{REQUEST_URI} ^(.*/)public/certificate-requests/baptismal\.php$
+    RewriteRule ^public/certificate-requests/baptismal\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1public/certificate-request.php?type=baptism [R=302,L]
+    RewriteCond %{REQUEST_URI} ^(.*/)public/certificate-requests/first-communion\.php$
+    RewriteRule ^public/certificate-requests/first-communion\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1public/certificate-request.php?type=first_communion [R=302,L]
+    RewriteCond %{REQUEST_URI} ^(.*/)public/certificate-requests/confirmation\.php$
+    RewriteRule ^public/certificate-requests/confirmation\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1public/certificate-request.php?type=confirmation [R=302,L]
+    RewriteCond %{REQUEST_URI} ^(.*/)public/certificate-requests/marriage\.php$
+    RewriteRule ^public/certificate-requests/marriage\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1public/certificate-request.php?type=marriage [R=302,L]
     RewriteCond %{REQUEST_URI} ^(.*/)admin/requests/online-requests\.php$
     RewriteRule ^admin/requests/online-requests\.php$ %{REQUEST_SCHEME}://%{HTTP_HOST}%1admin/requests/queue.php?channel=online [R=302,L,QSA]
 </IfModule>

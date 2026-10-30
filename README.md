@@ -125,7 +125,6 @@ srs-sppo/
 ├── public/                       parishioner-facing, no login required
 │   ├── index.php                 landing page with FullCalendar.js calendar + announcements
 │   ├── certificate-request.php   step 1: choose request type + sacrament
-│   ├── certificate-requests/     one form per sacrament (Baptismal, Confirmation, First Communion, Marriage)
 │   ├── sacrament-applications/   Baptism, Confirmation, First Communion, Marriage
 │   ├── how-it-works.php          explained workflow for parishioners
 │   └── requirements.php          documentary requirements per sacrament

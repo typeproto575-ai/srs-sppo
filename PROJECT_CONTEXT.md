@@ -75,7 +75,7 @@ Every sacrament type uses **shared table + extension table**. New sacrament-spec
 
 ## Per-sacrament specifics
 
-**Baptismal** — no age prerequisite. Public certificate form (`public/certificate-requests/baptismal.php`) is the reference pattern for validation, transaction insert, tracking numbers, rate limits, and success panel. Public application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
+**Baptismal** — no age prerequisite. Public certificate requests use the unified form at `public/certificate-request.php` and are stored in the shared v2 `certificate_requests` table. Public application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
 
 **Confirmation** — certificate request and online application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Age range in `sacrament_eligibility_settings` is a **placeholder (12–18)** until the priest confirms it.
 
@@ -115,7 +115,7 @@ Password recovery: `admin/forgot-password.php` + `admin/reset-password.php`. Tok
 | `public/requirements.php` | Documentary requirements |
 | `public/terms.php` | Terms |
 | `public/certificate-request.php` | Hub for four certificate forms |
-| `public/certificate-requests/*.php` | Online certificate intake |
+| `public/certificate-request.php` | Unified online certificate intake for all four sacraments |
 | `public/sacrament-applications/baptismal.php` | Online Baptism application |
 | `public/sacrament-applications/marriage.php` | Online Marriage application |
 | `public/sacrament-applications/confirmation.php` | Online Confirmation application |
@@ -173,7 +173,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 ## Conventions — follow these
 
-- **Public form insert:** validate server-side → `public_submission_allowed()` (Marriage: groom **and** bride emails) → one PDO transaction (shared row, `lastInsertId()`, extension rows) → `log_activity()` → `record_public_submission()` before commit → `retry_on_duplicate()` for tracking-number races. Copy `public/certificate-requests/baptismal.php`. Set `submission_channel` to `'online'` on public forms and `'onsite'` on walk-in encoders.
+- **Public certificate intake:** `public/certificate-request.php` validates the request and inserts one row into the v2 `certificate_requests` table. The legacy per-sacrament URLs redirect to this form with a supported type preselected.
 - **Reference numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament applications use `SPPO-APP-YYYY-` plus the token so records can be distinguished. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
 - **Success panel:** `includes/submission-success.php`. Print there = confirmation page only, never a certificate.
 - **CSRF:** every POST uses `csrf_field()` / `csrf_verify()`.
