@@ -54,7 +54,7 @@
  *   - includes/record-lookup.php           (matching rules + search limiter)
  *   - includes/requester-mode.php          (self / someone-else choice)
  *   - admin/requests/queue.php             (secretary processes the request)
- *   - admin/certificates/generate.php      (uses matched_record_id)
+ *   - admin/certificates/sacramental-certificate.php (certificate rendering)
  *
  * @package     SRS-SPPO
  * @subpackage  Public — Certificate Requests

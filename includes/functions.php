@@ -1864,7 +1864,7 @@ function generate_uuidv4(): string
 // printing on an actual certificate, matching the parish's existing
 // baptismal-certificate convention: the person(s) being certified in ALL
 // CAPS, everyone else (parents, minister, sponsors) in Title Case.
-// Used by admin/certificates/generate.php and admin/certificates/baptismal-certificate.php.
+// Used by admin/certificates/sacramental-certificate.php and admin/certificates/baptismal-certificate.php.
 
 /**
  * Title-case a name for certificate printing, keeping common Filipino/Spanish

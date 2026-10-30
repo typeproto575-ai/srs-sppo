@@ -2,7 +2,7 @@
 
 Read this before generating any code. It is the current operating model of the running PHP + MySQL app, not a history of every design pass. If a request conflicts with something here, flag it rather than silently overriding it.
 
-Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may be stale. Prefer this file plus the PHP pages and `database/srs_sppo_schema.sql`.
+Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may be stale. Prefer this file plus the PHP pages and `database/v2/schema.sql`.
 
 ---
 
@@ -116,7 +116,6 @@ Password recovery: `admin/forgot-password.php` + `admin/reset-password.php`. Tok
 | `public/terms.php` | Terms |
 | `public/certificate-request.php` | Hub for four certificate forms |
 | `public/certificate-requests/*.php` | Online certificate intake |
-| `public/sacrament-application.php` | Hub for four sacrament applications |
 | `public/sacrament-applications/baptismal.php` | Online Baptism application |
 | `public/sacrament-applications/marriage.php` | Online Marriage application |
 | `public/sacrament-applications/confirmation.php` | Online Confirmation application |
@@ -164,7 +163,7 @@ Structured name parts (`child_first_name`, etc.) were added for records; keep `*
 1. Request created (online or walk-in).
 2. Secretary reviews requirements (`workflow_requirements` checklist is status/notes only — **no file storage**).
 3. Match to a register row (`matched_record_id` on the extension table; reverse `certificate_request_id` on the record). Match name mismatch is **warn-only**, never a hard block.
-4. Generate/preview in `admin/certificates/generate.php`.
+4. Generate/preview in the certificate request detail flow.
 5. Print lifecycle on `certificate_generation_log`: generated → printed → released. Claimant name/relationship/notes and ID-verified flag are recorded at the counter (`migrations/009`, `010`). Regenerating can supersede an older log row.
 6. Pickup is in person. Status moves through the certificate enum (includes review, requirements, onsite verification, processing, ready, released, rejected, cancelled). **Payment (online):** once a register match is found, an online request is set to `awaiting_payment`; it cannot advance to processing until the secretary records payment by hand (the payment gates above). Walk-ins pay at the counter and can be marked paid at encode time.
 
@@ -203,7 +202,7 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 ## Schema source of truth
 
-Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that, then seed if needed (`database/seed_demo_data.sql`).
+Canonical create script: `database/v2/schema.sql`. Fresh installs use that, then seed if needed (`database/v2/seed_demo.sql`).
 
 Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes.
 

@@ -127,7 +127,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     return implode("\n", $out);
 }
 
-/** Backward-compatible entry point used by admin/certificates/generate.php. */
+/** Backward-compatible entry point for certificate rendering. */
 function sacramental_certificate_html(string $type, array $source, array $req, string $basePath): string
 {
     return '<div class="blank-stock-print-wrapper sacramental-stock-print-wrapper" aria-label="Sacramental certificate preview">'

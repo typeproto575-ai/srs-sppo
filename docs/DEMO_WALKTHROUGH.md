@@ -100,17 +100,15 @@ the system:
 2. Open `/public/certificate-request.php`, then choose a certificate type.
    The actual Baptism form is `/public/certificate-requests/baptismal.php`.
    Show its displayed requirements before submission.
-3. Open `/public/sacrament-application.php` and follow a link to one of the
-   forms under `/public/sacrament-applications/`. Explain that public
+3. Open one of the forms under `/public/sacrament-applications/`. Explain that public
    submissions are stored as intake applications for staff review, separate
    from the official registers.
 
 ### 2. Staff review and person matching
 
 1. Sign in at `/admin/login.php`.
-2. Open **Requests → Online Submissions**
-   (`/admin/requests/online-requests.php`) or **Requests → Sacrament
-   Applications** (`/admin/requests/applications-queue.php`).
+2. Open **Requests → Sacrament Applications**
+   (`/admin/requests/applications-queue.php`).
 3. Find `SPPO-APP-2026-CNFDEFENSABCDEFG` and use the person matcher to search for **Emma Demo
    Reyes**, birth date `2012-02-11`; select the matching master person. For
    `SPPO-APP-2026-MARRDEFENSABCDEF`, match groom **Marco Demo Reyes** and bride **Nina Demo
@@ -130,16 +128,11 @@ the system:
    states only for the fictional sample. The general checklist table supports
    application rows too, but sacrament application screens currently use
    their own prerequisite fields rather than this generic checklist UI.
-3. Use `SPPO-2026-CERTDEFENSABCDEJ` to show the ready-for-pickup generation
-   history. Open
-   **Certificates → Print / Pickup History**
-   (`/admin/certificates/history.php`) and record a fictional claimant plus ID
-   verification if you want to demonstrate release. The released sample
+3. Use `SPPO-2026-CERTDEFENSABCDEJ` to show ready-for-pickup printing from
+   the request detail page. The released sample
    `SPPO-2026-CERTDEFENSABCDEK` is available for viewing without changing it.
-4. Certificate preview/generation is at
-   `/admin/certificates/generate.php`. Staff must complete the request review
-   and approval prerequisites before a certificate is eligible for
-   generation.
+4. Certificate printing is available from the request detail page after review
+   and approval prerequisites are met.
 
 ### 4. One-click register prefill
 
@@ -153,14 +146,14 @@ the system:
    reference, then save only if performing a fresh encoding demonstration.
 
 The placeholder `<application-id>` is the numeric ID shown in the staff
-application queue or database; it is not the tracking number. Do not create a
+application queue or database; it is not the reference number. Do not create a
 second official record merely to show the prefilled form.
 
 ### 5. Master profile and linked records
 
-1. Open **Records → Persons**
-   (`/admin/system/persons.php`) and find **Eva Demo Santos**, born
-   `2014-06-15`.
+1. Open a person profile such as
+   `/admin/system/person-profile.php?id=<person-id>` and find **Eva Demo
+   Santos**, born `2014-06-15`.
 2. Open her profile at `/admin/system/person-profile.php?id=<person-id>`.
    Show the linked Baptism, First Communion, and Confirmation entries.
 3. Point out the available action for a missing sacrament and how it can start

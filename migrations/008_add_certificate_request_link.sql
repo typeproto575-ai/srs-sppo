@@ -7,7 +7,7 @@
 -- the *certificate_requests extension tables (the forward link), making
 -- the request<->record relationship bidirectional.
 --
--- The link is set at match time (admin/certificates/generate.php), NOT at
+-- The link is set at match time (certificate request detail flow), NOT at
 -- record-encode time, because records are encoded independently from the
 -- physical logbook and may have no associated request at all.
 -- =====================================================================

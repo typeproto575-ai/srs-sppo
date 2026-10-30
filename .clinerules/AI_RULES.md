@@ -6,7 +6,7 @@ Place this same file at `.clinerules` (Cline) and `.github/copilot-instructions.
 
 Saint Patrick's Parish Schedule and Record System. Native PHP 8, MySQL/MariaDB (XAMPP locally), HTML/CSS/JS.
 Goal: the secretary must be **faster at the counter than the paper logbook**. If a change adds typing, clicks or screens, it is probably wrong.
-Work is local first (branch `rebuild-v2`). The hosted site (`stpatricksparish.me`) is updated later, not now.
+Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me`) is updated later, not now.
 
 ## 2. Source of truth
 
@@ -91,4 +91,4 @@ Parishes do not share databases: other-parish history is entered as `source = 'o
 - Do not extend or build on the old tools that are being removed: `includes/database-upgrades.php`, `includes/retention-purge.php`, the person mapper, and the tracking page.
 - Keep screens and forms few. Prefer reusing an existing screen over adding one.
 - All demo emails use `example.com`. Never send real mail from demo data.
-- Small commits on `rebuild-v2`. Never touch the old schema files in place; v2 lives in `database/v2/`.
+- Small commits on `rebuilt-v2`. Never touch the old schema files in place; v2 lives in `database/v2/`.
