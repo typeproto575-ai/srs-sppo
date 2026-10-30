@@ -318,7 +318,7 @@ require_once __DIR__ . '/../includes/header.php';
             </ul>
         </div>
     <?php endif; ?>
-    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form">
+    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form" data-review data-review-title="Review your certificate request" data-review-confirm="Confirm and submit request">
         <?= csrf_field() ?>
         <label for="certificate_type">Certificate type *</label>
         <select id="certificate_type" name="certificate_type" required>
@@ -405,7 +405,7 @@ require_once __DIR__ . '/../includes/header.php';
             <li>Nothing is uploaded online. You show your documents at the counter.</li>
         </ul>
 
-        <label><input type="checkbox" name="privacy_consent" value="1" required> I agree to the privacy notice.</label>
+        <label><input type="checkbox" name="privacy_consent" value="1" <?= !empty($_POST['privacy_consent']) ? 'checked' : '' ?> required> I agree to the privacy notice.</label>
 
         <div style="position:absolute;left:-9999px;" aria-hidden="true">
             <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
