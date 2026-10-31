@@ -14,7 +14,7 @@ $error = null;
 $backupCounts = [];
 $backupPassphrase = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['backup_passphrase'])) {
     if (!csrf_verify()) {
         $error = 'The security token expired. Please refresh the page and try again.';
     } else {
@@ -37,42 +37,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
             } elseif (!function_exists('openssl_encrypt') || !function_exists('openssl_cipher_iv_length')) {
                 $error = 'OpenSSL is required to encrypt backups.';
             } else {
-                $backup = export_database_sql($pdo);
-                $cipher = 'aes-256-gcm';
-                $salt = random_bytes(16);
-                $nonce = random_bytes(openssl_cipher_iv_length($cipher));
-                $iterations = 210000;
-                $key = hash_pbkdf2('sha256', $backupPassphrase, $salt, $iterations, 32, true);
-                $tag = '';
-                $ciphertext = openssl_encrypt($backup['sql'], $cipher, $key, OPENSSL_RAW_DATA, $nonce, $tag);
-                if ($ciphertext === false || strlen($tag) !== 16) {
-                    throw new RuntimeException('Could not encrypt the database backup.');
+                try {
+                    $backup = export_database_sql($pdo);
+                    $cipher = 'aes-256-gcm';
+                    $salt = random_bytes(16);
+                    $nonce = random_bytes(openssl_cipher_iv_length($cipher));
+                    $iterations = 210000;
+                    $key = hash_pbkdf2('sha256', $backupPassphrase, $salt, $iterations, 32, true);
+                    $tag = '';
+                    $ciphertext = openssl_encrypt($backup['sql'], $cipher, $key, OPENSSL_RAW_DATA, $nonce, $tag);
+                    if ($ciphertext === false || strlen($tag) !== 16) {
+                        throw new RuntimeException('Could not encrypt the database backup.');
+                    }
+
+                    $header = json_encode([
+                        'format' => 'srs-sppo-backup-v1',
+                        'algorithm' => 'AES-256-GCM',
+                        'kdf' => 'PBKDF2-SHA256',
+                        'iterations' => $iterations,
+                        'salt' => base64_encode($salt),
+                        'nonce' => base64_encode($nonce),
+                        'tag_length' => strlen($tag),
+                    ], JSON_THROW_ON_ERROR) . "\n";
+                    $payload = $header . $ciphertext . $tag;
+                    log_activity(
+                        $pdo,
+                        (int) $user['id'],
+                        'database_backup_exported',
+                        null,
+                        null,
+                        sprintf('tables=%d bytes=%d', $backup['table_count'], strlen($payload))
+                    );
+
+                    header('Content-Type: application/octet-stream');
+                    header('Content-Disposition: attachment; filename="srs-sppo-backup-' . date('Y-m-d') . '.sql.enc"');
+                    header('Content-Length: ' . strlen($payload));
+                    echo $payload;
+                    exit;
+                } catch (Throwable $e) {
+                    $error = 'The backup could not be created. See the server log.';
+                    error_log($e->getMessage());
                 }
-
-                $header = json_encode([
-                    'format' => 'srs-sppo-backup-v1',
-                    'algorithm' => 'AES-256-GCM',
-                    'kdf' => 'PBKDF2-SHA256',
-                    'iterations' => $iterations,
-                    'salt' => base64_encode($salt),
-                    'nonce' => base64_encode($nonce),
-                    'tag_length' => strlen($tag),
-                ], JSON_THROW_ON_ERROR) . "\n";
-                $payload = $header . $ciphertext . $tag;
-                log_activity(
-                    $pdo,
-                    (int) $user['id'],
-                    'database_backup_exported',
-                    null,
-                    null,
-                    sprintf('tables=%d bytes=%d', $backup['table_count'], strlen($payload))
-                );
-
-                header('Content-Type: application/octet-stream');
-                header('Content-Disposition: attachment; filename="srs-sppo-backup-' . date('Y-m-d') . '.sql.enc"');
-                header('Content-Length: ' . strlen($payload));
-                echo $payload;
-                exit;
             }
         }
     }
@@ -135,3 +140,4 @@ $extraHead = '';
         </form>
         <p class="field-hint">OpenSSL AES-256-GCM encryption is used. The passphrase is never stored or logged.</p>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
+
