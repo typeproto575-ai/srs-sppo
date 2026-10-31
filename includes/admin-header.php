@@ -132,6 +132,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/system/accounts.php"<?= $isActive('/admin/system/accounts.php') ?> title="Accounts" data-compact="AC"><span class="sidebar-link-glyph" aria-hidden="true">AC</span><span class="sidebar-link-label">Accounts</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/system/audit-log.php"<?= $isActive('/admin/system/audit-log.php') ?> title="Audit Log" data-compact="AL"><span class="sidebar-link-glyph" aria-hidden="true">AL</span><span class="sidebar-link-label">Audit Log</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/system/backup.php"<?= $isActive('/admin/system/backup.php') ?> title="Backup" data-compact="BK"><span class="sidebar-link-glyph" aria-hidden="true">BK</span><span class="sidebar-link-label">Backup</span></a></li>
             </ul>
         </details>
         <?php endif; ?>
