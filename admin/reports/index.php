@@ -1,12 +1,6 @@
-<?php
+﻿<?php
 /**
- * =====================================================================
- * SRS-SPPO REPORTS (admin) — monthly + yearly tabs
- * =====================================================================
- * Purpose: Period totals — records encoded per sacrament, certificate
- *          requests in/out, and applications received. View selected
- *          with ?view=monthly|yearly; month/year via query string.
- * =====================================================================
+ * SRS-SPPO REPORTS (admin)
  */
 
 require_once __DIR__ . '/../../config/database.php';
@@ -17,7 +11,6 @@ require_role('secretary');
 $basePath = $basePath ?? base_path();
 $pageTitle = 'Reports';
 
-// ---- View + period selection -------------------------------------------
 $view = ($_GET['view'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
 $month = (int) ($_GET['month'] ?? date('n'));
 $year  = (int) ($_GET['year'] ?? date('Y'));
@@ -30,44 +23,43 @@ $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'Jun
 if ($isMonthly) {
     $periodHeading = $monthNames[$month] . ' ' . $year;
     $periodQuery = 'view=monthly&year=' . $year . '&month=' . $month;
-    $periodParams = [$month, $year];
+    $periodStart = sprintf('%04d-%02d-01 00:00:00', $year, $month);
+    $nm = $month === 12 ? 1 : $month + 1;
+    $ny = $month === 12 ? $year + 1 : $year;
+    $periodEnd = sprintf('%04d-%02d-01 00:00:00', $ny, $nm);
 } else {
     $periodHeading = $year . ' Summary';
     $periodQuery = 'view=yearly&year=' . $year;
-    $periodParams = [$year];
+    $periodStart = sprintf('%04d-01-01 00:00:00', $year);
+    $periodEnd = sprintf('%04d-01-01 00:00:00', $year + 1);
 }
+$periodParams = [$periodStart, $periodEnd];
 
-// --- Records entered into the parish system this period, per sacrament ---
-$recordCounts = [];
-$recordQueries = $isMonthly ? [
-    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
-    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
-    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
-    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE MONTH(date_encoded) = ? AND YEAR(date_encoded) = ?",
-] : [
-    'Baptismal' => "SELECT COUNT(*) c FROM baptismal_records WHERE YEAR(date_encoded) = ?",
-    'Confirmation' => "SELECT COUNT(*) c FROM confirmation_records WHERE YEAR(date_encoded) = ?",
-    'First Communion' => "SELECT COUNT(*) c FROM first_communion_records WHERE YEAR(date_encoded) = ?",
-    'Marriage' => "SELECT COUNT(*) c FROM marriage_records WHERE YEAR(date_encoded) = ?",
+$recordCounts = [
+    'Baptismal' => 0,
+    'First Communion' => 0,
+    'Confirmation' => 0,
+    'Marriage' => 0,
 ];
-foreach ($recordQueries as $label => $sql) {
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($periodParams);
-    $recordCounts[$label] = (int) $stmt->fetch()['c'];
+$recSql = "SELECT sacrament_type, COUNT(*) c FROM sacrament_records WHERE created_at >= ? AND created_at < ? GROUP BY sacrament_type";
+$stmt = $pdo->prepare($recSql);
+$stmt->execute($periodParams);
+foreach ($stmt->fetchAll() as $r) {
+    $label = [
+        'baptism' => 'Baptismal',
+        'first_communion' => 'First Communion',
+        'confirmation' => 'Confirmation',
+        'marriage' => 'Marriage',
+    ][$r['sacrament_type']] ?? null;
+    if ($label !== null) $recordCounts[$label] = (int) $r['c'];
 }
 
-// --- Certificate requests submitted this period, per sacrament + status -
-$certSql = $isMonthly
-    ? "SELECT sacrament_type, status, COUNT(*) c FROM certificate_requests WHERE MONTH(date_submitted) = ? AND YEAR(date_submitted) = ? GROUP BY sacrament_type, status"
-    : "SELECT sacrament_type, status, COUNT(*) c FROM certificate_requests WHERE YEAR(date_submitted) = ? GROUP BY sacrament_type, status";
+$certSql = "SELECT sacrament_type, status, COUNT(*) c FROM certificate_requests WHERE created_at >= ? AND created_at < ? GROUP BY sacrament_type, status";
 $stmt = $pdo->prepare($certSql);
 $stmt->execute($periodParams);
 $certRows = $stmt->fetchAll();
 
-// --- Sacrament applications submitted this period, per sacrament --------
-$appSql = $isMonthly
-    ? "SELECT sacrament_type, COUNT(*) c FROM sacrament_applications WHERE MONTH(date_submitted) = ? AND YEAR(date_submitted) = ? GROUP BY sacrament_type"
-    : "SELECT sacrament_type, COUNT(*) c FROM sacrament_applications WHERE YEAR(date_submitted) = ? GROUP BY sacrament_type";
+$appSql = "SELECT sacrament_type, COUNT(*) c FROM sacrament_applications WHERE created_at >= ? AND created_at < ? GROUP BY sacrament_type";
 $stmt = $pdo->prepare($appSql);
 $stmt->execute($periodParams);
 $appRows = $stmt->fetchAll();
@@ -77,7 +69,6 @@ function humanize_label(string $s): string
     return ucwords(str_replace('_', ' ', $s));
 }
 
-// --- CSV export (same rows as on screen) ---------------------------------
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $csvTitle = $isMonthly
         ? ("SRS-SPPO Monthly Report - " . $monthNames[$month] . " - " . $year)
@@ -102,12 +93,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     exit;
 }
 
-// Shared staff shell: top bar + sidebar + <head> (admin-footer closes layout).
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <h1>Reports</h1>
 
-        <!-- View tabs: monthly vs yearly -->
         <div class="report-view-tabs">
             <a href="?view=monthly&year=<?= (int) $year ?>&month=<?= (int) $month ?>" class="<?= $isMonthly ? 'active' : '' ?>">Monthly</a>
             <a href="?view=yearly&year=<?= (int) $year ?>" class="<?= !$isMonthly ? 'active' : '' ?>">Yearly</a>
@@ -142,7 +131,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </tbody>
         </table>
         </div>
-
 
         <h3 style="margin-top:2rem;">Certificate Requests Submitted</h3>
         <?php if (empty($certRows)): ?>
