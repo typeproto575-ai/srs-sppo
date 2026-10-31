@@ -284,4 +284,12 @@ final class FunctionsTest extends TestCase
         self::assertTrue(event_times_overlap('09:00:00', '10:00:00', '09:30:00', '10:30:00'));
         self::assertFalse(event_times_overlap('09:00:00', '10:00:00', '10:00:00', '11:00:00'));
     }
+    public function testStatusLabel(): void
+    {
+        self::assertSame("Waiting for priest's signature", status_label('certificate', 'for_signature'));
+        self::assertSame('Needs action', status_label('certificate', 'pending'));
+        self::assertSame('New application', status_label('application', 'new'));
+        self::assertSame('Waiting for documents', status_label('application', 'requirements_pending'));
+        self::assertSame('Unknown Value', status_label('certificate', 'unknown_value'));
+    }
 }

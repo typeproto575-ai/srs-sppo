@@ -257,7 +257,7 @@ $auditStmt->execute(['certificate_requests', $requestId]);
 $auditHistory = $auditStmt->fetchAll();
 
 $requesterName = $req['requester_name'];
-$statusLabel = certificate_detail_label((string) $req['status']);
+$statusLabel = status_label('certificate', (string) $req['status']);
 $recordName = '';
 if ($record && !empty($record['person_id'])) {
     $recordPerson = sd_get_person($pdo, (int) $record['person_id']);
@@ -289,7 +289,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <h2>Request summary</h2>
     <dl class="detail-grid">
         <dt>Status</dt><dd><span class="status-badge status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span></dd>
-        <dt>Channel</dt><dd><?= e(ucfirst((string) $req['channel'])) ?></dd>
+        <dt>Channel</dt><dd><?= e(($req['channel'] === 'onsite') ? 'Submitted: At the office' : 'Submitted: Online') ?></dd>
         <dt>Submitted</dt><dd><?= e((string) $req['created_at']) ?></dd>
         <dt>Purpose</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?></dd>
         <dt>Requester</dt><dd><?= e($requesterName) ?></dd>

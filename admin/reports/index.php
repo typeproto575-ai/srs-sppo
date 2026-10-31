@@ -143,7 +143,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php foreach ($certRows as $row): ?>
                     <tr>
                         <td><?= e(humanize_label($row['sacrament_type'])) ?></td>
-                        <td><span class="status-badge status-<?= e($row['status']) ?>"><?= e(humanize_label($row['status'])) ?></span></td>
+                        <td><span class="status-badge status-<?= e($row['status']) ?>"><?= e(status_label('certificate', (string) $row['status'])) ?></span></td>
                         <td><?= (int) $row['c'] ?></td>
                     </tr>
                 <?php endforeach; ?>

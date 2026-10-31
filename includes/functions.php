@@ -1960,3 +1960,35 @@ function format_event_time_range(?string $start, ?string $end): string
     if ($end !== null) $label .= '–' . date('g:i A', strtotime($end));
     return $label;
 }
+function status_label(string $kind, string $value): string
+{
+    static $map = [
+        'certificate' => [
+            'new' => 'New request',
+            'matched' => 'Record found',
+            'for_signature' => "Waiting for priest's signature",
+            'ready' => 'Ready for pickup',
+            'released' => 'Given to the requester',
+            'rejected' => 'Declined',
+            'pending' => 'Needs action',
+        ],
+        'application' => [
+            'new' => 'New application',
+            'reviewing' => 'Being checked',
+            'requirements_pending' => 'Waiting for documents',
+            'approved' => "Approved, date not yet set",
+            'scheduled' => 'Date set',
+            'completed' => 'Done and recorded',
+            'rejected' => 'Declined',
+        ],
+    ];
+    if (isset($map[$kind][$value])) {
+        return $map[$kind][$value];
+    }
+    return humanize_label_local($value);
+}
+
+function humanize_label_local(string $s): string
+{
+    return ucwords(str_replace('_', ' ', $s));
+}

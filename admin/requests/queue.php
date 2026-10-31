@@ -65,15 +65,15 @@ $rfConfig = [
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [
-                'pending'       => 'Pending',
-                'new'           => 'New',
-                'matched'       => 'Matched',
-                'for_signature' => 'For signature',
-                'ready'         => 'Ready',
-                'released'      => 'Released',
-                'rejected'      => 'Rejected',
+                'pending'       => 'Needs action',
+                'new'           => 'New request',
+                'matched'       => 'Record found',
+                'for_signature' => "Waiting for priest's signature",
+                'ready'         => 'Ready for pickup',
+                'released'      => 'Given to the requester',
+                'rejected'      => 'Declined',
             ]],
-        'channel'   => ['label' => 'Channel', 'options' => ['online' => 'Online', 'onsite' => 'Onsite']],
+        'channel'   => ['label' => 'Channel', 'options' => ['online' => 'Submitted: Online', 'onsite' => 'Submitted: At the office']],
         'sacrament' => ['label' => 'Sacrament',
             'options' => [
                 'baptism'        => 'Baptism',

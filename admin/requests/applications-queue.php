@@ -309,8 +309,8 @@ $rfConfig = [
     'placeholder' => 'Search request number, applicant, or application details...',
     'ranges' => ['today', 'week', 'month', 'year'],
     'filters' => [
-        'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map('application_queue_label', $statuses))],
-        'channel' => ['label' => 'Channel', 'options' => ['online' => 'Online', 'onsite' => 'Onsite']],
+        'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
+        'channel' => ['label' => 'Channel', 'options' => ['online' => 'Submitted: Online', 'onsite' => 'Submitted: At the office']],
         'sacrament' => ['label' => 'Sacrament', 'options' => array_combine($sacraments, array_map('application_queue_label', $sacraments))],
     ],
 ];
@@ -549,7 +549,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <h2><?= e($app['request_no']) ?></h2>
                             <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e($app['applicant_email']) ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
                         </div>
-                        <span class="status-badge status-<?= e($app['status']) ?>"><?= e(application_queue_label($app['status'])) ?></span>
+                        <span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span>
                     </header>
 
                     <?php if ($app['preferred_date']): ?>
