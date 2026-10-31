@@ -46,8 +46,7 @@ define(
     $explicitHttps || ($appHost !== '' && !in_array($appHost, $localHosts, true))
 );
 
-// Data-retention periods for the retention purge
-// (admin/system/retention-purge.php + scripts/purge-retention.php).
+// Retention periods (kept for reference; purge tooling removed).
 // Sacramental register entries (*_records, persons) are permanent parish
 // records and are never purged. Only finished submissions (released /
 // completed / rejected / cancelled) older than the submissions period are

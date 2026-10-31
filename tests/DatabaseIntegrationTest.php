@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
-require_once __DIR__ . '/../includes/retention-purge.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/backup.php';
-require_once __DIR__ . '/../includes/database-upgrades.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 
 final class DatabaseIntegrationTest extends TestCase
@@ -145,19 +143,6 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
-    public function testDatabaseUpgradeChecksAndRecordsCanonicalSchemaIdempotently(): void
-    {
-        $status = srs_database_upgrade_status($this->pdo);
-        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
-            self::assertTrue($status[$migrationKey]['complete'], "Canonical schema is missing {$migrationKey}.");
-            srs_apply_database_upgrade($this->pdo, $migrationKey, 0);
-        }
-
-        $status = srs_database_upgrade_status($this->pdo);
-        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
-            self::assertTrue($status[$migrationKey]['recorded'], "Upgrade history did not record {$migrationKey}.");
-        }
-    }
 
     public function testCertificateRequestCanBeCreatedAndRolledBack(): void
     {
@@ -835,202 +820,8 @@ final class DatabaseIntegrationTest extends TestCase
                     }
         }
 
-    public function testPublicTrackingAndCertificateRequestData(): void
-    {
-        $requestId = 0;
-        $tracking = 'SPPO-2027-' . bin2hex(random_bytes(3));
-        $email = 'public-tracking-' . bin2hex(random_bytes(4)) . '@example.invalid';
 
-        try {
-            $this->pdo->beginTransaction();
-            $request = $this->pdo->prepare(
-                'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            );
-            $request->execute([
-                $tracking, 'online', 'baptismal', 'Public Integration', 'self',
-                $email, 'personal', 'ready_for_pickup',
-            ]);
-            $requestId = (int) $this->pdo->lastInsertId();
 
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_certificate_requests
-                    (request_id, child_full_name, father_full_name, mother_full_name, birthdate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $requestId, 'Tracked Child', 'Tracked Father', 'Tracked Mother', '2015-01-02',
-            ]);
-
-            $trackingLookup = $this->pdo->prepare(
-                'SELECT tracking_number, sacrament_type, status, requester_email
-                 FROM certificate_requests WHERE tracking_number = ?'
-            );
-            $trackingLookup->execute([$tracking]);
-            $tracked = $trackingLookup->fetch();
-            self::assertSame($tracking, $tracked['tracking_number']);
-            self::assertSame('baptismal', $tracked['sacrament_type']);
-            self::assertSame('ready_for_pickup', $tracked['status']);
-            self::assertSame(0, strcasecmp($email, $tracked['requester_email']));
-            self::assertNotSame(0, strcasecmp('wrong@example.invalid', $tracked['requester_email']));
-
-            $detailLookup = $this->pdo->prepare(
-                'SELECT cr.tracking_number, cr.sacrament_type, cr.requester_name,
-                        cr.status, cr.anonymized_at, ext.matched_record_id
-                 FROM certificate_requests cr
-                 LEFT JOIN (
-                     SELECT request_id, matched_record_id FROM baptismal_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM confirmation_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM first_communion_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM marriage_certificate_requests
-                 ) ext ON ext.request_id = cr.id
-                 WHERE cr.tracking_number = ?'
-            );
-            $detailLookup->execute([$tracking]);
-            $found = $detailLookup->fetch();
-            self::assertSame($tracking, $found['tracking_number']);
-            self::assertSame('baptismal', $found['sacrament_type']);
-            self::assertSame('Public Integration', $found['requester_name']);
-            self::assertSame('ready_for_pickup', $found['status']);
-            self::assertNull($found['anonymized_at']);
-            self::assertNull($found['matched_record_id']);
-
-            $detailLookup->execute(['missing-' . bin2hex(random_bytes(8))]);
-            self::assertFalse($detailLookup->fetch());
-            $this->pdo->commit();
-        } finally {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM certificate_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
-        }
-    }
-
-    public function testRetentionAnonymizesFinishedOldCertificateRequests(): void
-    {
-        $requestId = 0;
-        $tracking = 'TEST-RETAIN-' . bin2hex(random_bytes(8));
-
-        try {
-            $request = $this->pdo->prepare(
-                'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose, status, date_processed)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 61 MONTH))'
-            );
-            $request->execute([
-                $tracking,
-                'online',
-                'baptismal',
-                'Retention Integration',
-                'parent',
-                'retention-integration@example.invalid',
-                'personal',
-                'released',
-            ]);
-            $requestId = (int) $this->pdo->lastInsertId();
-
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_certificate_requests
-                    (request_id, child_full_name, father_full_name, mother_full_name, birthdate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $requestId,
-                'Retention Child',
-                'Retention Father',
-                'Retention Mother',
-                '2010-01-01',
-            ]);
-
-            $preview = retention_dry_run($this->pdo);
-            self::assertGreaterThanOrEqual(1, $preview['certificate_requests']);
-
-            $affected = retention_execute($this->pdo, null);
-            self::assertGreaterThanOrEqual(1, $affected['certificate_requests']);
-
-            $result = $this->pdo->prepare(
-                'SELECT requester_name, requester_email, anonymized_at
-                 FROM certificate_requests WHERE id = ?'
-            );
-            $result->execute([$requestId]);
-            $requestRow = $result->fetch();
-            self::assertSame(RETENTION_ANON_NAME, $requestRow['requester_name']);
-            self::assertSame(RETENTION_ANON_EMAIL, $requestRow['requester_email']);
-            self::assertNotNull($requestRow['anonymized_at']);
-
-            $detailResult = $this->pdo->prepare(
-                'SELECT child_full_name, father_full_name, mother_full_name
-                 FROM baptismal_certificate_requests WHERE request_id = ?'
-            );
-            $detailResult->execute([$requestId]);
-            $detailRow = $detailResult->fetch();
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['child_full_name']);
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['father_full_name']);
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['mother_full_name']);
-        } finally {
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM certificate_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
-            $this->pdo->exec("DELETE FROM audit_logs WHERE action = 'retention_purged'");
-        }
-    }
-
-    public function testRetentionAnonymizesFinishedOldCorrectionRequests(): void
-    {
-        $requestId = 0;
-
-        try {
-            $request = $this->pdo->prepare(
-                'INSERT INTO correction_requests
-                    (tracking_number, requester_name, requester_email, certificate_id,
-                     requested_changes, document_path, status, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 61 MONTH))'
-            );
-            $request->execute([
-                'TEST-CORRECTION-' . bin2hex(random_bytes(8)),
-                'Correction Integration',
-                'correction-integration@example.invalid',
-                0,
-                'Correct the recorded spelling.',
-                'private-document.pdf',
-                'completed',
-            ]);
-            $requestId = (int) $this->pdo->lastInsertId();
-
-            $preview = retention_dry_run($this->pdo);
-            self::assertGreaterThanOrEqual(1, $preview['correction_requests']);
-
-            $affected = retention_execute($this->pdo, null);
-            self::assertGreaterThanOrEqual(1, $affected['correction_requests']);
-
-            $result = $this->pdo->prepare(
-                'SELECT requester_name, requester_email, requested_changes,
-                        document_path, anonymized_at
-                 FROM correction_requests WHERE id = ?'
-            );
-            $result->execute([$requestId]);
-            $row = $result->fetch();
-
-            self::assertSame(RETENTION_ANON_NAME, $row['requester_name']);
-            self::assertSame(RETENTION_ANON_EMAIL, $row['requester_email']);
-            self::assertSame(RETENTION_ANON_NAME, $row['requested_changes']);
-            self::assertNull($row['document_path']);
-            self::assertNotNull($row['anonymized_at']);
-        } finally {
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM correction_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
-            $this->pdo->exec("DELETE FROM audit_logs WHERE action = 'retention_purged'");
-        }
-    }
 
     public function testDatabaseBackupRestoresIntoIsolatedDatabase(): void
     {

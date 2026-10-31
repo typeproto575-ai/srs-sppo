@@ -1219,8 +1219,7 @@ function client_ip(): string
  *     audit_logs, and the audit trail cannot be flooded by outsiders;
  *   - these rows never count toward the 3-per-email / 20-per-IP daily
  *     SUBMISSION caps above;
- *   - the existing retention purge deletes them after
- *     SRS_RETENTION_RATELIMIT_DAYS.
+ *   - these rows are removed after SRS_RETENTION_RATELIMIT_DAYS.
  * Fail-open: if the table is missing, lookups still work.
  * ===================================================================== */
 

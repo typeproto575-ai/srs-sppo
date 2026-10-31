@@ -88,7 +88,7 @@ Parishes do not share databases: other-parish history is entered as `source = 'o
 - Reuse the existing helpers instead of writing new ones: the shared `$pdo` from `config/database.php`, `csrf_field()` and `csrf_verify()` for forms, `require_login()` and `require_role()` for access, `e()` to escape output. Look at a neighbouring page first and copy its pattern.
 - Prepared statements for every query. Hash passwords with `password_hash()`.
 - After editing a PHP file, run `php -l <file>` and fix any error before moving on.
-- Do not extend or build on the old tools that are being removed: `includes/database-upgrades.php`, `includes/retention-purge.php`, the person mapper, and the tracking page.
+- Do not extend or build on the old tools that are being removed: the person mapper, and the tracking page.
 - Keep screens and forms few. Prefer reusing an existing screen over adding one.
 - All demo emails use `example.com`. Never send real mail from demo data.
 - Small commits on `rebuilt-v2`. Never touch the old schema files in place; v2 lives in `database/v2/`.
