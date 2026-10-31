@@ -7,7 +7,10 @@ require_role('secretary');
 
 $basePath = $basePath ?? base_path();
 $pageTitle = 'Sacrament Applications Queue';
-$statuses = ['new', 'reviewing', 'requirements_pending', 'approved', 'scheduled', 'completed', 'rejected'];
+if (!defined('APP_IN_PROGRESS_STATUSES')) {
+    define('APP_IN_PROGRESS_STATUSES', ['reviewing', 'requirements_pending', 'approved', 'scheduled']);
+}
+$statuses = array_merge(['in_progress'], APP_IN_PROGRESS_STATUSES, ['new', 'completed', 'rejected']);
 $sacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
 $requirementStatuses = ['not_received', 'received', 'verified', 'not_applicable'];
 $requirementKeys = [
@@ -319,7 +322,13 @@ $filterChannel = is_string($_GET['channel'] ?? null) ? $_GET['channel'] : '';
 $whereSql = ' WHERE 1 = 1' . $rf['where'];
 $params = $rf['params'];
 
-if (in_array($filterStatus, $statuses, true)) {
+if ($filterStatus === 'in_progress') {
+    $placeholders = implode(',', array_fill(0, count(APP_IN_PROGRESS_STATUSES), '?'));
+    $whereSql .= " AND sa.status IN ($placeholders)";
+    foreach (APP_IN_PROGRESS_STATUSES as $s) {
+        $params[] = $s;
+    }
+} elseif (in_array($filterStatus, $statuses, true)) {
     $whereSql .= ' AND sa.status = ?';
     $params[] = $filterStatus;
 }

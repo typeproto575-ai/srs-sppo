@@ -28,12 +28,21 @@ $filterStatus = $_GET['status'] ?? '';
 $filterSacrament = $_GET['sacrament'] ?? '';
 $filterChannel = $_GET['channel'] ?? '';
 $pageTitle = ($filterChannel === 'online') ? 'Online Certificate Requests' : 'Certificate Requests Queue';
-$allowedRequestStatuses = ['new', 'matched', 'for_signature', 'ready', 'released', 'rejected'];
+if (!defined('CERT_PENDING_STATUSES')) {
+    define('CERT_PENDING_STATUSES', ['new', 'matched', 'for_signature']);
+}
+$allowedRequestStatuses = array_merge(['pending'], CERT_PENDING_STATUSES, ['ready', 'released', 'rejected']);
 $allowedSacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
 
 $where  = [];
 $params = [];
-if ($filterStatus !== '' && in_array($filterStatus, $allowedRequestStatuses, true)) {
+if ($filterStatus === 'pending') {
+    $placeholders = implode(',', array_fill(0, count(CERT_PENDING_STATUSES), '?'));
+    $where[] = "cr.status IN ($placeholders)";
+    foreach (CERT_PENDING_STATUSES as $s) {
+        $params[] = $s;
+    }
+} elseif ($filterStatus !== '' && in_array($filterStatus, $allowedRequestStatuses, true)) {
     $where[] = 'cr.status = ?';
     $params[] = $filterStatus;
 }
@@ -56,6 +65,7 @@ $rfConfig = [
     'filters'        => [
         'status'    => ['label' => 'Status',
             'options' => [
+                'pending'       => 'Pending',
                 'new'           => 'New',
                 'matched'       => 'Matched',
                 'for_signature' => 'For signature',
