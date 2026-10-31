@@ -13,8 +13,7 @@ Engine: MySQL / MariaDB, InnoDB, utf8mb4. All `id` columns are `INT UNSIGNED AUT
 | 4 | `sacrament_participants` | Godparents, sponsors, witnesses | `baptismal_sponsors`, `marriage_witnesses`, `marriage_principal_sponsors`, `baptismal_application_godparents` |
 | 5 | `sacrament_applications` | Applications to receive a sacrament (unverified intake) | `sacrament_applications` + 4 application tables, `workflow_requirements` |
 | 6 | `certificate_requests` | Certificate requests, from request to pickup | `certificate_requests` + 4 extension tables, `certificate_generation_log`, `submission_rate_limits` |
-| 7 | `correction_requests` | Requests to fix wrong details | `correction_requests` |
-| 8 | `schedule_events` | Parish calendar | `schedule_events` |
+| 7 | `schedule_events` | Parish calendar | `schedule_events` |
 | 9 | `announcements` | Public notices | `announcements` |
 | 10 | `settings` | Key/value settings | `site_settings`, `sacrament_eligibility_settings` |
 | 11 | `notifications` | In-app notices and email delivery log | `notifications`, `email_delivery_log` |
@@ -32,7 +31,6 @@ persons ◄── person_id ─────── sacrament_records ◄── re
    │  └── father_person_id / mother_person_id (self link, optional)
    ├────── person_id ── certificate_requests ── record_id ──► sacrament_records
    ├────── person_id / spouse_person_id ── sacrament_applications ── record_id ──► sacrament_records
-   └────── person_id ── correction_requests
 schedule_events ── application_id ──► sacrament_applications
 ```
 
@@ -155,9 +153,6 @@ Unverified intake. Never writes to `persons` or `sacrament_records` by itself.
 | created_at, updated_at | DATETIME | no | |
 
 Reprints are recorded in `audit_logs`, not in a separate table.
-
-### 3.7 correction_requests
-`person_id` (FK, nullable, set by secretary), `sacrament_type` (nullable), `subject_name`, `requester_name`, `requester_email`, `requested_changes` (TEXT), `admin_note`, `status` ENUM('pending','processing','completed','rejected'), `anonymized_at`, `created_at`, `updated_at`.
 
 ### 3.8 schedule_events
 `event_type` ENUM('mass','wedding','baptism','other'), `title`, `public_details` (shown publicly), `event_date`, `start_time`, `end_time`, `application_id` (FK, nullable), `notes` (internal only), `created_by`, `created_at`.

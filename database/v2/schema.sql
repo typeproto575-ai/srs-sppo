@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SRS-SPPO: Schedule and Record System of Saint Patrick's Parish Office
--- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  12 tables
+-- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  11 tables
 --
 -- This single file replaces the old 33-table schema and all 54 migrations.
 -- There is no migration runner and no in-app upgrader. To reset a LOCAL
@@ -232,26 +232,6 @@ CREATE TABLE certificate_requests (
   CONSTRAINT fk_cr_printed  FOREIGN KEY (printed_by)  REFERENCES users(id)             ON DELETE SET NULL,
   CONSTRAINT fk_cr_released FOREIGN KEY (released_by) REFERENCES users(id)             ON DELETE SET NULL,
   CONSTRAINT fk_cr_paid     FOREIGN KEY (paid_by)     REFERENCES users(id)             ON DELETE SET NULL
-) ENGINE=InnoDB;
-
--- ---------------------------------------------------------------------
--- 7. correction_requests : request to fix wrong details on a record
--- ---------------------------------------------------------------------
-CREATE TABLE correction_requests (
-  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  person_id          INT UNSIGNED NULL,                 -- set by the secretary once the person is found
-  sacrament_type     ENUM('baptism','first_communion','confirmation','marriage') NULL,
-  subject_name       VARCHAR(150) NOT NULL,             -- who the record is about, as typed
-  requester_name     VARCHAR(150) NOT NULL,
-  requester_email    VARCHAR(150) NOT NULL,
-  requested_changes  TEXT NOT NULL,
-  admin_note         TEXT NULL,
-  status             ENUM('pending','processing','completed','rejected') NOT NULL DEFAULT 'pending',
-  anonymized_at      DATETIME NULL,
-  created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_cor_status (status),
-  CONSTRAINT fk_cor_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

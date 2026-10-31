@@ -169,7 +169,7 @@ Structured name parts (`child_first_name`, etc.) were added for records; keep `*
 5. Print lifecycle on `certificate_generation_log`: generated → printed → released. Claimant name/relationship/notes and ID-verified flag are recorded at the counter (`migrations/009`, `010`). Regenerating can supersede an older log row.
 6. Pickup is in person. Status moves through the certificate enum (includes review, requirements, onsite verification, processing, ready, released, rejected, cancelled). **Payment (online):** once a register match is found, an online request is set to `awaiting_payment`; it cannot advance to processing until the secretary records payment by hand (the payment gates above). Walk-ins pay at the counter and can be marked paid at encode time.
 
-Corrections: public form writes `correction_requests`; staff process them under Certificates. This is not a public edit of the register.
+Corrections: handled onsite by the secretary through a record edit with an audit entry. This is not a public edit of the register.
 
 ---
 
