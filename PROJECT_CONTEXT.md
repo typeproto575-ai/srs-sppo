@@ -142,7 +142,9 @@ Admin layout: `includes/admin-header.php` / `admin-footer.php`.
 
 **System:** accounts, backup/export, archive/restore, email delivery log, audit log.
 
-Also: dashboard, notifications, login/logout, forgot/reset password. `admin/system/site-settings.php` can edit public home copy (`site_settings`) but is **not linked in the sidebar**.
+Also: dashboard, notifications, login/logout, forgot/reset password.
+
+Home page text is fixed in `public/index.php`; changing it requires a code edit.
 
 ---
 
@@ -234,5 +236,4 @@ Leftover files that are **not** the live path: `includes/public-office-only.php`
 
 - Confirm First Communion and Confirmation age ranges with the parish priest (placeholders 7–12 and 12–18).
 - Whether to enforce a 6-month validity window on “for marriage purposes” certificates.
-- Whether `site-settings.php` should be linked in System nav.
 - Production SMTP settings, `MAIL_SITE_URL`, and HTTPS when leaving localhost.

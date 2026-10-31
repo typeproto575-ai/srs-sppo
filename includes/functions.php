@@ -1194,31 +1194,6 @@ function is_future_date(string $date): bool
     }
 }
 
-/**
- * Read all secretary-editable site content settings (Admin > Website >
- * Public Page Content) in one query, merged over sane defaults. Falls back
- * to the defaults when the table does not exist yet (pre-migration DB), so
- * public pages never break.
- *
- * @param PDO   $pdo      Database connection
- * @param array $defaults key => default value map
- * @return array key => resolved value (never empty string when default exists)
- */
-function site_settings_all(PDO $pdo, array $defaults): array
-{
-    try {
-        $rows = $pdo->query('SELECT setting_key, setting_value FROM site_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
-    } catch (Throwable $e) {
-        $rows = []; // table not migrated yet
-    }
-    $out = [];
-    foreach ($defaults as $key => $default) {
-        $value = isset($rows[$key]) ? trim((string) $rows[$key]) : '';
-        $out[$key] = ($value === '') ? $default : $value;
-    }
-    return $out;
-}
-
 // ---------------------------------------------------------------------
 // SECURITY HELPERS
 // ---------------------------------------------------------------------
