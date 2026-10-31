@@ -78,10 +78,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
     }
 }
 
-foreach (['users','baptismal_records','confirmation_records','first_communion_records','marriage_records',
-          'certificate_requests','sacrament_applications','announcements','audit_logs'] as $table) {
-    $backupCounts[$table] = (int) $pdo->query("SELECT COUNT(*) c FROM `{$table}`")->fetch()['c'];
+$sacramentTypes = ['baptism', 'first_communion', 'confirmation', 'marriage'];
+foreach ($sacramentTypes as $sacramentType) {
+    $backupCounts["sacrament_records ({$sacramentType})"] = 0;
 }
+
+$stmt = $pdo->query(
+    'SELECT sacrament_type, COUNT(*) AS row_count
+     FROM sacrament_records
+     GROUP BY sacrament_type'
+);
+foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $sacramentType = (string) $row['sacrament_type'];
+    $backupCounts["sacrament_records ({$sacramentType})"] = (int) $row['row_count'];
+}
+
+$backupCounts['persons'] = (int) $pdo->query('SELECT COUNT(*) FROM persons')->fetchColumn();
+$backupCounts['sacrament_participants'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_participants')->fetchColumn();
+$backupCounts['certificate_requests'] = (int) $pdo->query('SELECT COUNT(*) FROM certificate_requests')->fetchColumn();
+$backupCounts['sacrament_applications'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_applications')->fetchColumn();
+$backupCounts['schedule_events'] = (int) $pdo->query('SELECT COUNT(*) FROM schedule_events')->fetchColumn();
+$backupCounts['announcements'] = (int) $pdo->query('SELECT COUNT(*) FROM announcements')->fetchColumn();
+$backupCounts['audit_logs'] = (int) $pdo->query('SELECT COUNT(*) FROM audit_logs')->fetchColumn();
+$backupCounts['users'] = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
 $extraHead = '';
 ?>
