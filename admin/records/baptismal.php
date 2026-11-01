@@ -15,6 +15,7 @@ $selfReturn = '/admin/records/baptismal.php' . (($_SERVER['QUERY_STRING'] ?? '')
 $pageTitle = 'Baptismal Records';
 $errors = [];
 $success = null;
+$notice = null;
 $editRecord = null;
 $editParticipants = [];
 $application = null;
@@ -302,6 +303,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
             }
             if ($isPostEdit) {
                 $recordId = (int) $editRecord['id'];
+                $oldParticipants = $pdo->prepare('SELECT role, full_name, residence, sort_order FROM sacrament_participants WHERE record_id = ?');
+                $oldParticipants->execute([$recordId]);
+                $oldRecord = array_merge($editRecord, ['participants' => $oldParticipants->fetchAll(PDO::FETCH_ASSOC)]);
+                $newRecord = [
+                    'person_id' => $savePersonId,
+                    'source' => 'this_parish',
+                    'event_date' => $baptismDate,
+                    'place' => $baptismPlace ?: null,
+                    'minister_name' => $ministerName ?: null,
+                    'entry_no' => $entryNo ?: null,
+                    'book_no' => $bookNo ?: null,
+                    'page_no' => $pageNo ?: null,
+                    'line_no' => $lineNo ?: null,
+                    'parents_union_type' => $unionType !== '' ? $unionType : null,
+                    'details' => $parentDetails !== [] ? $parentDetails : null,
+                    'remarks' => $remarks ?: null,
+                    'participants' => $godparents,
+                ];
+                $changed = sd_record_changes($oldRecord, $newRecord);
+                if ($changed === []) {
+                    $pdo->commit();
+                    redirect_to($selfUrl . '?nochange=1');
+                    exit;
+                }
+                $reasonChange = trim((string) ($_POST['reason_change'] ?? ''));
+                if (strlen($reasonChange) < 5 || strlen($reasonChange) > 500) {
+                    throw new InvalidArgumentException('A reason of at least 5 characters is required.');
+                }
                 $stmt = $pdo->prepare(
                     "UPDATE sacrament_records
                      SET person_id = ?, source = 'this_parish', event_date = ?, place = ?, minister_name = ?,
@@ -377,14 +406,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                 }
             }
 
-            log_activity(
-                $pdo,
-                current_user()['id'],
-                $isPostEdit ? 'baptism_record_updated' : 'baptism_record_encoded',
-                'sacrament_records',
-                $recordId,
-                $isPostEdit ? 'Baptism record updated.' : 'Baptism record encoded.'
-            );
+            if ($isPostEdit) {
+                sd_log_record_edit($pdo, (int) current_user()['id'], $recordId, $changed, $reasonChange);
+            } else {
+                log_activity($pdo, current_user()['id'], 'baptism_record_encoded', 'sacrament_records', $recordId, 'Baptism record encoded.');
+            }
             $pdo->commit();
             if ($completedApplicationRequestNo !== null) {
                 try {
@@ -432,6 +458,9 @@ if (isset($_GET['added'])) {
 }
 if (isset($_GET['updated'])) {
     $success = 'Baptismal record updated.';
+}
+if (isset($_GET['nochange'])) {
+    $notice = 'No changes were made.';
 }
 
 $rfConfig = [
@@ -491,6 +520,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
     <p class="field-hint">The physical baptismal logbook remains canonical. Register entries are linked to read-only master person profiles.</p>
     <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
+<?php if ($notice): ?><div class="alert alert-info"><p><?= e($notice) ?></p></div><?php endif; ?>
     <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
     <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
     <div class="table-scroll" tabindex="0" role="region" aria-label="Baptismal register records; scroll horizontally to view all columns">

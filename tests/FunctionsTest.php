@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class FunctionsTest extends TestCase
 {
@@ -291,5 +292,17 @@ final class FunctionsTest extends TestCase
         self::assertSame('New application', status_label('application', 'new'));
         self::assertSame('Waiting for documents', status_label('application', 'requirements_pending'));
         self::assertSame('Unknown Value', status_label('certificate', 'unknown_value'));
+    }
+    public function testRecordChanges(): void
+    {
+        $old = ['event_date' => '2026-01-01 ', 'details' => ['b' => '2', 'a' => '1'], 'participants' => [['role' => 'godparent', 'full_name' => ' Juan ', 'residence' => '', 'sort_order' => 1]], 'remarks' => ''];
+        $new = ['event_date' => '2026-01-01', 'details' => ['a' => '1', 'b' => '2'], 'participants' => [['role' => 'godparent', 'full_name' => 'Juan', 'residence' => null, 'sort_order' => 1]], 'remarks' => null];
+        self::assertSame([], sd_record_changes($old, $new));
+        $new2 = ['event_date' => '2026-01-02', 'details' => ['a' => '1', 'b' => '3'], 'participants' => [['role' => 'godparent', 'full_name' => 'Juan', 'residence' => null, 'sort_order' => 2]], 'remarks' => 'x'];
+        $changes = sd_record_changes($old, $new2);
+        self::assertContains('event_date', $changes);
+        self::assertContains('details', $changes);
+        self::assertContains('participants', $changes);
+        self::assertContains('remarks', $changes);
     }
 }

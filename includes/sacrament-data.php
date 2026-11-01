@@ -615,3 +615,60 @@ function sd_certificate_source(PDO $pdo, int $recordId): ?array
 
     return $record;
 }
+
+function sd_record_changes(array $old, array $new): array
+{
+    $norm = static function ($v) {
+        if (is_string($v)) {
+            $v = trim($v);
+            return $v === '' ? null : $v;
+        }
+        if (is_array($v)) {
+            if (array_is_list($v)) {
+                $out = [];
+                foreach ($v as $p) {
+                    $out[] = [
+                        'role' => $p['role'] ?? null,
+                        'full_name' => trim((string) ($p['full_name'] ?? '')) ?: null,
+                        'residence' => trim((string) ($p['residence'] ?? '')) ?: null,
+                        'sort_order' => (int) ($p['sort_order'] ?? 0),
+                    ];
+                }
+                usort($out, static fn($a, $b) => [$a['role'], $a['sort_order']] <=> [$b['role'], $b['sort_order']]);
+                return $out;
+            }
+            ksort($v);
+            foreach ($v as $k => $val) {
+                $v[$k] = is_string($val) ? (trim($val) === '' ? null : trim($val)) : $val;
+            }
+            return $v;
+        }
+        return $v;
+    };
+
+    $changes = [];
+    foreach (array_keys($new) as $col) {
+        if ($col === 'participants') {
+            if ($norm($old['participants'] ?? []) !== $norm($new['participants'] ?? [])) {
+                $changes[] = 'participants';
+            }
+            continue;
+        }
+        if ($col === 'details') {
+            if ($norm($old['details'] ?? null) !== $norm($new['details'] ?? null)) {
+                $changes[] = 'details';
+            }
+            continue;
+        }
+        if ($norm($old[$col] ?? null) !== $norm($new[$col] ?? null)) {
+            $changes[] = $col;
+        }
+    }
+    return array_values(array_unique($changes));
+}
+
+function sd_log_record_edit(PDO $pdo, int $userId, int $recordId, array $changed, string $reason): void
+{
+    log_activity($pdo, $userId, 'record.updated', 'sacrament_records', $recordId,
+        'Changed: ' . implode(', ', $changed) . '. Book verification cleared.', trim($reason));
+}
