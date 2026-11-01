@@ -701,6 +701,10 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <legend>Other</legend>
                 <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
                 <label>Remarks / Observanda <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+<?php if ($isEdit): ?>
+<label>Reason for change <textarea name="reason_change" required minlength="5" maxlength="500"><?= e($formValues['reason_change'] ?? '') ?></textarea></label>
+<p class="field-hint">Saving will clear book verification.</p>
+<?php endif; ?>
             </fieldset>
             <button type="submit" name="<?= $isEdit ? 'update_record' : 'add_record' ?>" value="1" class="btn btn-primary"><?= $isEdit ? 'Update Record' : 'Save Record' ?></button>
             <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
