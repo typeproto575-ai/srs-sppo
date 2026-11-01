@@ -117,6 +117,11 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             </ul>
         </details>
 
+        <!-- Records: standalone item -->
+        <ul class="sidebar-menu" style="margin: 0.4rem 0;">
+            <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php', '/admin/records/view.php', '/admin/records/baptismal.php', '/admin/records/confirmation.php', '/admin/records/first-communion.php', '/admin/records/marriage.php') ?> title="Records" data-compact="RC"><span class="sidebar-link-glyph" aria-hidden="true">RC</span><span class="sidebar-link-label">Records</span></a></li>
+        </ul>
+
         <!-- Schedule section -->
         <details class="sidebar-group" data-sidebar-group="schedule" name="admin-sidebar"<?= $groupIsOpen('/admin/schedule/') ?>>
             <summary class="sidebar-group-title" title="Schedule"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span><span class="sidebar-group-label">Schedule</span></summary>

@@ -3559,3 +3559,9 @@ textarea {
         padding: 0.55rem 0.65rem;
     }
 }
+
+
+.record-type-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
+.record-type-chip { display: inline-block; padding: 0.3rem 0.75rem; border: 1px solid var(--admin-border, #cbd5e1); border-radius: 999px; background: var(--admin-panel-weak, #f1f5f9); color: var(--admin-ink, #0f172a); font-size: 0.85rem; text-decoration: none; }
+.record-type-chip:hover { background: var(--admin-green-soft, #dcfce7); }
+.record-type-chip.active { background: var(--admin-green, #166534); color: #fff; border-color: var(--admin-green, #166534); }

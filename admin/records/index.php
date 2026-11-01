@@ -176,6 +176,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <p class="field-hint">Search across the digital index, then open the register-specific editor to verify the physical logbook reference.</p>
 
+        <div class="record-type-chips">
+<?php foreach (['' => 'All', 'baptismal' => 'Baptism', 'confirmation' => 'Confirmation', 'first_communion' => 'First Communion', 'marriage' => 'Marriage'] as $chipValue => $chipLabel): ?>
+            <a class="record-type-chip<?= $type === $chipValue ? ' active' : '' ?>" href="<?= e(unified_records_url(['type' => $chipValue === '' ? null : $chipValue, 'page' => null])) ?>"><?= e($chipLabel) ?></a>
+<?php endforeach; ?>
+        </div>
+
         <div class="record-filter-bar">
             <form method="get" action="<?= e($basePath . '/admin/records/index.php') ?>" class="search-form" autocomplete="off">
                 <?php if ($type !== ''): ?><input type="hidden" name="type" value="<?= e($type) ?>"><?php endif; ?>
@@ -277,7 +283,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><?= e($record['book_no'] ?: '—') ?></td>
                             <td><?= e($record['page_no'] ?: '—') ?></td>
                             <td><?= e($record['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e($recordDisplayName) ?></strong></td>
+                            <td><strong><?php if (!empty($record['person_id'])): ?><a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $record['person_id']) ?>"><?= e($recordDisplayName) ?></a><?php else: ?><?= e($recordDisplayName) ?><?php endif; ?></strong></td>
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
                             <td class="row-actions"><a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a></td>
