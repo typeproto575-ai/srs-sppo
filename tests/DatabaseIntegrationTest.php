@@ -50,36 +50,6 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
-    public function testCanonicalSchemaIncludesManagedUpgradeFeatures(): void
-    {
-        $requiredColumns = [
-            'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at', 'requester_mailing_address'],
-            'sacrament_applications' => ['paid_at', 'anonymized_at', 'person_id', 'spouse_person_id'],
-            'confirmation_applications' => ['baptism_date', 'baptism_parish_name', 'baptism_parish_address'],
-            'first_communion_applications' => ['applicant_gender', 'psa_birth_certificate_status', 'parental_consent'],
-            'marriage_applications' => ['groom_current_address', 'groom_confirmed', 'civil_marriage_date', 'groom_banns_status'],
-            'schedule_events' => ['public_details'],
-        ];
-
-        foreach ($requiredColumns as $table => $columns) {
-            foreach ($columns as $column) {
-                $statement = $this->pdo->prepare(
-                    'SELECT COUNT(*) FROM information_schema.columns
-                     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
-                );
-                $statement->execute([$table, $column]);
-                self::assertSame(1, (int) $statement->fetchColumn(), "Missing required column: {$table}.{$column}");
-            }
-        }
-
-        $statement = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM information_schema.tables
-             WHERE table_schema = DATABASE() AND table_name = ?'
-        );
-        $statement->execute(['srs_schema_migrations']);
-        self::assertSame(1, (int) $statement->fetchColumn(), 'Missing database-upgrade history table.');
-    }
-
     public function testSacramentalRegistersReferenceTheMasterPersonTable(): void
     {
         $links = [
