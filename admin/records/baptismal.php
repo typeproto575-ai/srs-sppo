@@ -472,7 +472,6 @@ if (isset($_GET['nochange'])) {
     $notice = 'No changes were made.';
 }
 
-$persons = !$identity && !$isEdit ? person_identity_choices($pdo) : [];
 $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
@@ -619,8 +618,8 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
                 <label>Remarks / Observanda <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
 <?php if ($isEdit): ?>
-<label>Reason for change <textarea name="reason_change" required minlength="5" maxlength="500"><?= e($formValues['reason_change'] ?? '') ?></textarea></label>
-<p class="field-hint">Saving will clear book verification.</p>
+<label>Reason for change <textarea name="reason_change" minlength="5" maxlength="500"><?= e($formValues['reason_change'] ?? '') ?></textarea></label>
+<p class="field-hint">Required if you change anything. Saving will clear book verification.</p>
 <?php endif; ?>
             </fieldset>
             <button type="submit" name="<?= $isEdit ? 'update_record' : 'add_record' ?>" value="1" class="btn btn-primary"><?= $isEdit ? 'Update Record' : 'Save Record' ?></button>
