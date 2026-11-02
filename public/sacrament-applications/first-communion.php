@@ -77,7 +77,7 @@ if ($isWizardNavigation && csrf_verify()) {
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
                 if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
             }
-            if ($value('contact_number') === '' || !is_valid_phone_number($value('contact_number'))) $errors[] = 'A valid contact number is required.';
+            if ($value('contact_number') !== '' && !is_valid_phone_number($value('contact_number'))) $errors[] = 'Enter a valid contact number when provided.';
             if (!filter_var($value('email'), FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
         } elseif ($currentStep === 3) {
             if (!in_array($value('baptized_here'), ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
         if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
     }
-    if ($contact === '' || !is_valid_phone_number($contact)) $errors[] = 'A valid contact number is required.';
+    if ($contact !== '' && !is_valid_phone_number($contact)) $errors[] = 'Enter a valid contact number when provided.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
     if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
     if (!$consent) $errors[] = 'Parent/Guardian consent is required.';
@@ -270,7 +270,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <?= person_name_fields('father', "Father's name", $formData, false) ?>
                         <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
                         <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
-                        <div class="inline-fields"><label>Contact Number * <input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>" required></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
+                        <div class="inline-fields"><label>Contact Number <span class="field-hint">(optional; email is used for updates)</span><input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>"></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
                     </fieldset>
                 <?php elseif ($currentStep === 3): ?>
                     <fieldset><legend>Phase 3 of 5 — Sacramental Record</legend>

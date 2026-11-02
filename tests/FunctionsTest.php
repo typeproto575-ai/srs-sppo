@@ -23,7 +23,6 @@ final class FunctionsTest extends TestCase
         self::assertFalse(cert_request_transition_valid('new', 'for_signature'));
         self::assertFalse(cert_request_transition_valid('released', 'ready'));
     }
-
     public function testCertificatePaymentGate(): void
     {
         self::assertFalse(cert_request_payment_gate([
@@ -305,4 +304,5 @@ final class FunctionsTest extends TestCase
         self::assertContains('participants', $changes);
         self::assertContains('remarks', $changes);
     }
+
 }

@@ -9,6 +9,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -30,6 +31,11 @@ if (!in_array($perPage, [10, 25, 50], true)) {
     $perPage = 25;
 }
 $page = max(1, (int) ($_GET['page'] ?? 1));
+$added = isset($_GET['added']);
+$updated = isset($_GET['updated']);
+$nochange = isset($_GET['nochange']);
+$shifted = isset($_GET['shifted']) ? (int) $_GET['shifted'] : 0;
+$completedApp = trim((string) ($_GET['completed_app'] ?? ''));
 $sort = (string) ($_GET['sort'] ?? 'date_desc');
 $allowedSorts = ['book', 'book_desc', 'page', 'page_desc', 'line', 'line_desc', 'name', 'name_desc', 'date_desc', 'date_asc', 'sacrament'];
 if (!in_array($sort, $allowedSorts, true)) {
@@ -43,8 +49,9 @@ SELECT CASE sr.sacrament_type
        END AS record_type,
        sr.id,
        CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS record_name,
+       CONCAT_WS(' ', spouse.first_name, spouse.middle_name, spouse.last_name, spouse.suffix) AS spouse_name,
        sr.event_date, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
-       sr.person_id,
+       sr.person_id, sr.spouse_person_id,
        p.first_name AS record_first_name,
        p.middle_name AS record_middle_name,
        p.last_name AS record_last_name,
@@ -168,10 +175,30 @@ function unified_sort_indicator(string $key): string
 
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-        <div class="page-heading">
+        <?php if ($added): ?><div class="alert alert-success"><p>Record added.<?php if ($shifted > 0): ?> (<?= $shifted ?> later entries shifted.)<?php endif; ?><?php if ($completedApp !== ''): ?> Application <?= e($completedApp) ?> completed.<?php endif; ?></p></div><?php endif; ?>
+    <?php if ($updated): ?><div class="alert alert-success"><p>Record updated.<?php if ($shifted > 0): ?> (<?= $shifted ?> later entries shifted.)<?php endif; ?></p></div><?php endif; ?>
+    <?php if ($nochange): ?><div class="alert alert-info"><p>No changes were made.</p></div><?php endif; ?>
+
+    <div class="page-heading">
             <div>
                 <p class="hero-eyebrow">Register index</p>
                 <h1>All Records</h1>
+<?php
+$formFileByType = [
+    'baptismal' => 'baptismal.php',
+    'confirmation' => 'confirmation.php',
+    'first_communion' => 'first-communion.php',
+    'marriage' => 'marriage.php',
+];
+?>
+<details style="display:inline-block;position:relative;margin-left:1rem;">
+    <summary class="btn btn-success btn-small" style="cursor:pointer;">+ Add record</summary>
+    <div style="position:absolute;z-index:10;background:#fff;border:1px solid #ccc;padding:.5rem;margin-top:.25rem;min-width:12rem;">
+        <?php foreach ($formFileByType as $rt => $file): ?>
+            <a class="btn btn-small" style="display:block;margin:.25rem 0;" href="<?= e($basePath . '/admin/records/' . $file . '?new=1') ?>"><?= e($labels[$rt] ?? ucfirst($rt)) ?></a>
+        <?php endforeach; ?>
+    </div>
+</details>
             </div>
         </div>
         <p class="field-hint">Search across the digital index, then open the register-specific editor to verify the physical logbook reference.</p>
@@ -286,7 +313,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><strong><?php if (!empty($record['person_id'])): ?><a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $record['person_id']) ?>"><?= e($recordDisplayName) ?></a><?php else: ?><?= e($recordDisplayName) ?><?php endif; ?></strong></td>
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
-                            <td class="row-actions"><a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a></td>
+                            <?php
+                        $editFile = $formFileByType[$record['record_type']] ?? null;
+                        $editUrl = $editFile ? $basePath . '/admin/records/' . $editFile . '?edit=' . (int) $record['id'] : null;
+                        ?>
+                        <td class="row-actions">
+                            <a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a>
+                            <?php if ($editUrl): ?>
+                                <a class="btn btn-secondary btn-small" href="<?= e($editUrl) ?>">Edit</a>
+                            <?php endif; ?>
+                        </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>

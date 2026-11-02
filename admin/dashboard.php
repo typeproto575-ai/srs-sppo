@@ -69,17 +69,23 @@ require_once __DIR__ . '/../includes/admin-header.php';
 
     <!-- Search form at the very top -->
     <section class="dashboard-search" style="margin-bottom:1.5rem;">
-        <form method="get" action="<?= e($basePath) ?>/admin/dashboard.php" class="search-form" style="display:flex;gap:.5rem;align-items:center;">
-            <input type="text" name="q" value="<?= e($q) ?>" placeholder="Search by name or birth year, e.g. dela Cruz 1985" autofocus style="flex:1;padding:.5rem .75rem;">
-            <button type="submit" class="btn btn-primary">Search</button>
+        <form method="get" action="<?= e($basePath) ?>/admin/dashboard.php" class="search-form" style="display:flex;gap:.5rem;align-items:center;"
+              data-dashboard-person-search data-endpoint="<?= e($basePath) ?>/admin/api/dashboard-person-search.php"
+              data-profile-url="<?= e($basePath) ?>/admin/system/person-profile.php">
+            <input id="dashboard-person-search" type="search" name="q" value="<?= e($q) ?>"
+                   placeholder="Search by name or birth year, e.g. dela Cruz 1985" autocomplete="off"
+                   aria-label="Search parishioners by name or birth year"
+                   aria-controls="dashboard-search-results" style="flex:1;padding:.5rem .75rem;">
+            <noscript><button type="submit" class="btn btn-primary">Search</button></noscript>
         </form>
+        <p class="field-hint">Start typing a name or birth year. Select a matching person to open their parish profile.</p>
     </section>
 
-    <?php if ($q !== ''): ?>
-        <section class="search-results" style="margin-bottom:1.5rem;">
+    <section id="dashboard-search-results" class="search-results" aria-live="polite" style="margin-bottom:1.5rem;"<?= $q === '' ? ' hidden' : '' ?>>
+        <?php if ($q !== ''): ?>
             <h2>Search results for "<?= e($q) ?>"</h2>
             <?php if (empty($searchResults)): ?>
-                <p class="field-hint">No match. <a href="<?= e($basePath) ?>/admin/records/record-form.php?type=baptism">Add as a new baptism</a>.</p>
+                <p class="field-hint">No matching parishioners found.</p>
             <?php else: ?>
                 <div class="table-scroll">
                     <table class="admin-table">
@@ -110,8 +116,8 @@ require_once __DIR__ . '/../includes/admin-header.php';
                     </table>
                 </div>
             <?php endif; ?>
-        </section>
-    <?php endif; ?>
+        <?php endif; ?>
+    </section>
 
     <div class="stat-cards dashboard-metrics">
         <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/queue.php?status=pending">
@@ -137,28 +143,33 @@ require_once __DIR__ . '/../includes/admin-header.php';
     </div>
 
     <div class="registry-summary">
-        <h2>Sacrament Archive Registry Summary</h2>
+        <h2>Sacramental records on file</h2>
+        <p class="registry-summary-note">Select a sacrament to open its records.</p>
         <div class="registry-grid">
-            <div class="registry-card">
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=baptismal" aria-label="View Baptism records, <?= (int) ($registryCounts['baptism'] ?? 0) ?> on file">
                 <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
                 <h3>Baptism</h3>
                 <span class="registry-count"><?= (int) ($registryCounts['baptism'] ?? 0) ?></span>
-            </div>
-            <div class="registry-card">
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=confirmation" aria-label="View Confirmation records, <?= (int) ($registryCounts['confirmation'] ?? 0) ?> on file">
                 <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
                 <h3>Confirmation</h3>
                 <span class="registry-count"><?= (int) ($registryCounts['confirmation'] ?? 0) ?></span>
-            </div>
-            <div class="registry-card">
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=first_communion" aria-label="View First Communion records, <?= (int) ($registryCounts['first_communion'] ?? 0) ?> on file">
                 <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v4a6 6 0 0 0-12 0z"/><path d="M12 13v6M8 21h8"/></svg></span>
                 <h3>First Communion</h3>
                 <span class="registry-count"><?= (int) ($registryCounts['first_communion'] ?? 0) ?></span>
-            </div>
-            <div class="registry-card">
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=marriage" aria-label="View Marriage records, <?= (int) ($registryCounts['marriage'] ?? 0) ?> on file">
                 <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="13" r="6"/><circle cx="15" cy="13" r="6"/></svg></span>
                 <h3>Marriage</h3>
                 <span class="registry-count"><?= (int) ($registryCounts['marriage'] ?? 0) ?></span>
-            </div>
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
         </div>
     </div><!-- /.registry-summary -->
 </section>

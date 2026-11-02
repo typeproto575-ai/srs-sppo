@@ -518,25 +518,28 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 $prerequisiteWarnings = [];
                 foreach ($matches as $match) {
                     $personId = (int) ($match['person_id'] ?? 0);
+                    $label = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
                     if ($personId < 1) {
+                        if (in_array($app['sacrament_type'], ['first_communion', 'confirmation', 'marriage'], true)) {
+                            $prerequisiteWarnings[] = "{$label}: link a parishioner profile, then verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
+                        }
                         continue;
                     }
                     $personRecords = $recordRowsByPerson[$personId] ?? [];
                     $profile = $linkedPersons[$personId] ?? [];
                     $hasBaptism = in_array('baptism', $personRecords, true)
                         || ($profile['baptismal_status'] ?? null) === 'baptized_catholic';
-                    $label = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
                     if ($app['sacrament_type'] === 'first_communion' && !$hasBaptism) {
-                        $prerequisiteWarnings[] = "{$label}: no baptism record or baptized-Catholic profile status is linked.";
+                        $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
                     } elseif ($app['sacrament_type'] === 'confirmation') {
                         if (!$hasBaptism) {
-                            $prerequisiteWarnings[] = "{$label}: no baptism record or baptized-Catholic profile status is linked.";
+                            $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
                         }
                         if (!in_array('first_communion', $personRecords, true)) {
                             $prerequisiteWarnings[] = "{$label}: no First Communion record is linked.";
                         }
                     } elseif ($app['sacrament_type'] === 'marriage' && !$hasBaptism) {
-                        $prerequisiteWarnings[] = "{$label}: no baptism record or baptized-Catholic profile status is linked.";
+                        $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
                     }
                 }
                 $canPrefill = !empty($app['person_id'])

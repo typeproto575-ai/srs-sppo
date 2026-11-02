@@ -50,7 +50,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <h3>Baptism application</h3>
                 <ul class="req-list">
                     <li>Child's full name, date of birth, and birthplace.</li>
-                    <li>Parent or guardian's name and contact details.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
                     <li>Parents' names, if known.</li>
                     <li>Godfathers' and godmothers' names, if known. The parish office will explain any requirements for sponsors.</li>
                     <li>A preferred baptism date, if you have one. The parish office confirms the schedule.</li>
@@ -65,7 +65,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div>
                 <h3>Marriage application</h3>
                 <ul class="req-list">
-                    <li>Both parties' names, birth details, contact details, and current marital status. Addresses and religious affiliation can be provided if known.</li>
+                    <li>Both parties' names, birth details, email addresses for updates, and current marital status. Phone numbers are optional for quicker contact. Addresses and religious affiliation can be provided if known.</li>
                     <li>Each party's baptism and Confirmation status, and any previous marriage.</li>
                     <li>Preferred wedding date, time, and venue.</li>
                     <li>Parents' names, if known, and any civil-marriage details that apply.</li>
@@ -82,7 +82,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <h3>Confirmation application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and birthdate.</li>
-                    <li>Parent or guardian's name and contact details.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
                 <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
@@ -95,7 +95,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <h3>First Communion application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and date of birth.</li>
-                    <li>Parent or guardian's name and contact details. Parents' names are optional.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact. Parents' names are optional.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
                 <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
@@ -118,7 +118,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>For Baptism, the father's name and mother's maiden name. For Marriage, both spouses' names and the marriage date.</li>
                     <li>Parent names may also be requested to help find a Baptism, Confirmation, or First Communion record.</li>
                     <li>Your name and relationship to the person, if you are requesting for someone else.</li>
-                    <li>Your email address and contact number.</li>
+                    <li>Your email address for updates. A contact number is optional for quicker contact.</li>
                 </ul>
                 <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring identification when collecting the certificate.</p>
                 <a href="<?= e($basePath) ?>/public/certificate-request.php" class="btn btn-small">Request a Certificate</a>

@@ -1612,28 +1612,46 @@ textarea {
 }
 
 .registry-summary h2 {
-    margin: 0 0 1rem;
+    margin: 0 0 0.25rem;
     font-size: 1.2rem;
+}
+
+.registry-summary-note {
+    margin: 0 0 0.85rem;
+    color: var(--admin-muted);
+    font-size: 0.85rem;
 }
 
 .registry-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .registry-card {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 0.5rem;
-    min-height: 130px;
-    padding: 1rem;
+    gap: 0.35rem;
+    min-height: 112px;
+    padding: 0.85rem 1rem;
     background: linear-gradient(180deg, #faf9f5 0%, #f4f0e8 100%);
     border: 1px solid rgba(31,61,43,0.08);
     border-radius: 12px;
     text-decoration: none;
     color: var(--admin-ink);
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.registry-card:hover {
+    border-color: var(--admin-green);
+    box-shadow: 0 5px 16px rgba(31, 61, 43, 0.1);
+    transform: translateY(-2px);
+}
+
+.registry-card:focus-visible {
+    outline: 3px solid var(--admin-green);
+    outline-offset: 3px;
 }
 
 .registry-card h3 {
@@ -1645,6 +1663,22 @@ textarea {
     font-size: 1.8rem;
     font-weight: 800;
     line-height: 1;
+}
+
+.registry-card-action {
+    margin-top: 0.15rem;
+    color: var(--admin-green);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.registry-card-action span {
+    display: inline-block;
+    transition: transform 150ms ease;
+}
+
+.registry-card:hover .registry-card-action span {
+    transform: translateX(3px);
 }
 
 .dashboard-lower-grid {

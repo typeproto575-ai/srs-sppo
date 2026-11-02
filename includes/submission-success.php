@@ -47,14 +47,14 @@ $basePath       = $basePath ?? base_path();
                 <h3>What happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
-                    <li>The Parish Office reviews your application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used.</li>
+                    <li>The Parish Office reviews your application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
                     <?php if ($successIsApplication): ?>
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>
-                    <li>The Parish Office may email you when there is an update. You may also contact the office with this reference number and the email address you used. Bring any requested documents and valid ID to collect the printed certificate in person.</li>
+                    <li>The Parish Office may email you when there is an update. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger. Bring any requested documents and valid ID to collect the printed certificate in person.</li>
                     <?php endif; ?>
                 </ol>
             </div>

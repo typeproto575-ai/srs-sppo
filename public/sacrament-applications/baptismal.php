@@ -120,8 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email         = fd('email', $_POST);
                 $privacyConsent = $_POST['privacy_consent'] ?? '';
 
-                if ($contactNumber === '' || !is_valid_phone_number($contactNumber)) {
-                    $errors[] = 'Please enter a valid contact number (at least 10 digits).';
+                if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
+                    $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
                 }
                 if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     $errors[] = 'Please enter a valid email address.';
@@ -192,9 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
             if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
             if ($parentGuardian === '')  $errors[] = 'Parent/Guardian name is required.';
-            if ($contactNumber === '')   $errors[] = 'Contact number is required.';
             if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
-                $errors[] = 'Please enter a valid contact number (at least 10 digits).';
+                $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
             }
             if ($email === '')           $errors[] = 'Email address is required.';
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -467,8 +466,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 3 of 4 — Contact & Consent</legend>
-            <label>Contact Number
-                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>" required>
+            <label>Contact Number <span class="field-hint">(optional; email is used for updates)</span>
+                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>">
             </label>
             <label>Email Address
                 <input type="email" name="email" value="<?= e(fd('email', $formData)) ?>" required>

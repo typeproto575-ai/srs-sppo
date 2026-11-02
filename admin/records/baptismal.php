@@ -10,8 +10,8 @@ require_once __DIR__ . '/../../includes/person-linking.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
-$selfUrl = $basePath . '/admin/records/baptismal.php';
-$selfReturn = '/admin/records/baptismal.php' . (($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . $_SERVER['QUERY_STRING'] : '');
+$selfUrl = '/admin/records/index.php?type=baptismal';
+$selfReturn = '/admin/records/index.php?type=baptismal';
 $pageTitle = 'Baptismal Records';
 $errors = [];
 $success = null;
@@ -25,6 +25,7 @@ $personId = 0;
 $identity = null;
 $formValues = $_POST;
 $isEdit = isset($_GET['edit']);
+$isNew = isset($_GET['new']);
 
 function baptismal_next_logbook_numbers(PDO $pdo): array
 {
@@ -298,8 +299,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                 }
             }
 
+$shiftedCount = 0;
             if (!$isPostEdit && $entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
-                baptismal_shift_entry_numbers($pdo, $entryNo);
+                $shiftedCount = baptismal_shift_entry_numbers($pdo, $entryNo);
             }
             if ($isPostEdit) {
                 $recordId = (int) $editRecord['id'];
@@ -324,7 +326,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                 $changed = sd_record_changes($oldRecord, $newRecord);
                 if ($changed === []) {
                     $pdo->commit();
-                    redirect_to($selfUrl . '?nochange=1');
+                    redirect_to($selfUrl . '&nochange=1');
                     exit;
                 }
                 $reasonChange = trim((string) ($_POST['reason_change'] ?? ''));
@@ -419,7 +421,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                     error_log('Baptism application completion notification failed: ' . $e->getMessage());
                 }
             }
-            redirect_to($selfUrl . ($isPostEdit ? '?updated=1' : '?added=1'));
+            $redirectQuery = $isPostEdit ? 'updated=1' : 'added=1';
+            if ($shiftedCount > 0) {
+                $redirectQuery .= '&shifted=' . $shiftedCount;
+            }
+            if ($completedApplicationRequestNo !== null) {
+                $redirectQuery .= '&completed_app=' . urlencode($completedApplicationRequestNo);
+            }
+            redirect_to($selfUrl . '&' . $redirectQuery);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -463,104 +472,18 @@ if (isset($_GET['nochange'])) {
     $notice = 'No changes were made.';
 }
 
-$rfConfig = [
-    'date_column' => 'sr.event_date',
-    'search_columns' => [
-        "CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix)",
-        'p.father_name', 'p.mother_maiden_name', 'sr.minister_name',
-    ],
-    'placeholder' => 'Search child, parents, minister...',
-    'ranges' => ['year', 'last_year', 'last5'],
-];
-require_once __DIR__ . '/../../includes/record-filters.php';
-$rf = rf_parse($rfConfig);
-$allowedSorts = ['register', 'book', 'book_desc', 'page', 'page_desc', 'line', 'line_desc', 'name', 'name_desc', 'date_desc', 'date_asc'];
-$sort = (string) ($_GET['sort'] ?? 'register');
-if (!in_array($sort, $allowedSorts, true)) {
-    $sort = 'register';
-}
-$orderBy = match ($sort) {
-    'date_desc' => 'sr.event_date DESC, p.last_name, p.first_name',
-    'date_asc' => 'sr.event_date ASC, p.last_name, p.first_name',
-    'page_desc' => "CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC",
-    'page' => "CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED)",
-    'line_desc' => "CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC",
-    'line' => "CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED)",
-    'name_desc' => 'p.last_name DESC, p.first_name DESC, sr.book_no DESC',
-    'name' => 'p.last_name, p.first_name, sr.book_no',
-    'book_desc' => "CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED) DESC, CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED) DESC",
-    default => "CAST(COALESCE(NULLIF(sr.book_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.page_no, ''), '0') AS UNSIGNED), CAST(COALESCE(NULLIF(sr.line_no, ''), '0') AS UNSIGNED)",
-};
-$stmt = $pdo->prepare(
-    "SELECT COUNT(*) FROM sacrament_records sr
-     JOIN persons p ON p.id = sr.person_id
-     WHERE sr.sacrament_type = 'baptism' {$rf['where']}"
-);
-$stmt->execute($rf['params']);
-$rfTotal = (int) $stmt->fetchColumn();
-$stmt = $pdo->prepare(
-    "SELECT sr.id, sr.event_date, sr.book_no, sr.page_no, sr.line_no,
-            p.first_name, p.middle_name, p.last_name, p.suffix
-     FROM sacrament_records sr
-     JOIN persons p ON p.id = sr.person_id
-     WHERE sr.sacrament_type = 'baptism' {$rf['where']}
-     ORDER BY {$orderBy} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}"
-);
-$stmt->execute($rf['params']);
-$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $persons = !$identity && !$isEdit ? person_identity_choices($pdo) : [];
 $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<div class="admin-list-page">
-    <div class="page-heading">
-        <h1>Baptismal Records</h1>
-        <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
-        <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
-    </div>
-    <p class="field-hint">The physical baptismal logbook remains canonical. Register entries are linked to read-only master person profiles.</p>
-    <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
-<?php if ($notice): ?><div class="alert alert-info"><p><?= e($notice) ?></p></div><?php endif; ?>
-    <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
-    <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-    <div class="table-scroll" tabindex="0" role="region" aria-label="Baptismal register records; scroll horizontally to view all columns">
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th><a href="<?= e(baptismal_sort_url('book')) ?>">Book<?= baptismal_sort_indicator('book') ?></a></th>
-                    <th><a href="<?= e(baptismal_sort_url('page')) ?>">Page<?= baptismal_sort_indicator('page') ?></a></th>
-                    <th><a href="<?= e(baptismal_sort_url('line')) ?>">Line<?= baptismal_sort_indicator('line') ?></a></th>
-                    <th><a href="<?= e(baptismal_sort_url('name')) ?>">Name<?= baptismal_sort_indicator('name') ?></a></th>
-                    <th><a href="<?= e(baptismal_sort_url('date_desc')) ?>">Baptism Date<?= baptismal_sort_indicator('date_desc') ?></a></th>
-                    <th>Person</th>
-                    <th>Options</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (!$records): ?>
-                    <tr><td colspan="7" class="empty-table-row">No baptismal records found.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($records as $record): ?>
-                        <?php $displayName = trim(implode(' ', array_filter([$record['first_name'], $record['middle_name'], $record['last_name'], $record['suffix']]))); ?>
-                        <tr>
-                            <td><?= e($record['book_no'] ?: '—') ?></td>
-                            <td><?= e($record['page_no'] ?: '—') ?></td>
-                            <td><?= e($record['line_no'] ?: '—') ?></td>
-                            <td><strong><?= e($displayName) ?></strong></td>
-                            <td><?= e(date('M j, Y', strtotime($record['event_date']))) ?></td>
-                            <td><span class="link-status-badge link-status-linked">Linked</span></td>
-                            <td class="row-actions">
-                                <a class="btn btn-secondary btn-small" href="<?= e($selfUrl . '?edit=' . (int) $record['id']) ?>">Edit</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-    <?php rf_render_pagination($selfUrl, $rfTotal, $rf); ?>
+<div class="page-heading">
+    <h1>Baptismal Record Entry</h1>
+    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php?type=baptismal') ?>">Back to Records</a>
+    <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
 </div>
-
+<?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
+<?php if ($notice): ?><div class="alert alert-info"><p><?= e($notice) ?></p></div><?php endif; ?>
+<?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php
 $recordDetails = $isEdit ? (json_decode((string) ($editRecord['details'] ?? ''), true) ?: []) : [];
 $suggestedEntry = $isEdit ? (string) ($editRecord['entry_no'] ?? '') : (string) $suggest['entry_no'];
@@ -583,7 +506,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
     }
 }
 ?>
-<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $errors || $applicationId) ? ' data-autoshow' : '' ?>>
+<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?>>
     <div class="dialog-head">
         <h2><?= $isEdit ? 'Edit Baptism Record #' . (int) $editRecord['id'] : 'Encode New Baptism Record' ?></h2>
         <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -595,26 +518,20 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <p class="field-hint">Applicant-provided child name: <strong><?= e((string) ($applicationDetails['child_name'] ?? '')) ?></strong>. Split and confirm the name in the editable fields below; it is not split automatically.</p>
             <?php endif; ?>
         <?php endif; ?>
-        <?php if (!$isEdit && !$identity && $persons): ?>
-            <form method="get" action="<?= e($selfUrl) ?>" class="inline-fields">
-                <?php if ($applicationId): ?><input type="hidden" name="from_application" value="<?= $applicationId ?>"><?php endif; ?>
-                <label>Use an existing person profile
-                    <select name="person_id">
-                        <option value="">Create a new profile</option>
-                        <?php foreach ($persons as $personOption): ?>
-                            <?php $optionName = trim(implode(' ', array_filter([$personOption['first_name'], $personOption['middle_name'], $personOption['last_name'], $personOption['suffix']]))); ?>
-                            <option value="<?= (int) $personOption['id'] ?>"><?= e($optionName . (!empty($personOption['birth_date']) ? ' — born ' . $personOption['birth_date'] : '')) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <button type="submit" class="btn btn-secondary btn-small">Load profile</button>
-            </form>
-        <?php endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
         <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
-            <?php if ($identity): ?><input type="hidden" name="person_id" value="<?= (int) $identity['id'] ?>"><?php endif; ?>
+            <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+                <label>Find possible people
+                    <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
+                </label>
+                <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? ($identity['id'] ?? '')) ?>">
+                <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
+                <div class="person-finder-results" data-person-results></div>
+                <p class="field-hint">Search the master person index to avoid duplicate profiles. Choose the correct match to fill the identity fields; review those details, then save the sacrament record.</p>
+            </div>
+            <?php if ($identity): ?><p class="field-hint">Person identity and parent details are read-only from the linked master profile.</p><?php endif; ?>
             <?php if ($applicationId): ?><input type="hidden" name="from_application" value="<?= $applicationId ?>"><?php endif; ?>
             <input type="hidden" name="entry_no" value="<?= e($formValues['entry_no'] ?? $suggestedEntry) ?>">
             <fieldset>

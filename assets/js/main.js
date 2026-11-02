@@ -15,6 +15,126 @@
    ===================================================================== */
 
 document.addEventListener('DOMContentLoaded', function () {
+    // ---- Dashboard person search ----------------------------------------
+    document.querySelectorAll('[data-dashboard-person-search]').forEach(function (form) {
+        var input = form.querySelector('input[name="q"]');
+        var results = document.getElementById('dashboard-search-results');
+        if (!input || !results) return;
+
+        var searchTimer = null;
+        var requestNumber = 0;
+        var controller = null;
+
+        function appendCell(row, value) {
+            var cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+        }
+
+        function appendHeading(row, label) {
+            var cell = document.createElement('th');
+            cell.scope = 'col';
+            cell.textContent = label;
+            row.appendChild(cell);
+        }
+
+        function renderResults(query, people) {
+            results.replaceChildren();
+            results.hidden = false;
+
+            var heading = document.createElement('h2');
+            heading.textContent = 'Search results for "' + query + '"';
+            results.appendChild(heading);
+
+            if (!people.length) {
+                var empty = document.createElement('p');
+                empty.className = 'field-hint';
+                empty.textContent = 'No matching parishioners found.';
+                results.appendChild(empty);
+                return;
+            }
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'table-scroll';
+            var table = document.createElement('table');
+            table.className = 'admin-table';
+            var head = document.createElement('thead');
+            var headerRow = document.createElement('tr');
+            ['Name', 'Birth date', 'Birth place', 'Baptism', 'First Communion', 'Confirmation', 'Marriage']
+                .forEach(function (label) { appendHeading(headerRow, label); });
+            head.appendChild(headerRow);
+            table.appendChild(head);
+
+            var body = document.createElement('tbody');
+            people.forEach(function (person) {
+                var row = document.createElement('tr');
+                var nameCell = document.createElement('td');
+                var link = document.createElement('a');
+                link.href = form.dataset.profileUrl + '?id=' + encodeURIComponent(person.id);
+                link.textContent = person.full_name;
+                nameCell.appendChild(link);
+                row.appendChild(nameCell);
+                appendCell(row, person.birth_date ? new Date(person.birth_date + 'T00:00:00').toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                }) : '—');
+                appendCell(row, person.birth_place || '—');
+                appendCell(row, person.has_baptism ? '✓' : '—');
+                appendCell(row, person.has_first_communion ? '✓' : '—');
+                appendCell(row, person.has_confirmation ? '✓' : '—');
+                appendCell(row, person.has_marriage ? '✓' : '—');
+                body.appendChild(row);
+            });
+            table.appendChild(body);
+            wrapper.appendChild(table);
+            results.appendChild(wrapper);
+        }
+
+        function runSearch() {
+            var query = input.value.trim();
+            var currentRequest = ++requestNumber;
+            if (controller) controller.abort();
+
+            if (!query) {
+                results.replaceChildren();
+                results.hidden = true;
+                return;
+            }
+
+            results.hidden = false;
+            results.textContent = 'Searching parishioners...';
+            controller = new AbortController();
+            var url = new URL(form.dataset.endpoint, window.location.href);
+            url.searchParams.set('q', query);
+
+            fetch(url.toString(), { credentials: 'same-origin', signal: controller.signal })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (!response.ok) throw new Error(data.error || 'Search is temporarily unavailable.');
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (currentRequest === requestNumber) renderResults(query, data.results || []);
+                })
+                .catch(function (error) {
+                    if (error.name === 'AbortError' || currentRequest !== requestNumber) return;
+                    results.textContent = error.message || 'Search is temporarily unavailable. Please try again.';
+                });
+        }
+
+        input.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 300);
+        });
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            window.clearTimeout(searchTimer);
+            runSearch();
+        });
+    });
+
     // Surface server-rendered errors to assistive technology.
     document.querySelectorAll('.alert-error').forEach(function (alert) {
         alert.setAttribute('role', 'alert');
@@ -216,9 +336,10 @@ document.addEventListener('DOMContentLoaded', function () {
         var birthDateSearch = finder.querySelector('[data-person-birth-date]');
         var selection = finder.querySelector('[data-person-selection]');
         var resultsBox = finder.querySelector('[data-person-results]');
-        if (!form || !search || !findButton || !hiddenId || !selection || !resultsBox) return;
+        if (!form || !search || !hiddenId || !selection || !resultsBox) return;
 
         if (finder.dataset.matchWidget === 'true') {
+            if (!findButton) return;
             var createToggle = finder.querySelector('[data-person-create-toggle]');
             var createPanel = finder.querySelector('[data-person-create-panel]');
             var createButton = finder.querySelector('[data-person-create]');
@@ -550,17 +671,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
             }
-            findButton.disabled = true;
+            if (findButton) findButton.disabled = true;
             resultsBox.textContent = 'Searching possible people...';
             fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
                 .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error('Search failed')); })
                 .then(function (data) { renderResults(data.results || []); })
                 .catch(function () { resultsBox.textContent = 'The person search is unavailable. Please try again.'; })
-                .finally(function () { findButton.disabled = false; });
+                .finally(function () { if (findButton) findButton.disabled = false; });
             }
 
             var searchTimer = null;
-            findButton.addEventListener('click', searchPeople);
+            if (findButton) findButton.addEventListener('click', searchPeople);
             search.addEventListener('input', function () {
                 clearStaleSelection();
                 window.clearTimeout(searchTimer);

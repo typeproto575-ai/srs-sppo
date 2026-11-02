@@ -101,8 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($currentStep === CONF_STEP_BAPTISM) {
                 if (!in_array($formData['baptized_here'], ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
             } elseif ($currentStep === CONF_STEP_CONTACT) {
-                if ($formData['contact_number'] === '' || !is_valid_phone_number($formData['contact_number'])) {
-                    $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
+                if ($formData['contact_number'] !== '' && !is_valid_phone_number($formData['contact_number'])) {
+                    $errors[] = 'Please enter a valid Philippine mobile number when provided, such as 09171234567 or +639171234567.';
                 }
                 if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
                 if ($formData['privacy_consent'] !== '1') $errors[] = 'Please agree to the Privacy Notice before continuing.';
@@ -136,8 +136,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($applicantBirthdate !== '' && is_future_date($applicantBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
         if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
         if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
-        if ($contactNumber === '' || !is_valid_phone_number($contactNumber)) {
-            $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
+        if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
+            $errors[] = 'Please enter a valid Philippine mobile number when provided, such as 09171234567 or +639171234567.';
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
         if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
@@ -334,8 +334,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php elseif ($currentStep === CONF_STEP_CONTACT): ?>
             <fieldset>
                 <legend>Phase 3 of 4 — Contact &amp; Consent</legend>
-                <label>Contact Number * <span class="field-hint">(e.g. 09171234567 or +639171234567)</span>
-                    <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>" required>
+                <label>Contact Number <span class="field-hint">(optional; email is used for updates)</span>
+                    <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>">
                 </label>
                 <label>Email Address *
                     <input type="email" name="email" autocomplete="email" value="<?= $wv('email') ?>" required>
