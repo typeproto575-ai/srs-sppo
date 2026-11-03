@@ -86,12 +86,17 @@ require_once __DIR__ . '/../includes/header.php';
 
 </div>
 
-<!-- Two route cards: pick the flow that matches the visitor's need -->
+<!-- Two service paths: pick the flow that matches the visitor's need -->
 <div class="path-cards">
+    <div class="path-card">
+        <h3>Sacrament Application</h3>
+        <p>Preparing for Baptism, First Communion, Confirmation, or a church wedding? Choose an application for parish-office review.</p>
+        <a href="<?= e($basePath) ?>/public/services.php#sacrament-applications" class="btn btn-secondary">Choose an Application</a>
+    </div>
     <div class="path-card">
         <h3>Certificate Request</h3>
         <p>Need proof of a sacrament that already took place? Request a certified copy.</p>
-        <a href="<?= $basePath ?>/public/certificate-request.php" class="btn btn-secondary">Request a Certificate</a>
+        <a href="<?= e($basePath) ?>/public/services.php#certificate-requests" class="btn btn-secondary">Request a Certificate</a>
     </div>
 </div>
 

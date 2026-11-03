@@ -261,13 +261,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
-        $successRequiredDocuments = ['Baptismal certificate from the origin parish if baptized elsewhere', 'Confirmation sponsor details'];
+        $successRequiredDocuments = sacrament_application_requirements('confirmation')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
         <a class="btn" href="confirmation.php?reset=1">Start a New Application</a>
     </div>
 <?php else: ?>
     <h1><?= e($pageTitle) ?></h1>
+    <?php if ($currentStep === CONF_STEP_DETAILS): $applicationType = 'confirmation'; require __DIR__ . '/../../includes/public-requirements-notice.php'; endif; ?>
     <ol class="request-steps" aria-label="Progress">
         <?php foreach ($confOrder as $i => $key): ?>
             <?php $state = ($key === $currentStep) ? 'is-current' : (($currentStep > $key) ? 'is-done' : ''); ?>
@@ -277,6 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if (!empty($errors)): ?>
         <div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the application</h2>
     <form method="post">
         <?= csrf_field() ?>
         <input type="hidden" name="_wizard_action" value="<?= $currentStep === CONF_STEP_VERIFY ? 'final_submit' : 'next' ?>">

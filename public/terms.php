@@ -47,8 +47,8 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause">
             <h2 class="legal-clause__title">Record Verification and Release</h2>
             <ol class="legal-subclauses">
-                <li>The Parish Office verifies the identity of the requesting party and the details of the record concerned prior to the release of any certificate.</li>
-                <li>Certificates are released <span class="legal-term">in person only</span>, at the Parish Office, upon presentation of valid identification and compliance with any further instruction issued by the parish secretary.</li>
+                <li>The Parish Office checks the request and record details before releasing any certificate.</li>
+                <li>Certificates are released <span class="legal-term">in person only</span>, at the Parish Office, after staff verify the request and recorded payment. A claim stub or payment slip, if issued, can help locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must present a signed authorization letter from the person named on the certificate.</li>
                 <li>Nothing in an online submission entitles the requesting party to remote or electronic release of a certificate.</li>
             </ol>
         </section>

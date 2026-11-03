@@ -423,36 +423,68 @@ document.addEventListener('DOMContentLoaded', function () {
                     resultsBox.textContent = 'No matching people found. Check the spelling and birth date before creating a new profile.';
                     return;
                 }
+                var wrapper = document.createElement('div');
+                wrapper.className = 'table-scroll person-match-results-scroll';
+                var table = document.createElement('table');
+                table.className = 'admin-table';
+                var head = document.createElement('thead');
+                var headerRow = document.createElement('tr');
+                ['Name', 'Birth date', 'Birth place', 'Baptism', 'First Communion', 'Confirmation', 'Marriage']
+                    .forEach(function (label) {
+                        var cell = document.createElement('th');
+                        cell.scope = 'col';
+                        cell.textContent = label;
+                        headerRow.appendChild(cell);
+                    });
+                head.appendChild(headerRow);
+                table.appendChild(head);
+
+                var body = document.createElement('tbody');
                 people.forEach(function (person) {
-                    var button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'person-finder-result';
-                    var name = document.createElement('strong');
-                    name.textContent = matchName(person) || 'Unnamed person';
-                    var details = document.createElement('span');
-                    var parentNames = [person.father_name, person.mother_maiden_name].filter(Boolean).join(' / ');
-                    details.textContent = [
-                        person.birth_date ? 'Born ' + person.birth_date : '',
-                        parentNames ? 'Parents: ' + parentNames : '',
-                        person.address || ''
-                    ].filter(Boolean).join(' · ');
-                    button.appendChild(name);
-                    button.appendChild(details);
-                    button.addEventListener('click', function () { linkMatch(person); });
-                    resultsBox.appendChild(button);
+                    var row = document.createElement('tr');
+                    var nameCell = document.createElement('td');
+                    var selectButton = document.createElement('button');
+                    var fullName = person.full_name || matchName(person) || 'Unnamed person';
+                    selectButton.type = 'button';
+                    selectButton.className = 'person-match-result-select';
+                    selectButton.textContent = fullName;
+                    selectButton.setAttribute('aria-label', 'Link ' + fullName + ' to this application');
+                    selectButton.addEventListener('click', function () { linkMatch(person); });
+                    nameCell.appendChild(selectButton);
+                    row.appendChild(nameCell);
+
+                    [
+                        person.birth_date || '—',
+                        person.birth_place || '—',
+                        person.has_baptism ? '✓' : '—',
+                        person.has_first_communion ? '✓' : '—',
+                        person.has_confirmation ? '✓' : '—',
+                        person.has_marriage ? '✓' : '—'
+                    ].forEach(function (value) {
+                        var cell = document.createElement('td');
+                        cell.textContent = value;
+                        row.appendChild(cell);
+                    });
+                    body.appendChild(row);
                 });
+                table.appendChild(body);
+                wrapper.appendChild(table);
+                resultsBox.appendChild(wrapper);
             }
 
             function searchMatches() {
                 var requestNumber = ++latestMatchSearch;
-                var query = search.value.trim();
                 var birthDate = birthDateSearch ? birthDateSearch.value : '';
+                var query = search.value.trim();
+                if (birthDate && query.indexOf(birthDate) === -1) {
+                    query = query ? query + ' ' + birthDate : birthDate;
+                }
                 if (!query && !birthDate) {
                     findButton.disabled = false;
                     resultsBox.textContent = 'Enter a surname or date of birth to search.';
                     return;
                 }
-                var params = new URLSearchParams({ q: query, birth_date: birthDate });
+                var params = new URLSearchParams({ q: query });
                 findButton.disabled = true;
                 resultsBox.textContent = 'Searching master persons...';
                 fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
@@ -494,6 +526,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     window.clearTimeout(matchSearchTimer);
                     searchMatches();
                 });
+            }
+            var reviewDetails = form.closest('details.application-queue-review');
+            function searchPrefilledApplicant() {
+                if (!hiddenId.value && (search.value.trim() || (birthDateSearch && birthDateSearch.value))) {
+                    searchMatches();
+                }
+            }
+            if (reviewDetails && !reviewDetails.open) {
+                reviewDetails.addEventListener('toggle', function () {
+                    if (reviewDetails.open) searchPrefilledApplicant();
+                }, { once: true });
+            } else {
+                searchPrefilledApplicant();
             }
             if (createToggle && createPanel) {
                 createToggle.addEventListener('click', function () {
@@ -1825,5 +1870,4 @@ document.addEventListener('DOMContentLoaded', function () {
             input.addEventListener('change', scheduleSearch);
         });
     });
-
 });

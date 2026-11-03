@@ -699,6 +699,28 @@ textarea {
     outline: none;
 }
 
+.person-match-results-scroll {
+    max-height: 18rem;
+}
+
+.person-match-result-select {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--admin-green-dark);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 0.12em;
+    cursor: pointer;
+}
+
+.person-match-result-select:hover,
+.person-match-result-select:focus-visible {
+    color: var(--admin-green);
+}
+
 .person-finder-result span,
 .person-finder-selection {
     color: var(--admin-muted);
@@ -724,15 +746,37 @@ textarea {
     border-radius: 7px;
 }
 
+.person-match-create[hidden] {
+    display: none;
+}
+
 .person-match-create legend {
     padding: 0 0.35rem;
     font-weight: 600;
 }
 
-.application-review-list {
-    display: grid;
-    gap: 1rem;
+.application-queue-table { min-width: 860px; }
+.application-queue-table th { white-space: nowrap; }
+.application-queue-table td { vertical-align: middle; }
+.application-queue-table td:nth-child(3) { min-width: 18rem; white-space: normal; }
+.application-queue-filter-wrap .record-filter-bar .filter-panel {
+    width: min(38rem, calc(100vw - 2rem));
 }
+.application-queue-filter-wrap .record-filter-bar .filter-body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.application-queue-filter-wrap .record-filter-bar .filter-custom-dates {
+    grid-column: 1 / -1;
+}
+.application-queue-submitter {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+}
+.application-queue-detail-row > td { padding: 0.45rem 0.75rem; }
+.application-queue-review > summary { display: none; }
+.application-queue-review .application-review-card { box-shadow: none; }
 
 .application-review-card {
     display: grid;
@@ -837,6 +881,25 @@ textarea {
     align-items: end;
     gap: 0.6rem;
     flex-wrap: wrap;
+}
+
+.application-review-actions .application-status-form {
+    display: grid;
+    grid-template-columns: minmax(12rem, 22rem) auto;
+    align-items: end;
+    gap: 0.6rem;
+    flex: 0 1 32rem;
+}
+.application-review-actions .application-status-form > label {
+    min-width: 0;
+    flex: initial;
+}
+.application-review-actions .application-status-form select {
+    width: 100%;
+    min-width: 0;
+}
+.application-review-actions .application-status-form button {
+    white-space: nowrap;
 }
 
 .mapper-person-assign-form {
@@ -1043,7 +1106,7 @@ textarea {
 .record-filter-bar .filter-summary::before { content: ""; margin-right: 0.45rem; border: 0.3rem solid transparent; border-left-color: currentColor; }
 .record-filter-bar .filter-popup[open] .filter-summary::before { transform: rotate(90deg); }
 .record-filter-bar .filter-count { margin-left: 0.35rem; padding: 0.1rem 0.38rem; border-radius: 999px; background: var(--admin-green); color: #fff; font-size: 0.72rem; }
-.record-filter-bar .filter-panel { position: absolute; z-index: 20; top: calc(100% + 0.45rem); left: 0; width: min(22rem, calc(100vw - 2rem)); padding: 0.9rem; background: var(--admin-panel); border: 1px solid var(--admin-border); border-radius: 10px; box-shadow: var(--admin-shadow-sm); }
+.record-filter-bar .filter-panel { position: absolute; z-index: 20; top: calc(100% + 0.45rem); right: 0; left: auto; width: min(22rem, calc(100vw - 2rem)); padding: 0.9rem; background: var(--admin-panel); border: 1px solid var(--admin-border); border-radius: 10px; box-shadow: var(--admin-shadow-sm); }
 .record-filter-bar .filter-title { margin: 0.1rem 0 0.45rem; font-weight: 700; }
 .record-filter-bar .filter-body { display: grid; gap: 0.35rem; }
 .record-filter-bar .filter-option { display: flex; align-items: center; gap: 0.45rem; margin: 0; font-size: 0.86rem; }
@@ -2803,6 +2866,24 @@ textarea {
 }
 
 @media (max-width: 560px) {
+    .application-queue-filter-wrap .record-filter-bar .filter-popup[open] .filter-panel {
+        right: auto;
+        left: 0;
+        width: min(38rem, calc(100vw - 3rem));
+    }
+    .application-queue-filter-wrap .record-filter-bar .filter-body {
+        grid-template-columns: 1fr;
+    }
+    .application-queue-filter-wrap .record-filter-bar .filter-custom-dates {
+        grid-column: auto;
+    }
+    .application-review-actions .application-status-form {
+        grid-template-columns: 1fr;
+        flex-basis: 100%;
+    }
+    .application-review-actions .application-status-form button {
+        width: 100%;
+    }
     .record-workspace-filters { grid-template-columns: 1fr; }
     .record-search-field { grid-column: auto; }
     .record-workspace-filters .btn { width: 100%; }

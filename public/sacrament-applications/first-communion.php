@@ -228,10 +228,11 @@ function selectedv(string $key, string $value): string { global $formData; retur
         <?php
         $successHeading = 'Your application has been submitted';
         $successIsApplication = true;
-        $successRequiredDocuments = ['Baptismal certificate (original copy if the applicant was baptized elsewhere)', 'Proof of catechetical formation'];
+        $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
     <?php else: ?>
+        <?php if ($currentStep === 1): $applicationType = 'first_communion'; require __DIR__ . '/../../includes/public-requirements-notice.php'; endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
             <ol class="request-steps" aria-label="Application progress">
                 <?php foreach ($steps as $step => $label): ?>
@@ -239,6 +240,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
                 <?php endforeach; ?>
             </ol>
+            <h2 class="form-stage-heading">During: complete the application</h2>
             <form method="post">
                 <?= csrf_field() ?>
                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">

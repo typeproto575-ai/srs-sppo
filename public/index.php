@@ -58,7 +58,7 @@ require_once __DIR__ . '/../includes/header.php';
         <h1><?= e($settings['hero_heading_text']) ?></h1>
         <p class="hero-sub"><?= e($settings['hero_subtitle_text']) ?></p>
         <div class="hero-actions">
-            <a href="<?= $basePath ?>/public/requirements.php" class="btn">View Requirements &amp; Get Started</a>
+            <a href="<?= $basePath ?>/public/services.php" class="btn">Choose a Service</a>
         </div>
     </div>
     <aside class="portal-hero-note" aria-label="Important parish office note">
@@ -78,11 +78,11 @@ require_once __DIR__ . '/../includes/header.php';
         <p class="section-intro">Choose a service and send your information for parish review. The parish office makes the final decision.</p>
     </div>
     <div class="service-grid">
-        <a class="service-card" href="<?= $basePath ?>/public/requirements.php#application-preparation-heading">
+        <a class="service-card" href="<?= $basePath ?>/public/services.php#sacrament-applications">
             <span class="service-number">01</span>
             <h3>Apply for a sacrament</h3>
             <p>Start a Baptism, First Communion, Confirmation, or Church Wedding application for parish review.</p>
-            <span class="service-link">Explore sacrament applications &rarr;</span>
+            <span class="service-link">Choose an application &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/certificate-request.php">
             <span class="service-number">02</span>

@@ -9,10 +9,10 @@ $matchWidgetMode = $matchWidgetMode ?? 'ajax';
     <?= csrf_field() ?>
     <input type="hidden" name="application_id" value="<?= (int) $matchApplicationId ?>">
     <input type="hidden" name="person_role" value="<?= e($matchRole) ?>">
-    <input type="hidden" name="<?= e($matchRole === 'spouse' ? 'spouse_person_id' : 'person_id') ?>"
-           data-person-id value="<?= (int) ($matchPersonId ?? 0) ?: '' ?>">
     <div class="person-finder" data-person-finder data-match-widget="true"
-         data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+         data-endpoint="<?= e($basePath . '/admin/api/dashboard-person-search.php') ?>">
+        <input type="hidden" name="<?= e($matchRole === 'spouse' ? 'spouse_person_id' : 'person_id') ?>"
+               data-person-id value="<?= (int) ($matchPersonId ?? 0) ?: '' ?>">
         <label><?= e($matchLabel) ?> name
             <input autocomplete="off" type="search" data-person-search value="<?= e($matchName ?? '') ?>"
                    placeholder="Search master persons">

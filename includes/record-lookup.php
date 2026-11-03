@@ -16,7 +16,8 @@
  * WHAT A MATCH MEANS:
  *   A match is a CLAIM, not an approval. The request is still reviewed by the
  *   parish secretary, checked against the physical register, and released
- *   only at pickup with a valid ID. A "no match" is NOT proof that the person
+ *   only at pickup after the request and recorded payment are confirmed. The
+ *   Acknowledgment Receipt is placed with the completed certificate. A "no match" is NOT proof that the person
  *   was never baptized here -- older register entries may not be encoded yet --
  *   so the page offers a manual-search fallback instead of a dead end.
  *

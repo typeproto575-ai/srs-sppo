@@ -92,7 +92,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <div class="form-grid view-grid">
         <div class="field"><label class="field-label">Full name</label><p class="field-value"><?= e($personLabel) ?></p></div>
         <div class="field"><label class="field-label">Sex</label><p class="field-value"><?= e($person['sex'] ?: 'Not specified') ?></p></div>
-        <div class="field"><label class="field-label">Birth date</label><p class="field-value"><?= e($person['birth_date'] ? date('F j, Y', strtotime($person['birth_date'])) : 'Not specified') ?></p></div>
+        <div class="field"><label class="field-label">Birth date</label><p class="field-value"><?= e($person['birth_date'] ? date('M j, Y', strtotime($person['birth_date'])) : 'Not specified') ?></p></div>
         <div class="field"><label class="field-label">Birth place</label><p class="field-value"><?= e($person['birth_place'] ?: 'Not specified') ?></p></div>
         <div class="field"><label class="field-label">Father's name</label><p class="field-value"><?= e($person['father_name'] ?: 'Not specified') ?></p></div>
         <div class="field"><label class="field-label">Mother's maiden name</label><p class="field-value"><?= e($person['mother_maiden_name'] ?: 'Not specified') ?></p></div>

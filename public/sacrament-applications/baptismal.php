@@ -327,7 +327,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
-        $successRequiredDocuments = ['Child’s PSA Birth Certificate', 'Valid ID for the parent or guardian'];
+        $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
         <a href="baptismal.php?reset=1" class="btn">Start New Application</a>
@@ -335,6 +335,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
 </section>
 <?php elseif ($currentStep === STEP_APP_DETAILS): ?>
     <h1><?= e($pageTitle) ?></h1>
+    <?php $applicationType = 'baptism'; require __DIR__ . '/../../includes/public-requirements-notice.php'; ?>
     <ol class="request-steps" aria-label="Progress">
         <?php foreach ($stepOrder as $i => $key): ?>
             <?php $state = $key === $currentStep ? 'is-current' : ($currentStep > $key ? 'is-done' : ''); ?>
@@ -346,6 +347,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -403,6 +405,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -461,6 +464,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -499,6 +503,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="final_submit">

@@ -44,7 +44,7 @@ $basePath       = $basePath ?? base_path();
             </div>
 
             <div class="submission-next-steps">
-                <h3>What happens next</h3>
+                <h3>After submission: what happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
                     <li>The Parish Office reviews your application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
@@ -54,14 +54,15 @@ $basePath       = $basePath ?? base_path();
                     <?php if ($successIsApplication): ?>
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>
-                    <li>The Parish Office may email you when there is an update. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger. Bring any requested documents and valid ID to collect the printed certificate in person.</li>
+                    <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you; if it is lost, the office can look up the request using its reference number and the certificate name.</li>
+                    <li>The Parish Office may email you when there is an update. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger. When the certificate is ready, collect it in person; the secretary verifies the request and recorded payment, and places the Acknowledgment Receipt with the certificate in its folder. An authorized representative must bring a signed authorization letter.</li>
                     <?php endif; ?>
                 </ol>
             </div>
 
             <?php if ($successRequiredDocuments !== []): ?>
                 <section class="submission-documents" aria-label="Documents to prepare">
-                    <h3>Documents to prepare</h3>
+                    <h3><?= $successIsApplication ? 'Application requirements to prepare' : 'Certificate pickup guidance' ?></h3>
                     <ul>
                         <?php foreach ($successRequiredDocuments as $document): ?>
                             <li><?= e($document) ?></li>

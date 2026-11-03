@@ -26,10 +26,12 @@ $requirementKeys = [
         'pre_cana_seminar',
     ],
 ];
-$returnKeys = ['status', 'sacrament', 'channel', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page'];
+$returnKeys = ['status', 'sacrament', 'channel', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
 $returnParams = array_intersect_key($_GET, array_flip($returnKeys));
 $returnQuery = http_build_query($returnParams);
 $returnUrl = '/admin/requests/applications-queue.php' . ($returnQuery !== '' ? '?' . $returnQuery : '');
+$openApplicationId = filter_var($_GET['open_application_id'] ?? null, FILTER_VALIDATE_INT);
+$openApplicationId = $openApplicationId && $openApplicationId > 0 ? (int) $openApplicationId : 0;
 
 function application_queue_label(string $value): string
 {
@@ -160,7 +162,12 @@ function application_queue_return_url_from_post(array $allowedKeys): string
         }
     }
     $query = http_build_query($params);
-    return '/admin/requests/applications-queue.php' . ($query !== '' ? '?' . $query : '');
+    $url = '/admin/requests/applications-queue.php' . ($query !== '' ? '?' . $query : '');
+    $openApplicationId = filter_var($params['open_application_id'] ?? null, FILTER_VALIDATE_INT);
+    if ($openApplicationId && $openApplicationId > 0) {
+        $url .= '#application-review-' . (int) $openApplicationId;
+    }
+    return $url;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -180,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
         $lock = $pdo->prepare(
-            'SELECT id, sacrament_type, person_id, spouse_person_id, status, requirements
+            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements
              FROM sacrament_applications
              WHERE id = ?
              FOR UPDATE'
@@ -273,6 +280,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
             $update->execute([$newStatus, (int) $applicationId]);
             $pdo->commit();
+            notify_sacrament_application_status(
+                $pdo,
+                $newStatus,
+                (string) $application['sacrament_type'],
+                (string) $application['request_no']
+            );
             $_SESSION['application_queue_success'] = 'Application status updated.';
         } else {
             $pdo->rollBack();
@@ -482,13 +495,31 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if ($queueError !== ''): ?><p class="alert alert-error" role="alert"><?= e($queueError) ?></p><?php endif; ?>
     <?php if ($queueSuccess !== ''): ?><p class="alert alert-success"><?= e($queueSuccess) ?></p><?php endif; ?>
 
-    <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+    <div class="application-queue-filter-wrap">
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+    </div>
+    <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
     <?php if ($applications === []): ?>
         <p class="admin-queue-empty">No applications match your search or filters.</p>
     <?php else: ?>
-        <div class="application-review-list">
+        <div class="table-scroll application-queue-table-scroll">
+            <table class="admin-table application-queue-table">
+                <thead>
+                    <tr>
+                        <th>Request No.</th>
+                        <th>Sacrament</th>
+                        <th>Applicant(s)</th>
+                        <th>Submitted</th>
+                        <th>Status</th>
+                        <th>Review</th>
+                    </tr>
+                </thead>
+                <tbody>
             <?php foreach ($applications as $app):
+                $applicationReturnParams = $returnParams;
+                $applicationReturnParams['open_application_id'] = (int) $app['id'];
+                $applicationReturnQuery = http_build_query($applicationReturnParams);
                 $details = application_queue_details($app);
                 $matches = $app['sacrament_type'] === 'marriage'
                     ? [
@@ -544,8 +575,47 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 }
                 $canPrefill = !empty($app['person_id'])
                     && ($app['sacrament_type'] !== 'marriage' || !empty($app['spouse_person_id']));
+                $subjectNames = [];
+                foreach ($matches as $match) {
+                    $roleLabel = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
+                    $subjectNames[] = $roleLabel . ': ' . ($match['name'] !== '' ? $match['name'] : 'Name not provided');
+                }
             ?>
-                <article class="application-review-card">
+                <tr>
+                    <td><strong><?= e($app['request_no']) ?></strong></td>
+                    <td><?= e(application_queue_label($app['sacrament_type'])) ?></td>
+                    <td>
+                        <?= e(implode(' · ', $subjectNames)) ?>
+                        <span class="application-queue-submitter">Submitted by <?= e($app['applicant_name']) ?></span>
+                    </td>
+                    <td>
+                        <?= e(application_queue_label($app['channel'])) ?><br>
+                        <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
+                    </td>
+                    <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span></td>
+                    <td>
+                        <button
+                            type="button"
+                            class="btn btn-small"
+                            data-application-review-toggle
+                            aria-controls="application-review-<?= (int) $app['id'] ?>"
+                            aria-expanded="<?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? 'true' : 'false' ?>"
+                        ><?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? 'Close review' : 'Review' ?></button>
+                    </td>
+                </tr>
+                <tr
+                    class="application-queue-detail-row"
+                    <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? '' : 'hidden' ?>
+                >
+                    <td colspan="6">
+                        <details
+                            class="application-queue-review"
+                            id="application-review-<?= (int) $app['id'] ?>"
+                            aria-label="Review <?= e($app['request_no']) ?>"
+                            <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? 'open' : '' ?>
+                        >
+                            <summary aria-hidden="true" tabindex="-1">Review details for <?= e($app['request_no']) ?></summary>
+                            <article class="application-review-card">
                     <header class="admin-queue-heading">
                         <div>
                             <p class="admin-queue-kicker"><?= e(application_queue_label($app['sacrament_type'])) ?> · <?= e(application_queue_label($app['channel'])) ?></p>
@@ -603,9 +673,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 $matchApplicationId = (int) $app['id'];
                                 $matchName = (string) $match['name'];
                                 $matchBirthDate = (string) $match['birth_date'];
-                                $matchWidgetMode = 'link-only';
-                                $matchReturnParams = $returnParams;
-                                $matchReturnQuery = $returnQuery;
+                                $matchWidgetMode = 'ajax';
+                                $matchReturnParams = $applicationReturnParams;
+                                $matchReturnQuery = $applicationReturnQuery;
                                 $matchSearchResults = $matchSearchApplicationId === $matchApplicationId && $matchSearchRole === $matchRole;
                                 require __DIR__ . '/../../includes/person-match-widget.php';
                             endif;
@@ -619,7 +689,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php if ($details !== []): ?>
                                 <?php foreach ($details as $key => $value): ?>
                                     <div>
-                                        <dt><?= e(application_queue_label((string) $key)) ?></dt>
+                                        <?php
+                                        $detailKey = (string) $key;
+                                        $detailLabel = $detailKey === 'preferred_wedding_venue_other'
+                                            ? 'Other venue name'
+                                            : application_queue_label($detailKey);
+                                        if ($detailKey === 'preferred_wedding_venue') {
+                                            $value = match ($value) {
+                                                'church' => "St. Patrick's Parish Church",
+                                                'other' => 'Other',
+                                                'barangay_chapel' => 'Barangay Chapel',
+                                                default => $value,
+                                            };
+                                        }
+                                        ?>
+                                        <dt><?= e($detailLabel) ?></dt>
                                         <dd><?php application_queue_render_detail_value($value); ?></dd>
                                     </div>
                                 <?php endforeach; ?>
@@ -652,7 +736,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                     <input type="hidden" name="action" value="update_requirement">
                                     <input type="hidden" name="requirement_key" value="<?= e($requirementKey) ?>">
-                                    <input type="hidden" name="return_query" value="<?= e($returnQuery) ?>">
+                                    <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
                                     <strong><?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?></strong>
                                     <label>Status
                                         <select name="requirement_status">
@@ -685,11 +769,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php endif; ?>
                         <?php endif; ?>
                         <?php if ($validNextStatuses !== []): ?>
-                            <form method="post" class="inline-fields">
+                            <form method="post" class="inline-fields application-status-form">
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="update_status">
-                                <input type="hidden" name="return_query" value="<?= e($returnQuery) ?>">
+                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
                                 <label>Next status
                                     <select name="new_status">
                                         <?php foreach ($validNextStatuses as $nextStatus): ?>
@@ -702,9 +786,29 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?php endif; ?>
                     </footer>
                 </article>
+                        </details>
+                    </td>
+                </tr>
             <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
     <?php endif; ?>
 </div>
+<script>
+document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest('[data-application-review-toggle]');
+    if (!(button instanceof HTMLButtonElement)) return;
+    const review = document.getElementById(button.getAttribute('aria-controls') || '');
+    if (!(review instanceof HTMLDetailsElement)) return;
+    review.open = !review.open;
+    const detailRow = review.closest('.application-queue-detail-row');
+    if (detailRow instanceof HTMLTableRowElement) detailRow.hidden = !review.open;
+    button.setAttribute('aria-expanded', review.open ? 'true' : 'false');
+    button.textContent = review.open ? 'Close review' : 'Review';
+});
+</script>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

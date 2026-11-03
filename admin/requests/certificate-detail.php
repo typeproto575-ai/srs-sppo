@@ -26,6 +26,18 @@ function certificate_detail_label(string $value): string
     return ucwords(str_replace('_', ' ', $value));
 }
 
+function certificate_detail_date_label(?string $value, bool $includeTime = false): string
+{
+    if ($value === null || $value === '') {
+        return 'Not recorded';
+    }
+
+    $timestamp = strtotime($value);
+    return $timestamp === false
+        ? $value
+        : date($includeTime ? 'M j, Y g:i A' : 'M j, Y', $timestamp);
+}
+
 $requestStmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
 $requestStmt->execute([$requestId]);
 $req = $requestStmt->fetch();
@@ -120,22 +132,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $representativeName = certificate_detail_post_string('representative_name');
                 $representativeRelationship = certificate_detail_post_string('representative_relationship');
                 $claimantNotes = certificate_detail_post_string('claimant_notes');
-                $idVerified = certificate_detail_post_string('id_verified') === '1';
-
                 $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
                 if (!cert_request_transition_valid($current['status'], 'released')) {
                     throw new DomainException('Only a Ready request can be released.');
                 }
                 if (!in_array($claimantType, ['self', 'representative'], true)
-                    || certificate_detail_post_string('id_verified') !== '1'
                     || ($claimantType === 'representative' && $representativeName === '')) {
-                    throw new DomainException('Verify the claimant’s valid ID and provide representative details when applicable.');
+                    throw new DomainException('Select a valid claimant and provide representative details when applicable.');
                 }
                 if (empty($current['paid_at'])) {
                     throw new DomainException('Payment has not been recorded.');
                 }
                 if ($claimantType === 'representative' && !$repDocsReceived) {
-                    throw new DomainException("Confirm that the representative's ID, the signed authorization letter and a copy of the subject's ID were received.");
+                    throw new DomainException('Confirm that the signed authorization letter was received.');
                 }
                 $setParts = [
                     "status = 'released'",
@@ -143,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'representative_name = ?',
                     'representative_relationship = ?',
                     'claimant_notes = ?',
-                    'id_verified = 1',
+                    'id_verified = 0',
                 ];
                 $params = [
                     $claimantType,
@@ -161,7 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $update->execute($params);
                 $claimantDescription = $claimantType === 'representative' ? 'an authorized representative' : 'the requester/subject';
-                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . ' after claimant identity verification.');
+                $releaseEvidence = $claimantType === 'representative'
+                    ? 'Recorded payment verified; signed authorization letter confirmed.'
+                    : 'Recorded payment verified.';
+                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . '. ' . $releaseEvidence);
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
                 $reason = certificate_detail_post_string('rejection_reason');
@@ -195,9 +207,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'mark_ready' && !empty($req['requester_email'])) {
                 $sacramentLabel = sd_type_label($req['sacrament_type']);
                 $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
-                    . "Please bring: a valid government-issued photo ID.\n"
-                    . "If someone else will claim it for you, they must bring: their own valid government ID, a signed authorization letter from you, and a copy of your valid ID.\n"
-                    . "Payment must be recorded by the Parish Office before processing begins.";
+                    . "Bring your request reference number and any claim stub or payment slip the secretary gave you. If the slip is missing, provide your reference number and certificate name so the office can locate the request.\n"
+                    . "The secretary verifies the recorded payment before release. The Acknowledgment Receipt is placed with the completed certificate in its folder.\n"
+                    . "If someone else will claim it for you, they must bring a signed authorization letter from the person named on the certificate.";
                 try {
                     send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId);
                 } catch (Throwable $e) {
@@ -290,29 +302,29 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <dl class="detail-grid">
         <dt>Status</dt><dd><span class="status-badge status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span></dd>
         <dt>Channel</dt><dd><?= e(($req['channel'] === 'onsite') ? 'Submitted: At the office' : 'Submitted: Online') ?></dd>
-        <dt>Submitted</dt><dd><?= e((string) $req['created_at']) ?></dd>
+        <dt>Submitted</dt><dd><?= e(certificate_detail_date_label((string) $req['created_at'], true)) ?></dd>
         <dt>Purpose</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?></dd>
         <dt>Requester</dt><dd><?= e($requesterName) ?></dd>
         <dt>Relationship</dt><dd><?= e(certificate_detail_label((string) $req['requester_relationship'])) ?><?= $req['requester_relationship_other'] ? ' — ' . e($req['requester_relationship_other']) : '' ?></dd>
         <dt>Email</dt><dd><?= e($req['requester_email']) ?></dd>
         <dt>Contact</dt><dd><?= e($req['requester_contact_number'] ?: 'Not provided') ?></dd>
-        <dt>Payment</dt><dd><?= $req['paid_at'] ? 'Payment: recorded on ' . e($req['paid_at']) : 'Payment: not yet recorded' ?></dd>
+        <dt>Payment</dt><dd><?= $req['paid_at'] ? 'Payment: recorded on ' . e(certificate_detail_date_label((string) $req['paid_at'], true)) : 'Payment: not yet recorded' ?></dd>
         <?php if (!empty($req['certificate_no'])): ?>
             <dt>Certificate number</dt><dd><?= e($req['certificate_no']) ?></dd>
         <?php endif; ?>
         <?php if (!empty($req['printed_at'])): ?>
-            <dt>Printed</dt><dd><?= e($req['printed_at']) ?></dd>
+            <dt>Printed</dt><dd><?= e(certificate_detail_date_label((string) $req['printed_at'], true)) ?></dd>
         <?php endif; ?>
         <?php if (!empty($req['signed_at'])): ?>
-            <dt>Signed</dt><dd><?= e($req['signed_at']) ?></dd>
+            <dt>Signed</dt><dd><?= e(certificate_detail_date_label((string) $req['signed_at'], true)) ?></dd>
         <?php endif; ?>
         <?php if (!empty($req['released_at'])): ?>
-            <dt>Released</dt><dd><?= e($req['released_at']) ?></dd>
+            <dt>Released</dt><dd><?= e(certificate_detail_date_label((string) $req['released_at'], true)) ?></dd>
             <dt>Claimant</dt><dd><?= e(certificate_detail_label((string) $req['claimant_type'])) ?></dd>
             <?php if (!empty($req['representative_name'])): ?>
                 <dt>Representative</dt><dd><?= e($req['representative_name']) ?> (<?= e($req['representative_relationship']) ?>)</dd>
             <?php endif; ?>
-            <dt>ID verified</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Yes' : 'No' ?></dd>
+            <dt>ID verification</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Previously verified' : 'Not required' ?></dd>
         <?php endif; ?>
     </dl>
     <?php if (!empty($req['notes'])): ?>
@@ -331,8 +343,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <dt>Subject</dt><dd><?= e($req['subject_name']) ?></dd>
         <?php foreach ($details as $key => $value): ?>
             <?php if (strtolower((string) $key) === 'legitimacy') continue; ?>
+            <?php
+            $detailValue = is_scalar($value)
+                ? (string) $value
+                : (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (
+                is_string($value)
+                && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)
+                && strpos(strtolower((string) $key), 'date') !== false
+            ) {
+                $detailValue = certificate_detail_date_label($value);
+            }
+            ?>
             <dt><?= e(certificate_detail_label((string) $key)) ?></dt>
-            <dd><?= e(is_scalar($value) ? (string) $value : (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></dd>
+            <dd><?= e($detailValue) ?></dd>
         <?php endforeach; ?>
     </dl>
 </section>
@@ -347,7 +371,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if ($record): ?>
         <dl class="detail-grid">
             <dt>Record</dt><dd>#<?= (int) $record['id'] ?> — <?= e($recordName) ?></dd>
-            <dt>Event date</dt><dd><?= e($record['event_date'] ?: 'Not recorded') ?></dd>
+            <dt>Event date</dt><dd><?= e(certificate_detail_date_label($record['event_date'] ?: null)) ?></dd>
             <dt>Place</dt><dd><?= e($record['place'] ?: 'Not recorded') ?></dd>
             <dt>Register reference</dt><dd><?= e(implode(' / ', array_filter([$record['entry_no'], $record['book_no'], $record['page_no'], $record['line_no']]))) ?: 'Not recorded' ?></dd>
             <dt>Source</dt><dd><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></dd>
@@ -447,22 +471,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <option value="self">Requester / subject</option>
                 <option value="representative">Authorized representative</option>
             </select>
-            <p id="claimant-guidance" class="field-hint">For self pickup, verify that the requester/subject's valid government ID matches the request.</p>
+            <p id="claimant-guidance" class="field-hint">Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.</p>
             <div id="representative-fields">
                 <label for="representative_name">Representative name</label>
                 <input type="text" id="representative_name" name="representative_name" maxlength="150">
                 <label for="representative_relationship">Representative relationship (optional)</label>
                 <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
-                <p class="field-hint">A representative must bring their own valid government ID, a signed authorization letter from the subject, and a copy of the subject's valid ID.</p>
-                <label><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the representative's valid ID, the signed authorization letter and a copy of the subject's valid ID.</label>
+                <p class="field-hint">A representative must bring a signed authorization letter from the person named on the certificate.</p>
+                <label><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the signed authorization letter.</label>
             </div>
             <label for="claimant_notes">Pickup notes (optional)</label>
             <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
             <?php if (!empty($req['paid_at'])): ?>
                 <p class="field-hint">Payment recorded on <?= e($req['paid_at']) ?></p>
             <?php endif; ?>
-            <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid government ID. For self pickup, it matches the requester/subject; for a representative, it matches the representative.</label>
-            <button type="submit" class="btn">Verify ID and Release</button>
+            <button type="submit" class="btn">Confirm Payment and Release</button>
         </form>
     <?php elseif (in_array($req['status'], ['released', 'rejected'], true)): ?>
         <p>This request is in a terminal status and cannot be advanced.</p>
@@ -522,8 +545,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         representativeName.required = isRepresentative;
         representativeDocs.required = isRepresentative;
         claimantGuidance.textContent = isRepresentative
-            ? "Verify the representative's own valid government ID and receive the signed authorization letter and a copy of the subject's valid ID."
-            : "For self pickup, verify that the requester/subject's valid government ID matches the request.";
+            ? "Verify the request and recorded payment; receive the signed authorization letter. A claim stub is helpful but not required."
+            : "Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.";
     };
 
     claimantType.addEventListener('change', updateClaimantFields);

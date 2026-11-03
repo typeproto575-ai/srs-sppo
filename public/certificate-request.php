@@ -107,6 +107,24 @@ $certificateTypes = [
     'confirmation' => 'Confirmation',
     'marriage' => 'Marriage',
 ];
+$certificatePreparation = [
+    'baptism' => [
+        'The name and birthdate recorded in the parish register.',
+        "The father's name and mother's maiden name, if known.",
+        'The approximate Baptism date, if known.',
+    ],
+    'first_communion' => [
+        'The name and birthdate recorded in the parish register.',
+        'Parent names and the approximate First Communion date, if known.',
+    ],
+    'confirmation' => [
+        'The name and birthdate recorded in the parish register.',
+        'Parent names and the approximate Confirmation date, if known.',
+    ],
+    'marriage' => [
+        'Both spouses’ names and the approximate marriage date.',
+    ],
+];
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $requestedType = $_GET['type'] ?? null;
     if (is_string($requestedType) && isset($certificateTypes[$requestedType])) {
@@ -282,7 +300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $readableType,
                                 $requestNo,
                                 $pdo,
-                                $requestId
+                                $requestId,
+                                $values['requester_relationship'] === 'self'
                             );
                         } catch (Throwable $e) {
                             error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
@@ -311,10 +330,13 @@ require_once __DIR__ . '/../includes/header.php';
         $successHeading = 'Keep this reference number';
         $successIsApplication = false;
         $successRequiredDocuments = [
-            'Valid ID matching the person named on the record',
-            'For an authorized representative: signed authorization letter, representative’s valid ID, and a copy of the named person’s valid ID',
+            'Bring the request reference number. If the secretary gave you a claim stub or payment slip, bring it too; if it is missing, give the secretary the reference number and certificate name so the request can be located.',
+            'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];
+        if ($values['requester_relationship'] === 'self') {
+            $successRequiredDocuments[] = 'A valid ID with a name matching the person on the certificate.';
+        }
         require __DIR__ . '/../includes/submission-success.php';
         ?>
     <?php else: ?>
@@ -343,6 +365,20 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endforeach; ?>
         </select>
 
+        <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
+        <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
+            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Before: prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Before: choose a certificate type and review what to prepare' ?></strong>
+            <ul id="certificate-preparation-list" aria-live="polite">
+                <?php if ($selectedPreparation): ?>
+                    <?php foreach ($selectedPreparation as $item): ?><li><?= e($item) ?></li><?php endforeach; ?>
+                <?php else: ?>
+                    <li>Select a certificate type to see the details that can help the Parish Office find the record.</li>
+                <?php endif; ?>
+            </ul>
+            <p>Have these record details ready if you know them. Do not upload or send documents with this form.</p>
+        </section>
+
+        <h2 class="form-stage-heading">During: complete the certificate request</h2>
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
 
@@ -386,7 +422,8 @@ require_once __DIR__ . '/../includes/header.php';
             <option value="child" <?= $values['requester_relationship'] === 'child' ? 'selected' : '' ?>>Child</option>
             <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Authorized Representative</option>
         </select>
-        <p class="field-hint" data-self-id-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>For Self, bring a valid ID that matches the person named on the record.</p>
+        <p class="field-hint" data-self-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>If you selected Self, bring a valid ID with a name matching the person on the certificate when collecting it.</p>
+        <p class="field-hint" data-representative-note <?= $values['requester_relationship'] === 'other' ? '' : 'hidden' ?>>If an authorized representative collects the certificate, bring a signed authorization letter from the person named on the certificate.</p>
 
         <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
@@ -409,16 +446,6 @@ require_once __DIR__ . '/../includes/header.php';
             <input type="text" id="purpose_other" name="purpose_other" maxlength="150" value="<?= e($values['purpose_other']) ?>">
         </div>
 
-        <p><strong>Before you submit</strong></p>
-        <ul>
-            <li>Payment is recorded at the counter before processing begins.</li>
-            <li>Your online submission becomes a pre-filled request at the counter, so you will not need to retype anything.</li>
-            <li>If you pick it up yourself, bring your valid government ID.</li>
-            <li>If someone else picks it up for you, they bring their own valid ID, a signed authorization letter from you, and a copy of the valid ID of the person named in the certificate.</li>
-            <li>For a record from another parish, bring the original supporting document and transfer or permission letter when requested.</li>
-            <li>Nothing is uploaded online. You show your documents at the counter.</li>
-        </ul>
-
         <label><input type="checkbox" name="privacy_consent" value="1" <?= !empty($_POST['privacy_consent']) ? 'checked' : '' ?> required> I agree to the privacy notice.</label>
 
         <div style="position:absolute;left:-9999px;" aria-hidden="true">
@@ -427,29 +454,71 @@ require_once __DIR__ . '/../includes/header.php';
 
         <button type="submit" class="btn">Submit request</button>
     </form>
+    <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
+        <strong>After submission: review, payment, and pickup</strong>
+        <ol>
+            <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
+            <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you; if it is lost, the office can look up the request using its reference number and the certificate name.</li>
+            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring. An authorized representative must bring a signed authorization letter from the person named on the certificate.</li>
+            <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
+        </ol>
+        <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
+    </section>
     <script>
         (function () {
             var typeSelect = document.getElementById('certificate_type');
             var marriageOnly = document.getElementById('marriage-only');
             var subjectLabel = document.querySelector('label[for="subject_name"]');
+            var preparationHeading = document.getElementById('certificate-preparation-heading');
+            var preparationList = document.getElementById('certificate-preparation-list');
+            var preparationDetails = <?= json_encode($certificatePreparation, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
             function updateType() {
                 var isMarriage = typeSelect.value === 'marriage';
                 marriageOnly.hidden = !isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
+                preparationHeading.textContent = typeSelect.value
+                    ? 'Before: prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
+                    : 'Before: choose a certificate type and review what to prepare';
+                preparationList.replaceChildren();
+                var details = preparationDetails[typeSelect.value] || [
+                    'Select a certificate type to see the details that can help the Parish Office find the record.'
+                ];
+                details.forEach(function (item) {
+                    var li = document.createElement('li');
+                    li.textContent = item;
+                    preparationList.appendChild(li);
+                });
             }
             typeSelect.addEventListener('change', updateType);
             updateType();
             var relationship = document.getElementById('requester_relationship');
             var requesterName = document.getElementById('requester_name');
             var subjectName = document.getElementById('subject_name');
-            var selfIdNote = document.querySelector('[data-self-id-note]');
+            var selfNote = document.querySelector('[data-self-note]');
+            var representativeNote = document.querySelector('[data-representative-note]');
+            var autoFilledRequesterName = relationship && requesterName && relationship.value === 'self'
+                ? requesterName.value
+                : null;
             if (relationship && requesterName && subjectName) {
                 relationship.addEventListener('change', function () {
-                    if (selfIdNote) selfIdNote.hidden = this.value !== 'self';
-                    if (this.value === 'self') requesterName.value = subjectName.value;
+                    if (selfNote) selfNote.hidden = this.value !== 'self';
+                    if (representativeNote) representativeNote.hidden = this.value !== 'other';
+                    if (this.value === 'self') {
+                        requesterName.value = subjectName.value;
+                        autoFilledRequesterName = subjectName.value;
+                    } else {
+                        if (autoFilledRequesterName !== null && requesterName.value === autoFilledRequesterName) {
+                            requesterName.value = '';
+                        }
+                        autoFilledRequesterName = null;
+                    }
                 });
+                if (selfNote) selfNote.hidden = relationship.value !== 'self';
                 subjectName.addEventListener('input', function () {
-                    if (relationship.value === 'self') requesterName.value = this.value;
+                    if (relationship.value === 'self') {
+                        requesterName.value = this.value;
+                        autoFilledRequesterName = this.value;
+                    }
                 });
             }
             document.getElementById('purpose').addEventListener('change', function () {

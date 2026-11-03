@@ -5,6 +5,7 @@
  * workflows.
  */
 require_once __DIR__ . '/../config/mail.php';
+require_once __DIR__ . '/application-requirements.php';
 
 function email_delivery_log(PDO $pdo, string $to, string $subject, string $eventType, string $status, ?string $error = null, ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null): void
 {
@@ -109,24 +110,12 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
 function mail_request_documents(string $kind): array
 {
     return match ($kind) {
-        'Baptismal Application' => [
-            'Child’s PSA Birth Certificate.',
-            'Valid ID for the parent or guardian.',
-        ],
-        'First Communion Application' => [
-            'Baptismal Certificate (original copy if the applicant was baptized elsewhere).',
-            'Proof of catechetical formation.',
-        ],
-        'Confirmation Application' => [
-            'Baptismal Certificate from the origin parish if baptized elsewhere.',
-            'Confirmation sponsor details.',
-        ],
-        'Holy Matrimony Application' => [
-            'PSA CENOMAR for both applicants.',
-            'Baptismal Certificates for both applicants.',
-            'Origin parish transfer or permission letter when either applicant’s records are from another parish.',
-            'Pre-Cana seminar requirements.',
-        ],
+        'Baptism Application',
+        'Baptismal Application' => sacrament_application_requirements('baptism')['before'],
+        'First Communion Application' => sacrament_application_requirements('first_communion')['before'],
+        'Confirmation Application' => sacrament_application_requirements('confirmation')['before'],
+        'Marriage Application',
+        'Holy Matrimony Application' => sacrament_application_requirements('marriage')['before'],
         default => [
             'Valid ID matching the person or applicant record.',
             'For an authorized representative, a signed authorization letter and the required IDs.',
@@ -135,37 +124,77 @@ function mail_request_documents(string $kind): array
     };
 }
 
+function mail_is_sacrament_application(string $kind): bool
+{
+    return in_array($kind, [
+        'Baptismal Application',
+        'Baptism Application',
+        'First Communion Application',
+        'Confirmation Application',
+        'Marriage Application',
+        'Holy Matrimony Application',
+    ], true);
+}
+
+function mail_request_documents_heading(string $kind): string
+{
+    return mail_is_sacrament_application($kind)
+        ? 'Documents to prepare for parish review (the Parish Office will confirm which apply):'
+        : 'Documents to prepare:';
+}
+
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
-    $body = "Dear Parishioner,\r\n\r\n"
-        . "The parish office has recorded your " . $kind . ".\r\n\r\n"
-        . "Your reference number is: " . $trackingNumber . "\r\n"
-        . "Quote this reference number when contacting the parish office.\r\n\r\n"
-        . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
-        . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
-        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    $documentHeading = mail_request_documents_heading($kind);
+    if (mail_is_sacrament_application($kind)) {
+        $body = "Dear Parishioner,\r\n\r\n"
+            . "The Parish Office received your " . $kind . " for review.\r\n\r\n"
+            . "Your reference number is: " . $trackingNumber . "\r\n"
+            . "Quote this reference number when contacting the Parish Office.\r\n\r\n"
+            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    } else {
+        $body = "Dear Parishioner,\r\n\r\n"
+            . "The parish office has recorded your " . $kind . ".\r\n\r\n"
+            . "Your reference number is: " . $trackingNumber . "\r\n"
+            . "Quote this reference number when contacting the parish office.\r\n\r\n"
+            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
+            . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    }
     return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
 
 function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
+    $documentHeading = mail_request_documents_heading($kind);
     $paymentNote = '';
     // Payment happens outside the system. When the stage is "Awaiting Payment",
     // explain the offline options plainly with no amounts — the parish confirms
     // the fee directly.
-    if (strcasecmp($humaneStatus, 'Awaiting Payment') === 0) {
+    if (!mail_is_sacrament_application($kind) && strcasecmp($humaneStatus, 'Awaiting Payment') === 0) {
         $paymentNote = "\r\n\r\n"
             . "Payment is made outside this website; the office never takes payment online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once your payment is recorded.";
     }
-    $body = "Dear Parishioner,\r\n\r\n"
-        . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
-        . "Current stage: " . $humaneStatus . "\r\n"
-        . $paymentNote . "\r\n\r\n"
-        . "Documents to prepare:\r\n" . $documentList . "\r\n\r\n"
-        . "If your certificate is ready for pickup, please visit the parish office with your reference number and valid identification. Certificates are released only in person. Please bring any requested supporting documents to the Parish Office in person. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
-        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    if (mail_is_sacrament_application($kind)) {
+        $body = "Dear Parishioner,\r\n\r\n"
+            . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
+            . "Current stage: " . $humaneStatus . "\r\n\r\n"
+            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . "The Parish Office will contact you about any documents, preparation, approval, and scheduling. The application does not itself confirm approval or reserve a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    } else {
+        $body = "Dear Parishioner,\r\n\r\n"
+            . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
+            . "Current stage: " . $humaneStatus . "\r\n"
+            . $paymentNote . "\r\n\r\n"
+            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . "If the Parish Office asks you to visit, bring your reference number and any requested supporting documents. If the secretary gave you a claim stub or payment slip, bring it; if it is missing, provide the reference number and certificate name so the office can locate the request. The secretary verifies the recorded payment before release. The Acknowledgment Receipt is placed with the completed certificate in its folder, not required as a document to bring. An authorized representative must also present a signed authorization letter from the person named on the certificate. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
+            . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    }
     return send_mail($to, "Update on " . $trackingNumber . ": " . $humaneStatus, $body, $pdo, 'status_update', $entityType, $entityId, $trackingNumber);
 }
 
@@ -186,21 +215,26 @@ function mail_certificate_request_received(
     string $certificateType,
     string $requestNo,
     ?PDO $pdo = null,
-    ?int $requestId = null
+    ?int $requestId = null,
+    bool $requesterIsSubject = false
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
+    $selfPickupRequirement = $requesterIsSubject
+        ? "- A valid ID with a name matching the person on the certificate.\r\n"
+        : '';
     $body = "Dear " . $requesterName . ",\r\n\r\n"
         . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
         . "Your reference number is: " . $requestNo . "\r\n"
         . "Quote this reference number when contacting the parish office.\r\n\r\n"
-        . "Next step: visit the parish office, give your full name at the counter, and pay. Processing begins only after payment is recorded.\r\n\r\n"
+        . "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded. Keep any claim stub or payment slip the secretary gives you; if it is lost, provide your reference number and certificate name so the office can locate the request.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
-        . "When you pick it up, bring:\r\n"
-        . "- Your valid government ID.\r\n"
-        . "- If someone else picks it up for you: their valid ID, a signed authorization letter from you, and a copy of the valid ID of the person named in the certificate.\r\n"
+        . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
+        . $selfPickupRequirement
+        . "If someone else picks it up for you, they must bring:\r\n"
+        . "- A signed authorization letter from the person named on the certificate.\r\n"
         . "- For a record from another parish, bring the original supporting document and transfer or permission letter when requested.\r\n\r\n"
-        . "Nothing is uploaded or emailed. You show your documents at the counter.\r\n\r\n"
+        . "Nothing is uploaded or emailed. You show any requested documents at the counter.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office";
     return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $requestNo);
 }

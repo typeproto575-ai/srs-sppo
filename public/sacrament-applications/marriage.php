@@ -36,6 +36,9 @@ if ($currentStep < 1 || $currentStep > count($steps)) {
     $wizard['current_step'] = 1;
 }
 $formData = &$wizard['form_data'];
+if (($formData['preferred_wedding_venue'] ?? '') === 'barangay_chapel') {
+    $formData['preferred_wedding_venue'] = 'other';
+}
 $wizardAction = $_POST['_action'] ?? '';
 $isWizardNavigation = $_SERVER['REQUEST_METHOD'] === 'POST'
     && in_array($wizardAction, ['next', 'back'], true);
@@ -65,7 +68,10 @@ if ($isWizardNavigation) {
             };
             if ($currentStep === 1) {
                 if ($value('preferred_wedding_date') === '') $errors[] = 'Target wedding date is required.';
-                if (!in_array($value('preferred_wedding_venue'), ['church', 'barangay_chapel'], true)) $errors[] = 'Please select a valid wedding venue.';
+                $venue = $value('preferred_wedding_venue');
+                if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
+                if ($venue === 'other' && $value('preferred_wedding_venue_other') === '') $errors[] = 'Enter the name of the other wedding venue.';
+                if (strlen($value('preferred_wedding_venue_other')) > 150) $errors[] = 'The other venue name must be 150 characters or fewer.';
             } elseif ($currentStep === 2 || $currentStep === 3) {
                 $prefix = $currentStep === 2 ? 'groom' : 'bride';
                 $label = ucfirst($prefix);
@@ -122,7 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
     $brideName = compose_person_name($_POST, 'bride');
     $weddingDate = $_POST['preferred_wedding_date'] ?? '';
     $weddingTime = $g('preferred_wedding_time') ?: null;
-    $venue = $g('preferred_wedding_venue') ?: 'church';
+    $venue = $g('preferred_wedding_venue');
+    $venueOther = $venue === 'other' ? $g('preferred_wedding_venue_other') : '';
     $groomEmail = $g('groom_email'); $brideEmail = $g('bride_email');
     $groomPersonId = null;
     $bridePersonId = null;
@@ -169,7 +176,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
     if (!in_array($g('groom_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "Groom's marital status is required.";
     if (!in_array($g('bride_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "Bride's marital status is required.";
     if ($weddingDate === '') $errors[] = 'Target wedding date is required.';
-    if (!in_array($venue, ['church', 'barangay_chapel'], true)) $errors[] = 'Please select a valid wedding venue.';
+    if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
+    if ($venue === 'other' && $venueOther === '') $errors[] = 'Enter the name of the other wedding venue.';
+    if (strlen($venueOther) > 150) $errors[] = 'The other venue name must be 150 characters or fewer.';
     if (!in_array($g('groom_baptized'), ['yes', 'no'], true) || !in_array($g('bride_baptized'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are baptized Catholic.';
     if (!in_array($g('groom_confirmed'), ['yes', 'no'], true) || !in_array($g('bride_confirmed'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are confirmed Catholic.';
     if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
@@ -225,6 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'preferred_wedding_date' => $weddingDate,
                 'preferred_wedding_time' => $weddingTime,
                 'preferred_wedding_venue' => $venue,
+                'preferred_wedding_venue_other' => $venueOther,
                 'civilly_married' => $g('civilly_married'),
                 'civil_marriage_date' => $g('civil_marriage_date'),
                 'civil_marriage_place' => $g('civil_marriage_place'),
@@ -292,15 +302,11 @@ function msel(string $key, string $value): string { global $formData; return ($f
 <?php
 $successHeading = 'Your application has been submitted';
 $successIsApplication = true;
-$successRequiredDocuments = [
-    'PSA CENOMAR for both applicants',
-    'Baptismal certificates for both applicants',
-    'Origin parish transfer or permission letter when either applicant’s records are from another parish',
-    'Pre-Cana seminar requirements',
-];
+$successRequiredDocuments = sacrament_application_requirements('marriage')['before'];
 require __DIR__ . '/../../includes/submission-success.php';
 ?>
 <?php else: ?>
+<?php if ($currentStep === 1): $applicationType = 'marriage'; require __DIR__ . '/../../includes/public-requirements-notice.php'; endif; ?>
 <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php if ($dateConflictWarning): ?><div class="alert alert-warning"><?= e($dateConflictWarning) ?></div><?php endif; ?>
 <ol class="request-steps" aria-label="Application progress">
@@ -309,11 +315,12 @@ require __DIR__ . '/../../includes/submission-success.php';
     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
 <?php endforeach; ?>
 </ol>
+<h2 class="form-stage-heading">During: complete the application</h2>
 <form method="post">
 <?= csrf_field() ?>
 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
 <?php if ($currentStep === 1): ?>
-<fieldset><legend>Phase 1 of 5 — Wedding Details</legend><div class="inline-fields"><label>Target Wedding Date * <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required></label><label>Time <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>"></label></div><label>Venue <select name="preferred_wedding_venue"><option value="church" <?= msel('preferred_wedding_venue','church') ?>>Parish Church</option><option value="barangay_chapel" <?= msel('preferred_wedding_venue','barangay_chapel') ?>>Barangay Chapel</option></select></label></fieldset>
+<fieldset><legend>Phase 1 of 5 — Wedding Details</legend><div class="inline-fields"><label>Target Wedding Date * <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required></label><label>Time <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>"></label></div><label>Venue * <select name="preferred_wedding_venue" required><option value="">-- Select --</option><option value="church" <?= msel('preferred_wedding_venue','church') ?>>St. Patrick's Parish Church</option><option value="other" <?= msel('preferred_wedding_venue','other') ?>>Other</option></select></label><label data-show-if="preferred_wedding_venue=other">Other venue name * <input type="text" name="preferred_wedding_venue_other" maxlength="150" value="<?= mv('preferred_wedding_venue_other') ?>" placeholder="Enter the church or venue name"></label></fieldset>
 <?php elseif ($currentStep === 2): ?>
 <fieldset><legend>Phase 2 of 5 — Groom's Information</legend>
 <div class="inline-fields">
@@ -375,7 +382,7 @@ $sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor'
 <fieldset><legend>Phase 5 of 5 — Review Your Application</legend>
 <table class="review-table">
 <tr><th>Wedding date</th><td><?= mv('preferred_wedding_date') ?> <?= mv('preferred_wedding_time') ?></td></tr>
-<tr><th>Venue</th><td><?= mv('preferred_wedding_venue') ?></td></tr>
+<tr><th>Venue</th><td><?= ($formData['preferred_wedding_venue'] ?? '') === 'other' ? 'Other: ' . mv('preferred_wedding_venue_other') : "St. Patrick's Parish Church" ?></td></tr>
 <tr><th>Groom</th><td><?= e(compose_person_name($formData, 'groom')) ?> · <?= mv('groom_birthdate') ?> · <?= mv('groom_email') ?> · <?= mv('groom_contact_number') ?></td></tr>
 <tr><th>Bride</th><td><?= e(compose_person_name($formData, 'bride')) ?> · <?= mv('bride_birthdate') ?> · <?= mv('bride_email') ?> · <?= mv('bride_contact_number') ?></td></tr>
 <tr><th>Groom's marital status</th><td><?= mv('groom_marital_status') ?></td></tr>

@@ -145,8 +145,8 @@ function application_queue_next_statuses(string $status): array
         'new' => ['reviewing', 'rejected'],
         'reviewing' => ['requirements_pending', 'approved', 'rejected'],
         'requirements_pending' => ['reviewing', 'approved', 'rejected'],
-        'approved' => ['scheduled', 'completed', 'rejected'],
-        'scheduled' => ['completed', 'rejected'],
+        'approved' => ['scheduled', 'rejected'],
+        'scheduled' => ['rejected'],
         'completed' => [],
         'rejected' => [],
     ][$status] ?? [];
@@ -1447,7 +1447,7 @@ function notify_sacrament_application_status(
     string $extra = ''
 ): void {
     $kind = ucwords(str_replace('_', ' ', $sacramentType));
-    $state = ucwords(str_replace('_', ' ', $newStatus));
+    $state = status_label('application', $newStatus);
     notify(
         $pdo,
         'application_' . $newStatus,
