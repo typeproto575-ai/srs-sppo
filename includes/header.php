@@ -92,4 +92,4 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     });
 })();
 </script>
-<main class="site-main<?= !empty($pageClass) ? ' ' . e($pageClass) : '' ?>" id="main-content">
+<main class="site-main public-page<?= !empty($pageClass) ? ' ' . e($pageClass) : '' ?>" id="main-content">
