@@ -113,6 +113,7 @@ $extraHead = '';
         <h1>Database Backup / Export</h1>
         <p class="field-hint">The encrypted export excludes password/hash columns, password-reset tokens, submission rate limits, and email delivery logs.</p>
         <p class="field-hint"><strong>Backup note:</strong> Store backups on an external drive, keep at least two copies, and follow the parish's approved retention policy when disposing of old copies.</p>
+        <p class="field-hint">This page creates a one-time download. Optional automatic monthly Google Drive backups require explicit server-side enablement, a configured host scheduler, and server-only credentials; ask the designated technical administrator whether that job is active.</p>
         <?php if ($error !== null): ?>
             <p class="form-error"><?= e($error) ?></p>
         <?php endif; ?>
@@ -140,4 +141,3 @@ $extraHead = '';
         </form>
         <p class="field-hint">OpenSSL AES-256-GCM encryption is used. The passphrase is never stored or logged.</p>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
-

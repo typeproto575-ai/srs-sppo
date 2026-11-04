@@ -73,6 +73,7 @@ RedirectMatch 403 (^|/)devtools(/|$)
 # Block temp/debug scripts in project root
 RedirectMatch 403 (^|/)(temp_|fix_|scan_|_tmp_)[^/]*\.(php|ps1|py|vbs)$
 RedirectMatch 403 (^|/)scripts/document_project\.php$
+RedirectMatch 403 (^|/)scripts/(scheduled-backup|setup-google-drive-backups|decrypt-backup)\.php$
 
 # Disable directory listings
 Options -Indexes

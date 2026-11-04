@@ -82,6 +82,97 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    PHP `mail()` is restricted. Test delivery to an address you control and
    check **System → Email Log** before relying on notifications.
 
+## Scheduled encrypted Google Drive backups
+
+The optional CLI job creates one compressed, encrypted **full database export**
+per month. It uploads the file to a dedicated Google Drive folder and, only
+after a successful upload, keeps the six newest monthly files matching its
+backup filename pattern. Re-running the job in the same month does not create
+a duplicate. This is not an incremental backup and does not back up application
+files or server configuration.
+
+The job requires PHP CLI with PDO MySQL, cURL, OpenSSL, and zlib, plus a host
+that permits scheduled tasks and outbound HTTPS. It uses Google OAuth with the
+`drive.file` scope, so the setup script creates the app-owned backup folder.
+Create a Google Cloud project, enable the Google Drive API, and create OAuth
+credentials for the account that will own the backups. A refresh token is
+required for unattended operation; keep it private and revoke it if exposed.
+For a personal Google Drive account, one way to obtain that token is to
+register `https://developers.google.com/oauthplayground` as the OAuth client's
+redirect URI, then use Google OAuth Playground's **Use your own OAuth
+credentials** option with the scope
+`https://www.googleapis.com/auth/drive.file`. Authorize the dedicated account,
+exchange the authorization code for tokens, and copy the refresh token directly
+to the server configuration. Configure the consent screen for unattended use:
+refresh tokens issued while an External app is in Testing expire after a short
+period. Never paste OAuth secrets or tokens into source control, support
+requests, or chat.
+
+Add these values to server environment variables or the untracked,
+server-only `config/local.php` array. Use a dedicated Google account where
+possible. Generate `SRS_BACKUP_PASSPHRASE` as a random secret of at least 32
+characters; store a recovery copy in the parish-approved password manager,
+separately from Google Drive and the server. The system cannot recover this
+secret if it is lost. Scheduled backups are disabled unless
+`SRS_SCHEDULED_BACKUPS_ENABLED` is explicitly set to `true`; disabling the
+scheduled job does not disable manual backups from the admin page.
+
+```php
+'SRS_SCHEDULED_BACKUPS_ENABLED' => 'true',
+'SRS_GOOGLE_CLIENT_ID' => 'YOUR_GOOGLE_OAUTH_CLIENT_ID',
+'SRS_GOOGLE_CLIENT_SECRET' => 'YOUR_GOOGLE_OAUTH_CLIENT_SECRET',
+'SRS_GOOGLE_REFRESH_TOKEN' => 'YOUR_GOOGLE_OAUTH_REFRESH_TOKEN',
+'SRS_BACKUP_PASSPHRASE' => 'YOUR_RANDOM_32_OR_MORE_CHARACTER_SECRET',
+// Set after running the folder setup command:
+'SRS_GOOGLE_DRIVE_FOLDER_ID' => 'FOLDER_ID_FROM_SETUP',
+```
+
+Run the one-time setup command from the project root to create (or find) the
+app-owned `SRS-SPPO Encrypted Backups` folder and print its ID:
+
+```text
+php scripts/setup-google-drive-backups.php
+```
+
+Set the printed folder ID as `SRS_GOOGLE_DRIVE_FOLDER_ID`. Then test the job
+manually from the command line and confirm the encrypted file appears in
+Google Drive:
+
+```text
+php scripts/scheduled-backup.php
+```
+
+Configure the host scheduler to run once a month. For a Linux cron host, the
+example below runs on the first day of each month at 2:00 AM in the host's
+local time. The job uses the Philippine calendar month for the backup
+filename. If a scheduled run fails, run it manually after resolving the
+problem; re-running within the same month will not create a duplicate after a
+successful upload. Keep the log outside the public web directory and review it
+regularly.
+
+```cron
+0 2 1 * * cd /path/to/srs-sppo && /usr/bin/php scripts/scheduled-backup.php >> /path/outside/webroot/srs-sppo-backup.log 2>&1
+```
+
+If the host does not support scheduled jobs or outbound Google API access,
+or `SRS_SCHEDULED_BACKUPS_ENABLED` is not set to `true`, the automatic backup
+is **not active**. The manual **System → Backup** download remains available.
+A scheduled run reports errors with a non-zero exit status; configure the host
+to alert the maintainer on failed jobs and periodically perform an isolated
+restore drill. Never import a backup into the live database as a test.
+
+To decrypt a scheduled `.sql.gz.enc` file, set `SRS_BACKUP_PASSPHRASE` through
+the trusted recovery machine's secure environment/secret manager and run:
+
+```text
+php scripts/decrypt-backup.php path/to/srs-sppo-monthly-YYYY-MM.sql.gz.enc
+```
+
+The utility verifies the encrypted payload and writes a decompressed `.sql`
+file beside it. Treat that SQL file as sensitive plaintext, keep it out of the
+web root, and securely remove it after the isolated recovery drill. Never put
+the passphrase directly in a shell command or commit it to a script.
+
 ## Quick process demo
 
 After importing `database/seed_process_demo.sql` on a local/demo database:

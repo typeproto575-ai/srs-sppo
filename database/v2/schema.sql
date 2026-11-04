@@ -235,7 +235,7 @@ CREATE TABLE certificate_requests (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 8. schedule_events : parish calendar (public view shows public_details only)
+-- 7. schedule_events : parish calendar (public view shows public_details only)
 -- ---------------------------------------------------------------------
 CREATE TABLE schedule_events (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -255,7 +255,7 @@ CREATE TABLE schedule_events (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 9. announcements : public landing page notices
+-- 8. announcements : public landing page notices
 -- ---------------------------------------------------------------------
 CREATE TABLE announcements (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -270,7 +270,7 @@ CREATE TABLE announcements (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 10. settings : key/value (site text, parish name, eligibility ages,
+-- 9. settings : key/value (site text, parish name, eligibility ages,
 --     priest approval email, retention periods ...)
 -- ---------------------------------------------------------------------
 CREATE TABLE settings (
@@ -282,7 +282,7 @@ CREATE TABLE settings (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 11. notifications : in-app admin notices AND the email delivery log
+-- 10. notifications : in-app admin notices AND the email delivery log
 --     channel = 'inapp' uses title/message/link/is_read.
 --     channel = 'email' uses recipient/delivery_status/error_message.
 -- ---------------------------------------------------------------------
@@ -306,7 +306,7 @@ CREATE TABLE notifications (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 12. audit_logs : who did what, including reprints and handovers
+-- 11. audit_logs : who did what, including reprints and handovers
 -- ---------------------------------------------------------------------
 CREATE TABLE audit_logs (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
