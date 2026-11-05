@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="login-shell">
 <main class="login-page">
     <!-- Parish logo above the login card -->
-    <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="login-logo">
+    <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="login-logo">
     <h1>Staff Login</h1>
     <!-- Authentication error, HTML-escaped -->
     <?php if ($error): ?><p class="alert alert-error"><?= e($error) ?></p><?php endif; ?>

@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css"><link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css">
 </head>
 <body class="login-shell"><main class="login-page">
-<img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="login-logo">
+<img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="login-logo">
 <h1>Reset staff password</h1>
 <p class="login-help">Enter your official parish staff email. For security, the same message is shown whether or not an account matches.</p>
 <?php if ($error): ?><p class="alert alert-error"><?= e($error) ?></p><?php endif; ?>

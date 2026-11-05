@@ -759,7 +759,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h2>Record</h2>
                 <div class="form-grid view-grid">
                     <div class="field"><label class="field-label">Event date (required)</label><input type="date" name="event_date" value="<?= e((string) ($_POST['event_date'] ?? ($prefill['event_date'] ?? ''))) ?>" required></div>
-                    <div class="field"><label class="field-label">Place</label><input type="text" name="place" value="<?= e((string) ($_POST['place'] ?? ($prefill['place'] ?? 'St. Patrick Parish'))) ?>"></div>
+                    <div class="field"><label class="field-label">Place</label><input type="text" name="place" value="<?= e((string) ($_POST['place'] ?? ($prefill['place'] ?? "St. Patrick's Parish"))) ?>"></div>
                     <div class="field"><label class="field-label">Minister name</label><input type="text" name="minister_name" value="<?= e((string) ($_POST['minister_name'] ?? ($prefill['minister_name'] ?? ''))) ?>"></div>
                     <div class="field"><label class="field-label">Source</label>
                         <?php $src = (string) ($_POST['source'] ?? ($prefill['source'] ?? 'this_parish')); ?>
@@ -918,7 +918,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <h2>Record</h2>
             <div class="form-grid view-grid">
                 <div class="field"><label class="field-label">Event date (required)</label><input type="date" name="event_date" value="<?= e((string) ($_POST['event_date'] ?? ($prefill['event_date'] ?? ''))) ?>" required></div>
-                <div class="field"><label class="field-label">Place</label><input type="text" name="place" value="<?= e((string) ($_POST['place'] ?? ($prefill['place'] ?? 'St. Patrick Parish'))) ?>"></div>
+                <div class="field"><label class="field-label">Place</label><input type="text" name="place" value="<?= e((string) ($_POST['place'] ?? ($prefill['place'] ?? "St. Patrick's Parish"))) ?>"></div>
                 <div class="field"><label class="field-label">Minister name</label><input type="text" name="minister_name" value="<?= e((string) ($_POST['minister_name'] ?? ($prefill['minister_name'] ?? ''))) ?>"></div>
                 <div class="field"><label class="field-label">Source</label>
                     <?php $src = (string) ($_POST['source'] ?? ($prefill['source'] ?? 'this_parish')); ?>

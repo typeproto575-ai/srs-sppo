@@ -99,7 +99,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $out[] = '</g>';
     $out[] = sc_svg_text('SACRAMENTAL CERTIFICATE', 33.5, 9.0, 3.4, 54, ['fill' => '#4e5051', 'letter_spacing' => .1, 'max' => true]);
     $out[] = sc_svg_text('PRELATURE OF INFANTA', 60.75, 13.4, 2.083, 30, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04, 'anchor' => 'middle', 'max' => true]);
-    $out[] = sc_svg_text('ST. PATRICK PARISH', 34.5, 18.0, 4.6, 53, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04, 'max' => true]);
+    $out[] = sc_svg_text("ST. PATRICK'S PARISH", 34.5, 18.0, 4.6, 53, ['family' => "'Century Gothic',Avenir,Arial,sans-serif", 'fill' => $green, 'letter_spacing' => .04, 'max' => true]);
     $out[] = sc_svg_text('Dingalan, 3207 Aurora Province, Philippines', 40.7, 20.9, 2.354, 40.6, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'max' => true]);
     $dy = 9.2;
     $out[] = sc_svg_text('This is to certify that', 50, 19 + $dy, 3.1, 30, ['fill' => $ink, 'anchor' => 'middle', 'max' => true]);
@@ -119,7 +119,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
         $out[] = sc_svg_rule(37.5, $y + .7, 52, $ink, .15);
         $y += 6.1;
     }
-    $out[] = sc_svg_text('Issued this ' . date('F j, Y') . ' at St. Patrick Parish Office, Dingalan, Aurora.', 50, 88 + $dy, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    $out[] = sc_svg_text("Issued this " . date('F j, Y') . " at St. Patrick's Parish Office, Dingalan, Aurora.", 50, 88 + $dy, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
     $out[] = sc_svg_text('Valid only with the signature of the Parish Priest and the parish seal.', 50, 91.5 + $dy, 2.2, 77, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
     $out[] = sc_svg_rule(57.667, 103 + $dy, 35.667, $ink);
     $out[] = sc_svg_text('PARISH PRIEST', 75.5, 106 + $dy, 2.1, 27, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle', 'letter_spacing' => .08, 'max' => true]);

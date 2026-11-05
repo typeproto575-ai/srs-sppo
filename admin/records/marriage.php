@@ -726,7 +726,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>Marriage Details</legend>
                         <label>Marriage Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? $editRecord['marriage_date'] ?? '') ?>" required></label>
-                        <label>Place <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? 'St. Patrick Parish') ?>"></label>
+                        <label>Place <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? "St. Patrick's Parish") ?>"></label>
                         <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $party => $label): ?>
                             <?php
                             $details = json_decode((string) ($editRecord['details'] ?? ''), true);

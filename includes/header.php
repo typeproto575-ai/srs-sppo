@@ -23,11 +23,11 @@ $basePath  = $basePath ?? base_path();
 $pageDescriptions = [
     'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and receive updates by email or contact the office with your reference number.",
     'Requirements' => 'Review parish office requirements before requesting a sacramental certificate or applying for a sacrament.',
-    'Office Services' => 'Choose a sacrament application or request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick Parish Office.',
+    'Office Services' => "Choose a sacrament application or request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick's Parish Office.",
     'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, First Communion, or Marriage preparation for parish review.',
-    'How It Works' => 'Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick Parish Office.',
-    'Privacy Notice' => 'Read how St. Patrick Parish Office handles information submitted through this parish records system.',
-    'Terms and Conditions' => 'Review the terms for using the St. Patrick Parish Office online request system.',
+    'How It Works' => "Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick's Parish Office.",
+    'Privacy Notice' => "Read how St. Patrick's Parish Office handles information submitted through this parish records system.",
+    'Terms and Conditions' => "Review the terms for using the St. Patrick's Parish Office online request system.",
 ];
 $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDescriptions['Home']);
 ?>
@@ -53,7 +53,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     <meta property="og:description" content="<?= e($pageDescription) ?>">
     <meta property="og:type" content="website">
     <meta property="og:image" content="<?= $basePath ?>/assets/images/logo-circle.png">
-    <meta property="og:image:alt" content="St. Patrick Parish logo">
+    <meta property="og:image:alt" content="St. Patrick's Parish logo">
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -61,7 +61,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
 <header class="site-header">
     <!-- Brand doubles as the home link; shows the parish logo image + name -->
     <a href="<?= $basePath ?>/public/index.php" class="site-brand">
-        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="brand-logo-public">
+        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="brand-logo-public">
         St. Patrick's Parish Office
     </a>
     <!-- Primary public navigation (small inline SVG icons, no external library) -->

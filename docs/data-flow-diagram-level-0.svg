@@ -21,7 +21,7 @@
   </defs>
   <rect x="0" y="0" width="1600" height="1000" fill="#fff"/>
   <text x="800" y="48" class="title">Data Flow Diagram — Level 0 (Context Diagram)</text>
-  <text x="800" y="76" class="subtitle">Schedule and Record System of Saint Patrick Parish Office (SRS-SPPO v2)</text>
+  <text x="800" y="76" class="subtitle">Schedule and Record System of Saint Patrick's Parish Office (SRS-SPPO v2)</text>
 
   <rect x="75" y="325" width="240" height="150" class="entity"/>
   <text x="195" y="384" class="entity-label">PARISHIONER</text>

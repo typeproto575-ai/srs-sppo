@@ -1,6 +1,6 @@
 <?php
 /**
- * Baptismal certificate renderer (St. Patrick Parish blank stock).
+ * Baptismal certificate renderer (St. Patrick's Parish blank stock).
  *
  * Draws the certificate as one SVG so every label, rule and value sits at a
  * measured baseline and prints at true physical size. Positions live in

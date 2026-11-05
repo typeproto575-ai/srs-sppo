@@ -67,7 +67,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
 <header class="site-master-header">
     <!-- Brand link: keep the dashboard page connected while matching the earlier parish-workspace layout -->
     <a href="<?= $basePath ?>/admin/dashboard.php" class="header-brand-wrap" aria-label="Go to dashboard">
-        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="brand-logo" aria-hidden="true">
+        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="brand-logo" aria-hidden="true">
         <span class="header-home-brand">Schedule and Record System</span>
     </a>
     <div class="master-profile">

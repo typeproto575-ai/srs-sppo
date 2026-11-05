@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reset Password | SRS-SPPO</title><link rel="icon" type="image/png" href="<?= $basePath ?>/assets/images/logo-circle.png"><link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css"><link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css"></head>
-<body class="login-shell"><main class="login-page"><img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="login-logo"><h1>Choose a new password</h1>
+<body class="login-shell"><main class="login-page"><img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="login-logo"><h1>Choose a new password</h1>
 <?php if ($success): ?><p class="alert alert-success">Your password has been reset. Existing staff sessions have been invalidated. You may now sign in.</p><p><a class="btn" href="<?= $basePath ?>/admin/login.php">Return to staff login</a></p>
 <?php elseif ($error): ?><p class="alert alert-error"><?= e($error) ?></p><p><a href="<?= $basePath ?>/admin/forgot-password.php">Request a new reset link</a></p>
 <?php elseif ($resetUserId === null): ?><p class="alert alert-error">This reset link is invalid or expired. Request a new link.</p><p><a href="<?= $basePath ?>/admin/forgot-password.php">Request a new reset link</a></p>
