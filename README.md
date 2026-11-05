@@ -7,7 +7,7 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 1. Place this whole `srs-sppo` folder inside `htdocs/` in your XAMPP installation.
 2. Start Apache and MySQL from the XAMPP control panel.
 3. From the project root, run `composer install` to install the PHP runtime dependencies.
-4. Open phpMyAdmin and import `database/srs_sppo_schema.sql` (or run it via the `mysql` CLI).
+4. Open phpMyAdmin and import `database/v2/schema.sql` (or run it via the `mysql` CLI) to create the V2 database.
 5. Configure database credentials through environment variables, or create the
    untracked local file `config/local.php`:
    ```php
@@ -27,25 +27,13 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    use the database host, database name, username, and password shown in that
    host's database panel. Never commit or upload your local `config/local.php`;
    create a separate server-only copy on the host.
-6. Only for a **disposable local database**, import
-   `database/seed_demo_data.sql` if you want sample records. It deletes all
-   rows from the sacramental-record, request, application, and persons tables
-   it targets before reseeding; never run it on a populated, real, or hosted
-   database. For a small, non-resetting walkthrough dataset instead, import
-   `database/seed_process_demo.sql` after the current schema is installed.
-   It adds clearly labeled fictional records and is safe to rerun without
-   resetting their workflow statuses. Its reference numbers are
-   `DEMO-BAP-001`, `DEMO-CONF-001`, `DEMO-FC-001`, `DEMO-MARR-001`, and
-   `DEMO-CERT-001`. Match Eva Demo Santos using birth date `2014-06-15`.
-   For a comprehensive, still-additive defense dataset, import
-   `database/seed_defense_demo.sql` and follow
-   [`docs/DEMO_WALKTHROUGH.md`](docs/DEMO_WALKTHROUGH.md). Both seeds are only
-   for a local/demo database. Existing databases must have the required schema
-   updates (including migrations 039, 045, and 046) before importing. Neither seed
-   creates a login. Create a secretary account from the project root with
-   `php scripts/create-admin.php`; the CLI requires a password of at least 12
-   characters. The current schema has a `secretary` role, not a separate
-   `admin` role.
+6. For a public-facing demo on a **new, empty V2 demo database**, import
+   `database/seed_public_demo.sql` after `database/v2/schema.sql`. It adds
+   fictional people, register entries, applications, certificate requests,
+   schedule events, announcements, and public settings. It creates no staff
+   account, notifications, or audit entries. The seed uses fixed example IDs:
+   never import it into a database that already contains records. It does not
+   clear or truncate tables.
 7. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
 8. For an existing database, sign in as secretary and open
@@ -80,7 +68,9 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    Add these entries to the array in the server-only `config/local.php`, keeping
    its database settings. On InfinityFree, external SMTP is supported; outgoing
    PHP `mail()` is restricted. Test delivery to an address you control and
-   check **System → Email Log** before relying on notifications.
+   check the database's `notifications` table for email-channel delivery
+   attempts. The secretary-facing Email Log page is available in the admin
+   System menu when that page is deployed.
 
 ## Scheduled encrypted Google Drive backups
 
@@ -173,24 +163,25 @@ file beside it. Treat that SQL file as sensitive plaintext, keep it out of the
 web root, and securely remove it after the isolated recovery drill. Never put
 the passphrase directly in a shell command or commit it to a script.
 
-## Quick process demo
+## Public-facing demo data
 
-After importing `database/seed_process_demo.sql` on a local/demo database:
+For a public-facing demonstration, use `database/seed_public_demo.sql` with a
+new, empty database created from `database/v2/schema.sql`. It adds fictional
+parishioners and sacramental records, public applications and certificate
+requests, calendar events, announcements, and public settings. It creates no
+staff account, notifications, or audit entries.
 
-1. Open **Admin → Requests → Online Submissions** to see all five `DEMO-*`
-   reference numbers.
-2. In the application queue, match `DEMO-CONF-001` and `DEMO-FC-001` to
-   **Eva Demo Santos**, born `2014-06-15`.
-3. Match both applicants separately on `DEMO-MARR-001`: **Marco Demo Reyes**
-   (born `1997-04-20`) and **Nina Demo Cruz** (born `1998-09-08`).
-4. Open Eva's person profile from **System → Persons**. Her Baptism record is
-   linked; the other sacrament actions show how an existing identity can be
-   reused instead of re-entered.
-5. Open `DEMO-CERT-001` in the certificate queue and match it to her
-   `DEMO-B-001` Baptism register entry.
+The seed uses fixed IDs and is **not repeatable**. Never import it into a
+database that already contains records. It does not truncate or clear tables.
 
-All records are fictional and start as reviewable submissions. The seed does
-not create staff login credentials or complete any workflow automatically.
+To remove only rows recognizable from the previous full V2 demo seed, back up
+the database and review `database/cleanup_public_demo.sql` first. On a hosted
+database, change the script's `USE` statement to the database name from the
+hosting panel, or select the database in phpMyAdmin and remove that statement.
+The cleanup uses fixed seed fingerprints, preserves non-matching records and
+all users, and does not truncate tables. It can leave a seed row behind if that
+row no longer matches its original fingerprint or is still referenced by other
+data.
 
 ## Folder structure
 
@@ -207,9 +198,8 @@ srs-sppo/
 │   │                                    numbers, age/eligibility check, audit logging, e()
 │   └── auth.php                         session guard (require_login / require_role)
 ├── database/
-│   ├── srs_sppo_schema.sql        full DB schema
-│   ├── seed_process_demo.sql      quick, non-resetting walkthrough data
-│   └── seed_demo_data.sql         larger destructive demo reset
+│   ├── v2/schema.sql              current unified-person V2 schema
+│   └── seed_public_demo.sql       public-facing sample data (empty DB only)
 ├── migrations/                    reviewed database upgrades
 ├── scripts/                       setup and maintenance commands
 ├── tests/                         automated tests

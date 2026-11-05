@@ -172,6 +172,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) {
             try {
                 $applicationId = null;
+                $ageAssessment = sacrament_age_assessment(
+                    $pdo,
+                    'confirmation',
+                    calculate_age($applicantBirthdate)
+                );
+                $fatherName = compose_person_name($formData, 'father');
+                $motherName = compose_person_name($formData, 'mother');
                 $trackingNumber = retry_on_duplicate($pdo, function () use (
                     $pdo,
                     $applicantName,
@@ -182,6 +189,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $baptizedHere,
                     $personId,
                     $channel,
+                    $ageAssessment,
+                    $fatherName,
+                    $motherName,
                      &$applicationId
                      
                 ): string {
@@ -189,8 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $details = [
                         'applicant_full_name' => $applicantName,
                         'birth_date' => $applicantBirthdate,
-                        'father_name' => compose_person_name($formData, 'father'),
-                        'mother_maiden_name' => compose_person_name($formData, 'mother'),
+                        'age_at_submission' => $ageAssessment['age'],
+                        'age_eligibility_status' => $ageAssessment['status'],
+                        'father_name' => $fatherName,
+                        'mother_maiden_name' => $motherName,
                         'parent_guardian_name' => $parentGuardian,
                         'baptized_here' => $baptizedHere,
                     ];
@@ -275,6 +287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <li class="<?= $state ?>"<?= ($key === $currentStep) ? ' aria-current="step"' : '' ?>><span><?= $i + 1 ?></span> <?= e($confLabels[$key]) ?></li>
         <?php endforeach; ?>
     </ol>
+    <?php
+    $ageAssessment = $currentStep === CONF_STEP_VERIFY && !empty($formData['applicant_birthdate'])
+        ? sacrament_age_assessment($pdo, 'confirmation', calculate_age((string) $formData['applicant_birthdate']))
+        : null;
+    ?>
     <?php if (!empty($errors)): ?>
         <div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
@@ -357,6 +374,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <tr><th>Contact number</th><td><?= $wv('contact_number') ?></td></tr>
                     <tr><th>Email</th><td><?= $wv('email') ?></td></tr>
                 </table>
+                <?php if ($ageAssessment !== null): ?>
+                    <p class="alert alert-info" role="note">
+                        <strong>Age guidance:</strong> The applicant is <?= (int) $ageAssessment['age'] ?> years old.
+                        The configured range is <?= (int) $ageAssessment['range']['min_age'] ?>-<?= (int) $ageAssessment['range']['max_age'] ?> years;
+                        assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
+                        This is advisory only and does not prevent submission; the Parish Secretary will review the application.
+                    </p>
+                <?php endif; ?>
                 <label class="checkbox-label">
                     <input type="checkbox" name="certify_accuracy" value="1" <?= (($formData['certify_accuracy'] ?? '') === '1') ? 'checked' : '' ?> required>
                     I certify that the information provided is true and correct.

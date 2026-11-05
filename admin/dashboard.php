@@ -21,6 +21,8 @@ require_role('secretary');
 $basePath = $basePath ?? base_path();
 $pageTitle = 'Admin Dashboard';
 
+notify_newly_age_eligible_persons($pdo);
+
 // ---- Search (GET q) -------------------------------------------------------
 $q = trim((string) ($_GET['q'] ?? ''));
 $searchResults = [];

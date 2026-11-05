@@ -228,30 +228,190 @@ function calculate_age(string $birthdate): int
 /** Return the configured age range for a sacrament. */
 function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
 {
-    $stmt = $pdo->prepare(
-        "SELECT min_age, max_age FROM sacrament_eligibility_settings WHERE sacrament_type = ?"
+    $settings = match ($sacramentType) {
+        'first_communion' => [
+            'min_key' => 'first_communion_min_age',
+            'max_key' => 'first_communion_max_age',
+            'min_default' => 7,
+            'max_default' => 12,
+        ],
+        'confirmation' => [
+            'min_key' => 'confirmation_min_age',
+            'max_key' => 'confirmation_max_age',
+            'min_default' => 12,
+            'max_default' => 18,
+        ],
+        default => throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.'),
+    };
+
+    $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM settings WHERE setting_key IN (?, ?)');
+    $stmt->execute([$settings['min_key'], $settings['max_key']]);
+    $values = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $values[$row['setting_key']] = $row['setting_value'];
+    }
+
+    $minAge = filter_var(
+        $values[$settings['min_key']] ?? $settings['min_default'],
+        FILTER_VALIDATE_INT
     );
-    $stmt->execute([$sacramentType]);
-    $row = $stmt->fetch();
-
-    $minAge = 0;
-    $maxAge = null;
-
-    if ($row) {
-        $minAge = (int) $row['min_age'];
-        $maxAge = $row['max_age'] !== null ? (int) $row['max_age'] : null;
+    $maxAge = filter_var(
+        $values[$settings['max_key']] ?? $settings['max_default'],
+        FILTER_VALIDATE_INT
+    );
+    if (
+        $minAge === false
+        || $maxAge === false
+        || $minAge < 0
+        || $minAge > 120
+        || $maxAge < $minAge
+        || $maxAge > 120
+    ) {
+        throw new UnexpectedValueException('The configured sacrament age range is invalid.');
     }
 
     return ['min_age' => $minAge, 'max_age' => $maxAge];
 }
 
+/** Return the configured age range and review-friendly status without blocking the application. */
+function sacrament_age_assessment(PDO $pdo, string $sacramentType, int $age): array
+{
+    $range = sacrament_eligibility_range($pdo, $sacramentType);
+    if ($age < $range['min_age']) {
+        $status = 'Not yet age-eligible';
+    } elseif ($age > $range['max_age']) {
+        $status = 'Outside configured range - secretary review';
+    } else {
+        $status = 'Age-eligible';
+    }
+
+    return ['age' => $age, 'range' => $range, 'status' => $status];
+}
+
 /** Return a review-friendly age status without blocking the application. */
 function sacrament_age_status(PDO $pdo, string $sacramentType, int $age): string
 {
-    $range = sacrament_eligibility_range($pdo, $sacramentType);
-    if ($age < $range['min_age']) return 'Not yet age-eligible';
-    if ($range['max_age'] !== null && $age > $range['max_age']) return 'Outside configured range - secretary review';
-    return 'Age-eligible';
+    return sacrament_age_assessment($pdo, $sacramentType, $age)['status'];
+}
+
+/**
+ * Create one in-app alert for each parishioner who reaches a configured age.
+ *
+ * This is called when the secretary opens the dashboard. Eligibility alerts
+ * require a baptism record and are not created for sacraments already recorded.
+ */
+function notify_newly_age_eligible_persons(PDO $pdo): int
+{
+    $lockName = 'srs_sppo_age_eligibility_notifications';
+    $lockAcquired = false;
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+        $lockStmt = $pdo->prepare('SELECT GET_LOCK(?, 5)');
+        $lockStmt->execute([$lockName]);
+        if ((int) $lockStmt->fetchColumn() !== 1) {
+            throw new RuntimeException('Could not acquire the age-eligibility notification lock.');
+        }
+        $lockAcquired = true;
+    }
+
+    try {
+        $today = new DateTimeImmutable('today');
+        $todayDate = $today->format('Y-m-d');
+        $people = $pdo->query(
+            "SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date
+             FROM persons p
+             WHERE p.birth_date IS NOT NULL
+               AND p.is_deceased = 0
+               AND EXISTS (
+                   SELECT 1
+                   FROM sacrament_records baptism
+                   WHERE baptism.person_id = p.id
+                     AND baptism.sacrament_type = 'baptism'
+               )"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        $sacraments = [
+            'first_communion' => [
+                'label' => 'First Communion',
+                'type' => 'age_eligible_first_communion',
+            ],
+            'confirmation' => [
+                'label' => 'Confirmation',
+                'type' => 'age_eligible_confirmation',
+            ],
+        ];
+        $ranges = [];
+        foreach (array_keys($sacraments) as $sacramentType) {
+            $ranges[$sacramentType] = sacrament_eligibility_range($pdo, $sacramentType);
+        }
+
+        $priorAlertStmt = $pdo->prepare(
+            "SELECT 1 FROM notifications
+             WHERE channel = 'inapp'
+               AND type = ?
+               AND entity_type = 'persons'
+               AND entity_id = ?
+             LIMIT 1"
+        );
+        $alreadyReceivedStmt = $pdo->prepare(
+            'SELECT 1 FROM sacrament_records
+             WHERE person_id = ? AND sacrament_type = ?
+             LIMIT 1'
+        );
+        $insertStmt = $pdo->prepare(
+            "INSERT INTO notifications
+                (channel, type, title, message, link, entity_type, entity_id)
+             VALUES ('inapp', ?, ?, ?, ?, 'persons', ?)"
+        );
+
+        $created = 0;
+        foreach ($people as $person) {
+            $birthDate = new DateTimeImmutable((string) $person['birth_date']);
+            $fullName = implode(' ', array_filter([
+                $person['first_name'],
+                $person['middle_name'],
+                $person['last_name'],
+                $person['suffix'],
+            ], static fn ($part): bool => is_string($part) && trim($part) !== ''));
+
+            foreach ($sacraments as $sacramentType => $config) {
+                $minimumAge = $ranges[$sacramentType]['min_age'];
+                if ($birthDate->modify('+' . $minimumAge . ' years')->format('Y-m-d') !== $todayDate) {
+                    continue;
+                }
+
+                $alreadyReceivedStmt->execute([(int) $person['id'], $sacramentType]);
+                if ($alreadyReceivedStmt->fetchColumn()) {
+                    continue;
+                }
+
+                $priorAlertStmt->execute([$config['type'], (int) $person['id']]);
+                if ($priorAlertStmt->fetchColumn()) {
+                    continue;
+                }
+
+                $message = $fullName . ' has reached the minimum age of ' . $minimumAge
+                    . ' for ' . $config['label'] . '. Review their person profile.';
+                $message = function_exists('mb_substr')
+                    ? mb_substr($message, 0, 255, 'UTF-8')
+                    : substr($message, 0, 255);
+                $insertStmt->execute([
+                    $config['type'],
+                    'Age eligibility reached',
+                    $message,
+                    '/admin/system/person-profile.php?id=' . (int) $person['id'],
+                    (int) $person['id'],
+                ]);
+                $created++;
+            }
+        }
+
+        return $created;
+    } finally {
+        if ($lockAcquired) {
+            $releaseStmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $releaseStmt->execute([$lockName]);
+        }
+    }
 }
 
 /** Check whether an age falls outside a sacrament's configured range. */
@@ -1558,6 +1718,243 @@ function cert_request_payment_gate(array $req, string $to): array
         return ['ok' => true];
     }
     return ['ok' => false, 'reason' => 'This online request is awaiting payment. Record the payment (Mark as Paid) before it can move forward.'];
+}
+
+/**
+ * Return the most recently generated certificate that has not been superseded.
+ *
+ * @return array<string, mixed>|null
+ */
+function cert_current_generation_log(PDO $pdo, int $requestId): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM certificate_generation_log
+         WHERE certificate_request_id = ? AND superseded_at IS NULL
+         ORDER BY generated_at DESC, id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$requestId]);
+    $generation = $stmt->fetch();
+
+    return is_array($generation) ? $generation : null;
+}
+
+/**
+ * Record that the active generated certificate has been physically printed.
+ *
+ * @return array{ok: bool, reason?: string}
+ */
+function log_certificate_printed(PDO $pdo, int $requestId, int $userId): array
+{
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $requestStmt = $pdo->prepare(
+            'SELECT status, paid_at
+             FROM certificate_requests
+             WHERE id = ?
+             FOR UPDATE'
+        );
+        $requestStmt->execute([$requestId]);
+        $request = $requestStmt->fetch();
+        if (!is_array($request) || $request['status'] !== 'ready_for_pickup') {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'The certificate request is not ready for pickup.'];
+        }
+        if (empty($request['paid_at'])) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'Payment must be recorded before printing the certificate.'];
+        }
+
+        $generationStmt = $pdo->prepare(
+            'SELECT id, print_status
+             FROM certificate_generation_log
+             WHERE certificate_request_id = ? AND superseded_at IS NULL
+             ORDER BY generated_at DESC, id DESC
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $generationStmt->execute([$requestId]);
+        $generation = $generationStmt->fetch();
+        if (!is_array($generation) || $generation['print_status'] !== 'generated') {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'There is no active, unprinted certificate generation for this request.'];
+        }
+
+        $update = $pdo->prepare(
+            "UPDATE certificate_generation_log
+             SET print_status = 'printed', printed_by = ?, printed_at = NOW()
+             WHERE id = ? AND print_status = 'generated' AND superseded_at IS NULL"
+        );
+        $update->execute([$userId, (int) $generation['id']]);
+        if ($update->rowCount() !== 1) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'The certificate print status changed; refresh and try again.'];
+        }
+
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/**
+ * Record release of a finalized, printed certificate to its claimant.
+ *
+ * @return array{ok: bool, reason?: string}
+ */
+function log_certificate_released(
+    PDO $pdo,
+    int $requestId,
+    int $generationId,
+    int $userId,
+    string $claimantName,
+    string $claimantRelationship,
+    string $claimantNotes,
+    bool $idVerified
+): array {
+    $claimantName = trim($claimantName);
+    if ($claimantName === '') {
+        return ['ok' => false, 'reason' => 'The claimant name is required.'];
+    }
+    if (!$idVerified) {
+        return ['ok' => false, 'reason' => "Verify the claimant's valid ID before releasing the certificate."];
+    }
+
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $requestStmt = $pdo->prepare(
+            'SELECT status, paid_at, tracking_number, requester_email, sacrament_type
+             FROM certificate_requests
+             WHERE id = ?
+             FOR UPDATE'
+        );
+        $requestStmt->execute([$requestId]);
+        $request = $requestStmt->fetch();
+        if (!is_array($request) || $request['status'] !== 'ready_for_pickup') {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'Only a request marked ready for pickup can be released.'];
+        }
+        if (empty($request['paid_at'])) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'Payment must be recorded before releasing the certificate.'];
+        }
+
+        $generationStmt = $pdo->prepare(
+            'SELECT print_status, finalized_at, superseded_at
+             FROM certificate_generation_log
+             WHERE id = ? AND certificate_request_id = ?
+             FOR UPDATE'
+        );
+        $generationStmt->execute([$generationId, $requestId]);
+        $generation = $generationStmt->fetch();
+        if (!is_array($generation)
+            || $generation['superseded_at'] !== null
+            || $generation['print_status'] !== 'printed'
+            || $generation['finalized_at'] === null) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'The certificate must be active, printed, and finalized before release.'];
+        }
+
+        $updateGeneration = $pdo->prepare(
+            "UPDATE certificate_generation_log
+             SET print_status = 'released',
+                 pickup_date = NOW(),
+                 claimant_name = ?,
+                 claimant_relationship = ?,
+                 claimant_notes = ?,
+                 id_verified = 1
+             WHERE id = ? AND print_status = 'printed' AND superseded_at IS NULL"
+        );
+        $updateGeneration->execute([
+            $claimantName,
+            trim($claimantRelationship) !== '' ? trim($claimantRelationship) : null,
+            trim($claimantNotes) !== '' ? trim($claimantNotes) : null,
+            $generationId,
+        ]);
+        if ($updateGeneration->rowCount() !== 1) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'The certificate release status changed; refresh and try again.'];
+        }
+
+        $updateRequest = $pdo->prepare(
+            "UPDATE certificate_requests
+             SET status = 'released', date_processed = NOW(), processed_by = ?
+             WHERE id = ? AND status = 'ready_for_pickup' AND paid_at IS NOT NULL"
+        );
+        $updateRequest->execute([$userId, $requestId]);
+        if ($updateRequest->rowCount() !== 1) {
+            if ($ownsTransaction) {
+                $pdo->rollBack();
+            }
+            return ['ok' => false, 'reason' => 'The request could not be marked as released.'];
+        }
+
+        log_activity(
+            $pdo,
+            $userId,
+            'certificate_released',
+            'certificate_requests',
+            $requestId,
+            'Certificate released to ' . $claimantName . '.'
+        );
+        notify(
+            $pdo,
+            'certificate_picked_up',
+            'Certificate picked up',
+            $request['sacrament_type'] . ' certificate released to ' . $claimantName . ' (' . $request['tracking_number'] . ').',
+            '/admin/requests/queue.php?status=released'
+        );
+        mail_status_update(
+            (string) $request['requester_email'],
+            (string) $request['tracking_number'],
+            'Released',
+            'certificate_request',
+            $pdo,
+            'certificate_request',
+            $requestId
+        );
+
+        if ($ownsTransaction) {
+            $pdo->commit();
+        }
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
 /* SACRAMENT APPLICATION TRANSITIONS + APPROVAL (own map, not merged). */

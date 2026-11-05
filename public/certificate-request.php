@@ -256,6 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
 
                 $inserted = false;
                 $requestId = null;
+                $requestNo = '';
                 try {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');

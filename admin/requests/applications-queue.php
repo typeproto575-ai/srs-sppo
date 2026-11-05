@@ -35,6 +35,15 @@ $openApplicationId = $openApplicationId && $openApplicationId > 0 ? (int) $openA
 
 function application_queue_label(string $value): string
 {
+    $labels = [
+        'age_at_submission' => 'Age at Submission',
+        'age_eligibility_status' => 'Age Eligibility Assessment',
+    ];
+
+    if (isset($labels[$value])) {
+        return $labels[$value];
+    }
+
     return ucwords(str_replace('_', ' ', $value));
 }
 

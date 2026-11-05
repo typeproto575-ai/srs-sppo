@@ -161,10 +161,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if (!$errors) {
         try {
             $pdo->beginTransaction();
+            $ageAssessment = sacrament_age_assessment($pdo, 'first_communion', calculate_age($birthdate));
             $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
             $details = [
                 'candidate_name' => $name,
                 'candidate_birth_date' => $birthdate,
+                'age_at_submission' => $ageAssessment['age'],
+                'age_eligibility_status' => $ageAssessment['status'],
                 'father_name' => $father,
                 'mother_maiden_name' => $mother,
                 'parent_guardian_name' => $parent,
@@ -216,6 +219,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
         }
     }
 }
+$ageAssessment = $currentStep === count($steps) && !empty($formData['applicant_birthdate'])
+    ? sacrament_age_assessment($pdo, 'first_communion', calculate_age((string) $formData['applicant_birthdate']))
+    : null;
 require_once __DIR__ . '/../../includes/header.php';
 function oldv(string $key): string { global $formData; return e(is_scalar($formData[$key] ?? null) ? (string) $formData[$key] : ''); }
 function selectedv(string $key, string $value): string { global $formData; return (($formData[$key] ?? '') === $value) ? 'selected' : ''; }
@@ -295,6 +301,14 @@ function selectedv(string $key, string $value): string { global $formData; retur
                             <tr><th>Contact</th><td><?= oldv('contact_number') ?> · <?= oldv('email') ?></td></tr>
                             <tr><th>Baptized at</th><td><?= e((string) ($formData['baptized_here'] ?? '')) ?></td></tr>
                         </table>
+                        <?php if ($ageAssessment !== null): ?>
+                            <p class="alert alert-info" role="note">
+                                <strong>Age guidance:</strong> The applicant is <?= (int) $ageAssessment['age'] ?> years old.
+                                The configured range is <?= (int) $ageAssessment['range']['min_age'] ?>-<?= (int) $ageAssessment['range']['max_age'] ?> years;
+                                assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
+                                This is advisory only and does not prevent submission; the Parish Secretary will review the application.
+                            </p>
+                        <?php endif; ?>
                         <label class="checkbox-label"><input type="checkbox" name="certify_accuracy" value="1" <?= ($formData['certify_accuracy'] ?? '') === '1' ? 'checked' : '' ?> required> I certify that this information is true and correct.</label>
                     </fieldset>
                 <?php endif; ?>

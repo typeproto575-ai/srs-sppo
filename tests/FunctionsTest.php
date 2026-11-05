@@ -65,6 +65,111 @@ final class FunctionsTest extends TestCase
         ], 'requirements_pending')['ok']);
     }
 
+    public function testConfiguredCommunionAndConfirmationAgeRangesAreAdvisory(): void
+    {
+        if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+        self::markTestSkipped('PDO SQLite is required for the in-memory age eligibility test.');
+        }
+
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
+
+        self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'first_communion', 6));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 7));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 12));
+        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'first_communion', 13));
+
+        self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'confirmation', 11));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 12));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 18));
+        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'confirmation', 19));
+
+        $pdo->exec("INSERT INTO settings (setting_key, setting_value) VALUES
+        ('first_communion_min_age', '8'),
+        ('first_communion_max_age', '11')");
+        self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'first_communion', 7));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 8));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 11));
+        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'first_communion', 12));
+    }
+
+    public function testDashboardNotifiesNewlyEligibleBaptizedPersonsOnlyOnce(): void
+    {
+        if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+            self::markTestSkipped('PDO SQLite is required for the in-memory age notification test.');
+        }
+
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
+        $pdo->exec(
+            'CREATE TABLE persons (
+                id INTEGER PRIMARY KEY,
+                first_name TEXT NOT NULL,
+                middle_name TEXT,
+                last_name TEXT NOT NULL,
+                suffix TEXT,
+                birth_date TEXT,
+                is_deceased INTEGER NOT NULL DEFAULT 0
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE sacrament_records (
+                id INTEGER PRIMARY KEY,
+                person_id INTEGER NOT NULL,
+                sacrament_type TEXT NOT NULL
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel TEXT NOT NULL,
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT,
+                link TEXT,
+                entity_type TEXT,
+                entity_id INTEGER,
+                is_read INTEGER NOT NULL DEFAULT 0
+            )'
+        );
+
+        $firstCommunionBirthday = (new DateTimeImmutable('today'))->modify('-7 years')->format('Y-m-d');
+        $confirmationBirthday = (new DateTimeImmutable('today'))->modify('-12 years')->format('Y-m-d');
+        $insertPerson = $pdo->prepare(
+            'INSERT INTO persons (id, first_name, last_name, birth_date, is_deceased)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        $insertPerson->execute([1, 'Communion', 'Candidate', $firstCommunionBirthday, 0]);
+        $insertPerson->execute([2, 'Confirmation', 'Candidate', $confirmationBirthday, 0]);
+        $insertPerson->execute([3, 'Not', 'Baptized', $firstCommunionBirthday, 0]);
+        $insertPerson->execute([4, 'Deceased', 'Person', $firstCommunionBirthday, 1]);
+        $insertPerson->execute([5, 'Already', 'Communicant', $firstCommunionBirthday, 0]);
+        $pdo->exec(
+            "INSERT INTO sacrament_records (person_id, sacrament_type) VALUES
+                (1, 'baptism'),
+                (2, 'baptism'),
+                (4, 'baptism'),
+                (5, 'baptism'),
+                (5, 'first_communion')"
+        );
+
+        self::assertSame(2, notify_newly_age_eligible_persons($pdo));
+        self::assertSame(0, notify_newly_age_eligible_persons($pdo));
+        self::assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
+        self::assertSame(
+            ['age_eligible_confirmation', 'age_eligible_first_communion'],
+            $pdo->query('SELECT type FROM notifications ORDER BY type')->fetchAll(PDO::FETCH_COLUMN)
+        );
+        self::assertSame(
+            1,
+            (int) $pdo->query(
+                "SELECT COUNT(*) FROM notifications
+                 WHERE entity_type = 'persons' AND entity_id = 1
+                   AND link = '/admin/system/person-profile.php?id=1'"
+            )->fetchColumn()
+        );
+    }
+
     public function testSafeReturnUrls(): void
     {
         self::assertNotNull(safe_internal_return_url('/admin/requests/queue.php?status=pending'));

@@ -32,7 +32,9 @@ if (empty($trackingNumber)) {
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
 $successIsApplication = $successIsApplication ?? false;
-$successRequiredDocuments = is_array($successRequiredDocuments ?? null) ? $successRequiredDocuments : [];
+$successRequiredDocuments = isset($successRequiredDocuments) && is_array($successRequiredDocuments)
+    ? $successRequiredDocuments
+    : [];
 $basePath       = $basePath ?? base_path();
 ?>
         <div class="submission-success" id="submission-success">
