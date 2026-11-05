@@ -34,6 +34,13 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    account, notifications, or audit entries. The seed uses fixed example IDs:
    never import it into a database that already contains records. It does not
    clear or truncate tables.
+   To add a larger fictional register dataset to an existing V2 demo database,
+   import `database/v2/seed_many_demo.sql`. It safely adds 100 profiles and
+   170 linked register entries, and can be run again without duplicating them.
+   To add fictional requests, applications, calendar events, and published
+   announcements, import `database/v2/seed_demo_workflows.sql` as well. Its
+   public items are explicitly labeled as fictional demo content. Use both
+   optional seeds only on a demo database.
 7. Visit `http://localhost/srs-sppo/public/index.php` for the public site, and
    `http://localhost/srs-sppo/admin/login.php` for staff login.
 8. For an existing database, sign in as secretary and open

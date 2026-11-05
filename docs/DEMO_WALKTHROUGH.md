@@ -19,6 +19,14 @@ current codebase.
    repeatable: it does not delete data, reset workflow statuses, or replace
    existing site copy. It can also be used alongside
    [`database/seed_process_demo.sql`](../database/seed_process_demo.sql).
+   The walkthrough seed above targets the older canonical schema. For the
+   currently hosted V2 schema, optionally import
+   [`database/v2/seed_many_demo.sql`](../database/v2/seed_many_demo.sql)
+   instead; it adds 100 fictional profiles and 170 linked sacramental records.
+   To add application and certificate-request queue samples, plus public
+   calendar events and announcements, also import
+   [`database/v2/seed_demo_workflows.sql`](../database/v2/seed_demo_workflows.sql).
+   All public entries from that optional seed are explicitly marked fictional.
 4. Create staff logins separately with `php scripts/create-admin.php`.
    Repeat the command to create a second secretary. The script prompts for a
    password and stores a password hash; use local-only credentials of at least
@@ -149,6 +157,23 @@ the system:
 The placeholder `<application-id>` is the numeric ID shown in the staff
 application queue or database; it is not the reference number. Do not create a
 second official record merely to show the prefilled form.
+
+## Large register/search dataset
+
+The optional V2 dataset in `database/v2/seed_many_demo.sql` provides a larger
+group of fictional parishioners for person search, profile lookup, and register
+browsing. It adds 100 profiles, 100 Baptisms, 20 First Communions, 40
+Confirmations, and 10 Marriages, with linked person and prerequisite records.
+Sample email addresses use `@demo.test`; the SQL does not create certificate
+requests, applications, staff accounts, or audit history. Import it only into
+a disposable V2 demo database, never a live parish database.
+
+The optional `database/v2/seed_demo_workflows.sql` seed adds eight fictional
+certificate requests, seven sacrament applications, six future calendar events,
+and four published announcements. Names and places are original whimsical
+storybook inventions; every public entry is labeled as demo/fictional, and no
+staff activity, payment, notification, or official sacramental record is
+fabricated by this seed. It is repeatable and inserts no duplicates.
 
 ### 5. Master profile and linked records
 
