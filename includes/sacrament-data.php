@@ -136,6 +136,30 @@ function sd_search_persons(PDO $pdo, string $query, int $limit = 20): array
     return $rows;
 }
 
+function sd_find_possible_person_matches(PDO $pdo, array $identity, int $excludePersonId = 0): array
+{
+    $name = trim(implode(' ', array_filter([
+        trim((string) ($identity['first_name'] ?? '')),
+        trim((string) ($identity['middle_name'] ?? '')),
+        trim((string) ($identity['last_name'] ?? '')),
+        trim((string) ($identity['suffix'] ?? '')),
+    ], static fn(string $part): bool => $part !== '')));
+    if ($name === '') {
+        return [];
+    }
+
+    $birthDate = trim((string) ($identity['birth_date'] ?? ''));
+    $query = $name . ($birthDate !== '' ? ' ' . $birthDate : '');
+    $matches = sd_search_persons($pdo, $query, 10);
+    if ($excludePersonId > 0) {
+        $matches = array_values(array_filter(
+            $matches,
+            static fn(array $person): bool => (int) ($person['id'] ?? 0) !== $excludePersonId
+        ));
+    }
+    return $matches;
+}
+
 /** One persons row (with `full_name`), or null. */
 function sd_get_person(PDO $pdo, int $id): ?array
 {
@@ -174,6 +198,54 @@ function sd_get_record(PDO $pdo, int $id): ?array
     $spouse = $row['spouse_person_id'] ? sd_get_person($pdo, (int) $row['spouse_person_id']) : null;
     $row['spouse_name'] = $spouse['full_name'] ?? null;
     return $row;
+}
+
+function sd_record_audit_snapshot(PDO $pdo, int $recordId): array
+{
+    if ($pdo->inTransaction()) {
+        $lock = $pdo->prepare('SELECT id FROM sacrament_records WHERE id = ? FOR UPDATE');
+        $lock->execute([$recordId]);
+        if (!$lock->fetchColumn()) {
+            throw new RuntimeException('Cannot capture correction history for a missing sacrament record.');
+        }
+    }
+    $record = sd_get_record($pdo, $recordId);
+    if (!$record) {
+        throw new RuntimeException('Cannot capture correction history for a missing sacrament record.');
+    }
+
+    $identityFields = [
+        'first_name', 'middle_name', 'last_name', 'suffix', 'birth_date',
+        'birth_place', 'father_name', 'mother_maiden_name', 'address',
+    ];
+    $identity = static function (int $personId) use ($pdo, $identityFields): ?array {
+        if ($personId <= 0) {
+            return null;
+        }
+        $person = sd_get_person($pdo, $personId);
+        if (!$person) {
+            return null;
+        }
+        return array_intersect_key($person, array_flip($identityFields));
+    };
+
+    $recordFields = [
+        'sacrament_type', 'person_id', 'spouse_person_id', 'source', 'event_date',
+        'place', 'minister_name', 'entry_no', 'book_no', 'page_no', 'line_no',
+        'parents_union_type', 'details', 'remarks',
+    ];
+    return [
+        'record' => array_intersect_key($record, array_flip($recordFields)),
+        'person' => $identity((int) ($record['person_id'] ?? 0)),
+        'spouse' => $identity((int) ($record['spouse_person_id'] ?? 0)),
+        'participants' => array_map(
+            static fn(array $participant): array => array_intersect_key(
+                $participant,
+                array_flip(['role', 'full_name', 'residence', 'sort_order'])
+            ),
+            $record['participants'] ?? []
+        ),
+    ];
 }
 
 /**
@@ -232,7 +304,14 @@ function sd_get_family(PDO $pdo, int $personId): array
  * For a marriage call this once for each spouse.
  * Returns a list of plain-language strings (empty list = nothing to flag).
  */
-function sd_prerequisite_warnings(PDO $pdo, int $personId, string $type): array
+function sd_prerequisite_warnings(
+    PDO $pdo,
+    int $personId,
+    string $type,
+    ?string $eventDate = null,
+    ?int $partnerPersonId = null,
+    ?int $excludeRecordId = null
+): array
 {
     $person = sd_get_person($pdo, $personId);
     if (!$person) {
@@ -266,6 +345,43 @@ function sd_prerequisite_warnings(PDO $pdo, int $personId, string $type): array
     } elseif ($type === 'marriage') {
         if (!$baptized) {
             $warnings[] = "No baptism on record for $name. Marriage requires a baptized Catholic.";
+        }
+        if ($recs['confirmation'] === null) {
+            $warnings[] = "No Confirmation record is linked for $name. Verify the applicant's current Confirmation certificate.";
+        }
+        $priorMarriages = array_filter(
+            $recs['marriages'],
+            static fn(array $marriage): bool => (int) ($marriage['id'] ?? 0) !== $excludeRecordId
+        );
+        if ($priorMarriages !== []) {
+            $requiredDocument = !empty($person['is_deceased'])
+                ? 'death certificate'
+                : 'nullity decree or other proof that the prior marriage is no longer binding';
+            $warnings[] = "A prior marriage is recorded for $name. Verify the {$requiredDocument} and PSA CENOMAR before proceeding.";
+        }
+        if (!empty($person['birth_date'])) {
+            try {
+                $birthDate = new DateTimeImmutable((string) $person['birth_date']);
+                $referenceDate = $eventDate !== null && $eventDate !== ''
+                    ? new DateTimeImmutable($eventDate)
+                    : new DateTimeImmutable('today');
+                $age = $birthDate->diff($referenceDate)->y;
+                if ($referenceDate < $birthDate || $age < 21) {
+                    $warnings[] = "Verify {$name}'s age eligibility and any required parental consent with the Parish Office.";
+                }
+            } catch (Throwable $e) {
+                error_log('Marriage prerequisite age check failed for person ' . $personId . ': ' . $e->getMessage());
+            }
+        }
+        if ($partnerPersonId !== null && $partnerPersonId > 0) {
+            $partner = sd_get_person($pdo, $partnerPersonId);
+            $ownStatus = (string) ($person['baptismal_status'] ?? '');
+            $partnerStatus = (string) ($partner['baptismal_status'] ?? '');
+            if ($partner
+                && (($ownStatus === 'baptized_catholic' && $partnerStatus === 'baptized_non_catholic')
+                    || ($ownStatus === 'baptized_non_catholic' && $partnerStatus === 'baptized_catholic'))) {
+                $warnings[] = 'The applicants have different recorded baptismal affiliations. Confirm any mixed-religion permission or dispensation with the priest.';
+            }
         }
     }
     return $warnings;
@@ -329,6 +445,75 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
         $stmt->execute(array_merge(array_values($values), [$id]));
     }
     return $id;
+}
+
+function sd_person_audit_snapshot(PDO $pdo, int $personId): array
+{
+    $fields = [
+        'first_name', 'middle_name', 'last_name', 'suffix', 'sex', 'birth_date',
+        'birth_place', 'father_name', 'mother_maiden_name', 'baptismal_status',
+        'address', 'contact_number',
+    ];
+    $columns = implode(', ', array_merge(['id'], $fields));
+    if ($pdo->inTransaction()) {
+        $stmt = $pdo->prepare("SELECT {$columns} FROM persons WHERE id = ? FOR UPDATE");
+    } else {
+        $stmt = $pdo->prepare("SELECT {$columns} FROM persons WHERE id = ?");
+    }
+    $stmt->execute([$personId]);
+    $person = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$person) {
+        throw new RuntimeException('Cannot capture correction history for a missing person.');
+    }
+
+    return array_intersect_key($person, array_flip($fields));
+}
+
+function sd_person_audit_changes(array $before, array $after): array
+{
+    $normalize = static function (mixed $value): mixed {
+        if (is_string($value)) {
+            $value = trim($value);
+            return $value === '' ? null : $value;
+        }
+        return $value;
+    };
+    $changes = [];
+    foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $field) {
+        $oldValue = $normalize($before[$field] ?? null);
+        $newValue = $normalize($after[$field] ?? null);
+        if ($oldValue !== $newValue) {
+            $changes[$field] = ['before' => $oldValue, 'after' => $newValue];
+        }
+    }
+    return $changes;
+}
+
+function sd_log_person_edit(
+    PDO $pdo,
+    int $userId,
+    int $personId,
+    array $before,
+    array $after,
+    string $reason
+): void {
+    $changes = sd_person_audit_changes($before, $after);
+    if ($changes === []) {
+        return;
+    }
+    $description = json_encode([
+        'format' => 'person-correction-v1',
+        'changes' => $changes,
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    log_activity(
+        $pdo,
+        $userId,
+        'person.updated',
+        'persons',
+        $personId,
+        $description,
+        trim($reason)
+    );
 }
 
 /**
@@ -590,6 +775,15 @@ function sd_certificate_source(PDO $pdo, int $recordId): ?array
             $record['birth_date'] = $person['birth_date'] ?? null;
             $record['birth_place'] = $person['birth_place'] ?? null;
             $record['sponsor_names'] = $participantNamesForRoles(['godfather', 'godmother', 'sponsor', 'principal_sponsor']);
+            $notationStmt = $pdo->prepare(
+                "SELECT sacrament_type, event_date, place
+                 FROM sacrament_records
+                 WHERE (person_id = ? OR (sacrament_type = 'marriage' AND spouse_person_id = ?))
+                   AND sacrament_type IN ('confirmation', 'marriage')
+                 ORDER BY event_date, id"
+            );
+            $notationStmt->execute([(int) $record['person_id'], (int) $record['person_id']]);
+            $record['notations'] = $notationStmt->fetchAll(PDO::FETCH_ASSOC);
             break;
         case 'first_communion':
             $record['communicant_full_name'] = $person ? sd_full_name($person) : null;
@@ -667,8 +861,39 @@ function sd_record_changes(array $old, array $new): array
     return array_values(array_unique($changes));
 }
 
-function sd_log_record_edit(PDO $pdo, int $userId, int $recordId, array $changed, string $reason): void
+function sd_log_record_edit(
+    PDO $pdo,
+    int $userId,
+    int $recordId,
+    array $before,
+    array $after,
+    string $reason
+): void
 {
-    log_activity($pdo, $userId, 'record.updated', 'sacrament_records', $recordId,
-        'Changed: ' . implode(', ', $changed) . '. Book verification cleared.', trim($reason));
+    $description = json_encode([
+        'format' => 'record-correction-v1',
+        'changes' => sd_record_audit_changes($before, $after),
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    log_activity(
+        $pdo,
+        $userId,
+        'record.updated',
+        'sacrament_records',
+        $recordId,
+        $description,
+        trim($reason)
+    );
+}
+
+function sd_record_audit_changes(array $before, array $after): array
+{
+    $changes = [];
+    foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $section) {
+        $oldValue = $before[$section] ?? null;
+        $newValue = $after[$section] ?? null;
+        if ($oldValue !== $newValue) {
+            $changes[$section] = ['before' => $oldValue, 'after' => $newValue];
+        }
+    }
+    return $changes;
 }

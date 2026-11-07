@@ -5,16 +5,42 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
+require_once __DIR__ . '/../admin/certificates/sacramental-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class FunctionsTest extends TestCase
 {
+    public function testAdminNotificationLinksStayInsideTheAdminApplication(): void
+    {
+        self::assertSame(
+            '/srs-sppo/admin/requests/queue.php?status=new',
+            admin_notification_url('/admin/requests/queue.php?status=new', '/srs-sppo')
+        );
+        self::assertSame(
+            '/srs-sppo/admin/system/person-profile.php?id=12',
+            admin_notification_url('/srs-sppo/admin/system/person-profile.php?id=12', '/srs-sppo')
+        );
+        self::assertSame(
+            '/srs-sppo/admin/notifications.php',
+            admin_notification_url(null, '/srs-sppo')
+        );
+        self::assertSame(
+            '/srs-sppo/admin/notifications.php',
+            admin_notification_url('https://example.com/admin/requests/queue.php', '/srs-sppo')
+        );
+        self::assertSame(
+            '/srs-sppo/admin/notifications.php',
+            admin_notification_url('/admin/../public/index.php', '/srs-sppo')
+        );
+    }
+
     public function testCertificateRequestTransitionRules(): void
     {
         self::assertTrue(cert_request_transition_valid('pending', 'under_review'));
         self::assertFalse(cert_request_transition_valid('released', 'approved'));
         self::assertTrue(cert_request_transition_valid('new', 'matched'));
+        self::assertFalse(cert_request_transition_valid('new', 'no_record_found'));
         self::assertTrue(cert_request_transition_valid('matched', 'for_signature'));
         self::assertTrue(cert_request_transition_valid('for_signature', 'ready'));
         self::assertTrue(cert_request_transition_valid('ready', 'released'));
@@ -47,6 +73,12 @@ final class FunctionsTest extends TestCase
             'channel' => 'online',
             'status' => 'matched',
             'paid_at' => '2026-10-14 05:00:00',
+        ], 'for_signature')['ok']);
+
+        self::assertTrue(cert_request_payment_gate([
+            'channel' => 'onsite',
+            'status' => 'matched',
+            'paid_at' => null,
         ], 'for_signature')['ok']);
     }
 
@@ -134,6 +166,7 @@ final class FunctionsTest extends TestCase
         );
 
         $firstCommunionBirthday = (new DateTimeImmutable('today'))->modify('-7 years')->format('Y-m-d');
+        $alreadyAgeEligible = (new DateTimeImmutable('today'))->modify('-8 years')->format('Y-m-d');
         $confirmationBirthday = (new DateTimeImmutable('today'))->modify('-12 years')->format('Y-m-d');
         $insertPerson = $pdo->prepare(
             'INSERT INTO persons (id, first_name, last_name, birth_date, is_deceased)
@@ -144,20 +177,27 @@ final class FunctionsTest extends TestCase
         $insertPerson->execute([3, 'Not', 'Baptized', $firstCommunionBirthday, 0]);
         $insertPerson->execute([4, 'Deceased', 'Person', $firstCommunionBirthday, 1]);
         $insertPerson->execute([5, 'Already', 'Communicant', $firstCommunionBirthday, 0]);
+        $insertPerson->execute([6, 'Previously', 'Eligible', $alreadyAgeEligible, 0]);
         $pdo->exec(
             "INSERT INTO sacrament_records (person_id, sacrament_type) VALUES
                 (1, 'baptism'),
                 (2, 'baptism'),
                 (4, 'baptism'),
                 (5, 'baptism'),
+                (6, 'baptism'),
                 (5, 'first_communion')"
         );
 
-        self::assertSame(2, notify_newly_age_eligible_persons($pdo));
+        self::assertSame(4, notify_newly_age_eligible_persons($pdo));
         self::assertSame(0, notify_newly_age_eligible_persons($pdo));
-        self::assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
+        self::assertSame(4, (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
         self::assertSame(
-            ['age_eligible_confirmation', 'age_eligible_first_communion'],
+            [
+                'age_eligible_confirmation',
+                'age_eligible_first_communion',
+                'age_eligible_first_communion',
+                'age_eligible_first_communion',
+            ],
             $pdo->query('SELECT type FROM notifications ORDER BY type')->fetchAll(PDO::FETCH_COLUMN)
         );
         self::assertSame(
@@ -166,6 +206,14 @@ final class FunctionsTest extends TestCase
                 "SELECT COUNT(*) FROM notifications
                  WHERE entity_type = 'persons' AND entity_id = 1
                    AND link = '/admin/system/person-profile.php?id=1'"
+            )->fetchColumn()
+        );
+        self::assertSame(
+            1,
+            (int) $pdo->query(
+                "SELECT COUNT(*) FROM notifications
+                 WHERE entity_type = 'persons' AND entity_id = 6
+                   AND type = 'age_eligible_first_communion'"
             )->fetchColumn()
         );
     }
@@ -302,24 +350,38 @@ final class FunctionsTest extends TestCase
         );
     }
 
-    public function testUnspecifiedBaptismalCertificatePurposeIsBlank(): void
-    {
-        $values = baptismal_certificate_values(
-            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
-            ['purpose' => 'unspecified']
-        );
-
-        self::assertSame('', $values['purpose']);
-    }
-
-    public function testBaptismalCertificatePurposeKeepsSuppliedValue(): void
+    public function testBaptismalCertificateDoesNotPrintRequesterPurposeAsAnOfficialAnnotation(): void
     {
         $values = baptismal_certificate_values(
             ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
             ['purpose' => 'other', 'purpose_other' => 'School enrollment']
         );
 
-        self::assertSame('School enrollment', $values['purpose']);
+        self::assertSame('', $values['purpose']);
+    }
+
+    public function testMarriagePurposeCertificatesHaveNoProjectDefinedExpiryDate(): void
+    {
+        $baptismalValues = baptismal_certificate_values(
+            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'Marriage', 'printed_at' => '2026-11-07 10:00:00']
+        );
+        self::assertSame('For Marriage Purposes', $baptismalValues['purpose']);
+
+        $confirmationCertificate = sacramental_certificate_svg(
+            'confirmation',
+            ['confirmand_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'Marriage', 'printed_at' => '2026-11-07 10:00:00']
+        );
+        self::assertStringContainsString('For Marriage Purposes', $confirmationCertificate);
+        self::assertStringNotContainsString('valid through', $confirmationCertificate);
+
+        $firstCommunionCertificate = sacramental_certificate_svg(
+            'first_communion',
+            ['communicant_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'Marriage', 'printed_at' => '2026-11-07 10:00:00']
+        );
+        self::assertStringNotContainsString('For Marriage Purposes', $firstCommunionCertificate);
     }
 
     public function testStructuredNameRowsComposeAndRejectIncompleteRows(): void
@@ -408,6 +470,50 @@ final class FunctionsTest extends TestCase
         self::assertContains('details', $changes);
         self::assertContains('participants', $changes);
         self::assertContains('remarks', $changes);
+    }
+
+    public function testRecordAuditChangesPreserveBeforeAndAfterValues(): void
+    {
+        self::assertSame(
+            [
+                'record' => [
+                    'before' => ['event_date' => '2026-01-01'],
+                    'after' => ['event_date' => '2026-01-02'],
+                ],
+            ],
+            sd_record_audit_changes(
+                ['record' => ['event_date' => '2026-01-01']],
+                ['record' => ['event_date' => '2026-01-02']]
+            )
+        );
+        self::assertSame(
+            [],
+            sd_record_audit_changes(
+                ['record' => ['event_date' => '2026-01-01']],
+                ['record' => ['event_date' => '2026-01-01']]
+            )
+        );
+    }
+
+    public function testPersonAuditChangesPreserveChangedFieldBeforeAndAfterValues(): void
+    {
+        self::assertSame(
+            [
+                'first_name' => ['before' => 'Maria', 'after' => 'Mary'],
+                'birth_place' => ['before' => null, 'after' => 'Taguig'],
+            ],
+            sd_person_audit_changes(
+                ['first_name' => 'Maria', 'middle_name' => null, 'birth_place' => ''],
+                ['first_name' => 'Mary', 'middle_name' => null, 'birth_place' => 'Taguig']
+            )
+        );
+        self::assertSame(
+            [],
+            sd_person_audit_changes(
+                ['first_name' => 'Maria', 'middle_name' => ''],
+                ['first_name' => ' Maria ', 'middle_name' => null]
+            )
+        );
     }
 
 }

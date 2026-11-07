@@ -107,39 +107,8 @@ if (!function_exists('person_identity_choices')) {
         return (int) $pdo->lastInsertId();
     }
 
-    /**
-     * Section label => bridge table/column for the sacraments that link one
-     * person, plus the two marriage roles. Shared by the person profile page,
-     * the persons directory and the delete guard, so these table and column
-     * names live in exactly one place instead of a copy per page.
-     */
-    function person_bridge_sections(): array
-    {
-        return [
-            'Baptismal'       => ['type' => 'baptismal',       'table' => 'baptismal_records',       'column' => 'person_id', 'name' => 'child_full_name',       'date' => 'baptism_date'],
-            'Confirmation'    => ['type' => 'confirmation',    'table' => 'confirmation_records',    'column' => 'person_id', 'name' => 'confirmand_full_name',  'date' => 'confirmation_date'],
-            'First Communion' => ['type' => 'first_communion', 'table' => 'first_communion_records', 'column' => 'person_id', 'name' => 'communicant_full_name', 'date' => 'communion_date'],
-        ];
-    }
-
-    function person_bridge_marriage_roles(): array
-    {
-        return [
-            'As husband' => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'husband_person_id', 'name' => 'wife_maiden_name', 'date' => 'marriage_date'],
-            'As wife'    => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'wife_person_id',    'name' => 'husband_full_name', 'date' => 'marriage_date'],
-        ];
-    }
-
-    // Deletes a person only if they have zero linked rows across every bridge
-    // table. Recomputes the count itself rather than trusting a caller-
-    // supplied number, since that number could be stale (e.g. a link was
-    // added in another tab after the caller's page loaded).
-    //
-    // Reads the person row itself for two reasons: it proves the row still
-    // exists before anything is deleted, and it lets this one function decide
-    // what the audit entry calls the person — rather than every caller passing
-    // its own label, which is how two entry points end up wording the same
-    // deletion differently.
+    // Recompute links at deletion time so a stale page cannot delete a
+    // profile that has since been used by a request or register entry.
     function person_delete_if_unlinked(PDO $pdo, int $personId, int $userId): array
     {
         $p = $pdo->prepare('SELECT * FROM persons WHERE id = ?');
@@ -149,13 +118,14 @@ if (!function_exists('person_identity_choices')) {
             return ['ok' => false, 'error' => 'That person no longer exists — it may already have been deleted.'];
         }
 
-        $allSections = array_merge(person_bridge_sections(), person_bridge_marriage_roles());
-        $total = 0;
-        foreach ($allSections as $sec) {
-            $c = $pdo->prepare("SELECT COUNT(*) FROM {$sec['table']} WHERE {$sec['column']} = ?");
-            $c->execute([$personId]);
-            $total += (int) $c->fetchColumn();
-        }
+        $links = $pdo->prepare(
+            'SELECT
+                (SELECT COUNT(*) FROM sacrament_records WHERE person_id = ? OR spouse_person_id = ?)
+              + (SELECT COUNT(*) FROM sacrament_applications WHERE person_id = ? OR spouse_person_id = ?)
+              + (SELECT COUNT(*) FROM certificate_requests WHERE person_id = ?) AS total'
+        );
+        $links->execute([$personId, $personId, $personId, $personId, $personId]);
+        $total = (int) $links->fetchColumn();
         if ($total > 0) {
             return ['ok' => false, 'error' => "This person still has {$total} linked record" . ($total === 1 ? '' : 's') . ". Remove every link before deleting."];
         }

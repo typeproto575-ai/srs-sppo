@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Public preparation guide for certificate requests and sacrament applications.
+ * Public preparation guide for certificate requests and sacrament pre-applications.
  *
  * The public forms collect the information needed to open a pre-application;
  * they do not accept identity-document uploads or promise approval. The parish
@@ -40,14 +40,14 @@ require_once __DIR__ . '/../includes/header.php';
 </section>
 
 <section class="option-group" aria-labelledby="application-preparation-heading">
-    <h2 id="application-preparation-heading">If you are applying to receive a sacrament</h2>
-    <p>These applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
+    <h2 id="application-preparation-heading">Starting a pre-application to receive a sacrament</h2>
+    <p>These pre-applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
 
     <div class="ledger">
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Baptism application</h3>
+                <h3>Baptism pre-application</h3>
                 <ul class="req-list">
                     <li>Child's full name, date of birth, and birthplace.</li>
                     <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
@@ -56,14 +56,14 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>A preferred baptism date, if you have one. The parish office confirms the schedule.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the office will explain any documents or preparation needed for your family.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/baptismal.php" class="btn btn-small">Start Baptism application</a>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/baptismal.php" class="btn btn-small">Start Baptism pre-application</a>
             </div>
         </div>
 
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Marriage application</h3>
+                <h3>Marriage pre-application</h3>
                 <ul class="req-list">
                     <li>Both parties' names, birth details, email addresses for updates, and current marital status. Phone numbers are optional for quicker contact. Addresses and religious affiliation can be provided if known.</li>
                     <li>Each party's baptism and Confirmation status, and any previous marriage.</li>
@@ -73,33 +73,33 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Baptismal and Confirmation certificates, a PSA civil-status document (such as a CENOMAR), or marriage-license documents if requested by the parish.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the parish office will explain document requirements, preparation, interviews, and scheduling. A wedding date is not confirmed by this form.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Start Marriage application</a>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Start Marriage pre-application</a>
             </div>
         </div>
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Confirmation application</h3>
+                <h3>Confirmation pre-application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and birthdate.</li>
                     <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
-                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Start Confirmation application</a>
+                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Start Confirmation pre-application</a>
             </div>
         </div>
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>First Communion application</h3>
+                <h3>First Communion pre-application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and date of birth.</li>
                     <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact. Parents' names are optional.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
-                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Start First Communion application</a>
+                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Start First Communion pre-application</a>
             </div>
         </div>
     </div>

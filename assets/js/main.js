@@ -49,7 +49,17 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!people.length) {
                 var empty = document.createElement('p');
                 empty.className = 'field-hint';
-                empty.textContent = 'No matching parishioners found.';
+                empty.appendChild(document.createTextNode('No master person profile matched. Try another name part or birth year. For a register-entry search, open '));
+                var recordsLink = document.createElement('a');
+                recordsLink.href = form.getAttribute('data-records-url') || '#';
+                recordsLink.textContent = 'Records';
+                empty.appendChild(recordsLink);
+                empty.appendChild(document.createTextNode('; for a certificate copy request, open '));
+                var requestsLink = document.createElement('a');
+                requestsLink.href = form.getAttribute('data-requests-url') || '#';
+                requestsLink.textContent = 'Certificate Requests';
+                empty.appendChild(requestsLink);
+                empty.appendChild(document.createTextNode('.'));
                 results.appendChild(empty);
                 return;
             }
@@ -193,11 +203,29 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeof dlg.showModal === 'function') dlg.showModal();
     });
     document.querySelectorAll('dialog [data-close-dialog]').forEach(function (btn) {
-        btn.addEventListener('click', function () { btn.closest('dialog').close(); });
+        btn.addEventListener('click', function () {
+            var dlg = btn.closest('dialog');
+            var returnUrl = dlg && dlg.getAttribute('data-return-url');
+            if (returnUrl) {
+                window.location.assign(returnUrl);
+                return;
+            }
+            if (dlg) dlg.close();
+        });
     });
     document.querySelectorAll('dialog.encode-dialog').forEach(function (dlg) {
+        dlg.addEventListener('cancel', function (ev) {
+            var returnUrl = dlg.getAttribute('data-return-url');
+            if (returnUrl) {
+                ev.preventDefault();
+                window.location.assign(returnUrl);
+            }
+        });
         dlg.addEventListener('click', function (ev) {
-            if (ev.target === dlg) dlg.close(); // click landed on the backdrop
+            if (ev.target !== dlg) return;
+            var returnUrl = dlg.getAttribute('data-return-url');
+            if (returnUrl) window.location.assign(returnUrl);
+            else dlg.close(); // click landed on the backdrop
         });
     });
 
@@ -366,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 var name = document.createElement('strong');
                 name.textContent = 'Linked: ' + (person ? matchName(person) : search.value) + ' (#' + hiddenId.value + ')';
                 var state = document.createElement('span');
-                state.textContent = message || 'This application is linked to the master person profile.';
+                state.textContent = message || 'This pre-application is linked to the master person profile.';
                 selection.appendChild(name);
                 selection.appendChild(state);
                 selection.appendChild(clearMatch);
@@ -403,6 +431,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 postMatch('link_application_person')
                     .then(function (data) {
                         search.value = matchName(data.person);
+                        if (birthDateSearch) birthDateSearch.value = data.person.birth_date || '';
                         renderMatchSelection(data.person, data.message);
                         resultsBox.textContent = data.message;
                         resultsBox.removeAttribute('role');
@@ -448,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     selectButton.type = 'button';
                     selectButton.className = 'person-match-result-select';
                     selectButton.textContent = fullName;
-                    selectButton.setAttribute('aria-label', 'Link ' + fullName + ' to this application');
+                    selectButton.setAttribute('aria-label', 'Link ' + fullName + ' to this pre-application');
                     selectButton.addEventListener('click', function () { linkMatch(person); });
                     nameCell.appendChild(selectButton);
                     row.appendChild(nameCell);
@@ -563,6 +592,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         .then(function (data) {
                             hiddenId.value = data.person.id;
                             search.value = matchName(data.person);
+                            if (birthDateSearch) birthDateSearch.value = data.person.birth_date || '';
                             renderMatchSelection(data.person, data.message);
                             resultsBox.textContent = data.message;
                             resultsBox.removeAttribute('role');
@@ -1495,7 +1525,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 { key: 'review', label: 'Review' }
             ]
             : [
-                { key: 'type', label: 'Application type' },
+                { key: 'type', label: 'Pre-application type' },
                 { key: 'details', label: 'Applicant details' },
                 { key: 'wrap-up', label: 'Notes & payment' },
                 { key: 'review', label: 'Review' }
@@ -1512,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', function () {
         wizard.className = 'walk-in-wizard-shell';
         var progress = document.createElement('ol');
         progress.className = 'walk-in-progress';
-        progress.setAttribute('aria-label', isRequest ? 'Request progress' : 'Application progress');
+        progress.setAttribute('aria-label', isRequest ? 'Request progress' : 'Pre-application progress');
         var status = document.createElement('p');
         status.className = 'walk-in-phase-status';
         status.setAttribute('aria-live', 'polite');
@@ -1725,6 +1755,193 @@ document.addEventListener('DOMContentLoaded', function () {
         showStep(currentInput.value || '1');
     });
 
+    // ---- Phased certificate request form -------------------------------
+    document.querySelectorAll('form[data-certificate-wizard]').forEach(function (form) {
+        var allPhaseNodes = Array.from(form.querySelectorAll('[data-certificate-phase]'));
+        var isPrefilled = form.getAttribute('data-certificate-prefilled') === '1';
+        var recordPhaseNode = allPhaseNodes.find(function (node) {
+            return node.getAttribute('data-certificate-phase') === 'record';
+        });
+        if (isPrefilled && recordPhaseNode) recordPhaseNode.hidden = true;
+        var phaseNodes = isPrefilled
+            ? allPhaseNodes.filter(function (node) {
+                return node.getAttribute('data-certificate-phase') !== 'record';
+            })
+            : allPhaseNodes;
+        var submitButton = form.querySelector('[data-certificate-submit]');
+        var currentStep = form.querySelector('[data-certificate-current-step]');
+        var reviewList = form.querySelector('[data-certificate-review]');
+        if (phaseNodes.length !== (isPrefilled ? 3 : 4) || !submitButton || !currentStep || !reviewList) return;
+
+        var allPhases = [
+            { key: 'record', label: 'Certificate details' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'purpose', label: 'Purpose & requirements' },
+            { key: 'review', label: 'Review' }
+        ];
+        var phases = isPrefilled ? allPhases.slice(1) : allPhases;
+        var reviewSourceNodes = allPhaseNodes.filter(function (node) {
+            return node.getAttribute('data-certificate-phase') !== 'review';
+        });
+        var wizard = document.createElement('div');
+        wizard.className = 'certificate-wizard';
+        var progress = document.createElement('ol');
+        progress.className = 'certificate-wizard-progress';
+        progress.setAttribute('aria-label', 'Certificate request progress');
+        var status = document.createElement('p');
+        status.className = 'certificate-wizard-status';
+        status.setAttribute('aria-live', 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        var alert = document.createElement('p');
+        alert.className = 'certificate-wizard-error';
+        alert.setAttribute('role', 'alert');
+        alert.hidden = true;
+        var panels = phases.map(function (phase) {
+            var panel = document.createElement('section');
+            panel.className = 'certificate-wizard-panel';
+            panel.setAttribute('aria-label', phase.label);
+            panel.dataset.phase = phase.key;
+            wizard.appendChild(panel);
+            return panel;
+        });
+        phaseNodes.forEach(function (node, index) {
+            panels[index].appendChild(node);
+        });
+        var controls = document.createElement('div');
+        controls.className = 'certificate-wizard-actions';
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn-secondary';
+        back.textContent = 'Back';
+        var next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'btn';
+        next.textContent = 'Continue';
+        controls.append(back, next);
+        wizard.append(progress, status, alert, ...panels, controls);
+        form.appendChild(wizard);
+        controls.appendChild(submitButton);
+        form.noValidate = true;
+        submitButton.hidden = true;
+
+        phases.forEach(function (phase, index) {
+            var item = document.createElement('li');
+            item.dataset.step = String(index + 1);
+            var number = document.createElement('span');
+            number.textContent = String(index + 1);
+            var label = document.createElement('span');
+            label.textContent = phase.label;
+            item.append(number, label);
+            progress.appendChild(item);
+        });
+
+        function fieldLabel(field) {
+            if (field.id) {
+                var matchingLabel = Array.from(form.querySelectorAll('label[for]')).find(function (label) {
+                    return label.htmlFor === field.id;
+                });
+                if (matchingLabel) return matchingLabel.textContent.trim().replace(/\s*\*$/, '');
+            }
+            var wrappingLabel = field.closest('label');
+            return wrappingLabel
+                ? wrappingLabel.textContent.trim().replace(/\s*\*$/, '')
+                : field.name.replace(/[_\[\]]+/g, ' ').trim();
+        }
+
+        function updateReview() {
+            reviewList.replaceChildren();
+            reviewSourceNodes.forEach(function (phaseNode) {
+                phaseNode.querySelectorAll('input, select, textarea').forEach(function (field) {
+                    var hiddenAncestor = field.closest('[hidden]');
+                    if (field.type === 'hidden' || field.type === 'submit' || field.type === 'button'
+                        || field.type === 'password' || field.disabled || field.name === 'website'
+                        || (field.type === 'checkbox' && !field.checked)
+                        || (field.type === 'radio' && !field.checked)
+                        || (hiddenAncestor
+                            && hiddenAncestor !== phaseNode
+                            && !hiddenAncestor.classList.contains('certificate-wizard-panel'))) return;
+                    var value = field.type === 'checkbox' ? 'Yes'
+                        : (field.tagName === 'SELECT'
+                            ? (field.selectedOptions[0] ? field.selectedOptions[0].textContent.trim() : '')
+                            : field.value.trim());
+                    if (!value) return;
+                    var term = document.createElement('dt');
+                    var detail = document.createElement('dd');
+                    term.textContent = fieldLabel(field);
+                    detail.textContent = value;
+                    reviewList.append(term, detail);
+                });
+            });
+        }
+
+        function validatePanel(index) {
+            var fields = Array.from(panels[index].querySelectorAll('input, select, textarea'));
+            var invalid = fields.find(function (field) {
+                return !field.disabled && !field.closest('[hidden]') && !field.checkValidity();
+            });
+            alert.hidden = !invalid;
+            alert.textContent = invalid ? 'Please check the highlighted field before continuing.' : '';
+            if (invalid) {
+                invalid.focus();
+                invalid.reportValidity();
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(step, moveFocus) {
+            var index = Math.max(0, Math.min(phases.length - 1, step - 1));
+            currentStep.value = String(index + 1);
+            panels.forEach(function (panel, panelIndex) {
+                panel.hidden = panelIndex !== index;
+            });
+            Array.from(progress.children).forEach(function (item, itemIndex) {
+                item.classList.toggle('is-current', itemIndex === index);
+                item.classList.toggle('is-done', itemIndex < index);
+                if (itemIndex === index) item.setAttribute('aria-current', 'step');
+                else item.removeAttribute('aria-current');
+            });
+            status.textContent = 'Step ' + (index + 1) + ' of ' + phases.length + ' — ' + phases[index].label;
+            back.hidden = index === 0;
+            next.hidden = index === phases.length - 1;
+            submitButton.hidden = index !== phases.length - 1;
+            alert.hidden = true;
+            if (index === phases.length - 1) updateReview();
+            if (moveFocus) {
+                var focusTarget = panels[index].querySelector('input:not([type="hidden"]), select, textarea, button');
+                if (focusTarget) focusTarget.focus();
+            }
+        }
+
+        next.addEventListener('click', function () {
+            var index = Number(currentStep.value) - 1;
+            if (validatePanel(index)) showStep(index + 2, true);
+        });
+        back.addEventListener('click', function () {
+            showStep(Number(currentStep.value) - 1, true);
+        });
+        form.addEventListener('submit', function (event) {
+            var index = Number(currentStep.value) - 1;
+            if (index !== phases.length - 1) {
+                event.preventDefault();
+                if (validatePanel(index)) showStep(index + 2, true);
+                return;
+            }
+            for (var phaseIndex = 0; phaseIndex < phases.length - 1; phaseIndex++) {
+                if (!validatePanel(phaseIndex)) {
+                    event.preventDefault();
+                    showStep(phaseIndex + 1, true);
+                    return;
+                }
+            }
+        });
+        form.querySelectorAll('input, select, textarea').forEach(function (field) {
+            field.addEventListener('input', updateReview);
+            field.addEventListener('change', updateReview);
+        });
+        showStep(currentStep.value || '1');
+    });
+
     // ---- 6) Public master-person lookup -------------------------------
     document.querySelectorAll('[data-public-person-lookup]').forEach(function (widget) {
         var form = widget.closest('form');
@@ -1811,7 +2028,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (payload) {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
-                        resultsBox.textContent = 'No matching person was found. You can continue and the parish office can review the details.';
+                        resultsBox.textContent = 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
                         return;
                     }
                     var heading = document.createElement('p');

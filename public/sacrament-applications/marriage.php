@@ -6,7 +6,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/mail.php';
 
 $basePath = base_path();
-$pageTitle = 'Holy Matrimony Application';
+$pageTitle = 'Holy Matrimony Pre-Application';
 $errors = [];
 $trackingNumber = null;
 $dateConflictWarning = null;
@@ -270,8 +270,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 json_encode($requirements, JSON_UNESCAPED_UNICODE),
             ]);
             $applicationId = (int) $pdo->lastInsertId();
-            log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony application submitted for ' . $groomName . ' & ' . $brideName);
-            notify($pdo, 'application_new', 'New sacrament application', "Holy Matrimony application ({$trackingNumber})", '/admin/requests/applications-queue.php');
+            log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony pre-application submitted for ' . $groomName . ' & ' . $brideName);
+            notify($pdo, 'application_new', 'New sacrament pre-application', "Holy Matrimony pre-application ({$trackingNumber})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
                 record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
             }
@@ -287,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             }
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            $trackingNumber = null; error_log('Holy Matrimony application failed: ' . $e->getMessage()); $errors[] = 'Something went wrong while submitting your application. Please try again.';
+            $trackingNumber = null; error_log('Holy Matrimony application failed: ' . $e->getMessage()); $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
         }
     }
 }
@@ -297,10 +297,10 @@ function msel(string $key, string $value): string { global $formData; return ($f
 ?>
 <section class="request-form">
 <div class="alert alert-info online-intake-notice">This form starts the parish review. The parish office will confirm documents, preparation, and the wedding schedule. Submitting it does not confirm a wedding date.</div>
-<h1>Application for the Sacrament of Holy Matrimony</h1><p>For couples planning a church wedding.</p>
+<h1>Pre-Application for the Sacrament of Holy Matrimony</h1><p>For couples planning a church wedding.</p>
 <?php if ($trackingNumber): ?>
 <?php
-$successHeading = 'Your application has been submitted';
+$successHeading = 'Your pre-application has been submitted';
 $successIsApplication = true;
 $successRequiredDocuments = sacrament_application_requirements('marriage')['before'];
 require __DIR__ . '/../../includes/submission-success.php';
@@ -309,13 +309,13 @@ require __DIR__ . '/../../includes/submission-success.php';
 <?php if ($currentStep === 1): $applicationType = 'marriage'; require __DIR__ . '/../../includes/public-requirements-notice.php'; endif; ?>
 <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php if ($dateConflictWarning): ?><div class="alert alert-warning"><?= e($dateConflictWarning) ?></div><?php endif; ?>
-<ol class="request-steps" aria-label="Application progress">
+<ol class="request-steps" aria-label="Pre-application progress">
 <?php foreach ($steps as $step => $label): ?>
     <?php $state = $step === $currentStep ? 'is-current' : ($currentStep > $step ? 'is-done' : ''); ?>
     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
 <?php endforeach; ?>
 </ol>
-<h2 class="form-stage-heading">During: complete the application</h2>
+<h2 class="form-stage-heading">During: complete the pre-application</h2>
 <form method="post">
 <?= csrf_field() ?>
 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
@@ -379,7 +379,7 @@ $sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor'
 <?php if ($currentStep === 4): ?>
 <fieldset><legend>Principal Sponsors</legend><p class="field-hint">For each sponsor, enter first and last name. Middle name and suffix are optional.</p><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><?= person_name_fields('sponsor', 'Sponsor', $formData, false, $i) ?><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
 <?php elseif ($currentStep === 5): ?>
-<fieldset><legend>Phase 5 of 5 — Review Your Application</legend>
+<fieldset><legend>Phase 5 of 5 — Review Your Pre-Application</legend>
 <table class="review-table">
 <tr><th>Wedding date</th><td><?= mv('preferred_wedding_date') ?> <?= mv('preferred_wedding_time') ?></td></tr>
 <tr><th>Venue</th><td><?= ($formData['preferred_wedding_venue'] ?? '') === 'other' ? 'Other: ' . mv('preferred_wedding_venue_other') : "St. Patrick's Parish Church" ?></td></tr>
@@ -396,7 +396,7 @@ $sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor'
 <?php endif; ?>
 <div class="form-actions">
 <?php if ($currentStep > 1): ?><button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back</button><?php endif; ?>
-<?php if ($currentStep < count($steps)): ?><button type="submit" name="_action" value="next" class="btn">Next</button><?php else: ?><button type="submit" name="_action" value="final_submit" class="btn">Submit Application</button><?php endif; ?>
+<?php if ($currentStep < count($steps)): ?><button type="submit" name="_action" value="next" class="btn">Next</button><?php else: ?><button type="submit" name="_action" value="final_submit" class="btn">Submit Pre-Application</button><?php endif; ?>
 </div>
 </form>
 <?php endif; ?></section>

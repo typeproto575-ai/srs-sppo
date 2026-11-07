@@ -6,7 +6,7 @@ require_login();
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
-$pageTitle = 'Sacrament Applications Queue';
+$pageTitle = 'Sacrament Pre-Applications Queue';
 if (!defined('APP_IN_PROGRESS_STATUSES')) {
     define('APP_IN_PROGRESS_STATUSES', ['reviewing', 'requirements_pending', 'approved', 'scheduled']);
 }
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $applicationId = filter_var($_POST['application_id'] ?? null, FILTER_VALIDATE_INT);
     $action = (string) ($_POST['action'] ?? '');
     if (!$applicationId || $applicationId < 1) {
-        $_SESSION['application_queue_error'] = 'Select a valid application.';
+        $_SESSION['application_queue_error'] = 'Select a valid pre-application.';
         redirect_to($postReturnUrl);
     }
 
@@ -205,14 +205,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $application = $lock->fetch(PDO::FETCH_ASSOC);
         if (!$application) {
             $pdo->rollBack();
-            $_SESSION['application_queue_error'] = 'The application could not be found.';
+            $_SESSION['application_queue_error'] = 'The pre-application could not be found.';
             redirect_to($postReturnUrl);
         }
 
         if (in_array($action, ['link_person', 'update_requirement'], true)
             && in_array($application['status'], ['completed', 'rejected'], true)) {
             $pdo->rollBack();
-            $_SESSION['application_queue_error'] = 'Completed or rejected applications are locked.';
+            $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications are locked.';
             redirect_to($postReturnUrl);
         }
 
@@ -226,7 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($role === 'spouse' && $application['sacrament_type'] !== 'marriage') {
                 $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Only marriage applications can link a spouse profile.';
+                $_SESSION['application_queue_error'] = 'Only marriage pre-applications can link a spouse profile.';
                 redirect_to($postReturnUrl);
             }
 
@@ -312,13 +312,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->rollBack();
         }
         error_log('Application queue update failed: ' . $e->getMessage());
-        $_SESSION['application_queue_error'] = 'The application update failed. Please try again.';
+        $_SESSION['application_queue_error'] = 'The pre-application update failed. Please try again.';
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
         error_log('Application queue update failed: ' . $e->getMessage());
-        $_SESSION['application_queue_error'] = 'The application update failed. Please try again.';
+        $_SESSION['application_queue_error'] = 'The pre-application update failed. Please try again.';
     }
 
     redirect_to($postReturnUrl);
@@ -489,15 +489,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <header class="admin-queue-heading">
         <div>
             <p class="admin-queue-kicker">Requests</p>
-            <h1>Sacrament applications</h1>
-            <p>Review applications, link master person profiles, track requirements, and continue the application lifecycle.</p>
+            <h1>Sacrament pre-applications</h1>
+            <p>Review pre-applications, link master person profiles, track requirements, and continue the parish review process.</p>
         </div>
         <div class="admin-queue-actions">
-            <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in application</a>
+            <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in pre-application</a>
         </div>
-        <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> applications match the current filters">
+        <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> pre-applications match the current filters">
             <strong><?= (int) $totalRows ?></strong>
-            <span><?= $totalRows === 1 ? 'application' : 'applications' ?></span>
+            <span><?= $totalRows === 1 ? 'pre-application' : 'pre-applications' ?></span>
         </div>
     </header>
 
@@ -510,7 +510,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
     <?php if ($applications === []): ?>
-        <p class="admin-queue-empty">No applications match your search or filters.</p>
+        <p class="admin-queue-empty">No pre-applications match your search or filters.</p>
     <?php else: ?>
         <div class="table-scroll application-queue-table-scroll">
             <table class="admin-table application-queue-table">
@@ -681,7 +681,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 $matchRole = $match['role'];
                                 $matchApplicationId = (int) $app['id'];
                                 $matchName = (string) $match['name'];
-                                $matchBirthDate = (string) $match['birth_date'];
+                                $matchBirthDate = (string) ($matchLinkedPerson['birth_date'] ?? $match['birth_date']);
                                 $matchWidgetMode = 'ajax';
                                 $matchReturnParams = $applicationReturnParams;
                                 $matchReturnQuery = $applicationReturnQuery;
@@ -692,7 +692,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </div>
                     </section>
 
-                    <section aria-label="Application details">
+                    <section aria-label="Pre-application details">
                         <h3>Submitted details</h3>
                         <dl class="application-details-list">
                             <?php if ($details !== []): ?>

@@ -13,6 +13,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 class MarriageSamePersonException extends RuntimeException
@@ -21,8 +22,12 @@ class MarriageSamePersonException extends RuntimeException
 
 $basePath = $basePath ?? base_path();
 $selfReturn = '/admin/records/marriage.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
+$editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
+$editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 $pageTitle = 'Marriage Records';
 $errors = [];
+$duplicateMatches = ['groom' => [], 'bride' => []];
+$confirmedNewProfiles = [];
 $success = null;
 $fromApplicationId = 0;
 $application = null;
@@ -193,6 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     $place = trim((string) ($_POST['place'] ?? ''));
     $ministerName = compose_person_name($_POST, 'minister');
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
+    $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
     $licenseRef = trim((string) ($_POST['license_ref'] ?? ''));
     $detailsByParty = [];
     foreach (['groom', 'bride'] as $party) {
@@ -212,11 +218,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     if ($isUpdate && (!$editRecord || $editId !== (int) $editRecord['id'])) {
         $errors[] = 'Invalid record selected for update.';
     }
+    if ($isUpdate && (strlen($correctionReason) < 5 || strlen($correctionReason) > 500)) {
+        $errors[] = 'A correction reason of at least 5 characters is required.';
+    }
+    $confirmedNewProfiles = $_POST['confirm_new_person'] ?? [];
+    if (!is_array($confirmedNewProfiles)) {
+        $confirmedNewProfiles = [];
+    }
+    if (!$isUpdate) {
+        foreach (['groom', 'bride'] as $party) {
+            if (trim((string) ($_POST[$party . '_person_id'] ?? '')) !== '') {
+                continue;
+            }
+            $duplicateMatches[$party] = sd_find_possible_person_matches($pdo, [
+                'first_name' => trim((string) ($_POST[$party . '_first_name'] ?? '')),
+                'middle_name' => trim((string) ($_POST[$party . '_middle_name'] ?? '')),
+                'last_name' => trim((string) ($_POST[$party . '_last_name'] ?? '')),
+                'suffix' => trim((string) ($_POST[$party . '_suffix'] ?? '')),
+            ]);
+            if ($duplicateMatches[$party] && (string) ($confirmedNewProfiles[$party] ?? '') !== '1') {
+                $errors[] = 'Possible matching person profiles were found. Select the correct profile or confirm that a new profile is still needed.';
+            }
+        }
+    }
 
     if ($errors === []) {
         try {
             $pdo->beginTransaction();
             $lockedRecord = null;
+            $auditBefore = null;
             if ($isUpdate) {
                 $recordLock = $pdo->prepare(
                     "SELECT id, person_id, spouse_person_id, details
@@ -227,6 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                 $recordLock->execute([$editId]);
                 $lockedRecord = $recordLock->fetch(PDO::FETCH_ASSOC);
                 if (!$lockedRecord) throw new InvalidArgumentException('The marriage record could not be found.');
+                $auditBefore = sd_record_audit_snapshot($pdo, $editId);
             }
 
             $applicationId = filter_var($_POST['from_application'] ?? null, FILTER_VALIDATE_INT);
@@ -376,15 +407,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
             }
 
             $coupleName = marriage_identity_name($identities['groom']) . ' & ' . marriage_identity_name($identities['bride']);
-            log_activity(
-                $pdo,
-                current_user()['id'],
-                $action,
-                'sacrament_records',
-                $recordId,
-                ($isUpdate ? 'Marriage record updated for ' : 'Marriage record encoded for ') . $coupleName
-                    . (!$isUpdate && $shifted > 0 ? " - {$shifted} later entries renumbered" : '')
-            );
+            if ($isUpdate) {
+                sd_log_record_edit(
+                    $pdo,
+                    (int) current_user()['id'],
+                    $recordId,
+                    $auditBefore ?? [],
+                    sd_record_audit_snapshot($pdo, $recordId),
+                    $correctionReason
+                );
+            } else {
+                log_activity(
+                    $pdo,
+                    current_user()['id'],
+                    $action,
+                    'sacrament_records',
+                    $recordId,
+                    'Marriage record encoded for ' . $coupleName
+                        . ($shifted > 0 ? " - {$shifted} later entries renumbered" : '')
+                );
+            }
 
             $applicationRequestNo = null;
             if ($linkedApplication) {
@@ -426,6 +468,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                     error_log('Marriage application completion notification failed: ' . $e->getMessage());
                 }
             }
+            if ($isUpdate && $editReturnUrl) {
+                redirect_to($editReturnUrl);
+            }
             redirect_to('/admin/records/marriage.php?' . ($isUpdate ? 'updated=1' : 'added=1')
                 . (!$isUpdate && $shifted > 0 ? '&shifted=' . $shifted : '')
                 . ($applicationRequestNo !== null ? '&app_completed=1' : ''));
@@ -447,18 +492,31 @@ if (!$groomIdentity && $groomId > 0) $groomIdentity = marriage_load_person_ident
 if (!$brideIdentity && $brideId > 0) $brideIdentity = marriage_load_person_identity($pdo, $brideId);
 
 $prerequisiteWarnings = [];
-foreach (['groom' => $groomIdentity, 'bride' => $brideIdentity] as $party => $identity) {
-    if (!$identity || empty($identity['id'])) continue;
-    $baptismStmt = $pdo->prepare(
-        "SELECT COUNT(*)
-         FROM sacrament_records
-         WHERE person_id = ? AND sacrament_type = 'baptism'"
+if ($groomId > 0) {
+    $prerequisiteWarnings = array_merge(
+        $prerequisiteWarnings,
+        sd_prerequisite_warnings(
+            $pdo,
+            $groomId,
+            'marriage',
+            $marriageDate,
+            $brideId > 0 ? $brideId : null,
+            $isEdit ? (int) $editRecord['id'] : null
+        )
     );
-    $baptismStmt->execute([(int) $identity['id']]);
-    if ((int) $baptismStmt->fetchColumn() === 0
-        && ($identity['baptismal_status'] ?? null) !== 'baptized_catholic') {
-        $prerequisiteWarnings[] = ucfirst($party) . ' has no baptism record or baptized Catholic status recorded.';
-    }
+}
+if ($brideId > 0) {
+    $prerequisiteWarnings = array_merge(
+        $prerequisiteWarnings,
+        sd_prerequisite_warnings(
+            $pdo,
+            $brideId,
+            'marriage',
+            $marriageDate,
+            $groomId > 0 ? $groomId : null,
+            $isEdit ? (int) $editRecord['id'] : null
+        )
+    );
 }
 
 $suggest = $isEdit
@@ -644,17 +702,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/marriage.php', $rfTotal, $rf); ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $errors !== [] || $fromApplicationId) ? ' data-autoshow' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $errors !== [] || $fromApplicationId) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
-                <?php if ($isEdit): ?><p class="field-hint"><a href="<?= e($basePath . '/admin/records/marriage.php') ?>">Cancel edit - back to adding a new entry.</a></p><?php endif; ?>
+                <?php if ($isEdit): ?><p class="field-hint"><a href="<?= e($basePath . ($editReturnUrl ?: '/admin/records/marriage.php')) ?>">Cancel edit</a></p><?php endif; ?>
                 <?php if ($errors !== []): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
                 <?php if ($prerequisiteWarnings !== []): ?><div class="alert alert-warning"><p>Prerequisite warnings (these do not prevent saving):</p><ul><?php foreach ($prerequisiteWarnings as $warning): ?><li><?= e($warning) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
                 <form autocomplete="off" method="post" action="" data-review data-review-title="Review Marriage Entry" data-review-confirm="Confirm and Save">
                     <?= csrf_field() ?>
+                    <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
                     <div class="alert alert-error" data-same-person-error role="alert" hidden>The groom and bride must be different persons.</div>
                     <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
                     <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? $suggest['entry_no']) ?>">
@@ -719,6 +778,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                                     <div class="person-finder-results" data-person-results></div>
                                     <p class="field-hint">If there is no match, saving creates a master person profile for this party.</p>
+                                    <?php if (!empty($duplicateMatches[$party])): ?>
+                                        <div class="alert alert-warning">
+                                            <strong>Possible existing <?= e(strtolower($partyData['label'])) ?> profiles</strong>
+                                            <ul><?php foreach ($duplicateMatches[$party] as $match): ?>
+                                                <li><?= e(person_identity_label($match)) ?></li>
+                                            <?php endforeach; ?></ul>
+                                            <label>
+                                                <input type="checkbox" name="confirm_new_person[<?= e($party) ?>]" value="1"<?= (($confirmedNewProfiles[$party] ?? '') === '1') ? ' checked' : '' ?>>
+                                                I reviewed these matches and still need a separate person profile.
+                                            </label>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             <?php endif; ?>
                         </fieldset>
@@ -782,6 +853,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <fieldset>
                         <legend>Other</legend>
                         <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+                        <?php if ($isEdit): ?>
+                            <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>
+                        <?php endif; ?>
                     </fieldset>
                     <?php if ($isEdit): ?>
                         <button type="submit" name="update_record" value="1" class="btn btn-primary">Update Record</button>

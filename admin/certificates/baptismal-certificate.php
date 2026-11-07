@@ -171,12 +171,22 @@ function baptismal_certificate_values(array $source, array $req, array $sponsorN
 
     $birth = $first($source, ['birth_date']);
     $bapt  = $first($source, ['date_of_baptism', 'baptism_date']);
-
-    $purpose = ($req['purpose'] ?? '') === 'unspecified'
-        ? ''
-        : ((($req['purpose'] ?? '') === 'other' && !empty($req['purpose_other']))
-            ? (string) $req['purpose_other']
-            : ucwords(str_replace('_', ' ', (string) ($req['purpose'] ?? ''))));
+    $issueDate = !empty($req['printed_at']) ? strtotime((string) $req['printed_at']) : false;
+    $issueDate = $issueDate !== false ? $issueDate : time();
+    $notations = [];
+    foreach (($source['notations'] ?? []) as $notationRow) {
+        if (!is_array($notationRow)) continue;
+        $notationType = ($notationRow['sacrament_type'] ?? '') === 'confirmation' ? 'Confirmation' : 'Marriage';
+        $notationDate = !empty($notationRow['event_date']) ? strtotime((string) $notationRow['event_date']) : false;
+        $notation = $notationType . ($notationDate !== false ? ' — ' . date('F j, Y', $notationDate) : '');
+        $place = trim((string) ($notationRow['place'] ?? ''));
+        if ($place !== '') $notation .= ', ' . $place;
+        $notations[] = $notation;
+    }
+    $purpose = '';
+    if (strcasecmp(trim((string) ($req['purpose'] ?? '')), 'Marriage') === 0) {
+        $purpose = 'For Marriage Purposes';
+    }
 
     $v = [
         'subject_full_name'  => cert_format_upper_case($first($source, ['child_full_name'])),
@@ -193,9 +203,9 @@ function baptismal_certificate_values(array $source, array $req, array $sponsorN
         'register_book'      => $first($source, ['book_no']),
         'register_page'      => $first($source, ['page_no']),
         'register_line'      => $first($source, ['line_no']),
-        'purpose'            => trim($purpose),
-        'date_issued'        => date('F j, Y'),
-        // 'remarks' is left blank on purpose: register remarks can hold internal notes.
+        'purpose'            => $purpose,
+        'date_issued'        => date('F j, Y', $issueDate),
+        'remarks'            => $notations !== [] ? implode('; ', $notations) : 'No notations',
     ];
     // Sponsors fill row by row: left, right, left, right ...
     foreach (array_values($sponsorNames) as $i => $name) {

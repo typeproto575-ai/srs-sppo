@@ -182,10 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pageNo = trim((string) ($_POST['page_no'] ?? ''));
         $lineNo = trim((string) ($_POST['line_no'] ?? ''));
         $remarks = trim((string) ($_POST['remarks'] ?? ''));
+        $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
+
+        if ($editId > 0) {
+            if (strlen($correctionReason) < 5 || strlen($correctionReason) > 500) {
+                $notice = 'A correction reason of at least 5 characters is required.';
+                $noticeType = 'error';
+            }
+        }
 
         $confirmNew = (string) ($_POST['confirm_new'] ?? '') === '1';
 
-        if ($isMarriage) {
+        if ($notice === null && $isMarriage) {
             // Marriage POST
             $groomId = (int) ($_POST['groom_id'] ?? 0);
             $brideId = (int) ($_POST['bride_id'] ?? 0);
@@ -358,10 +366,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $recordId = sd_save_record($pdo, $recordData, $participants, (int) current_user()['id']);
-                    $pdo->commit();
-
                     $actionLabel = $editId > 0 ? 'record.update' : 'record.create';
-                    log_activity($pdo, (int) current_user()['id'], $actionLabel, 'sacrament_records', $recordId, 'Marriage record saved');
+                    log_activity(
+                        $pdo,
+                        (int) current_user()['id'],
+                        $actionLabel,
+                        'sacrament_records',
+                        $recordId,
+                        'Marriage record saved.',
+                        $editId > 0 ? $correctionReason : null
+                    );
+                    $pdo->commit();
                     redirect_to('/admin/system/person-profile.php?id=' . $effectiveGroomId . '&saved=1');
                 } catch (InvalidArgumentException $e) {
                     if ($pdo->inTransaction()) $pdo->rollBack();
@@ -374,7 +389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $noticeType = 'error';
                 }
             }
-        } else {
+        } elseif ($notice === null) {
             // ---- Non-marriage POST (baptism, first_communion, confirmation) ----
             $confirmNew = (string) ($_POST['confirm_new'] ?? '') === '1';
 
@@ -507,7 +522,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $recordId = sd_save_record($pdo, $recordData, $participants, (int) current_user()['id']);
                         $actionLabel = $editId > 0 ? 'record.update' : 'record.create';
                         $typeLabel = sd_type_label($type);
-                        log_activity($pdo, (int) current_user()['id'], $actionLabel, 'sacrament_records', $recordId, $typeLabel . ' record saved');
+                        log_activity(
+                            $pdo,
+                            (int) current_user()['id'],
+                            $actionLabel,
+                            'sacrament_records',
+                            $recordId,
+                            $typeLabel . ' record saved.',
+                            $editId > 0 ? $correctionReason : null
+                        );
                         redirect_to('/admin/system/person-profile.php?id=' . $effectivePersonId . '&saved=1');
                     } catch (InvalidArgumentException $e) {
                         $notice = $e->getMessage();
@@ -545,10 +568,22 @@ if ($editId < 1) {
 $warnings = [];
 if ($isMarriage) {
     if ($groomId > 0) {
-        $warnings = array_merge($warnings, sd_prerequisite_warnings($pdo, $groomId, 'marriage'));
+        $warnings = array_merge($warnings, sd_prerequisite_warnings(
+            $pdo,
+            $groomId,
+            'marriage',
+            $eventDate ?? ($existingRecord['event_date'] ?? null),
+            $brideId > 0 ? $brideId : null
+        ));
     }
     if ($brideId > 0) {
-        $warnings = array_merge($warnings, sd_prerequisite_warnings($pdo, $brideId, 'marriage'));
+        $warnings = array_merge($warnings, sd_prerequisite_warnings(
+            $pdo,
+            $brideId,
+            'marriage',
+            $eventDate ?? ($existingRecord['event_date'] ?? null),
+            $groomId > 0 ? $groomId : null
+        ));
     }
 } elseif ($personId > 0) {
     $warnings = sd_prerequisite_warnings($pdo, $personId, $type);
@@ -838,6 +873,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <section class="panel-card">
                 <h2>Remarks</h2>
                 <textarea name="remarks" rows="3" style="width:100%;"><?= e((string) ($_POST['remarks'] ?? ($prefill['remarks'] ?? ''))) ?></textarea>
+                <?php if ($editId > 0): ?>
+                    <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e((string) ($_POST['correction_reason'] ?? '')) ?></textarea></label>
+                <?php endif; ?>
             </section>
 
             <div style="margin-top:1rem;">
@@ -1003,6 +1041,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <section class="panel-card">
             <h2>Remarks</h2>
             <textarea name="remarks" rows="3" style="width:100%;"><?= e((string) ($_POST['remarks'] ?? ($prefill['remarks'] ?? ''))) ?></textarea>
+            <?php if ($editId > 0): ?>
+                <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e((string) ($_POST['correction_reason'] ?? '')) ?></textarea></label>
+            <?php endif; ?>
         </section>
 
         <div style="margin-top:1rem;">

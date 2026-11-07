@@ -5,6 +5,7 @@
  * Needs the v2 schema and seed_demo.sql loaded. Everything it writes is rolled back at the end.
  */
 require_once __DIR__ . '/../config/database.php';   // provides $pdo
+require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 
 $pass = 0; $fail = 0;
@@ -18,7 +19,17 @@ function throws(callable $fn): bool {
 }
 
 $pdo->beginTransaction();
-check('count by type matches the seed', sd_count_records_by_type($pdo) === ['baptism' => 14, 'first_communion' => 9, 'confirmation' => 7, 'marriage' => 3]);
+$recordCounts = sd_count_records_by_type($pdo);
+$seedRecordCounts = ['baptism' => 14, 'first_communion' => 9, 'confirmation' => 7, 'marriage' => 3];
+echo 'INFO  record counts: ' . json_encode($recordCounts) . "\n";
+$seedRecordsPresent = true;
+foreach ($seedRecordCounts as $type => $count) {
+    if (($recordCounts[$type] ?? 0) < $count) {
+        $seedRecordsPresent = false;
+        break;
+    }
+}
+check('seed records remain present (additional local records are allowed)', $seedRecordsPresent);
 
 // --- search
 check('search "dela Cruz" finds 2 people', count(sd_search_persons($pdo, 'dela Cruz')) === 2);
@@ -37,6 +48,16 @@ check('Beatrice timeline: baptism, first communion, no confirmation',
 $liza = sd_get_person_records($pdo, 6);
 check('Liza (bride) finds her marriage through spouse_person_id',
     count($liza['marriages']) === 1 && $liza['marriages'][0]['partner_name'] === 'Ricardo Villanueva Mendoza');
+check('marriage prerequisite warning flags an existing marriage',
+    count(array_filter(
+        sd_prerequisite_warnings($pdo, 6, 'marriage', '2026-10-11', 5),
+        static fn(string $warning): bool => str_contains($warning, 'A prior marriage is recorded')
+    )) === 1);
+check('editing a marriage excludes that record from prior-marriage warnings',
+    count(array_filter(
+        sd_prerequisite_warnings($pdo, 6, 'marriage', '2026-10-11', 5, 17),
+        static fn(string $warning): bool => str_contains($warning, 'A prior marriage is recorded')
+    )) === 0);
 check('legitimacy is never returned', !array_key_exists('legitimacy', $rec['baptism']));
 $other = sd_get_person_records($pdo, 12);
 check('Marites baptism is other_parish and not printable', $other['baptism']['source'] === 'other_parish' && !sd_can_print_certificate($other['baptism']));
@@ -69,7 +90,7 @@ check('update person changes only given keys and blanks become NULL', $p['birth_
 check('person without a last name is rejected', throws(fn() => sd_save_person($pdo, ['first_name' => 'X'])));
 
 // --- save record
-$id = sd_save_record($pdo, ['sacrament_type' => 'confirmation', 'person_id' => 8, 'event_date' => '2026-10-11',
+$id = sd_save_record($pdo, ['sacrament_type' => 'confirmation', 'person_id' => $newId, 'event_date' => '2026-10-11',
     'book_no' => '4', 'page_no' => '2', 'line_no' => '3', 'legitimacy' => 'illegitimate', 'parents_union_type' => 'legitimate'],
     [['role' => 'sponsor', 'full_name' => 'Danilo Aguilar'], ['role' => 'sponsor', 'full_name' => '']], 1);
 $saved = sd_get_record($pdo, $id);
@@ -79,13 +100,60 @@ check('legitimacy never written', $pdo->query("SELECT legitimacy FROM sacrament_
 check('new record is not verified', $saved['book_verified_at'] === null);
 sd_verify_book_entry($pdo, $id, 1);
 check('verify sets the stamp', sd_get_record($pdo, $id)['book_verified_at'] !== null);
-sd_save_record($pdo, ['id' => $id, 'sacrament_type' => 'confirmation', 'person_id' => 8, 'event_date' => '2026-10-12']);
+sd_save_record($pdo, ['id' => $id, 'sacrament_type' => 'confirmation', 'person_id' => $newId, 'event_date' => '2026-10-12']);
 $after = sd_get_record($pdo, $id);
 check('editing clears verification', $after['book_verified_at'] === null && $after['event_date'] === '2026-10-12');
 check('participants untouched when null passed', count($after['participants']) === 1);
-sd_save_record($pdo, ['id' => $id, 'person_id' => 8, 'event_date' => '2026-10-12'], []);
+sd_save_record($pdo, ['id' => $id, 'person_id' => $newId, 'event_date' => '2026-10-12'], []);
 check('empty array removes participants', count(sd_get_record($pdo, $id)['participants']) === 0);
-check('timeline now shows confirmation', sd_get_person_records($pdo, 8)['confirmation'] !== null);
+check('timeline now shows confirmation', sd_get_person_records($pdo, $newId)['confirmation'] !== null);
+
+sd_save_record(
+    $pdo,
+    ['id' => $id, 'sacrament_type' => 'confirmation', 'person_id' => $newId, 'event_date' => '2026-10-12'],
+    [['role' => 'sponsor', 'full_name' => 'Danilo Aguilar']]
+);
+$auditBefore = sd_record_audit_snapshot($pdo, $id);
+sd_save_person($pdo, ['birth_place' => 'Updated Place'], $newId);
+sd_save_record($pdo, [
+    'id' => $id,
+    'sacrament_type' => 'confirmation',
+    'person_id' => $newId,
+    'event_date' => '2026-10-13',
+    'minister_name' => 'Updated Minister',
+], [['role' => 'sponsor', 'full_name' => 'Updated Sponsor']]);
+$auditUserId = (int) $pdo->query("SELECT id FROM users WHERE role = 'secretary' ORDER BY id LIMIT 1")->fetchColumn();
+if ($auditUserId > 0) {
+    sd_log_record_edit(
+        $pdo,
+        $auditUserId,
+        $id,
+        $auditBefore,
+        sd_record_audit_snapshot($pdo, $id),
+        'Test correction history'
+    );
+    $auditStmt = $pdo->prepare(
+        "SELECT description, reason FROM audit_logs
+         WHERE action = 'record.updated' AND target_table = 'sacrament_records'
+           AND target_id = ? AND reason = ?
+         ORDER BY id DESC LIMIT 1"
+    );
+    $auditStmt->execute([$id, 'Test correction history']);
+    $auditEntry = $auditStmt->fetch(PDO::FETCH_ASSOC);
+    $auditData = json_decode((string) ($auditEntry['description'] ?? ''), true);
+    check('correction audit preserves its reason',
+        ($auditEntry['reason'] ?? '') === 'Test correction history');
+    check('correction audit preserves record before-and-after values',
+        ($auditData['changes']['record']['before']['event_date'] ?? null) === '2026-10-12'
+            && ($auditData['changes']['record']['after']['event_date'] ?? null) === '2026-10-13');
+    check('correction audit preserves linked identity and participant changes',
+        ($auditData['changes']['person']['before']['birth_place'] ?? null) === 'Poblacion'
+            && ($auditData['changes']['person']['after']['birth_place'] ?? null) === 'Updated Place'
+            && ($auditData['changes']['participants']['before'][0]['full_name'] ?? null) === 'Danilo Aguilar'
+            && ($auditData['changes']['participants']['after'][0]['full_name'] ?? null) === 'Updated Sponsor');
+} else {
+    check('correction audit tested with a secretary account', false, 'No secretary account is available.');
+}
 
 // --- validation
 check('spouse on a baptism is dropped, not stored', (function () use ($pdo) {

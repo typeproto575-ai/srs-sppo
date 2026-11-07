@@ -68,10 +68,20 @@ SQL;
 $where = [];
 $params = [];
 if ($search !== '') {
-    $where[] = '(record_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?)';
-    for ($i = 0; $i < 5; $i++) {
-        $params[] = '%' . $search . '%';
+    $nameTokens = array_slice(preg_split('/[\s,]+/', $search, -1, PREG_SPLIT_NO_EMPTY), 0, 5);
+    $nameTokenConditions = [];
+    $nameTokenParams = [];
+    foreach ($nameTokens as $token) {
+        $nameTokenConditions[] = '(record_name LIKE ? OR spouse_name LIKE ?)';
+        $nameTokenLike = '%' . addcslashes($token, '\\_%') . '%';
+        array_push($nameTokenParams, $nameTokenLike, $nameTokenLike);
     }
+    $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
+        . ($nameTokenConditions ? ' OR (' . implode(' AND ', $nameTokenConditions) . ')' : '')
+        . ')';
+    $fullSearchLike = '%' . addcslashes($search, '\\_%') . '%';
+    array_push($params, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike);
+    array_push($params, ...$nameTokenParams);
 }
 if ($type !== '') {
     $where[] = 'record_type = ?';
@@ -182,7 +192,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <div class="page-heading">
             <div>
                 <p class="hero-eyebrow">Register index</p>
-                <h1>All Records</h1>
+                <h1>Sacramental Register Records</h1>
+                <p class="field-hint">These are completed sacrament entries already recorded in the parish register. Certificate requests and walk-in requests are managed separately.</p>
 <?php
 $formFileByType = [
     'baptismal' => 'baptismal.php',
@@ -216,7 +227,7 @@ $formFileByType = [
                 <?php if ($toYear !== null): ?><input type="hidden" name="to" value="<?= (int) $toYear ?>"><?php endif; ?>
                 <?php if ($perPage !== 25): ?><input type="hidden" name="per_page" value="<?= (int) $perPage ?>"><?php endif; ?>
                 <?php if ($sort !== 'date_desc'): ?><input type="hidden" name="sort" value="<?= e($sort) ?>"><?php endif; ?>
-                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Search name, Record ID, book, page, or line">
+                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Search name (words can be in any order), Record ID, book, page, or line">
                 <button type="submit" class="btn btn-small">Search</button>
                 <?php if ($search !== ''): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['q' => null, 'page' => null])) ?>">Clear</a><?php endif; ?>
             </form>
@@ -279,7 +290,11 @@ $formFileByType = [
                 <?php if (!$records): ?>
                     <tr>
                         <td colspan="7" class="empty-table-row">
-                            <div class="empty-state"><h2>No records found</h2><p>Try a broader name, sacrament type, or year range.</p></div>
+                            <div class="empty-state">
+                                <h2>No register records found</h2>
+                                <p>Try another part of the name, a broader search, sacrament type, or year range. To find a certificate request, open the Certificate Requests queue.</p>
+                                <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Open Certificate Requests</a>
+                            </div>
                         </td>
                     </tr>
                 <?php else: ?>

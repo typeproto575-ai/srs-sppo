@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo->beginTransaction();
-            $lock = $pdo->prepare('SELECT id, status, sacrament_type, channel, person_id, record_id, paid_at FROM certificate_requests WHERE id = ? FOR UPDATE');
+            $lock = $pdo->prepare('SELECT id, status, sacrament_type, channel, person_id, record_id, paid_at, printed_at FROM certificate_requests WHERE id = ? FOR UPDATE');
             $lock->execute([$requestId]);
             $current = $lock->fetch();
             if (!$current) {
@@ -64,9 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $redirectToDetail = false;
 
             if ($action === 'link_record') {
-                if (empty($current['paid_at'])) {
-                    throw new DomainException('Record the payment first. Processing starts after payment.');
-                }
                 $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
                 if (!$recordId || !in_array($current['status'], ['new', 'matched'], true)) {
                     throw new DomainException('Select a valid sacramental record for a request that can be matched.');
@@ -106,6 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ((int) $current['record_id'] < 1 || $certificateNo === '' || strlen($certificateNo) > 30) {
                     throw new DomainException('A linked sacrament record and a certificate number (maximum 30 characters) are required.');
+                }
+                $paymentGate = cert_request_payment_gate($current, 'for_signature');
+                if (!$paymentGate['ok']) {
+                    throw new DomainException($paymentGate['reason'] ?? 'Record payment before processing the certificate.');
+                }
+                if (empty($current['printed_at'])) {
+                    throw new DomainException('Print the certificate before marking it as awaiting the priest signature.');
                 }
                 $linkedRecord = sd_get_record($pdo, (int) $current['record_id']);
                 if (!sd_can_print_certificate($linkedRecord ?: [])) {
@@ -202,7 +206,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
             if ($redirectToDetail) {
+                if ($action === 'mark_paid' && !empty($req['requester_email'])) {
+                    mail_status_update(
+                        (string) $req['requester_email'],
+                        (string) $req['request_no'],
+                        'Payment received — Under Processing',
+                        'certificate_request',
+                        $pdo,
+                        'certificate_request',
+                        $requestId
+                    );
+                }
                 redirect_to('/admin/requests/certificate-detail.php?id=' . $requestId);
+            }
+            if ($action === 'reject' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    (string) $req['request_no'],
+                    'Rejected',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId,
+                    $reason
+                );
+            }
+            if ($action === 'mark_for_signature' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    (string) $req['request_no'],
+                    'Under Processing — Pending Priest Signature',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId
+                );
             }
             if ($action === 'mark_ready' && !empty($req['requester_email'])) {
                 $sacramentLabel = sd_type_label($req['sacrament_type']);
@@ -215,6 +253,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (Throwable $e) {
                     error_log('SRS-SPPO ready email failed: ' . $e->getMessage());
                 }
+            }
+            if ($action === 'release' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    (string) $req['request_no'],
+                    'Released',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId
+                );
             }
             $notice = ['success', $message];
         } catch (DomainException $e) {
@@ -270,6 +319,7 @@ $auditHistory = $auditStmt->fetchAll();
 
 $requesterName = $req['requester_name'];
 $statusLabel = status_label('certificate', (string) $req['status']);
+$processingPaymentGate = cert_request_payment_gate($req, 'for_signature');
 $recordName = '';
 if ($record && !empty($record['person_id'])) {
     $recordPerson = sd_get_person($pdo, (int) $record['person_id']);
@@ -286,7 +336,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <p><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
     </div>
     <div>
-        <?php if (!empty($req['record_id']) && in_array((string) $req['status'], ['for_signature', 'ready', 'released'], true)): ?>
+        <?php if (!empty($req['record_id'])
+            && in_array((string) $req['status'], ['matched', 'for_signature', 'ready', 'released'], true)
+            && ((string) $req['status'] !== 'matched' || $processingPaymentGate['ok'])): ?>
             <a class="btn btn-primary" href="<?= e($basePath . '/admin/requests/certificate-print.php?id=' . (int) $req['id']) ?>">Print certificate</a>
         <?php endif; ?>
         <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Back to queue</a>
@@ -303,7 +355,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <dt>Status</dt><dd><span class="status-badge status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span></dd>
         <dt>Channel</dt><dd><?= e(($req['channel'] === 'onsite') ? 'Submitted: At the office' : 'Submitted: Online') ?></dd>
         <dt>Submitted</dt><dd><?= e(certificate_detail_date_label((string) $req['created_at'], true)) ?></dd>
-        <dt>Purpose</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?></dd>
+        <dt>Requested use</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?><br><small>This is the requester's stated use, not an official certificate annotation.</small></dd>
         <dt>Requester</dt><dd><?= e($requesterName) ?></dd>
         <dt>Relationship</dt><dd><?= e(certificate_detail_label((string) $req['requester_relationship'])) ?><?= $req['requester_relationship_other'] ? ' — ' . e($req['requester_relationship_other']) : '' ?></dd>
         <dt>Email</dt><dd><?= e($req['requester_email']) ?></dd>
@@ -449,11 +501,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <input type="hidden" name="action" value="mark_for_signature">
             <label for="certificate_no">Certificate number</label>
             <input type="text" id="certificate_no" name="certificate_no" maxlength="30" required value="<?= e($req['certificate_no'] ?: 'C-' . date('Y') . '-' . str_pad((string) $requestId, 5, '0', STR_PAD_LEFT)) ?>">
-            <p>Use this after the certificate has been printed for the priest's signature.</p>
-            <?php if ($req['channel'] === 'online' && empty($req['paid_at'])): ?>
-                <p>Record the online request payment before continuing.</p>
+            <p>Print the certificate first, then mark it as awaiting the priest's signature.</p>
+            <?php if (!$processingPaymentGate['ok']): ?>
+                <p><?= e($processingPaymentGate['reason'] ?? 'Record payment before processing.') ?></p>
+            <?php elseif (empty($req['printed_at'])): ?>
+                <p>Use Print certificate above before continuing.</p>
             <?php endif; ?>
-            <button type="submit" class="btn" <?= $req['channel'] === 'online' && empty($req['paid_at']) ? 'disabled' : '' ?>>Mark For Signature</button>
+            <button type="submit" class="btn" <?= !$processingPaymentGate['ok'] || empty($req['printed_at']) ? 'disabled' : '' ?>>Mark For Signature</button>
         </form>
     <?php elseif ($req['status'] === 'for_signature'): ?>
         <form method="post" action="<?= e($detailUrl) ?>">

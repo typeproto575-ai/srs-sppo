@@ -10,7 +10,7 @@ Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me
 
 ## 2. Source of truth
 
-1. `database/v2/schema.sql` is the only database definition. 12 tables.
+1. `database/v2/schema.sql` is the current database definition. It defines 11 tables.
 2. `database/v2/DATA_DICTIONARY.md` explains it. If the two disagree, `schema.sql` wins.
    `database/v2/seed_demo.sql` is the demo data (fictional people, login `secretary` / `demo1234`, local only).
 3. `project-ai-handover-guide.md` describes the OLD schema. Use it only for business intent, never for table or column names.
@@ -24,14 +24,16 @@ Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me
 | `baptismal_records`, `first_communion_records`, `confirmation_records`, `marriage_records` | `sacrament_records`, filtered by `sacrament_type` |
 | `husband_person_id`, `wife_person_id` | `person_id` (groom), `spouse_person_id` (bride) |
 | `baptismal_sponsors`, `marriage_witnesses`, `marriage_principal_sponsors` | `sacrament_participants` with `role` |
-| `certificate_generation_log` | `certificate_requests` (`claimant_type`, `representative_*`, `id_verified`, `released_*`); reprints go to `audit_logs` |
+| `certificate_generation_log` | Legacy table; current print, signature, release, and claimant fields are on `certificate_requests`, with staff actions in `audit_logs` |
 | `matched_record_id` | `certificate_requests.record_id` |
-| `workflow_requirements` | `sacrament_applications.requirements` (JSON) |
+| `workflow_requirements` | Legacy table; current application requirements are in `sacrament_applications.requirements` (JSON) |
 | `sacrament_eligibility_settings`, `site_settings` | `settings` (key/value) |
 | `email_delivery_log` | `notifications` with `channel = 'email'` |
 | `password_reset_tokens` | `users.reset_token_hash`, `reset_expires_at` |
 | `baptismal_record_id` link | look for a baptism row in `sacrament_records` |
 | tracking number / public tracking page | removed. `request_no` is an internal reference only |
+
+Legacy compatibility helpers for `certificate_generation_log` and `workflow_requirements` remain deprecated in `includes/functions.php` for old integration fixtures only. Do not call them from v2 pages or add new tests that depend on the legacy tables.
 
 ## 4. Hard rules
 
@@ -42,7 +44,7 @@ Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me
 5. **Release requires** `claimant_type` and `id_verified = 1`. A representative also needs `representative_name`.
 6. **The Person Matcher widget stays** on the application and online-request review screens. Search `persons` by surname and birth date; link in one click; allow two links for marriage (groom and bride).
 7. **Prefill is one click.** "Prefill Register Form" carries `from_application=<id>` plus the linked `person_id`s into the register form. No retyping of identity.
-8. **No money amounts anywhere.** Payment is the manual `paid_at` / `paid_by` stamp, recorded at the counter before processing: matching is refused until `paid_at` is set, and release also requires it.
+8. **No money amounts anywhere.** Payment is the manual `paid_at` / `paid_by` stamp. The secretary may match and pre-verify an online request before payment; the online processing gate and certificate release require payment to be recorded.
 9. **Unknown means NULL.** Do not add "not recorded" flags.
 10. **Sacrament records are never purged.** Retention only sets `anonymized_at` on old requests.
 11. **Profile query** for one person: `WHERE person_id = ? OR spouse_person_id = ?`.
@@ -51,7 +53,7 @@ Work is local first (branch `rebuilt-v2`). The hosted site (`stpatricksparish.me
 
 **Intake → register:** public submit (application) → secretary opens review → Person Matcher links `person_id` (or creates a new `persons` row) → status moves along → Prefill Register Form → secretary saves a `sacrament_records` row → application `record_id` set, status `completed`.
 
-**Certificate:** `new` (payment is recorded first, before any processing) → `matched` (person and record linked, book entry verified) → `for_signature` (printed) → `ready` (priest signed on paper, `signed_at`, "ready" email) → `released` (counter ID check). `rejected` is allowed before release.
+**Certificate:** `new` → `matched` (secretary links the person and record and verifies the book entry) → `for_signature` (printed; online requests must have payment recorded) → `ready` (priest signed on paper, `signed_at`, "ready" email) → `released` (counter ID check). The secretary may pre-verify online details before payment; processing waits for payment. `rejected` is allowed before release.
 
 **Two-stage identity check:** Stage 1 is the online relationship choice plus the upfront pickup notice ("Valid Government ID on pickup; a representative also brings an authorization letter and their own ID"). Stage 2 is the counter check recorded in `certificate_requests`.
 

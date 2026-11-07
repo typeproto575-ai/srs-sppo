@@ -7,13 +7,17 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
 $selfUrl = '/admin/records/index.php?type=baptismal';
 $selfReturn = '/admin/records/index.php?type=baptismal';
+$editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
+$editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 $pageTitle = 'Baptismal Records';
 $errors = [];
+$duplicateMatches = [];
 $success = null;
 $notice = null;
 $editRecord = null;
@@ -272,14 +276,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
         if (!$editRecord || $postedEditId !== (int) $editRecord['id']) {
             $errors[] = 'Invalid baptism record selected for update.';
         }
+        $reasonChange = trim((string) ($_POST['reason_change'] ?? ''));
+        if (strlen($reasonChange) < 5 || strlen($reasonChange) > 500) {
+            $errors[] = 'A reason of at least 5 characters is required for a correction.';
+        }
     } elseif (!$identity && (trim((string) ($_POST['child_first_name'] ?? '')) === ''
         || trim((string) ($_POST['child_last_name'] ?? '')) === '')) {
         $errors[] = 'Enter the child’s first and last name.';
+    }
+    if (!$isPostEdit && !$identity && posted_person_id($pdo, 'person_id') === null) {
+        $duplicateMatches = sd_find_possible_person_matches($pdo, [
+            'first_name' => $_POST['child_first_name'] ?? '',
+            'middle_name' => $_POST['child_middle_name'] ?? '',
+            'last_name' => $_POST['child_last_name'] ?? '',
+            'suffix' => $_POST['child_suffix'] ?? '',
+            'birth_date' => $_POST['birth_date'] ?? '',
+        ]);
+        if ($duplicateMatches && (string) ($_POST['confirm_new_person'] ?? '') !== '1') {
+            $errors[] = 'Possible matching person profiles were found. Select the correct profile or confirm that a new profile is still needed.';
+        }
     }
 
     if ($errors === []) {
         try {
             $pdo->beginTransaction();
+            $auditBefore = $isPostEdit
+                ? sd_record_audit_snapshot($pdo, (int) $editRecord['id'])
+                : null;
             if ($isPostEdit) {
                 $savePersonId = (int) $editRecord['person_id'];
             } else {
@@ -326,12 +349,8 @@ $shiftedCount = 0;
                 $changed = sd_record_changes($oldRecord, $newRecord);
                 if ($changed === []) {
                     $pdo->commit();
-                    redirect_to($selfUrl . '&nochange=1');
+                    redirect_to($editReturnUrl ?: $selfUrl . '&nochange=1');
                     exit;
-                }
-                $reasonChange = trim((string) ($_POST['reason_change'] ?? ''));
-                if (strlen($reasonChange) < 5 || strlen($reasonChange) > 500) {
-                    throw new InvalidArgumentException('A reason of at least 5 characters is required.');
                 }
                 $stmt = $pdo->prepare(
                     "UPDATE sacrament_records
@@ -409,7 +428,14 @@ $shiftedCount = 0;
             }
 
             if ($isPostEdit) {
-                sd_log_record_edit($pdo, (int) current_user()['id'], $recordId, $changed, $reasonChange);
+                sd_log_record_edit(
+                    $pdo,
+                    (int) current_user()['id'],
+                    $recordId,
+                    $auditBefore ?? [],
+                    sd_record_audit_snapshot($pdo, $recordId),
+                    $reasonChange
+                );
             } else {
                 log_activity($pdo, current_user()['id'], 'baptism_record_encoded', 'sacrament_records', $recordId, 'Baptism record encoded.');
             }
@@ -428,7 +454,7 @@ $shiftedCount = 0;
             if ($completedApplicationRequestNo !== null) {
                 $redirectQuery .= '&completed_app=' . urlencode($completedApplicationRequestNo);
             }
-            redirect_to($selfUrl . '&' . $redirectQuery);
+            redirect_to($isPostEdit && $editReturnUrl ? $editReturnUrl : $selfUrl . '&' . $redirectQuery);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -505,7 +531,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
     }
 }
 ?>
-<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?>>
+<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
     <div class="dialog-head">
         <h2><?= $isEdit ? 'Edit Baptism Record #' . (int) $editRecord['id'] : 'Encode New Baptism Record' ?></h2>
         <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -520,6 +546,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
         <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?>
+            <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
                 <label>Find possible people
@@ -558,6 +585,15 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                     <label>Birth Date <input type="date" name="birth_date" value="<?= e($formValues['birth_date'] ?? '') ?>"></label>
                     <label>Birthplace <input type="text" name="child_birthplace" value="<?= e($formValues['child_birthplace'] ?? '') ?>"></label>
                     <p class="field-hint">Saving creates a person profile in <code>persons</code>. A selected profile above is never updated here.</p>
+                    <?php if ($duplicateMatches): ?>
+                        <div class="alert alert-warning">
+                            <strong>Possible existing profiles</strong>
+                            <ul><?php foreach ($duplicateMatches as $match): ?>
+                                <li><?= e(person_identity_label($match)) ?></li>
+                            <?php endforeach; ?></ul>
+                            <label><input type="checkbox" name="confirm_new_person" value="1"<?= (($_POST['confirm_new_person'] ?? '') === '1') ? ' checked' : '' ?>> I reviewed these matches and still need a separate person profile.</label>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <div class="inline-fields">
                     <label>Baptism Date <span class="required-marker">*</span> <input type="date" name="baptism_date" value="<?= e($formValues['baptism_date'] ?? $editRecord['event_date'] ?? '') ?>" required></label>

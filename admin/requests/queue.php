@@ -124,11 +124,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <p class="admin-queue-kicker">Requests</p>
                 <h1><?= $filterChannel === 'online' ? 'Online certificate requests' : 'Certificate requests' ?></h1>
                 <p><?= $filterChannel === 'online'
-                    ? 'Review certificate requests submitted online and continue to the next processing step.'
-                    : 'Find a request, review its details, and continue to the next processing step.' ?></p>
-            </div>
-            <div class="admin-queue-actions">
-                <a href="<?= e($basePath . '/public/certificate-request.php') ?>" class="btn btn-secondary">New walk-in request</a>
+                    ? 'Review online requests for copies of existing parish register entries. Start walk-in requests from the person profile.'
+                    : 'Track requests for certificates of sacraments already recorded in the parish registers. This queue is separate from the official register records. Start walk-in requests from the person profile.' ?></p>
             </div>
             <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> requests match the current filters">
                 <strong><?= (int) $totalRows ?></strong>
@@ -150,7 +147,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'sacrament') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'sacrament', $sort)) ?>">Sacrament<?= admin_sort_indicator('sacrament', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'subject') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'subject', $sort)) ?>">Subject<?= admin_sort_indicator('subject', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'requester') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'requester', $sort)) ?>">Requester<?= admin_sort_indicator('requester', $sort) ?></a></th>
-                    <th><a class="table-sort-link<?= str_starts_with($sort, 'purpose') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'purpose', $sort)) ?>">Purpose<?= admin_sort_indicator('purpose', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'purpose') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'purpose', $sort)) ?>">Requested use<?= admin_sort_indicator('purpose', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'channel') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'channel', $sort)) ?>">Channel<?= admin_sort_indicator('channel', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th>

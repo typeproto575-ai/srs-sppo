@@ -24,6 +24,7 @@ if (!$person) {
 $personLabel = sd_full_name($person);
 $notice = null;
 $noticeType = null;
+$updatedFlag = isset($_GET['updated']) && (string) $_GET['updated'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
@@ -58,6 +59,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $recs = sd_get_person_records($pdo, $personId);
 $family = sd_get_family($pdo, $personId);
+$personHistoryStmt = $pdo->prepare(
+    'SELECT al.id, al.user_id, al.actor_name, al.action, al.description,
+            al.reason, al.created_at, u.full_name AS user_name
+     FROM audit_logs al
+     LEFT JOIN users u ON u.id = al.user_id
+     WHERE al.target_table = ? AND al.target_id = ? AND al.action = ?
+     ORDER BY al.created_at DESC, al.id DESC
+     LIMIT 20'
+);
+$personHistoryStmt->execute(['persons', $personId, 'person.updated']);
+$personHistory = $personHistoryStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $unionLabels = [
     'legitimate' => 'Church married',
@@ -84,6 +96,9 @@ $pageTitle = 'Person Profile';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <div class="person-profile-page">
+<?php if ($updatedFlag): ?>
+    <p class="alert alert-success">Person details updated.</p>
+<?php endif; ?>
 <?php if ($verifiedFlag): ?>
     <p class="alert alert-success">Book entry verified.</p>
 <?php endif; ?>
@@ -117,7 +132,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p class="person-profile-section__eyebrow">Identity</p>
             <h2 id="identity-heading">Personal details</h2>
         </div>
-        <span class="person-profile-readonly">Read-only profile</span>
+        <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-edit.php?id=' . (int) $personId) ?>">Edit personal details</a>
     </div>
     <div class="person-profile-details">
         <div class="person-profile-detail">
@@ -158,6 +173,53 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
 </section>
 
+<section class="panel-card person-profile-section" aria-labelledby="person-history-heading">
+    <div class="person-profile-section__heading">
+        <div>
+            <p class="person-profile-section__eyebrow">Audit trail</p>
+            <h2 id="person-history-heading">Correction history</h2>
+        </div>
+        <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/audit-log.php?' . http_build_query([
+            'module' => 'persons',
+            'record_id' => $personId,
+        ])) ?>">View full audit log</a>
+    </div>
+    <?php if (!$personHistory): ?>
+        <p class="field-hint">No profile corrections have been recorded.</p>
+    <?php else: ?>
+        <ul class="record-person-link-list record-history-list">
+            <?php foreach ($personHistory as $entry): ?>
+                <?php
+                $correctionData = json_decode((string) ($entry['description'] ?? ''), true);
+                if (!is_array($correctionData) || ($correctionData['format'] ?? '') !== 'person-correction-v1') {
+                    $correctionData = [];
+                }
+                ?>
+                <li class="record-person-link">
+                    <div>
+                        <span class="field-hint"><?= e(date('M j, Y g:i A', strtotime($entry['created_at']))) ?></span>
+                        <strong><?= e($entry['user_name'] ?? $entry['actor_name'] ?? 'Unknown staff member') ?></strong>
+                    </div>
+                    <?php if (!empty($entry['reason'])): ?><small>Reason: <?= e($entry['reason']) ?></small><?php endif; ?>
+                    <?php if (!empty($correctionData['changes']) && is_array($correctionData['changes'])): ?>
+                        <details>
+                            <summary>Before-and-after values (<?= count($correctionData['changes']) ?> fields)</summary>
+                            <?php foreach ($correctionData['changes'] as $field => $change): ?>
+                                <?php if (!is_array($change) || !array_key_exists('before', $change) || !array_key_exists('after', $change)) continue; ?>
+                                <h3><?= e(ucwords(str_replace('_', ' ', (string) $field))) ?></h3>
+                                <dl class="record-detail-list">
+                                    <div><dt>Before</dt><dd><pre><?= e(json_encode($change['before'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
+                                    <div><dt>After</dt><dd><pre><?= e(json_encode($change['after'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
+                                </dl>
+                            <?php endforeach; ?>
+                        </details>
+                    <?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+</section>
+
 <section class="panel-card person-profile-section sacrament-cards" aria-labelledby="sacraments-heading">
     <div class="person-profile-section__heading">
         <div>
@@ -193,16 +255,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php endif; ?>
                 </div>
                 <div class="person-profile-record__actions">
+                    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/view.php?' . http_build_query([
+                        'type' => $type === 'baptism' ? 'baptismal' : $type,
+                        'id' => (int) $record['id'],
+                        'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
+                    ])) ?>">View / edit record</a>
                     <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
                         <span class="person-profile-note">Recorded from origin certificate</span>
                     <?php elseif (sd_can_print_certificate($record)): ?>
-                        <span class="person-profile-note">Print from a certificate request</span>
+                        <a class="btn btn-small" href="<?= e($basePath . '/public/certificate-request.php?record_id=' . (int) $record['id']) ?>">Start certificate request</a>
                     <?php elseif (empty($record['book_verified_at'])): ?>
                         <form method="post" data-confirm="Mark this book entry as verified against the physical register?">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="verify">
                             <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
-                            <button type="submit" class="btn btn-small person-profile-verify">Verify against book</button>
+                            <button type="submit" class="btn btn-small person-profile-verify">Verify register entry</button>
+                            <span class="field-hint">Required before a certificate request can be started.</span>
                         </form>
                     <?php endif; ?>
                 </div>
@@ -242,10 +310,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <span class="person-profile-badge<?= !empty($record['book_verified_at']) ? ' is-verified' : ' is-unverified' ?>"><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></span>
                 </div>
                 <div class="person-profile-record__actions">
+                    <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/view.php?' . http_build_query([
+                        'type' => 'marriage',
+                        'id' => (int) $record['id'],
+                        'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
+                    ])) ?>">View / edit record</a>
                     <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
                         <span class="person-profile-note">Recorded from origin certificate</span>
                     <?php elseif (sd_can_print_certificate($record)): ?>
-                        <span class="person-profile-note">Print from a certificate request</span>
+                        <a class="btn btn-small" href="<?= e($basePath . '/public/certificate-request.php?record_id=' . (int) $record['id']) ?>">Start certificate request</a>
                     <?php elseif (empty($record['book_verified_at'])): ?>
                         <form method="post" data-confirm="Mark this book entry as verified against the physical register?">
                             <?= csrf_field() ?>

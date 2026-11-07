@@ -295,7 +295,7 @@ function sacrament_age_status(PDO $pdo, string $sacramentType, int $age): string
 }
 
 /**
- * Create one in-app alert for each parishioner who reaches a configured age.
+ * Create one in-app alert for each parishioner who has reached a configured age.
  *
  * This is called when the secretary opens the dashboard. Eligibility alerts
  * require a baptism record and are not created for sacraments already recorded.
@@ -375,7 +375,7 @@ function notify_newly_age_eligible_persons(PDO $pdo): int
 
             foreach ($sacraments as $sacramentType => $config) {
                 $minimumAge = $ranges[$sacramentType]['min_age'];
-                if ($birthDate->modify('+' . $minimumAge . ' years')->format('Y-m-d') !== $todayDate) {
+                if ($birthDate->modify('+' . $minimumAge . ' years')->format('Y-m-d') > $todayDate) {
                     continue;
                 }
 
@@ -496,9 +496,8 @@ function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, i
  * on EITHER party blocks the submission, which closes the "submit three as
  * the groom, three more as the bride" loophole.
  *
- * Fail-open by design: if the tracking table is missing (migration 018 not
- * yet applied), the helpers allow the submission rather than break every
- * public form. See migrations/018_add_submission_rate_limits.sql.
+ * The v2 audit_logs table stores only hashed email identifiers for this
+ * purpose, so no separate rate-limit table is required.
  * ===================================================================== */
 
 // Tunable caps — change here only; every public form reads these constants.
@@ -540,10 +539,11 @@ function public_submission_allowed(PDO $pdo, array $emails, ?string $ip = null):
     try {
         foreach (array_keys($lookup) as $email) {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) AS c FROM submission_rate_limits
-                  WHERE email = ? AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 DAY)'
+                "SELECT COUNT(*) AS c FROM audit_logs
+                  WHERE action = 'public_submission' AND target_table = 'public_submission'
+                    AND description LIKE ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)"
             );
-            $stmt->execute([$email]);
+            $stmt->execute(['email:' . hash('sha256', $email) . ';%']);
             if ((int) $stmt->fetch()['c'] >= PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY) {
                 return [
                     'ok'     => false,
@@ -559,9 +559,9 @@ function public_submission_allowed(PDO $pdo, array $emails, ?string $ip = null):
         // together, so it is skipped.
         if ($ip !== '' && $ip !== 'unknown') {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) AS c FROM submission_rate_limits
-                  WHERE ip_address = ? AND form_type <> \'record_search\' AND form_type NOT LIKE \'lookup%\'
-                    AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 DAY)'
+                "SELECT COUNT(*) AS c FROM audit_logs
+                  WHERE action = 'public_submission' AND target_table = 'public_submission'
+                    AND ip_address = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)"
             );
             $stmt->execute([$ip]);
             if ((int) $stmt->fetch()['c'] >= PUBLIC_SUBMISSIONS_PER_IP_PER_DAY) {
@@ -573,9 +573,11 @@ function public_submission_allowed(PDO $pdo, array $emails, ?string $ip = null):
             }
         }
     } catch (Throwable $e) {
-        // Table not migrated yet (or other transient DB issue): let the
-        // submission through rather than take the public forms offline.
-        return ['ok' => true, 'reason' => null];
+        error_log('Public submission rate check failed: ' . $e->getMessage());
+        return [
+            'ok' => false,
+            'reason' => 'The submission service is temporarily unavailable. Please try again later or contact the Parish Office.',
+        ];
     }
 
     return ['ok' => true, 'reason' => null];
@@ -602,20 +604,19 @@ function record_public_submission(PDO $pdo, array $emails, string $formType, ?st
             $lookup[$email] = true;
         }
     }
-    if (empty($lookup)) {
-        return;
+    if ($lookup === []) {
+        throw new InvalidArgumentException('At least one requester email is required for public submission tracking.');
     }
 
-    try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO submission_rate_limits (email, ip_address, form_type) VALUES (?, ?, ?)'
-        );
-        foreach (array_keys($lookup) as $email) {
-            $stmt->execute([$email, $ip, $formType]);
-        }
-    } catch (Throwable $e) {
-        // Never let bookkeeping failure abort a legitimate submission.
-        error_log('SRS-SPPO: could not record submission rate limit: ' . $e->getMessage());
+    $stmt = $pdo->prepare(
+        "INSERT INTO audit_logs (action, target_table, description, ip_address)
+         VALUES ('public_submission', 'public_submission', ?, ?)"
+    );
+    foreach (array_keys($lookup) as $email) {
+        $stmt->execute([
+            'email:' . hash('sha256', $email) . ';form:' . substr($formType, 0, 100),
+            $ip,
+        ]);
     }
 }
 
@@ -905,6 +906,43 @@ function base_path(): string
     }
 
     return $path;
+}
+
+/**
+ * Return a safe, app-prefixed admin destination for a notification link.
+ *
+ * Notification links are stored as app-relative paths. Older or malformed
+ * rows may already include the app prefix, omit a link, or point outside the
+ * admin area; normalize those cases without allowing an external redirect.
+ */
+function admin_notification_url(?string $link, ?string $basePath = null): string
+{
+    $basePath = $basePath ?? base_path();
+    $fallback = $basePath . '/admin/notifications.php';
+    $link = trim((string) $link);
+    if ($link === '' || str_contains($link, '\\')) {
+        return $fallback;
+    }
+
+    $parts = parse_url($link);
+    if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || isset($parts['user'])) {
+        return $fallback;
+    }
+
+    $path = (string) ($parts['path'] ?? '');
+    if ($basePath !== '' && ($path === $basePath || str_starts_with($path, $basePath . '/'))) {
+        $path = substr($path, strlen($basePath));
+    }
+    if ($path === '' || $path[0] !== '/') {
+        $path = '/' . $path;
+    }
+    if (str_contains($path, '..') || !preg_match('~^/admin(?:/[A-Za-z0-9._-]+)*$~D', $path)) {
+        return $fallback;
+    }
+
+    $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+    $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
+    return $basePath . $path . $query . $fragment;
 }
 
 /**
@@ -1373,14 +1411,8 @@ function client_ip(): string
  * LOOKUP / GUESSING THROTTLE (tracking lookup, certificate verification,
  * correction form)
  * =====================================================================
- * Failed or repeated lookups are counted in submission_rate_limits with
- * form_type 'lookup_*' and a HASHED key in the email column, so:
- *   - nothing personal (tracking|email, plain IP lists) is written to
- *     audit_logs, and the audit trail cannot be flooded by outsiders;
- *   - these rows never count toward the 3-per-email / 20-per-IP daily
- *     SUBMISSION caps above;
- *   - these rows are removed after SRS_RETENTION_RATELIMIT_DAYS.
- * Fail-open: if the table is missing, lookups still work.
+ * Failed or repeated lookups are counted in audit_logs using hashed keys.
+ * Search terms, emails, and plain IP-derived identifiers are not stored.
  * ===================================================================== */
 
 /** Hashed throttle key. Not reversible and never a real email address. */
@@ -1401,11 +1433,11 @@ function lookup_is_throttled(PDO $pdo, string $form, string $key = '', int $maxP
     try {
         if ($key !== '') {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM submission_rate_limits
-                  WHERE form_type = ? AND email = ?
-                    AND submitted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+                "SELECT COUNT(*) FROM audit_logs
+                  WHERE action = 'public_lookup_attempt' AND target_table = ?
+                    AND description = ? AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)"
             );
-            $stmt->execute([$form, lookup_throttle_key($key), $windowMinutes]);
+            $stmt->execute([$form . ':key', lookup_throttle_key($key), $windowMinutes]);
             if ((int) $stmt->fetchColumn() >= $maxPerKey) {
                 return true;
             }
@@ -1413,17 +1445,22 @@ function lookup_is_throttled(PDO $pdo, string $form, string $key = '', int $maxP
         $ip = client_ip();
         if ($ip !== '' && $ip !== 'unknown') {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM submission_rate_limits
-                  WHERE form_type = ? AND ip_address = ?
-                    AND submitted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)'
+                "SELECT COUNT(*) FROM audit_logs
+                  WHERE action = 'public_lookup_attempt' AND target_table = ?
+                    AND description = ? AND created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)"
             );
-            $stmt->execute([$form, $ip, $windowMinutes]);
+            $stmt->execute([
+                $form . ':ip',
+                lookup_throttle_key('ip:' . $ip),
+                $windowMinutes,
+            ]);
             if ((int) $stmt->fetchColumn() >= $maxPerIp) {
                 return true;
             }
         }
     } catch (Throwable $e) {
-        return false; // fail open
+        error_log('Public lookup rate check failed: ' . $e->getMessage());
+        return true;
     }
     return false;
 }
@@ -1432,11 +1469,15 @@ function lookup_is_throttled(PDO $pdo, string $form, string $key = '', int $maxP
 function lookup_record_attempt(PDO $pdo, string $form, string $key = ''): void
 {
     $ip = client_ip();
-    try {
-        $stmt = $pdo->prepare('INSERT INTO submission_rate_limits (email, ip_address, form_type) VALUES (?, ?, ?)');
-        $stmt->execute([lookup_throttle_key($key !== '' ? $key : 'ip:' . $ip), substr($ip, 0, 45), $form]);
-    } catch (Throwable $e) {
-        error_log('SRS-SPPO: could not record lookup attempt: ' . $e->getMessage());
+    $stmt = $pdo->prepare(
+        "INSERT INTO audit_logs (action, target_table, description)
+         VALUES ('public_lookup_attempt', ?, ?)"
+    );
+    if ($key !== '') {
+        $stmt->execute([$form . ':key', lookup_throttle_key($key)]);
+    }
+    if ($ip !== '' && $ip !== 'unknown') {
+        $stmt->execute([$form . ':ip', lookup_throttle_key('ip:' . $ip)]);
     }
 }
 
@@ -1721,9 +1762,11 @@ function cert_request_payment_gate(array $req, string $to): array
 }
 
 /**
- * Return the most recently generated certificate that has not been superseded.
+ * Legacy pre-v2 certificate-generation-log compatibility.
  *
+ * @deprecated The v2 workflow stores the certificate lifecycle in certificate_requests.
  * @return array<string, mixed>|null
+ *
  */
 function cert_current_generation_log(PDO $pdo, int $requestId): ?array
 {
@@ -1741,7 +1784,7 @@ function cert_current_generation_log(PDO $pdo, int $requestId): ?array
 }
 
 /**
- * Record that the active generated certificate has been physically printed.
+ * @deprecated The v2 workflow records printing directly on certificate_requests.
  *
  * @return array{ok: bool, reason?: string}
  */
@@ -1817,7 +1860,7 @@ function log_certificate_printed(PDO $pdo, int $requestId, int $userId): array
 }
 
 /**
- * Record release of a finalized, printed certificate to its claimant.
+ * @deprecated The v2 workflow records release directly on certificate_requests.
  *
  * @return array{ok: bool, reason?: string}
  */
@@ -2116,10 +2159,10 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
 
 
 /* =====================================================================
- * WORKFLOW REQUIREMENTS CHECKLIST
+ * LEGACY WORKFLOW REQUIREMENTS CHECKLIST — NOT USED BY V2
  * ===================================================================== */
 
-/** Return the default checklist labels for a transaction type. */
+/** @deprecated V2 application requirements are stored in sacrament_applications.requirements. */
 function workflow_requirement_templates(string $entityType, string $sacramentType): array
 {
     if ($entityType === 'certificate_request') {
@@ -2164,7 +2207,7 @@ function workflow_requirement_templates(string $entityType, string $sacramentTyp
     ];
 }
 
-/** Create missing default checklist rows; safe to call on every detail page. */
+/** @deprecated V2 application requirements are stored in sacrament_applications.requirements. */
 function ensure_workflow_requirements(PDO $pdo, string $entityType, int $entityId, string $sacramentType): void
 {
     try {
@@ -2177,7 +2220,7 @@ function ensure_workflow_requirements(PDO $pdo, string $entityType, int $entityI
     }
 }
 
-/** Fetch checklist rows for a transaction. */
+/** @deprecated V2 application requirements are stored in sacrament_applications.requirements. */
 function workflow_requirements_for(PDO $pdo, string $entityType, int $entityId): array
 {
     try {
@@ -2189,6 +2232,7 @@ function workflow_requirements_for(PDO $pdo, string $entityType, int $entityId):
     }
 }
 
+/** @deprecated V2 does not use a workflow_requirements status field. */
 function workflow_requirement_status_label(string $status): string
 {
     return ucwords(str_replace('_', ' ', $status));

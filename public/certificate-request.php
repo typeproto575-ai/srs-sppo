@@ -3,9 +3,12 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
 
 $basePath = $basePath ?? base_path();
-$pageTitle = 'Request a Certificate';
+$pageTitle = (current_user()['role'] ?? '') === 'secretary'
+    ? 'Walk-in Certificate Request'
+    : 'Request a Certificate';
 $trackingNumber = null;
 
 if (($_GET['person_lookup'] ?? '') === '1') {
@@ -125,13 +128,58 @@ $certificatePreparation = [
         'Both spouses’ names and the approximate marriage date.',
     ],
 ];
+$walkInRecord = null;
+$walkInRecordId = null;
+$walkInRecordInput = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? ($_POST['walkin_record_id'] ?? null)
+    : ($_GET['record_id'] ?? null);
+$walkInRecordInput = is_string($walkInRecordInput) ? trim($walkInRecordInput) : '';
+$errors = [];
+
+if ($walkInRecordInput !== '' && (current_user()['role'] ?? '') === 'secretary') {
+    require_role('secretary');
+}
+
+if ($walkInRecordInput !== '') {
+    $parsedRecordId = filter_var($walkInRecordInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if (!$parsedRecordId) {
+        $errors[] = 'The selected register record is invalid. Open the request from the sacramental record again.';
+    } elseif ((current_user()['role'] ?? '') !== 'secretary') {
+        http_response_code(403);
+        $errors[] = 'Only parish secretaries can create a walk-in request from a sacramental record.';
+    } else {
+        $candidateRecord = sd_get_record($pdo, (int) $parsedRecordId);
+        $candidatePerson = $candidateRecord ? sd_get_person($pdo, (int) $candidateRecord['person_id']) : null;
+        if (!$candidateRecord || !$candidatePerson || !sd_can_print_certificate($candidateRecord)) {
+            $errors[] = 'This record is unavailable for certificate requests. It must be verified and belong to this parish.';
+        } elseif (!isset($certificateTypes[$candidateRecord['sacrament_type']])) {
+            $errors[] = 'This sacrament type cannot be requested through this form.';
+        } else {
+            $walkInRecordId = (int) $parsedRecordId;
+            $walkInRecord = $candidateRecord;
+            if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+                $values['certificate_type'] = $candidateRecord['sacrament_type'];
+                $values['subject_name'] = $candidatePerson['full_name'];
+                $values['person_id'] = (string) $candidatePerson['id'];
+                $values['birth_date'] = (string) ($candidatePerson['birth_date'] ?? '');
+                $values['father_name'] = (string) ($candidatePerson['father_name'] ?? '');
+                $values['mother_maiden_name'] = (string) ($candidatePerson['mother_maiden_name'] ?? '');
+                $values['event_date'] = (string) ($candidateRecord['event_date'] ?? '');
+                if ($candidateRecord['sacrament_type'] === 'marriage') {
+                    $values['spouse_name'] = (string) ($candidateRecord['spouse_name'] ?? '');
+                    $values['marriage_date'] = (string) ($candidateRecord['event_date'] ?? '');
+                }
+            }
+        }
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $requestedType = $_GET['type'] ?? null;
-    if (is_string($requestedType) && isset($certificateTypes[$requestedType])) {
+    if (!$walkInRecord && is_string($requestedType) && isset($certificateTypes[$requestedType])) {
         $values['certificate_type'] = $requestedType;
     }
 }
-$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
     if (!csrf_verify()) {
@@ -140,6 +188,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         foreach (array_keys($values) as $key) {
             if (isset($_POST[$key]) && is_string($_POST[$key])) {
                 $values[$key] = trim($_POST[$key]);
+            }
+        }
+        if ($walkInRecord) {
+            $person = sd_get_person($pdo, (int) $walkInRecord['person_id']);
+            if (!$person) {
+                $errors[] = 'The person linked to this register record is unavailable.';
+            } else {
+                $values['certificate_type'] = $walkInRecord['sacrament_type'];
+                $values['subject_name'] = $person['full_name'];
+                $values['person_id'] = (string) $person['id'];
+                $values['birth_date'] = (string) ($person['birth_date'] ?? '');
+                $values['father_name'] = (string) ($person['father_name'] ?? '');
+                $values['mother_maiden_name'] = (string) ($person['mother_maiden_name'] ?? '');
+                $values['event_date'] = (string) ($walkInRecord['event_date'] ?? '');
+                if ($walkInRecord['sacrament_type'] === 'marriage') {
+                    $values['spouse_name'] = (string) ($walkInRecord['spouse_name'] ?? '');
+                    $values['marriage_date'] = (string) ($walkInRecord['event_date'] ?? '');
+                }
             }
         }
         if ($values['requester_relationship'] === 'self') {
@@ -202,7 +268,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         }
 
         $selectedPersonId = null;
-        if ($values['person_id'] !== '') {
+        if ($walkInRecord) {
+            $selectedPersonId = (int) $walkInRecord['person_id'];
+        } elseif ($values['person_id'] !== '') {
             [$personFirst, $personMiddle, $personLast, $personSuffix] = structured_name_parts($values['subject_name']);
             try {
                 $selectedPersonId = public_selected_person_id(
@@ -261,10 +329,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
-                            $stmt = $pdo->prepare("INSERT INTO certificate_requests (request_no, channel, sacrament_type, subject_name, subject_details, requester_name, requester_relationship, requester_relationship_other, requester_email, requester_contact_number, purpose, purpose_other, privacy_consent_at, person_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')");
-                            $stmt->execute([
-                                $requestNo,
-                                $channel,
+                            $pdo->beginTransaction();
+                            if ($walkInRecord) {
+                                $stmt = $pdo->prepare(
+                                    "INSERT INTO certificate_requests
+                                        (request_no, channel, sacrament_type, subject_name, subject_details,
+                                         requester_name, requester_relationship, requester_relationship_other,
+                                         requester_email, requester_contact_number, purpose, purpose_other,
+                                         privacy_consent_at, person_id, record_id, matched_by, matched_at, status)
+                                     VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW(), 'matched')"
+                                );
+                            } else {
+                                $stmt = $pdo->prepare(
+                                    "INSERT INTO certificate_requests
+                                        (request_no, channel, sacrament_type, subject_name, subject_details,
+                                         requester_name, requester_relationship, requester_relationship_other,
+                                         requester_email, requester_contact_number, purpose, purpose_other,
+                                         privacy_consent_at, person_id, status)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')"
+                                );
+                            }
+                            $insertParams = [$requestNo];
+                            if (!$walkInRecord) {
+                                $insertParams[] = $channel;
+                            }
+                            array_push(
+                                $insertParams,
                                 $values['certificate_type'],
                                 $values['subject_name'],
                                 $subjectDetails,
@@ -276,18 +366,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $purposeValue,
                                 $purposeOther,
                                 $selectedPersonId,
-                            ]);
+                            );
+                            if ($walkInRecord) {
+                                array_push($insertParams, $walkInRecordId, (int) current_user()['id']);
+                            }
+                            $stmt->execute($insertParams);
                             $requestId = (int) $pdo->lastInsertId();
+                            if ($isSecretary) {
+                                $description = $walkInRecord
+                                    ? 'Walk-in certificate request created from verified sacramental record #' . $walkInRecordId . '.'
+                                    : 'Walk-in certificate request created.';
+                                log_activity($pdo, (int) current_user()['id'], 'certificate.request.create', 'certificate_requests', $requestId, $description);
+                            }
+                            $pdo->commit();
                             $inserted = true;
                             break;
                         } catch (PDOException $e) {
-                            if ($e->getCode() === '23000' && $attempt < 2) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
+                            }
+                            if ($e->getCode() === '23000' && (int) ($e->errorInfo[1] ?? 0) === 1062 && $attempt < 2) {
                                 continue;
+                            }
+                            throw $e;
+                        } catch (Throwable $e) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
                             }
                             throw $e;
                         }
                     }
                 } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     error_log('SRS-SPPO certificate request insert failed: ' . $e->getMessage());
                     $errors[] = 'We could not save your request just now. Please try again in a moment.';
                 }
@@ -346,7 +458,13 @@ require_once __DIR__ . '/../includes/header.php';
 </section>
 <?php else: ?>
 <section class="card">
-    <h1>Request a certificate</h1>
+    <?php $isSecretary = (current_user()['role'] ?? '') === 'secretary'; ?>
+    <h1><?= $isSecretary ? 'Walk-in certificate request' : 'Request a certificate' ?></h1>
+    <?php if ($isSecretary): ?>
+        <p>Use this form when someone is requesting a certificate at the Parish Office. Choose the sacrament, enter the requester's details, and submit it to the Certificate Requests queue. To start from an existing verified register entry, open that record and choose “Start walk-in certificate request.”</p>
+    <?php else: ?>
+        <p>Use this form to request a certificate for a sacrament that has already taken place. Choose Baptism, First Communion, Confirmation, or Marriage, then enter the details that will help the Parish Office find the register entry.</p>
+    <?php endif; ?>
     <?php if ($errors): ?>
         <div class="alert alert-error" role="alert">
             <ul>
@@ -356,8 +474,17 @@ require_once __DIR__ . '/../includes/header.php';
             </ul>
         </div>
     <?php endif; ?>
-    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form" data-review data-review-title="Review your certificate request" data-review-confirm="Confirm and submit request">
+    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form certificate-request-wizard" data-certificate-wizard data-certificate-prefilled="<?= $walkInRecordId ? '1' : '0' ?>">
         <?= csrf_field() ?>
+        <input type="hidden" name="certificate_wizard_step" value="1" data-certificate-current-step>
+        <div data-certificate-phase="record">
+        <?php if ($walkInRecordId): ?>
+            <input type="hidden" name="walkin_record_id" value="<?= (int) $walkInRecordId ?>">
+            <section class="online-intake-notice requirements-notice" aria-label="Verified register record">
+                <strong>Verified sacramental record</strong>
+                <p>The person and sacrament details are filled from this verified parish history entry.</p>
+            </section>
+        <?php endif; ?>
         <label for="certificate_type">Certificate type *</label>
         <select id="certificate_type" name="certificate_type" required>
             <option value="">-- Select --</option>
@@ -379,7 +506,7 @@ require_once __DIR__ . '/../includes/header.php';
             <p>Have these record details ready if you know them. Do not upload or send documents with this form.</p>
         </section>
 
-        <h2 class="form-stage-heading">During: complete the certificate request</h2>
+        <h2 class="form-stage-heading">Certificate details</h2>
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
 
@@ -410,7 +537,10 @@ require_once __DIR__ . '/../includes/header.php';
 
         <label for="event_date">Approximate date of the sacrament (optional)</label>
         <input type="date" id="event_date" name="event_date" value="<?= e($values['event_date']) ?>">
+        </div>
 
+        <div data-certificate-phase="requester">
+        <h2 class="form-stage-heading">Requester details</h2>
         <label for="requester_name">Your full name *</label>
         <input type="text" id="requester_name" name="requester_name" required maxlength="150" value="<?= e($values['requester_name']) ?>">
 
@@ -431,8 +561,11 @@ require_once __DIR__ . '/../includes/header.php';
 
         <label for="requester_contact_number">Contact number (optional)</label>
         <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>">
+        </div>
 
-        <label for="purpose">Purpose *</label>
+        <div data-certificate-phase="purpose">
+        <h2 class="form-stage-heading">Requested use &amp; requirements</h2>
+        <label for="purpose">What will you use the certificate for? *</label>
         <select id="purpose" name="purpose" required>
             <option value="" <?= $values['purpose'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="School" <?= $values['purpose'] === 'School' ? 'selected' : '' ?>>School</option>
@@ -442,18 +575,26 @@ require_once __DIR__ . '/../includes/header.php';
             <option value="Personal records" <?= $values['purpose'] === 'Personal records' ? 'selected' : '' ?>>Personal records</option>
             <option value="Other" <?= $values['purpose'] === 'Other' ? 'selected' : '' ?>>Other</option>
         </select>
+        <p class="field-hint">This helps the Parish Office process your request. It does not determine an official annotation printed on the certificate.</p>
         <div id="purpose-other" <?= $values['purpose'] === 'Other' ? '' : 'hidden' ?>>
-            <label for="purpose_other">Purpose details *</label>
+            <label for="purpose_other">Requested-use details *</label>
             <input type="text" id="purpose_other" name="purpose_other" maxlength="150" value="<?= e($values['purpose_other']) ?>">
         </div>
 
-        <label><input type="checkbox" name="privacy_consent" value="1" <?= !empty($_POST['privacy_consent']) ? 'checked' : '' ?> required> I agree to the privacy notice.</label>
+        <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= !empty($_POST['privacy_consent']) ? 'checked' : '' ?> required> I agree to the privacy notice.</label>
+        </div>
 
         <div style="position:absolute;left:-9999px;" aria-hidden="true">
             <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         </div>
 
-        <button type="submit" class="btn">Submit request</button>
+        <div data-certificate-phase="review">
+            <h2 class="form-stage-heading">Review your request</h2>
+            <p>Check the details before submitting. Payment is recorded at the Parish Office after submission.</p>
+            <dl class="certificate-request-review" data-certificate-review></dl>
+        </div>
+
+        <button type="submit" class="btn" data-certificate-submit>Submit request</button>
     </form>
     <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
         <strong>After submission: review, payment, and pickup</strong>
@@ -476,6 +617,7 @@ require_once __DIR__ . '/../includes/header.php';
             function updateType() {
                 var isMarriage = typeSelect.value === 'marriage';
                 marriageOnly.hidden = !isMarriage;
+                document.getElementById('spouse_name').required = isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
                 preparationHeading.textContent = typeSelect.value
                     ? 'Before: prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
@@ -522,9 +664,16 @@ require_once __DIR__ . '/../includes/header.php';
                     }
                 });
             }
-            document.getElementById('purpose').addEventListener('change', function () {
-                document.getElementById('purpose-other').hidden = this.value !== 'Other';
-            });
+            var purposeSelect = document.getElementById('purpose');
+            var purposeOther = document.getElementById('purpose-other');
+            var purposeOtherInput = document.getElementById('purpose_other');
+            function updatePurpose() {
+                var needsOther = purposeSelect.value === 'Other';
+                purposeOther.hidden = !needsOther;
+                purposeOtherInput.required = needsOther;
+            }
+            purposeSelect.addEventListener('change', updatePurpose);
+            updatePurpose();
         })();
     </script>
 <?php endif; ?>

@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 // Subfolder-safe URL prefix for internal links.
 $basePath = $basePath ?? base_path();
 
-$pageTitle = 'Confirmation Application';
+$pageTitle = 'Confirmation Pre-Application';
 $errors    = [];
 $trackingNumber = null;
 
@@ -233,8 +233,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     return $requestNo;
                 });
 
-                log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation application submitted for {$applicantName}");
-                notify($pdo, 'application_new', 'New sacrament application', "Confirmation application for {$applicantName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+                log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation pre-application submitted for {$applicantName}");
+                notify($pdo, 'application_new', 'New sacrament pre-application', "Confirmation pre-application for {$applicantName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
                 if ($channel === 'online') {
                     record_public_submission($pdo, [$email], 'application_confirmation');
                 }
@@ -259,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             } catch (Throwable $e) {
                 error_log('Confirmation application failed: ' . $e->getMessage());
-                $errors[] = 'Something went wrong while submitting your application. Please try again.';
+                $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
             }
         }
     }
@@ -269,14 +269,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <section class="request-form">
 <?php if ($trackingNumber !== null): ?>
     <div class="success-panel">
-        <h1>Confirmation Application Submitted</h1>
+        <h1>Confirmation Pre-Application Submitted</h1>
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
         $successRequiredDocuments = sacrament_application_requirements('confirmation')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
-        <a class="btn" href="confirmation.php?reset=1">Start a New Application</a>
+        <a class="btn" href="confirmation.php?reset=1">Start a New Pre-Application</a>
     </div>
 <?php else: ?>
     <h1><?= e($pageTitle) ?></h1>
@@ -295,7 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if (!empty($errors)): ?>
         <div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the application</h2>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="post">
         <?= csrf_field() ?>
         <input type="hidden" name="_wizard_action" value="<?= $currentStep === CONF_STEP_VERIFY ? 'final_submit' : 'next' ?>">
@@ -359,7 +359,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label>Email Address *
                     <input type="email" name="email" autocomplete="email" value="<?= $wv('email') ?>" required>
                 </label>
-                <label>Privacy Consent * <span class="field-hint">(agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a> and parish use of these details for sacrament preparation)</span>
+                <label class="checkbox-label">Privacy Consent * <span class="field-hint">(agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a> and parish use of these details for sacrament preparation)</span>
                     <input type="checkbox" name="privacy_consent" value="1" <?= (($formData['privacy_consent'] ?? '') === '1') ? 'checked' : '' ?> required>
                 </label>
             </fieldset>
@@ -393,14 +393,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <button type="submit" name="wizard_action" value="back" onclick="this.form.elements['_wizard_action'].value='back'" formnovalidate class="btn btn-secondary">Back</button>
             <?php endif; ?>
             <?php if ($currentStep < CONF_STEP_COUNT): ?>
-                <button type="submit" name="wizard_action" value="next" class="btn btn-primary"><?= $currentStep === CONF_STEP_CONTACT ? 'Review Application' : 'Next' ?></button>
+                <button type="submit" name="wizard_action" value="next" class="btn btn-primary"><?= $currentStep === CONF_STEP_CONTACT ? 'Review Pre-Application' : 'Next' ?></button>
             <?php else: ?>
-                <button type="submit" name="wizard_action" value="final_submit" onclick="this.form.elements['_wizard_action'].value='final_submit'" class="btn btn-primary">Submit Application</button>
+                <button type="submit" name="wizard_action" value="final_submit" onclick="this.form.elements['_wizard_action'].value='final_submit'" class="btn btn-primary">Submit Pre-Application</button>
             <?php endif; ?>
         </div>
     </form>
     <hr>
-    <p class="form-footer">Fields marked with * are required. Submitting creates a confirmation application record for parish office review.</p>
+    <p class="form-footer">Fields marked with * are required. Submitting creates a confirmation pre-application for parish office review.</p>
 <?php endif; ?>
 </section>
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

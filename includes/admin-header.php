@@ -113,7 +113,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <summary class="sidebar-group-title" title="Requests"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v12h-4l-2 3h-4l-2-3H4z"/><path d="M4 12h5l2 3h2l2-3h5"/></svg></span><span class="sidebar-group-label">Requests</span></summary>
             <ul class="sidebar-menu">
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?> title="Certificate Requests" data-compact="CR"><span class="sidebar-link-glyph" aria-hidden="true">CR</span><span class="sidebar-link-label">Certificate Requests</span></a></li>
-                <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?> title="Sacrament Applications" data-compact="SA"><span class="sidebar-link-glyph" aria-hidden="true">SA</span><span class="sidebar-link-label">Sacrament Applications</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?> title="Sacrament Pre-Applications" data-compact="PA"><span class="sidebar-link-glyph" aria-hidden="true">PA</span><span class="sidebar-link-label">Sacrament Pre-Applications</span></a></li>
             </ul>
         </details>
 

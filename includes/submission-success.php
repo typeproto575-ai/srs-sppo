@@ -4,7 +4,7 @@
  * SRS-SPPO SHARED SUBMISSION-SUCCESS PANEL (public)
  * =====================================================================
  * Purpose: The "your request was received" confirmation shown after any
- *          public form (certificate request or sacrament application)
+ *          public form (certificate request or sacrament pre-application)
  *          saves successfully. Deliberately more prominent than an
  *          inline alert: the reference number is the parishioner's only
  *          key to their request, so the panel makes it easy to copy,
@@ -49,7 +49,7 @@ $basePath       = $basePath ?? base_path();
                 <h3>After submission: what happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
-                    <li>The Parish Office reviews your application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
+                    <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. You may also contact the office with this reference number and the email address you used, or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
@@ -64,7 +64,7 @@ $basePath       = $basePath ?? base_path();
 
             <?php if ($successRequiredDocuments !== []): ?>
                 <section class="submission-documents" aria-label="Documents to prepare">
-                    <h3><?= $successIsApplication ? 'Application requirements to prepare' : 'Certificate pickup guidance' ?></h3>
+                    <h3><?= $successIsApplication ? 'Pre-Application requirements to prepare' : 'Certificate pickup guidance' ?></h3>
                     <ul>
                         <?php foreach ($successRequiredDocuments as $document): ?>
                             <li><?= e($document) ?></li>

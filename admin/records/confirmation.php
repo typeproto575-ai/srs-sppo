@@ -13,6 +13,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
@@ -21,9 +22,12 @@ $basePath = $basePath ?? base_path();
 // This page's own app-relative URL (path + current query string) so the record
 // view can send the user back here with the same search, filter and page.
 $selfReturn = '/admin/records/confirmation.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
+$editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
+$editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 
 $pageTitle = 'Confirmation Records';
 $errors  = [];
+$duplicateMatches = [];
 $success = null;
 
 function confirmation_load_person_identity(PDO $pdo, int $personId): ?array
@@ -179,6 +183,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if ($confirmationDate === '') $errors[] = 'Confirmation date is required.';
     if ($birthdate !== '' && !confirmation_birthdate_is_valid($birthdate)) $errors[] = 'Enter a valid birth date that is not in the future.';
+    if (empty($_POST['person_id']) && empty($_POST['from_application'])
+        && $confirmandFirst !== '' && $confirmandLast !== '') {
+        $duplicateMatches = sd_find_possible_person_matches($pdo, [
+            'first_name' => $confirmandFirst,
+            'middle_name' => $confirmandMiddle,
+            'last_name' => $confirmandLast,
+            'suffix' => $confirmandSuffix,
+            'birth_date' => $birthdate,
+        ]);
+        if ($duplicateMatches && (string) ($_POST['confirm_new_person'] ?? '') !== '1') {
+            $errors[] = 'Possible matching person profiles were found. Select the correct profile or confirm that a new profile is still needed.';
+        }
+    }
 
     if ($errors === []) {
         try {
@@ -315,13 +332,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
     $lineNo = trim((string) ($_POST['line_no'] ?? ''));
+    $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
 
     if (!$editRecord || $editId !== (int) $editRecord['id']) $errors[] = 'Invalid record selected for update.';
     if ($confirmationDate === '') $errors[] = 'Confirmation date is required.';
+    if (strlen($correctionReason) < 5 || strlen($correctionReason) > 500) $errors[] = 'A correction reason of at least 5 characters is required.';
 
     if ($errors === []) {
         try {
             $pdo->beginTransaction();
+            $auditBefore = sd_record_audit_snapshot($pdo, $editId);
             $stmt = $pdo->prepare(
                 "UPDATE sacrament_records
                  SET event_date = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?,
@@ -348,11 +368,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 );
                 $participantStmt->execute([$editId, $sponsorName]);
             }
-            log_activity($pdo, current_user()['id'], 'confirmation_record_updated', 'sacrament_records', $editId,
-                'Confirmation record updated for ' . person_identity_label($identity));
+            sd_log_record_edit(
+                $pdo,
+                (int) current_user()['id'],
+                $editId,
+                $auditBefore,
+                sd_record_audit_snapshot($pdo, $editId),
+                $correctionReason
+            );
 
             $pdo->commit();
-            redirect_to('/admin/records/confirmation.php?updated=1');
+            redirect_to($editReturnUrl ?: '/admin/records/confirmation.php?updated=1');
             exit;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -569,20 +595,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/confirmation.php', $rfTotal, $rf); ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e(person_identity_label($identity)) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
         <?php if ($isEdit): ?>
-            <p class="field-hint"><a href="<?= $basePath ?>/admin/records/confirmation.php">Cancel edit - back to adding a new entry.</a></p>
+            <p class="field-hint"><a href="<?= e($basePath . ($editReturnUrl ?: '/admin/records/confirmation.php')) ?>">Cancel edit</a></p>
         <?php endif; ?>
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
         <form autocomplete="off" method="post" action="" data-review data-review-title="Review Confirmation Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
+            <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>">
             <fieldset>
@@ -625,6 +652,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <div class="person-finder-results" data-person-results></div>
                         <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
                     </div>
+                    <?php if ($duplicateMatches): ?>
+                        <div class="alert alert-warning">
+                            <strong>Possible existing profiles</strong>
+                            <ul><?php foreach ($duplicateMatches as $match): ?>
+                                <li><?= e(person_identity_label($match)) ?></li>
+                            <?php endforeach; ?></ul>
+                            <label><input type="checkbox" name="confirm_new_person" value="1"<?= (($_POST['confirm_new_person'] ?? '') === '1') ? ' checked' : '' ?>> I reviewed these matches and still need a separate person profile.</label>
+                        </div>
+                    <?php endif; ?>
                     <label>Birthdate <input autocomplete="off" type="date" name="birthdate" value="<?= e($_POST['birthdate'] ?? '') ?>"></label>
                     <div class="inline-fields">
                         <?= person_name_fields('father', "Father's Name", $recordNameFormValues) ?>
@@ -639,6 +675,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Other</legend>
                 <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+                <?php if ($isEdit): ?>
+                    <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>
+                <?php endif; ?>
             </fieldset>
 
             <input type="hidden" name="from_application" value="<?= (int) ($_POST['from_application'] ?? $fromApplicationId) ?>">

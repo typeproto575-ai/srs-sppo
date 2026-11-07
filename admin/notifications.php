@@ -8,10 +8,8 @@
  *          filter, and mark previously unread items as read without being
  *          constrained to the dropdown's short list.
  *
- * Scope: certificate_requests and sacrament_applications status-change
- * notifications only, as described in the project requirements. Event
- * reminders are informational and remain separate from the actionable
- * unread-notification count.
+ * Scope: in-app notifications only. Email delivery logs share the same
+ * table but are not actionable notifications and must not appear here.
  * =====================================================================
  */
 
@@ -33,10 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'mark_read') {
         $id = (int) ($_POST['id'] ?? 0);
         if ($id > 0) {
-            $pdo->prepare('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE id = ?')->execute([$id]);
+            $pdo->prepare("UPDATE notifications SET is_read = 1, read_at = NOW() WHERE id = ? AND channel = 'inapp'")->execute([$id]);
         }
     } elseif ($action === 'mark_all_read') {
-        $pdo->exec('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE is_read = 0');
+        $pdo->exec("UPDATE notifications SET is_read = 1, read_at = NOW() WHERE channel = 'inapp' AND is_read = 0");
     }
 
     $redirect = $basePath . '/admin/notifications.php';
@@ -64,11 +62,11 @@ $orderClauses = [
 ];
 $orderClause = $orderClauses[$sort];
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE 1=1 {$rf['where']}");
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE channel = 'inapp' {$rf['where']}");
 $countStmt->execute($rf['params']);
 $totalRows = (int) $countStmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT * FROM notifications WHERE 1=1 {$rf['where']} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
+$stmt = $pdo->prepare("SELECT * FROM notifications WHERE channel = 'inapp' {$rf['where']} ORDER BY {$orderClause} LIMIT {$rf['per_page']} OFFSET {$rf['offset']}");
 $stmt->execute($rf['params']);
 $notifications = $stmt->fetchAll();
 

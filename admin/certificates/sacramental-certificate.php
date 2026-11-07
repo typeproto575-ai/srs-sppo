@@ -119,8 +119,13 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
         $out[] = sc_svg_rule(37.5, $y + .7, 52, $ink, .15);
         $y += 6.1;
     }
-    $out[] = sc_svg_text("Issued this " . date('F j, Y') . " at St. Patrick's Parish Office, Dingalan, Aurora.", 50, 88 + $dy, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    $issueDate = !empty($req['printed_at']) ? strtotime((string) $req['printed_at']) : false;
+    $issueDate = $issueDate !== false ? $issueDate : time();
+    $out[] = sc_svg_text("Issued this " . date('F j, Y', $issueDate) . " at St. Patrick's Parish Office, Dingalan, Aurora.", 50, 88 + $dy, 2.2, 80, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
     $out[] = sc_svg_text('Valid only with the signature of the Parish Priest and the parish seal.', 50, 91.5 + $dy, 2.2, 77, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    if ($isConfirmation && strcasecmp(trim((string) ($req['purpose'] ?? '')), 'Marriage') === 0) {
+        $out[] = sc_svg_text('For Marriage Purposes', 50, 95 + $dy, 2.15, 77, ['fill' => $muted, 'anchor' => 'middle', 'max' => true]);
+    }
     $out[] = sc_svg_rule(57.667, 103 + $dy, 35.667, $ink);
     $out[] = sc_svg_text('PARISH PRIEST', 75.5, 106 + $dy, 2.1, 27, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'anchor' => 'middle', 'letter_spacing' => .08, 'max' => true]);
     $out[] = '</svg>';

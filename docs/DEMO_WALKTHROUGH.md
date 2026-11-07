@@ -23,7 +23,7 @@ current codebase.
    currently hosted V2 schema, optionally import
    [`database/v2/seed_many_demo.sql`](../database/v2/seed_many_demo.sql)
    instead; it adds 100 fictional profiles and 170 linked sacramental records.
-   To add application and certificate-request queue samples, plus public
+   To add pre-application and certificate-request queue samples, plus public
    calendar events and announcements, also import
    [`database/v2/seed_demo_workflows.sql`](../database/v2/seed_demo_workflows.sql).
    All public entries from that optional seed are explicitly marked fictional.
@@ -51,9 +51,9 @@ dataset into a live parish database.
   - 4 First Communions;
   - 3 Confirmations;
   - 2 Marriages, with witnesses.
-- 4 public sacrament applications, including a new-child intake, a Confirmation
-  and First Communion application ready for review/encoding, and a Marriage
-  application with two separate people to match.
+- 4 public sacrament pre-applications, including a new-child intake, a Confirmation
+  and First Communion pre-application ready for review/encoding, and a Marriage
+  pre-application with two separate people to match.
 - 5 certificate requests across submission, payment, review, pickup-ready, and
   released states, with extension details and generation/pickup history.
 - Document checklist examples, 6 upcoming calendar events, 3 published
@@ -64,10 +64,10 @@ The sample request reference numbers are:
 
 | Reference number | Sample |
 |---|---|
-| `SPPO-APP-2026-BAPDEFENSEABCDEF` | New-child Baptism application |
-| `SPPO-APP-2026-CNFDEFENSABCDEFG` | Confirmation application |
-| `SPPO-APP-2026-FCDEFENSABCDEFGH` | First Communion application |
-| `SPPO-APP-2026-MARRDEFENSABCDEF` | Marriage application |
+| `SPPO-APP-2026-BAPDEFENSEABCDEF` | New-child Baptism pre-application |
+| `SPPO-APP-2026-CNFDEFENSABCDEFG` | Confirmation pre-application |
+| `SPPO-APP-2026-FCDEFENSABCDEFGH` | First Communion pre-application |
+| `SPPO-APP-2026-MARRDEFENSABCDEF` | Marriage pre-application |
 | `SPPO-2026-CERTDEFENSABCDEF` | Certificate submitted for initial review |
 | `SPPO-2026-CERTDEFENSABCDEG` | Certificate awaiting payment |
 | `SPPO-2026-CERTDEFENSABCDEH` | Certificate under review |
@@ -79,7 +79,7 @@ Other useful matches include **Marco Demo Reyes** (`1997-04-20`),
 **Nina Demo Cruz** (`1998-09-08`), **Emma Demo Reyes** (`2012-02-11`), and
 **Sofia Demo Garcia** (`2016-09-17`).
 
-## Status terminology used by the application
+## Status terminology used by the pre-application workflow
 
 The supplied guide used phrases such as “Under Review” and “Ready for
 Processing” as if they were stored status values. They are not values in the
@@ -89,7 +89,7 @@ the system:
 - Certificate requests use values including `submitted`, `under_review`,
   `awaiting_payment`, `approved`, `processing`, `ready_for_pickup`, and
   `released`.
-- Sacrament applications use values including `submitted`,
+- Sacrament pre-applications use values including `submitted`,
   `requirements_pending`, `awaiting_payment`, `documents_pending`,
   `interview_scheduled`, `ready_for_approval`, `approved`, `scheduled`, and
   `completed`. Marriage has additional interview and banns stages.
@@ -97,33 +97,33 @@ the system:
   payment does not automatically approve a request. Staff must use the
   allowed status transitions and meet the relevant prerequisite checks.
 - Official register entries are separate from online intake. A submitted
-  application is not automatically an official sacrament record.
+  pre-application is not automatically an official sacrament record.
 
 ## Adviser walkthrough
 
 ### 1. Public experience
 
 1. Open `/public/index.php` and point out the public announcements, office
-   details, certificate requests, and sacrament applications.
+   details, certificate requests, and sacrament pre-applications.
 2. Open `/public/certificate-request.php?type=baptism` to see the unified
    certificate form with Baptism selected. Other supported types are
    `first_communion`, `confirmation`, and `marriage`. Show its displayed
    requirements before submission.
 3. Open one of the forms under `/public/sacrament-applications/`. Explain that public
-   submissions are stored as intake applications for staff review, separate
+   submissions are stored as pre-application intake records for staff review, separate
    from the official registers.
 
 ### 2. Staff review and person matching
 
 1. Sign in at `/admin/login.php`.
-2. Open **Requests → Sacrament Applications**
+2. Open **Requests → Sacrament Pre-Applications**
    (`/admin/requests/applications-queue.php`).
 3. Find `SPPO-APP-2026-CNFDEFENSABCDEFG` and use the person matcher to search for **Emma Demo
    Reyes**, birth date `2012-02-11`; select the matching master person. For
    `SPPO-APP-2026-MARRDEFENSABCDEF`, match groom **Marco Demo Reyes** and bride **Nina Demo
    Cruz** separately. Explain that matching is a staff confirmation, not an
    automatic name-only merge.
-4. Review the application’s existing prerequisites and status controls. For
+4. Review the pre-application’s existing prerequisites and status controls. For
    Confirmation and First Communion, the approved/scheduled examples can be
    used to demonstrate the register prefill after matching.
 
@@ -132,11 +132,14 @@ the system:
 1. Open **Requests → Certificate Requests**
    (`/admin/requests/queue.php`) and locate
    `SPPO-2026-CERTDEFENSABCDEG` or `SPPO-2026-CERTDEFENSABCDEJ`.
+   Explain that this queue tracks certificate-copy requests; **Records**
+   contains completed sacrament entries from the parish register. Start an
+   in-person request with **Start walk-in certificate request**.
 2. Open the request detail page. The certificate requirements checklist is
    displayed there (`/admin/requests/certificate-detail.php`); mark document
    states only for the fictional sample. The general checklist table supports
-   application rows too, but sacrament application screens currently use
-   their own prerequisite fields rather than this generic checklist UI.
+   pre-application rows too, but sacrament pre-application screens currently
+   use their own prerequisite fields rather than this generic checklist UI.
 3. Use `SPPO-2026-CERTDEFENSABCDEJ` to show ready-for-pickup printing from
    the request detail page. The released sample
    `SPPO-2026-CERTDEFENSABCDEK` is available for viewing without changing it.
@@ -150,13 +153,27 @@ the system:
    `/admin/records/confirmation.php?from_application=<application-id>`.
 2. Link `SPPO-APP-2026-FCDEFENSABCDEFGH` to **Sofia Demo Garcia**, then open
    `/admin/records/first-communion.php?from_application=<application-id>`.
-3. Confirm the application is approved or scheduled before using the prefill
+3. Confirm the pre-application is approved or scheduled before using the prefill
    URL. Verify the copied identity details, check the physical book/page/line
    reference, then save only if performing a fresh encoding demonstration.
 
 The placeholder `<application-id>` is the numeric ID shown in the staff
 application queue or database; it is not the reference number. Do not create a
 second official record merely to show the prefilled form.
+
+From the dashboard, search the master person index by name or birth year and
+open the matching profile. If a name search does not match, try fewer name
+parts; use **Records** to search the register entries themselves. On a
+verified, in-parish entry under **Sacramental history**, choose
+**Start certificate request**. The request form is prefilled from that
+register entry. Complete its guided Certificate details, Requester, Purpose &
+requirements, and Review steps; submit, then record payment. For an
+unverified entry, verify it against the physical register from the person
+profile before starting a request. The request is
+linked to that entry and appears in the
+certificate queue with an audit entry. Print from request details, mark it for
+the priest's signature after printing, then mark it ready and record release
+after pickup.
 
 ## Large register/search dataset
 
@@ -165,11 +182,11 @@ group of fictional parishioners for person search, profile lookup, and register
 browsing. It adds 100 profiles, 100 Baptisms, 20 First Communions, 40
 Confirmations, and 10 Marriages, with linked person and prerequisite records.
 Sample email addresses use `@demo.test`; the SQL does not create certificate
-requests, applications, staff accounts, or audit history. Import it only into
+requests, pre-applications, staff accounts, or audit history. Import it only into
 a disposable V2 demo database, never a live parish database.
 
 The optional `database/v2/seed_demo_workflows.sql` seed adds eight fictional
-certificate requests, seven sacrament applications, six future calendar events,
+certificate requests, seven sacrament pre-applications, six future calendar events,
 and four published announcements. Names and places are original whimsical
 storybook inventions; every public entry is labeled as demo/fictional, and no
 staff activity, payment, notification, or official sacramental record is
@@ -183,7 +200,7 @@ fabricated by this seed. It is repeatable and inserts no duplicates.
 2. Open her profile at `/admin/system/person-profile.php?id=<person-id>`.
    Show the linked Baptism, First Communion, and Confirmation entries.
 3. Point out the available action for a missing sacrament and how it can start
-   an application/encoding flow with the existing person identity attached.
+   a pre-application/encoding flow with the existing person identity attached.
 
 ### 6. Schedule, announcements, and audit history
 
@@ -201,7 +218,7 @@ fabricated by this seed. It is repeatable and inserts no duplicates.
 - The seed does not create staff users or passwords; create those locally
   using the CLI account tool above.
 - The generic `workflow_requirements` UI is currently part of certificate
-  request detail. Application-specific document review uses the existing
+  request detail. Pre-application-specific document review uses the existing
   sacrament-specific fields and status workflow.
 - Do not treat seeded “released” certificate or sample audit rows as evidence
   of real parish transactions.

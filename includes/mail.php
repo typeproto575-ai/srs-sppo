@@ -143,17 +143,25 @@ function mail_request_documents_heading(string $kind): string
         : 'Documents to prepare:';
 }
 
+function mail_request_display_name(string $kind): string
+{
+    return mail_is_sacrament_application($kind)
+        ? str_replace(' Application', ' Pre-Application', $kind)
+        : $kind;
+}
+
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
 {
+    $displayKind = mail_request_display_name($kind);
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
     if (mail_is_sacrament_application($kind)) {
         $body = "Dear Parishioner,\r\n\r\n"
-            . "The Parish Office received your " . $kind . " for review.\r\n\r\n"
+            . "The Parish Office received your " . $displayKind . " for review.\r\n\r\n"
             . "Your reference number is: " . $trackingNumber . "\r\n"
             . "Quote this reference number when contacting the Parish Office.\r\n\r\n"
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
-            . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this pre-application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"
@@ -164,13 +172,16 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
             . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     }
-    return send_mail($to, $kind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
+    return send_mail($to, $displayKind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
 }
 
-function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
+function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, ?string $officeNote = null): bool
 {
+    $displayKind = mail_request_display_name($kind);
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
+    $officeNote = trim((string) $officeNote);
+    $officeNoteText = $officeNote !== '' ? "\r\n\r\nParish Office note: " . $officeNote : '';
     $paymentNote = '';
     // Payment happens outside the system. When the stage is "Awaiting Payment",
     // explain the offline options plainly with no amounts — the parish confirms
@@ -181,16 +192,18 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
     }
     if (mail_is_sacrament_application($kind)) {
         $body = "Dear Parishioner,\r\n\r\n"
-            . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
+            . "This is an update on your " . $displayKind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n\r\n"
+            . $officeNoteText
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
-            . "The Parish Office will contact you about any documents, preparation, approval, and scheduling. The application does not itself confirm approval or reserve a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . "The Parish Office will contact you about any documents, preparation, approval, and scheduling. The pre-application does not itself confirm approval or reserve a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"
             . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n"
             . $paymentNote . "\r\n\r\n"
+            . ($officeNote !== '' ? "Parish Office note: " . $officeNote . "\r\n\r\n" : '')
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
             . "If the Parish Office asks you to visit, bring your reference number and any requested supporting documents. If the secretary gave you a claim stub or payment slip, bring it; if it is missing, provide the reference number and certificate name so the office can locate the request. The secretary verifies the recorded payment before release. The Acknowledgment Receipt is placed with the completed certificate in its folder, not required as a document to bring. An authorized representative must also present a signed authorization letter from the person named on the certificate. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";

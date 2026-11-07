@@ -35,7 +35,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Choose what you need</h3>
-            <p>Choose a certificate if the sacrament already happened. Choose an application if you are preparing for Baptism, Confirmation, First Communion, or Marriage.</p>
+            <p>Choose a certificate if the sacrament already happened. Start a pre-application if you are preparing for Baptism, Confirmation, First Communion, or Marriage.</p>
         </div>
     </div>
 
@@ -89,9 +89,9 @@ require_once __DIR__ . '/../includes/header.php';
 <!-- Two service paths: pick the flow that matches the visitor's need -->
 <div class="path-cards">
     <div class="path-card">
-        <h3>Sacrament Application</h3>
-        <p>Preparing for Baptism, First Communion, Confirmation, or a church wedding? Choose an application for parish-office review.</p>
-        <a href="<?= e($basePath) ?>/public/services.php#sacrament-applications" class="btn btn-secondary">Choose an Application</a>
+        <h3>Sacrament Pre-Application</h3>
+        <p>Preparing for Baptism, First Communion, Confirmation, or a church wedding? Start a pre-application for parish-office review.</p>
+        <a href="<?= e($basePath) ?>/public/services.php#sacrament-applications" class="btn btn-secondary">Start a Pre-Application</a>
     </div>
     <div class="path-card">
         <h3>Certificate Request</h3>
@@ -102,7 +102,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Final calls-to-action -->
 <div class="workflow-cta">
-    <p>After you submit a certificate request or sacrament application, the Parish Office may email you with an update. You may also contact the office with the reference number on your submission confirmation and the email address you used.</p>
+    <p>After you submit a certificate request or sacrament pre-application, the Parish Office may email you with an update. You may also contact the office with the reference number on your submission confirmation and the email address you used.</p>
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

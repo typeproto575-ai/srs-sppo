@@ -23,7 +23,7 @@ require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 // Subfolder-safe URL prefix for links inside the success message.
 $basePath = $basePath ?? base_path();
 
-$pageTitle = 'Baptismal Application';
+$pageTitle = 'Baptismal Pre-Application';
 $errors    = [];
 $trackingNumber = null;
 
@@ -273,8 +273,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                         $applicationId = (int) $pdo->lastInsertId();
 
-                        log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal application submitted for {$childName}");
-                        notify($pdo, 'application_new', 'New sacrament application', "Baptismal application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+                        log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal pre-application submitted for {$childName}");
+                        notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
                         if ($channel === 'online') {
                             record_public_submission($pdo, [$email], 'application_baptismal');
                         }
@@ -299,7 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($pdo->inTransaction()) $pdo->rollBack();
                     $trackingNumber = null;
                     error_log('Baptismal application failed: ' . $e->getMessage());
-                    $errors[] = 'Something went wrong while submitting your application. Please try again.';
+                    $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
                 }
             }
         }
@@ -323,14 +323,14 @@ require_once __DIR__ . '/../../includes/header.php';
 <?php
 if ($currentStep === STEP_COUNT + 1): ?>
     <div class="success-panel">
-        <h1>Application Submitted</h1>
+        <h1>Pre-Application Submitted</h1>
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
         $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
-        <a href="baptismal.php?reset=1" class="btn">Start New Application</a>
+        <a href="baptismal.php?reset=1" class="btn">Start a New Pre-Application</a>
     </div>
 </section>
 <?php elseif ($currentStep === STEP_APP_DETAILS): ?>
@@ -347,7 +347,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the application</h2>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -405,7 +405,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the application</h2>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -464,7 +464,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the application</h2>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -486,7 +486,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         </fieldset>
         <div class="form-actions">
             <button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back</button>
-            <button type="submit" class="btn">Review Application</button>
+            <button type="submit" class="btn">Review Pre-Application</button>
         </div>
     </form>
 </section>
@@ -503,7 +503,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the application</h2>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="final_submit">
@@ -523,13 +523,13 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <tr><th>Preferred Date</th><td><?= e((string) ($formData['preferred_date'] ?? '')) ?></td></tr>
             </table>
         </fieldset>
-        <label class="checkbox-label" style="display:block; margin-top: 1rem;">
+        <label class="checkbox-label" style="margin-top: 1rem;">
             <input type="checkbox" name="certify_accuracy" value="1" required>
             I certify that all information provided above is true and correct to the best of my knowledge.
         </label>
         <div class="form-actions">
             <button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back to Edit</button>
-            <button type="submit" class="btn">Submit Application</button>
+            <button type="submit" class="btn">Submit Pre-Application</button>
         </div>
     </form>
 </section>

@@ -6,7 +6,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/mail.php';
 
 $basePath = base_path();
-$pageTitle = 'First Holy Communion Application';
+$pageTitle = 'First Holy Communion Pre-Application';
 $errors = [];
 $trackingNumber = null;
 
@@ -107,7 +107,7 @@ if ($isWizardNavigation && csrf_verify()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify() && ($_POST['_action'] ?? '') === 'final_submit' && $currentStep === count($steps)) {
     if (($formData['certify_accuracy'] ?? '') !== '1') {
-        $errors[] = 'Please certify that the application information is true and correct.';
+        $errors[] = 'Please certify that the pre-application information is true and correct.';
     }
     $name = compose_person_name($formData, 'applicant');
     $birthdate = $_POST['applicant_birthdate'] ?? '';
@@ -199,8 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                 json_encode($requirements, JSON_UNESCAPED_UNICODE),
             ]);
             $applicationId = (int) $pdo->lastInsertId();
-            log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion application submitted for {$name}");
-            notify($pdo, 'application_new', 'New sacrament application', "First Communion application for {$name} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+            log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion pre-application submitted for {$name}");
+            notify($pdo, 'application_new', 'New sacrament pre-application', "First Communion pre-application for {$name} ({$trackingNumber})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
                 record_public_submission($pdo, [$email], 'application_first_communion');
             }
@@ -215,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
             if ($pdo->inTransaction()) $pdo->rollBack();
             $trackingNumber = null;
             error_log('First Communion application failed: ' . $e->getMessage());
-            $errors[] = 'Something went wrong while submitting your application. Please try again.';
+            $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
         }
     }
 }
@@ -228,11 +228,11 @@ function selectedv(string $key, string $value): string { global $formData; retur
 ?>
 <section class="request-form">
     <div class="alert alert-info online-intake-notice">This form starts the parish review. The parish office will confirm any documents, preparation, and schedule. Submitting it does not confirm a schedule.</div>
-    <h1>Application for the Sacrament of First Holy Communion</h1>
+    <h1>Pre-Application for the Sacrament of First Holy Communion</h1>
     <p>Formularyo para sa Unang Banal na Komunyon</p>
     <?php if ($trackingNumber): ?>
         <?php
-        $successHeading = 'Your application has been submitted';
+        $successHeading = 'Your pre-application has been submitted';
         $successIsApplication = true;
         $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
@@ -240,13 +240,13 @@ function selectedv(string $key, string $value): string { global $formData; retur
     <?php else: ?>
         <?php if ($currentStep === 1): $applicationType = 'first_communion'; require __DIR__ . '/../../includes/public-requirements-notice.php'; endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
-            <ol class="request-steps" aria-label="Application progress">
+            <ol class="request-steps" aria-label="Pre-application progress">
                 <?php foreach ($steps as $step => $label): ?>
                     <?php $state = $step === $currentStep ? 'is-current' : ($currentStep > $step ? 'is-done' : ''); ?>
                     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
                 <?php endforeach; ?>
             </ol>
-            <h2 class="form-stage-heading">During: complete the application</h2>
+            <h2 class="form-stage-heading">During: complete the pre-application</h2>
             <form method="post">
                 <?= csrf_field() ?>
                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
@@ -292,7 +292,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <label class="checkbox-label"><input type="checkbox" name="privacy_consent" value="1" <?= ($formData['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?> required> As the child's parent/guardian, I have read and agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a> covering the processing of my child's personal data.</label>
                     </fieldset>
                 <?php else: ?>
-                    <fieldset><legend>Phase 5 of 5 — Review Your Application</legend>
+                    <fieldset><legend>Phase 5 of 5 — Review Your Pre-Application</legend>
                         <table class="review-table">
                             <tr><th>Full name</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                             <tr><th>Date of birth</th><td><?= oldv('applicant_birthdate') ?></td></tr>
@@ -314,7 +314,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                 <?php endif; ?>
                 <div class="form-actions">
                     <?php if ($currentStep > 1): ?><button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back</button><?php endif; ?>
-                    <?php if ($currentStep < count($steps)): ?><button type="submit" name="_action" value="next" class="btn">Next</button><?php else: ?><button type="submit" name="_action" value="final_submit" class="btn">Submit Application</button><?php endif; ?>
+                    <?php if ($currentStep < count($steps)): ?><button type="submit" name="_action" value="next" class="btn">Next</button><?php else: ?><button type="submit" name="_action" value="final_submit" class="btn">Submit Pre-Application</button><?php endif; ?>
                 </div>
             </form>
     <?php endif; ?>

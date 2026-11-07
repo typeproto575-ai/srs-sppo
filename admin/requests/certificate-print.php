@@ -21,7 +21,7 @@ $printOnly = true;
 $notice = null;
 $shouldPrint = false;
 $printMode = 'overlay';
-$allowedStatuses = ['for_signature', 'ready', 'released'];
+$allowedStatuses = ['matched', 'for_signature', 'ready', 'released'];
 
 $requestStmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
 $requestStmt->execute([$requestId]);
@@ -32,7 +32,10 @@ if (!$req) {
 
 $recordId = (int) ($req['record_id'] ?? 0);
 $source = null;
-$canPrint = $recordId > 0 && in_array((string) $req['status'], $allowedStatuses, true);
+$paymentGate = cert_request_payment_gate($req, 'for_signature');
+$canPrint = $recordId > 0
+    && in_array((string) $req['status'], $allowedStatuses, true)
+    && ((string) $req['status'] !== 'matched' || $paymentGate['ok']);
 if ($canPrint) {
     $source = sd_certificate_source($pdo, $recordId);
     $canPrint = $source !== null
@@ -43,6 +46,8 @@ if ($canPrint) {
 if (!$canPrint) {
     if ($recordId < 1) {
         $notice = 'This request does not have a linked parish record.';
+    } elseif ((string) $req['status'] === 'matched' && !$paymentGate['ok']) {
+        $notice = $paymentGate['reason'] ?? 'Record payment before printing the certificate.';
     } elseif (!in_array((string) $req['status'], $allowedStatuses, true)) {
         $notice = 'This request is not at a stage where its certificate can be printed.';
     } else {
@@ -74,7 +79,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['print_certificate']))
                 if (!$currentReq) {
                     throw new DomainException('This certificate request no longer exists.');
                 }
-                if (empty($currentReq['record_id']) || !in_array((string) $currentReq['status'], $allowedStatuses, true)) {
+                $currentPaymentGate = cert_request_payment_gate($currentReq, 'for_signature');
+                if (empty($currentReq['record_id'])
+                    || !in_array((string) $currentReq['status'], $allowedStatuses, true)
+                    || ((string) $currentReq['status'] === 'matched' && !$currentPaymentGate['ok'])) {
                     throw new DomainException('This request is no longer at a stage where its certificate can be printed.');
                 }
 

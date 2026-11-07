@@ -1,4 +1,4 @@
-# SRS-SPPO Data Dictionary (schema v2, 12 tables)
+# SRS-SPPO Data Dictionary (schema v2, 11 tables)
 
 Source of truth: `schema.sql`. If this file and `schema.sql` disagree, `schema.sql` wins.
 Engine: MySQL / MariaDB, InnoDB, utf8mb4. All `id` columns are `INT UNSIGNED AUTO_INCREMENT`.
@@ -14,10 +14,10 @@ Engine: MySQL / MariaDB, InnoDB, utf8mb4. All `id` columns are `INT UNSIGNED AUT
 | 5 | `sacrament_applications` | Applications to receive a sacrament (unverified intake) | `sacrament_applications` + 4 application tables, `workflow_requirements` |
 | 6 | `certificate_requests` | Certificate requests, from request to pickup | `certificate_requests` + 4 extension tables, `certificate_generation_log`, `submission_rate_limits` |
 | 7 | `schedule_events` | Parish calendar | `schedule_events` |
-| 9 | `announcements` | Public notices | `announcements` |
-| 10 | `settings` | Key/value settings | `site_settings`, `sacrament_eligibility_settings` |
-| 11 | `notifications` | In-app notices and email delivery log | `notifications`, `email_delivery_log` |
-| 12 | `audit_logs` | Who did what | `audit_logs` |
+| 8 | `announcements` | Public notices | `announcements` |
+| 9 | `settings` | Key/value settings | `site_settings`, `sacrament_eligibility_settings` |
+| 10 | `notifications` | In-app notices and email delivery log | `notifications`, `email_delivery_log` |
+| 11 | `audit_logs` | Who did what | `audit_logs` |
 
 Removed with no replacement: `srs_schema_migrations` (no migrations exist anymore), tracking-number lookup.
 
@@ -152,7 +152,7 @@ Unverified intake. Never writes to `persons` or `sacrament_records` by itself.
 | anonymized_at | DATETIME | yes | |
 | created_at, updated_at | DATETIME | no | |
 
-Reprints are recorded in `audit_logs`, not in a separate table.
+Reprints and other staff actions are recorded in `audit_logs`, not in a separate certificate-generation log table.
 
 ### 3.8 schedule_events
 `event_type` ENUM('mass','wedding','baptism','other'), `title`, `public_details` (shown publicly), `event_date`, `start_time`, `end_time`, `application_id` (FK, nullable), `notes` (internal only), `created_by`, `created_at`.
@@ -203,7 +203,7 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 
 ## 5. Status flows
 
-**Certificate:** `new` (payment recorded first) → `matched` (secretary linked a person and record, book entry verified; refused until `paid_at` is set) → `for_signature` (printed) → `ready` (priest signed, email sent) → `released` (counter check done). `rejected` is possible before release.
+**Certificate:** `new` (payment recorded first) → `matched` (secretary linked a person and record, book entry verified; refused until `paid_at` is set) → `for_signature` (printed) → `ready` (priest signed, email sent) → `released` (counter check done). `rejected` is possible before release. If an online search does not find a record, the applicant can ask the secretary to search the physical register; an online miss alone is not grounds to conclude the sacrament did not occur.
 
 **Application:** `new` → `reviewing` → `requirements_pending` (back and forth with `reviewing`) → `approved` → `scheduled` → `completed`. `rejected` is possible before completion.
 

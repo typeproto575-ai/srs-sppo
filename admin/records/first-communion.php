@@ -13,6 +13,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_once __DIR__ . '/../../includes/baptismal-finder.php';
 require_role('secretary');
 
@@ -22,9 +23,12 @@ $basePath = $basePath ?? base_path();
 // This page's own app-relative URL (path + current query string) so the record
 // view can send the user back here with the same search, filter and page.
 $selfReturn = '/admin/records/first-communion.php' . ((($_SERVER['QUERY_STRING'] ?? '') !== '') ? '?' . $_SERVER['QUERY_STRING'] : '');
+$editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
+$editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 
 $pageTitle = 'First Communion Records';
 $errors  = [];
+$duplicateMatches = [];
 $success = null;
 $prefillNotice = '';
 $prefillReviewUrl = '';
@@ -171,6 +175,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
+    if (empty($_POST['person_id']) && empty($_POST['from_application'])) {
+        $duplicateMatches = sd_find_possible_person_matches($pdo, [
+            'first_name' => $communicantFirst,
+            'middle_name' => $communicantMiddle,
+            'last_name' => $communicantLast,
+            'suffix' => $communicantSuffix,
+        ]);
+        if ($duplicateMatches && (string) ($_POST['confirm_new_person'] ?? '') !== '1') {
+            $errors[] = 'Possible matching person profiles were found. Select the correct profile or confirm that a new profile is still needed.';
+        }
+    }
 
     if (empty($errors)) {
         try {
@@ -282,14 +297,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
     $lineNo = trim((string) ($_POST['line_no'] ?? ''));
+    $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
 
     if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
     if ($editId <= 0)            $errors[] = 'Invalid record selected for update.';
+    if (strlen($correctionReason) < 5 || strlen($correctionReason) > 500) $errors[] = 'A correction reason of at least 5 characters is required.';
 
     if (empty($errors)) {
         try {
             $pdo->beginTransaction();
+            $auditBefore = sd_record_audit_snapshot($pdo, $editId);
             $personId = save_person_identity($pdo, posted_person_id($pdo, 'person_id'), [
                 'first_name' => $communicantFirst,
                 'middle_name' => $communicantMiddle,
@@ -319,11 +337,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
                 $editId,
             ]);
 
-            log_activity($pdo, current_user()['id'], 'first_communion_record_updated', 'sacrament_records', $editId,
-                "First Communion record updated for {$communicantName}");
+            sd_log_record_edit(
+                $pdo,
+                (int) current_user()['id'],
+                $editId,
+                $auditBefore,
+                sd_record_audit_snapshot($pdo, $editId),
+                $correctionReason
+            );
 
             $pdo->commit();
-            redirect_to('/admin/records/first-communion.php?updated=1');
+            redirect_to($editReturnUrl ?: '/admin/records/first-communion.php?updated=1');
             exit;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -575,20 +599,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/first-communion.php', $rfTotal, $rf); ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
                 <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'Encode New Entry' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
         <?php if ($isEdit): ?>
-            <p class="field-hint"><a href="<?= $basePath ?>/admin/records/first-communion.php">Cancel edit - back to adding a new entry.</a></p>
+            <p class="field-hint"><a href="<?= e($basePath . ($editReturnUrl ?: '/admin/records/first-communion.php')) ?>">Cancel edit</a></p>
         <?php endif; ?>
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
         <form autocomplete="off" method="post" action="" data-review data-review-title="Review First Communion Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
+            <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>">
             <input type="hidden" name="from_application" value="<?= (int) ($_POST['from_application'] ?? $fromApplicationId) ?>">
@@ -621,6 +646,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <div class="person-finder-results" data-person-results></div>
                     <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
                 </div>
+                <?php if ($duplicateMatches): ?>
+                    <div class="alert alert-warning">
+                        <strong>Possible existing profiles</strong>
+                        <ul><?php foreach ($duplicateMatches as $match): ?>
+                            <li><?= e(person_identity_label($match)) ?></li>
+                        <?php endforeach; ?></ul>
+                        <label><input type="checkbox" name="confirm_new_person" value="1"<?= (($_POST['confirm_new_person'] ?? '') === '1') ? ' checked' : '' ?>> I reviewed these matches and still need a separate person profile.</label>
+                    </div>
+                <?php endif; ?>
                 <label>Date of First Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
                 <label>Residence (Domicile) / Address <input autocomplete="off" type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
                 <div class="inline-fields">
@@ -649,6 +683,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <legend>Other</legend>
                 <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+                <?php if ($isEdit): ?>
+                    <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>
+                <?php endif; ?>
             </fieldset>
 
             <?php if ($isEdit): ?>
