@@ -81,6 +81,9 @@ The person-registry sequence documents the original rollout:
 8. `046_confirmation_application_profile_fields.sql` adds optional identity,
    family, and preparation fields to existing Confirmation applications to
    match the canonical schema.
+9. `047_add_person_profile_observanda.sql` adds the optional person-level
+   Observanda note. It is separate from remarks on individual sacrament
+   register entries.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support
@@ -88,6 +91,9 @@ public page settings (007), request review fields (012), and retention support
 may need them, but they are not blindly executed by the application. For an
 existing database, compare its schema with the required application version;
 do not rerun historical scripts just because their files are present.
+Existing V2 databases that need person-level Observanda must be backed up and
+reviewed before applying migration 047; the protected upgrade page does not
+apply it.
 
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a

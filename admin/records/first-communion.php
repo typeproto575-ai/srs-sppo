@@ -16,6 +16,8 @@ require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_once __DIR__ . '/../../includes/baptismal-finder.php';
 require_role('secretary');
+require_once __DIR__ . '/../../includes/record-editor-route.php';
+redirect_legacy_record_editor('first_communion');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
@@ -390,6 +392,8 @@ if (isset($_GET['edit'])) {
     }
 }
 $isEdit = $editRecord !== null;
+$isNew = (string) ($_GET['new'] ?? '') === '1';
+$pageTitle = $isEdit ? 'Edit First Communion Record' : 'New First Communion Record';
 
 // Suggested next logbook numbers for the encode dialog (create mode only).
 $suggest = $isEdit
@@ -537,9 +541,8 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
-            <h1>First Communion Records</h1>
+            <h1><?= $isEdit ? 'Edit First Communion Record' : 'New First Communion Record' ?></h1>
             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
-            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
         </div>
         <p class="field-hint">Tracked as a one-time received/not-received event, not per-Mass attendance.</p>
 
@@ -551,6 +554,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
         <?php endif; ?>
 
+                <?php if (!defined('SRS_UNIFIED_RECORD_EDITOR')): ?>
                 <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
         <div class="table-scroll" tabindex="0" role="region" aria-label="First Communion register records; scroll horizontally to view all columns">
         <table class="admin-table">
@@ -598,10 +602,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/first-communion.php', $rfTotal, $rf); ?>
+        <?php endif; ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors)) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'Encode New Entry' ?></h2>
+                <h2><?= $isEdit ? 'Edit First Communion Record #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'New First Communion Record' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">

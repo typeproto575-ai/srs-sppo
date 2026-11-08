@@ -493,7 +493,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p>Review pre-applications, link master person profiles, track requirements, and continue the parish review process.</p>
         </div>
         <div class="admin-queue-actions">
-            <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in pre-application</a>
+            <a href="<?= e($basePath . '/public/services.php#sacrament-applications') ?>" class="btn btn-secondary">New walk-in pre-application</a>
         </div>
         <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> pre-applications match the current filters">
             <strong><?= (int) $totalRows ?></strong>
@@ -545,15 +545,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     array_intersect(array_keys($requirements), $requirementKeys[$app['sacrament_type']] ?? [])
                 )));
                 $registerFormPaths = [
-                    'baptism' => '/admin/records/baptismal.php',
-                    'first_communion' => '/admin/records/first-communion.php',
-                    'confirmation' => '/admin/records/confirmation.php',
-                    'marriage' => '/admin/records/marriage.php',
+                    'baptism' => 'baptism',
+                    'first_communion' => 'first_communion',
+                    'confirmation' => 'confirmation',
+                    'marriage' => 'marriage',
                 ];
-                $registerFormPath = $registerFormPaths[$app['sacrament_type']] ?? null;
-                $prefillUrl = $registerFormPath === null
+                $registerEditorType = $registerFormPaths[$app['sacrament_type']] ?? null;
+                $prefillUrl = $registerEditorType === null
                     ? null
-                    : $basePath . $registerFormPath . '?' . http_build_query(['from_application' => (int) $app['id']]);
+                    : $basePath . '/admin/records/editor.php?' . http_build_query([
+                        'type' => $registerEditorType,
+                        'from_application' => (int) $app['id'],
+                    ]);
                 $validNextStatuses = application_queue_next_statuses((string) $app['status']);
                 $prerequisiteWarnings = [];
                 foreach ($matches as $match) {
@@ -770,7 +773,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <a class="btn btn-small" href="<?= e($prefillUrl) ?>">Prefill Register Form</a>
                             <?php else: ?>
                                 <button type="button" class="btn btn-small" disabled>Prefill Register Form</button>
-                                <span class="field-hint"><?php if ($registerFormPath === null): ?>
+                                <span class="field-hint"><?php if ($registerEditorType === null): ?>
                                     No register form is configured for this sacrament type.
                                 <?php else: ?>
                                     Link <?= $app['sacrament_type'] === 'marriage' ? 'both applicants' : 'a person' ?> first to prefill identity.

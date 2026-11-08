@@ -117,10 +117,14 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             </ul>
         </details>
 
-        <!-- Records: standalone item -->
-        <ul class="sidebar-menu" style="margin: 0.4rem 0;">
-            <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php', '/admin/records/view.php', '/admin/records/baptismal.php', '/admin/records/confirmation.php', '/admin/records/first-communion.php', '/admin/records/marriage.php') ?> title="Records" data-compact="RC"><span class="sidebar-link-glyph" aria-hidden="true">RC</span><span class="sidebar-link-label">Records</span></a></li>
-        </ul>
+        <!-- People and register records -->
+        <details class="sidebar-group" data-sidebar-group="people-records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/age-eligibility.php', '/admin/system/person-profile.php', '/admin/system/person-edit.php', '/admin/system/person-mapper.php') ?>>
+            <summary class="sidebar-group-title" title="People &amp; Records"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19z"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 13.2a4.8 4.8 0 0 1 3.5 4.6V19h-3"/></svg></span><span class="sidebar-group-label">People &amp; Records</span></summary>
+            <ul class="sidebar-menu sidebar-submenu">
+                <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php', '/admin/records/view.php', '/admin/records/editor.php', '/admin/records/baptismal.php', '/admin/records/confirmation.php', '/admin/records/first-communion.php', '/admin/records/marriage.php') ?> title="Records" data-compact="RC"><span class="sidebar-link-glyph" aria-hidden="true">RC</span><span class="sidebar-link-label">Records</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/age-eligibility.php"<?= $isActive('/admin/age-eligibility.php') ?> title="Age Eligibility Review" data-compact="AE"><span class="sidebar-link-glyph" aria-hidden="true">AE</span><span class="sidebar-link-label">Age Eligibility Review</span></a></li>
+            </ul>
+        </details>
 
         <!-- Schedule section -->
         <details class="sidebar-group" data-sidebar-group="schedule" name="admin-sidebar"<?= $groupIsOpen('/admin/schedule/') ?>>

@@ -10,6 +10,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
+require_once __DIR__ . '/../../includes/record-search.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -68,20 +69,34 @@ SQL;
 $where = [];
 $params = [];
 if ($search !== '') {
-    $nameTokens = array_slice(preg_split('/[\s,]+/', $search, -1, PREG_SPLIT_NO_EMPTY), 0, 5);
-    $nameTokenConditions = [];
-    $nameTokenParams = [];
-    foreach ($nameTokens as $token) {
-        $nameTokenConditions[] = '(record_name LIKE ? OR spouse_name LIKE ?)';
-        $nameTokenLike = '%' . addcslashes($token, '\\_%') . '%';
-        array_push($nameTokenParams, $nameTokenLike, $nameTokenLike);
+    $reference = unified_record_search_reference($search);
+    if ($reference !== null) {
+        foreach ($reference as $field => $value) {
+            if ($field === 'book_no') {
+                $bookValues = unified_record_search_book_values($value);
+                $where[] = "UPPER(TRIM(COALESCE({$field}, ''))) IN (" . implode(', ', array_fill(0, count($bookValues), 'UPPER(?)')) . ')';
+                array_push($params, ...$bookValues);
+            } else {
+                $where[] = "UPPER(TRIM(COALESCE({$field}, ''))) = UPPER(?)";
+                $params[] = $value;
+            }
+        }
+    } else {
+        $nameTokens = array_slice(preg_split('/[\s,]+/', $search, -1, PREG_SPLIT_NO_EMPTY), 0, 5);
+        $nameTokenConditions = [];
+        $nameTokenParams = [];
+        foreach ($nameTokens as $token) {
+            $nameTokenConditions[] = '(record_name LIKE ? OR spouse_name LIKE ?)';
+            $nameTokenLike = '%' . addcslashes($token, '\\_%') . '%';
+            array_push($nameTokenParams, $nameTokenLike, $nameTokenLike);
+        }
+        $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
+            . ($nameTokenConditions ? ' OR (' . implode(' AND ', $nameTokenConditions) . ')' : '')
+            . ')';
+        $fullSearchLike = '%' . addcslashes($search, '\\_%') . '%';
+        array_push($params, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike);
+        array_push($params, ...$nameTokenParams);
     }
-    $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
-        . ($nameTokenConditions ? ' OR (' . implode(' AND ', $nameTokenConditions) . ')' : '')
-        . ')';
-    $fullSearchLike = '%' . addcslashes($search, '\\_%') . '%';
-    array_push($params, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike);
-    array_push($params, ...$nameTokenParams);
 }
 if ($type !== '') {
     $where[] = 'record_type = ?';
@@ -195,24 +210,24 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <h1>Sacramental Register Records</h1>
                 <p class="field-hint">These are completed sacrament entries already recorded in the parish register. Certificate requests and walk-in requests are managed separately.</p>
 <?php
-$formFileByType = [
-    'baptismal' => 'baptismal.php',
-    'confirmation' => 'confirmation.php',
-    'first_communion' => 'first-communion.php',
-    'marriage' => 'marriage.php',
+$editorTypeByRecordType = [
+    'baptismal' => 'baptism',
+    'confirmation' => 'confirmation',
+    'first_communion' => 'first_communion',
+    'marriage' => 'marriage',
 ];
 ?>
 <details style="display:inline-block;position:relative;margin-left:1rem;">
     <summary class="btn btn-success btn-small" style="cursor:pointer;">+ Add record</summary>
     <div style="position:absolute;z-index:10;background:#fff;border:1px solid #ccc;padding:.5rem;margin-top:.25rem;min-width:12rem;">
-        <?php foreach ($formFileByType as $rt => $file): ?>
-            <a class="btn btn-small" style="display:block;margin:.25rem 0;" href="<?= e($basePath . '/admin/records/' . $file . '?new=1') ?>"><?= e($labels[$rt] ?? ucfirst($rt)) ?></a>
+        <?php foreach ($editorTypeByRecordType as $rt => $editorType): ?>
+            <a class="btn btn-small" style="display:block;margin:.25rem 0;" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $editorType, 'new' => 1])) ?>"><?= e($labels[$rt] ?? ucfirst($rt)) ?></a>
         <?php endforeach; ?>
     </div>
 </details>
             </div>
         </div>
-        <p class="field-hint">Search across the digital index, then open the register-specific editor to verify the physical logbook reference.</p>
+        <p class="field-hint">Search names (words can be in any order), record IDs, or an exact register reference such as <code>b12 p1 l4</code>. You can also search one field, such as <code>p1</code> or <code>l4</code>; then open the register-specific editor to verify the physical logbook reference.</p>
 
         <div class="record-type-chips">
 <?php foreach (['' => 'All', 'baptismal' => 'Baptism', 'confirmation' => 'Confirmation', 'first_communion' => 'First Communion', 'marriage' => 'Marriage'] as $chipValue => $chipLabel): ?>
@@ -227,7 +242,7 @@ $formFileByType = [
                 <?php if ($toYear !== null): ?><input type="hidden" name="to" value="<?= (int) $toYear ?>"><?php endif; ?>
                 <?php if ($perPage !== 25): ?><input type="hidden" name="per_page" value="<?= (int) $perPage ?>"><?php endif; ?>
                 <?php if ($sort !== 'date_desc'): ?><input type="hidden" name="sort" value="<?= e($sort) ?>"><?php endif; ?>
-                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Search name (words can be in any order), Record ID, book, page, or line">
+                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Name, record ID, or register reference (e.g. b12 p1 l4)">
                 <button type="submit" class="btn btn-small">Search</button>
                 <?php if ($search !== ''): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['q' => null, 'page' => null])) ?>">Clear</a><?php endif; ?>
             </form>
@@ -329,8 +344,10 @@ $formFileByType = [
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
                             <?php
-                        $editFile = $formFileByType[$record['record_type']] ?? null;
-                        $editUrl = $editFile ? $basePath . '/admin/records/' . $editFile . '?edit=' . (int) $record['id'] : null;
+                        $editorType = $editorTypeByRecordType[$record['record_type']] ?? null;
+                        $editUrl = $editorType
+                            ? $basePath . '/admin/records/editor.php?' . http_build_query(['type' => $editorType, 'edit' => (int) $record['id'], 'return' => $selfReturn])
+                            : null;
                         ?>
                         <td class="row-actions">
                             <a class="btn btn-secondary btn-small" href="<?= e($viewUrl) ?>">View record</a>

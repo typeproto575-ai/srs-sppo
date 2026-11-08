@@ -867,6 +867,104 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.textContent = '';
         });
     });
+
+    document.querySelectorAll('[data-parent-profile-search]').forEach(function (finder) {
+        var search = finder.querySelector('[data-parent-profile-query]');
+        var hiddenId = finder.querySelector('[data-parent-profile-id]');
+        var selection = finder.querySelector('[data-parent-profile-selection]');
+        var results = finder.querySelector('[data-parent-profile-results]');
+        var clearButton = finder.querySelector('[data-parent-profile-clear]');
+        if (!search || !hiddenId || !selection || !results || !clearButton) return;
+
+        var endpoint = finder.dataset.endpoint;
+        var currentPersonId = Number(finder.dataset.personId);
+        var selectedLabel = hiddenId.value ? search.value : '';
+        var searchTimer = null;
+        var requestNumber = 0;
+
+        function renderResults(people) {
+            results.replaceChildren();
+            if (!people.length) {
+                results.textContent = 'No matching profiles found. Check the spelling or leave the link blank.';
+                return;
+            }
+            people.forEach(function (person) {
+                if (Number(person.id) === currentPersonId) return;
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'person-finder-result';
+                var name = document.createElement('strong');
+                name.textContent = [person.first_name, person.middle_name, person.last_name, person.suffix]
+                    .filter(Boolean).join(' ');
+                var details = document.createElement('span');
+                details.textContent = [
+                    person.birth_date || 'Date of birth not recorded',
+                    'Profile #' + person.id
+                ].join(' · ');
+                button.append(name, details);
+                button.addEventListener('click', function () {
+                    hiddenId.value = String(person.id);
+                    selectedLabel = name.textContent;
+                    search.value = selectedLabel;
+                    selection.textContent = 'Linked to ' + selectedLabel + ' (#' + person.id + ').';
+                    clearButton.hidden = false;
+                    results.replaceChildren();
+                });
+                results.appendChild(button);
+            });
+            if (!results.childElementCount) {
+                results.textContent = 'A person cannot be linked as their own parent.';
+            }
+        }
+
+        function searchPeople() {
+            var query = search.value.trim();
+            var requestId = ++requestNumber;
+            results.replaceChildren();
+            if (query.length < 2) {
+                if (query.length) results.textContent = 'Enter at least two characters to search.';
+                return;
+            }
+            if (query === selectedLabel && hiddenId.value) return;
+            results.textContent = 'Searching profiles...';
+            fetch(endpoint + '?' + new URLSearchParams({ q: query }), { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Search failed');
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (requestId === requestNumber) renderResults(data.results || []);
+                })
+                .catch(function () {
+                    if (requestId === requestNumber) {
+                        results.textContent = 'Profile search is unavailable. Please try again.';
+                    }
+                });
+        }
+
+        search.addEventListener('input', function () {
+            requestNumber++;
+            if (hiddenId.value && search.value.trim() !== selectedLabel) {
+                hiddenId.value = '';
+                selectedLabel = '';
+                selection.textContent = 'Select a search result to link a profile.';
+                clearButton.hidden = true;
+            }
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(searchPeople, 250);
+        });
+
+        clearButton.addEventListener('click', function () {
+            requestNumber++;
+            hiddenId.value = '';
+            selectedLabel = '';
+            search.value = '';
+            selection.textContent = 'No profile linked.';
+            results.replaceChildren();
+            clearButton.hidden = true;
+        });
+    });
+
     // ---- 6) Admin sidebar ---------------------------------------------------
     // Group open state remains server-driven; only the compact rail preference
     // is saved. On narrow layouts the full-width menu is always shown.

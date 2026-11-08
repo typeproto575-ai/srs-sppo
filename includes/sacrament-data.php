@@ -275,6 +275,97 @@ function sd_get_person_records(PDO $pdo, int $personId): array
     return $result;
 }
 
+/**
+ * List living baptized persons who have reached a sacrament's configured
+ * minimum age and do not yet have that sacrament recorded.
+ *
+ * This is an advisory review list, not a determination that someone is ready
+ * to receive a sacrament. Age comparison matches dashboard notifications.
+ */
+function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
+{
+    if (!in_array($sacramentType, ['first_communion', 'confirmation'], true)) {
+        throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.');
+    }
+
+    $range = sacrament_eligibility_range($pdo, $sacramentType);
+    $minimumAge = (int) $range['min_age'];
+    $today = new DateTimeImmutable('today');
+    $stmt = $pdo->prepare(
+        'SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
+                (SELECT b.id FROM sacrament_records b
+                 WHERE b.person_id = p.id AND b.sacrament_type = \'baptism\'
+                 LIMIT 1) AS baptism_record_id
+         FROM persons p
+         WHERE p.birth_date IS NOT NULL
+           AND p.is_deceased = 0
+           AND EXISTS (
+               SELECT 1 FROM sacrament_records baptism
+               WHERE baptism.person_id = p.id AND baptism.sacrament_type = \'baptism\'
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM sacrament_records received
+               WHERE received.person_id = p.id AND received.sacrament_type = ?
+           )
+         ORDER BY p.birth_date, p.last_name, p.first_name, p.id'
+    );
+    $stmt->execute([$sacramentType]);
+
+    $people = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
+        $birthDate = new DateTimeImmutable((string) $person['birth_date']);
+        if ($birthDate->modify('+' . $minimumAge . ' years') > $today) {
+            continue;
+        }
+        $person['full_name'] = sd_full_name($person);
+        $person['age'] = $birthDate->diff($today)->y;
+        $people[] = $person;
+    }
+    return $people;
+}
+
+/**
+ * Apply a display-only age-group or custom range filter to the review list.
+ */
+function sd_filter_age_eligible_persons(
+    array $people,
+    string $ageGroup,
+    ?int $minimumAge = null,
+    ?int $maximumAge = null
+): array {
+    $ranges = [
+        'all' => null,
+        '7_9' => [7, 9],
+        '10_12' => [10, 12],
+        '13_17' => [13, 17],
+        '18_plus' => [18, 120],
+    ];
+
+    if ($ageGroup === 'custom') {
+        if ($minimumAge === null || $maximumAge === null) {
+            throw new InvalidArgumentException('Enter both a minimum and maximum age for a custom range.');
+        }
+        if ($minimumAge < 0 || $maximumAge > 120 || $minimumAge > $maximumAge) {
+            throw new InvalidArgumentException('Enter a valid age range from 0 to 120, with the minimum no greater than the maximum.');
+        }
+        $range = [$minimumAge, $maximumAge];
+    } elseif (array_key_exists($ageGroup, $ranges)) {
+        $range = $ranges[$ageGroup];
+    } else {
+        throw new InvalidArgumentException('Choose a valid age group.');
+    }
+
+    if ($range === null) {
+        return $people;
+    }
+
+    return array_values(array_filter(
+        $people,
+        static fn(array $person): bool => (int) $person['age'] >= $range[0]
+            && (int) $person['age'] <= $range[1]
+    ));
+}
+
 /** Linked family: ['father' => person|null, 'mother' => person|null, 'children' => [persons]]. */
 function sd_get_family(PDO $pdo, int $personId): array
 {
@@ -396,7 +487,7 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
 {
     $allowed = ['first_name', 'middle_name', 'last_name', 'suffix', 'sex', 'birth_date', 'birth_place',
         'father_name', 'mother_maiden_name', 'father_person_id', 'mother_person_id', 'address',
-        'contact_number', 'email', 'baptismal_status', 'is_deceased', 'death_date'];
+        'contact_number', 'email', 'baptismal_status', 'is_deceased', 'death_date', 'observanda'];
     $values = [];
     foreach ($allowed as $key) {
         if (array_key_exists($key, $data)) {
@@ -447,12 +538,63 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
     return $id;
 }
 
+function sd_validate_parent_profile_links(PDO $pdo, int $personId, array $parentIds): ?string
+{
+    $parentIds = array_values(array_unique(array_filter(
+        array_map('intval', $parentIds),
+        static fn (int $id): bool => $id > 0
+    )));
+    if (in_array($personId, $parentIds, true)) {
+        return 'A person cannot be linked as their own parent.';
+    }
+    if ($parentIds === []) {
+        return null;
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($parentIds), '?'));
+    $stmt = $pdo->prepare("SELECT id FROM persons WHERE id IN ({$placeholders})");
+    $stmt->execute($parentIds);
+    if (count($stmt->fetchAll(PDO::FETCH_COLUMN)) !== count($parentIds)) {
+        return 'Choose existing parent profiles from the search results.';
+    }
+
+    $frontier = $parentIds;
+    $visited = [];
+    $ancestorStmt = $pdo->prepare(
+        'SELECT father_person_id, mother_person_id FROM persons WHERE id = ?'
+    );
+    while ($frontier !== []) {
+        $ancestorId = array_pop($frontier);
+        if ($ancestorId === $personId) {
+            return 'This parent link would create a family cycle. Choose another profile.';
+        }
+        if (isset($visited[$ancestorId])) {
+            continue;
+        }
+        $visited[$ancestorId] = true;
+
+        $ancestorStmt->execute([$ancestorId]);
+        $ancestor = $ancestorStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$ancestor) {
+            continue;
+        }
+        foreach (['father_person_id', 'mother_person_id'] as $field) {
+            if (!empty($ancestor[$field])) {
+                $frontier[] = (int) $ancestor[$field];
+            }
+        }
+    }
+
+    return null;
+}
+
 function sd_person_audit_snapshot(PDO $pdo, int $personId): array
 {
     $fields = [
         'first_name', 'middle_name', 'last_name', 'suffix', 'sex', 'birth_date',
-        'birth_place', 'father_name', 'mother_maiden_name', 'baptismal_status',
-        'address', 'contact_number',
+        'birth_place', 'father_name', 'mother_maiden_name', 'father_person_id',
+        'mother_person_id', 'baptismal_status',
+        'address', 'contact_number', 'observanda',
     ];
     $columns = implode(', ', array_merge(['id'], $fields));
     if ($pdo->inTransaction()) {

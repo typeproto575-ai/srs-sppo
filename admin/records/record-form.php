@@ -16,6 +16,14 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
+require_once __DIR__ . '/../../includes/record-editor-route.php';
+$recordTypeInput = $_GET['type'] ?? 'baptism';
+$recordType = is_string($recordTypeInput) ? $recordTypeInput : '';
+if (!in_array($recordType, ['baptism', 'first_communion', 'confirmation', 'marriage'], true)) {
+    redirect_to('/admin/records/index.php');
+    exit;
+}
+redirect_legacy_record_editor($recordType);
 
 $basePath = $basePath ?? base_path();
 

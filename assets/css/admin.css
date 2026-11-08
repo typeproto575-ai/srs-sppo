@@ -738,6 +738,47 @@ textarea {
     margin-left: auto;
 }
 
+.person-parent-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem 1rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--admin-border);
+}
+
+.person-parent-links > h3,
+.person-parent-links > .field-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.person-parent-links > h3 {
+    color: var(--admin-ink);
+    font-family: var(--admin-font-serif);
+    font-size: 1.15rem;
+}
+
+.person-parent-link {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.person-parent-link > label {
+    color: var(--admin-ink);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.person-parent-link input[type="search"] { margin: 0; }
+.person-parent-link__selection { min-height: 1.2rem; color: var(--admin-muted); font-size: 0.78rem; }
+.person-parent-link__results { display: grid; gap: 0.4rem; max-height: 12rem; overflow-y: auto; }
+.person-parent-link__results:empty { display: none; }
+.person-parent-link [data-parent-profile-clear] { justify-self: start; }
+.person-parent-link [data-parent-profile-clear][hidden] { display: none; }
+
 .person-match-create {
     display: grid;
     gap: 0.5rem;
@@ -3779,7 +3820,6 @@ textarea {
 .person-profile-summary__value { color: #fffdf7; font-family: var(--admin-font-serif); font-size: 2.5rem; line-height: 1; }
 .person-profile-summary__label { margin-top: .25rem; color: rgba(255,253,247,.72); font-size: .76rem; }
 
-.person-profile-state,
 .person-profile-count,
 .person-profile-readonly {
     display: inline-flex;
@@ -3795,10 +3835,6 @@ textarea {
     line-height: 1.25;
     white-space: nowrap;
 }
-
-.person-profile-state { border-color: rgba(255,255,255,.2); color: #f7f3e7; background: rgba(255,255,255,.1); }
-.person-profile-state::before { width: 7px; height: 7px; border-radius: 50%; background: #9ed29d; content: ""; }
-.person-profile-state.is-deceased::before { background: #e7c77f; }
 
 .person-profile-section { padding: clamp(1.15rem, 2.5vw, 1.65rem); }
 
@@ -3940,6 +3976,92 @@ textarea {
 .person-profile-record.is-empty { border-style: dashed; background: #fcfbf8; }
 .person-profile-warning { margin: 0; padding: .65rem .8rem; font-size: .8rem; }
 .person-profile-warning p { margin: .15rem 0; }
+.person-profile-observanda h4 { margin: 0 0 .45rem; color: var(--admin-ink); font-size: .78rem; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
+.person-profile-observanda .record-view-remarks { font-size: .82rem; }
+.person-profile-observanda-form { display: grid; gap: .55rem; }
+.person-profile-observanda-form > label { color: var(--admin-ink); font-size: .8rem; font-weight: 700; }
+.person-profile-observanda-form textarea { min-height: 120px; }
+.person-profile-observanda-actions { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
+.person-profile-observanda-actions .field-hint { margin: 0; }
+
+.age-eligibility-page { display: grid; gap: 1rem; max-width: 1380px; margin-inline: auto; }
+.age-eligibility-heading,
+.age-eligibility-results__heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+.age-eligibility-heading { position: relative; isolation: isolate; overflow: hidden; min-height: 188px; padding: clamp(1.4rem, 3vw, 2.25rem); border: 1px solid #254a34; border-radius: 16px; color: #fff; background: radial-gradient(ellipse at 86% 16%, rgba(201,170,101,.22), transparent 30%), linear-gradient(115deg, #183d2b 0%, #24543a 60%, #2f6041 100%); box-shadow: 0 14px 32px rgba(24,61,43,.13); animation: age-review-enter 420ms ease-out both; }
+.age-eligibility-heading::after { position: absolute; z-index: -1; right: 7%; bottom: -96px; width: 240px; height: 240px; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; box-shadow: 0 0 0 22px rgba(255,255,255,.025), 0 0 0 48px rgba(255,255,255,.02); content: ""; }
+.age-eligibility-heading__copy { max-width: 760px; }
+.age-eligibility-heading h1 { margin: 0; color: #fff; font-family: var(--admin-font-serif); font-size: clamp(1.85rem, 3.2vw, 2.6rem); font-weight: 500; letter-spacing: -.025em; line-height: 1.1; }
+.age-eligibility-heading__copy > p:last-child { max-width: 680px; margin: .7rem 0 0; color: rgba(255,255,255,.78); font-size: .95rem; line-height: 1.55; }
+.age-eligibility-eyebrow { margin: 0 0 .45rem; color: #e4c985; font-size: .7rem; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+.age-eligibility-heading__stat { position: relative; z-index: 1; display: grid; flex: 0 0 auto; justify-items: center; min-width: 116px; padding: .75rem 1rem; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(255,255,255,.1); backdrop-filter: blur(6px); }
+.age-eligibility-heading__stat strong { color: #fff; font-family: var(--admin-font-serif); font-size: 2.35rem; font-weight: 500; line-height: 1; }
+.age-eligibility-heading__stat span { margin-top: .35rem; color: rgba(255,255,255,.75); font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.age-eligibility-notice { display: flex; align-items: flex-start; gap: .8rem; margin: 0; padding: .9rem 1rem; border: 1px solid #eadfbe; border-left: 4px solid #b38b3b; border-radius: 10px; background: #fbf7eb; }
+.age-eligibility-notice__mark { display: grid; flex: 0 0 1.45rem; width: 1.45rem; height: 1.45rem; place-items: center; border-radius: 50%; color: #fff; background: #9a7836; font-family: Georgia, serif; font-size: .9rem; font-weight: 700; }
+.age-eligibility-notice strong { color: #4b402a; font-size: .83rem; }
+.age-eligibility-notice p { margin: .15rem 0 0; color: #685e49; font-size: .81rem; line-height: 1.5; }
+.age-eligibility-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.age-eligibility-tab { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 76px; padding: .9rem 1rem; border: 1px solid #deded3; border-radius: 12px; color: var(--admin-ink); background: #fff; text-decoration: none; box-shadow: 0 3px 10px rgba(31,48,38,.025); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.age-eligibility-tab:hover { transform: translateY(-2px); border-color: #97ad94; box-shadow: 0 9px 20px rgba(31,48,38,.08); }
+.age-eligibility-tab.is-active { border-color: #2f5e3f; box-shadow: inset 4px 0 #c6a45e, 0 8px 18px rgba(31,70,46,.1); }
+.age-eligibility-tab__label { font-family: var(--admin-font-serif); font-size: 1.08rem; font-weight: 600; }
+.age-eligibility-tab__meta { display: flex; align-items: center; gap: .45rem; color: var(--admin-muted); font-size: .72rem; }
+.age-eligibility-tab__count { display: grid; min-width: 2rem; height: 2rem; place-items: center; padding-inline: .35rem; border-radius: 50%; color: #2e583b; background: #edf4eb; font-size: .8rem; font-weight: 800; }
+.age-eligibility-filters { display: grid; gap: .85rem; margin: 0; padding: 1.05rem 1.15rem .85rem; border: 1px solid #e1e0d7; border-radius: 12px; background: #f7f6f1; }
+.age-eligibility-filters__heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.age-eligibility-filters__heading > div { display: grid; gap: .1rem; }
+.age-eligibility-filters__heading strong { color: var(--admin-ink); font-family: var(--admin-font-serif); font-size: 1.08rem; font-weight: 600; }
+.age-eligibility-filters__heading > span { color: var(--admin-muted); font-size: .75rem; }
+.age-eligibility-filters__eyebrow { color: var(--admin-green); font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.age-eligibility-filters__controls { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; }
+.age-eligibility-filter-field { display: grid; gap: .35rem; min-width: min(100%, 220px); margin: 0; color: var(--admin-ink); font-size: .76rem; font-weight: 750; }
+.age-eligibility-filter-field select { min-height: 42px; }
+.age-eligibility-custom-range { display: grid; align-content: end; gap: .35rem; min-height: 100%; }
+.age-eligibility-custom-range[hidden] { display: none; }
+.age-eligibility-custom-range > strong { color: var(--admin-ink); font-size: .76rem; font-weight: 750; }
+.age-eligibility-custom-range__inputs { display: flex; align-items: flex-end; gap: .55rem; }
+.age-eligibility-custom-range label { display: grid; gap: .3rem; color: var(--admin-muted); font-size: .72rem; font-weight: 700; }
+.age-eligibility-custom-range input { width: 92px; min-height: 42px; }
+.age-eligibility-custom-range__separator { padding-bottom: .7rem; color: #827d6d; font-size: .78rem; }
+.age-eligibility-filters__actions { display: flex; align-items: center; gap: .7rem; }
+.age-eligibility-filters__actions .btn { min-height: 42px; }
+.age-eligibility-clear { padding: .55rem .35rem; color: var(--admin-muted); font-size: .8rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.age-eligibility-clear:hover { color: var(--admin-green); }
+.age-eligibility-filter-hint { margin: -.25rem 0 0; color: var(--admin-muted); font-size: .73rem; }
+.age-eligibility-results { overflow: hidden; padding: clamp(1rem, 2.5vw, 1.45rem); border: 1px solid #e3e1d8; border-radius: 14px; box-shadow: 0 5px 18px rgba(31,48,38,.035); animation: age-review-enter 460ms 70ms ease-out both; }
+.age-eligibility-results__heading { align-items: center; margin-bottom: 1rem; padding-bottom: .9rem; border-bottom: 1px solid #e9e7df; }
+.age-eligibility-results__heading .person-profile-section__eyebrow { color: var(--admin-green); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.age-eligibility-results__heading h2 { margin: .12rem 0 0; color: var(--admin-ink); font-family: var(--admin-font-serif); font-size: 1.55rem; font-weight: 500; }
+.age-eligibility-results__tools { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.age-eligibility-results__tools > p { margin: 0; color: var(--admin-muted); font-size: .78rem; }
+.age-eligibility-results__tools > p strong { color: var(--admin-green); font-size: 1rem; }
+.age-eligibility-results__tools .per-page-form { display: flex; align-items: end; width: max-content; margin: 0; }
+.age-eligibility-results__tools .per-page-form label { margin: 0; color: var(--admin-ink); font-size: .8rem; font-weight: 700; }
+.age-eligibility-results__tools .per-page-form select { width: auto; min-width: 5.5rem; margin: .2rem 0 0 .35rem; }
+.age-eligibility-pagination { justify-content: space-between; flex-wrap: wrap; margin-bottom: 0; }
+.age-eligibility-pagination .pagination-info { color: var(--admin-muted); font-size: .8rem; }
+.age-eligibility-pagination .pagination-btns { display: flex; align-items: center; gap: .55rem; }
+.age-eligibility-pagination .pagination-btns > span { color: var(--admin-muted); font-size: .8rem; }
+.age-eligibility-table { margin: 0; border: 0; border-radius: 8px; }
+.age-eligibility-table th { padding-block: .8rem; background: #f3f2eb; font-size: .69rem; letter-spacing: .07em; }
+.age-eligibility-table td { padding-block: .82rem; vertical-align: middle; font-size: .83rem; }
+.age-eligibility-table tbody tr { transition: background 140ms ease; }
+.age-eligibility-table tbody tr:hover { background: #f7f8f2; }
+.age-eligibility-table td:first-child strong { color: #243d2d; font-weight: 750; }
+.age-eligibility-age { display: inline-grid; min-width: 2rem; height: 2rem; place-items: center; border: 1px solid #e5e1d3; border-radius: 50%; color: #4b452f; background: #faf8f0; font-weight: 800; }
+.age-eligibility-baptism,
+.age-eligibility-in-range { color: #356342; font-size: .77rem; font-weight: 700; }
+.age-eligibility-baptism > span { margin-right: .25rem; color: #51815b; }
+.age-eligibility-review-flag { display: inline-block; padding: .3rem .55rem; border: 1px solid #eadbb5; border-radius: 999px; color: #755818; background: #fbf5e5; font-size: .72rem; font-weight: 750; }
+.age-eligibility-open { display: inline-flex; align-items: center; gap: .35rem; color: #2f6041; font-size: .8rem; font-weight: 800; text-decoration: none; }
+.age-eligibility-open span { transition: transform 140ms ease; }
+.age-eligibility-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.age-eligibility-open:hover span { transform: translateX(3px); }
+.age-eligibility-empty { display: grid; justify-items: center; padding: 2.6rem 1rem; border: 1px dashed #d9d7cb; border-radius: 10px; background: #fbfaf6; text-align: center; }
+.age-eligibility-empty__mark { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; margin-bottom: .7rem; border-radius: 50%; color: #566a58; background: #eaf0e8; font-family: var(--admin-font-serif); font-size: 1.1rem; }
+.age-eligibility-empty strong { color: var(--admin-ink); font-family: var(--admin-font-serif); font-size: 1.1rem; font-weight: 600; }
+.age-eligibility-empty p { margin: .35rem 0 0; color: var(--admin-muted); font-size: .82rem; }
+@keyframes age-review-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .person-profile-family { display: flex; flex-wrap: wrap; gap: .75rem; }
 .person-profile-relative { display: grid; align-content: start; gap: .4rem; min-width: 180px; padding: .85rem 1rem; border: 1px solid var(--profile-rule); border-radius: 9px; background: var(--profile-paper); }
@@ -3951,6 +4073,23 @@ textarea {
 }
 
 @media (max-width: 680px) {
+    .person-parent-links { grid-template-columns: minmax(0, 1fr); }
+    .age-eligibility-heading,
+    .age-eligibility-results__heading { align-items: flex-start; flex-direction: column; }
+    .age-eligibility-heading { min-height: 0; }
+    .age-eligibility-heading__stat { display: flex; align-items: baseline; gap: .45rem; min-width: 0; padding: .45rem .7rem; }
+    .age-eligibility-heading__stat strong { font-size: 1.3rem; }
+    .age-eligibility-heading__stat span { margin: 0; }
+    .age-eligibility-tabs { grid-template-columns: 1fr; }
+    .age-eligibility-filters__heading { align-items: flex-start; flex-direction: column; gap: .3rem; }
+    .age-eligibility-filters__controls { align-items: stretch; }
+    .age-eligibility-filter-field { width: 100%; }
+    .age-eligibility-custom-range { flex-wrap: wrap; }
+    .age-eligibility-filters__actions { width: 100%; }
+    .age-eligibility-filters__actions .btn { flex: 1; }
+    .age-eligibility-results__heading { gap: .5rem; }
+    .age-eligibility-results__tools { align-items: flex-start; flex-direction: column; gap: .5rem; }
+    .age-eligibility-results__tools > p { line-height: 1.5; }
     .person-profile-hero { align-items: flex-start; flex-direction: column; gap: 1.2rem; min-height: 0; }
     .person-profile-back { margin-bottom: 1rem; }
     .person-profile-summary { display: flex; align-items: center; justify-items: start; gap: .9rem; }
@@ -3971,6 +4110,10 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
     .person-profile-page .record-card.person-profile-record { transition: none; }
+    .age-eligibility-heading,
+    .age-eligibility-results { animation: none; }
+    .age-eligibility-tab,
+    .age-eligibility-open span { transition: none; }
 }
 
 /* Unified record detail: register-first hierarchy with supporting history. */

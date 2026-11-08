@@ -7,10 +7,44 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
 require_once __DIR__ . '/../admin/certificates/sacramental-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
+require_once __DIR__ . '/../includes/record-search.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class FunctionsTest extends TestCase
 {
+    public function testUnifiedRecordSearchParsesRegisterReferences(): void
+    {
+        self::assertSame(
+            ['book_no' => '12', 'page_no' => '1', 'line_no' => '4'],
+            unified_record_search_reference('b12, p1, l4')
+        );
+        self::assertSame(
+            ['book_no' => 'II', 'page_no' => '1', 'line_no' => '4'],
+            unified_record_search_reference('Book II / Page: 1 / Line #4')
+        );
+        self::assertSame(['page_no' => '12'], unified_record_search_reference('p12'));
+        self::assertSame(['line_no' => '4'], unified_record_search_reference('line 4'));
+        self::assertSame(['book_no' => '12'], unified_record_search_reference('b 12'));
+    }
+
+    public function testUnifiedRecordSearchLeavesOrdinaryOrInvalidQueriesAsGeneralSearches(): void
+    {
+        self::assertNull(unified_record_search_reference('Ricardo Mendoza'));
+        self::assertNull(unified_record_search_reference('12'));
+        self::assertNull(unified_record_search_reference('baptism'));
+        self::assertNull(unified_record_search_reference('b12 p1 extra'));
+        self::assertNull(unified_record_search_reference('b12 b13'));
+    }
+
+    public function testUnifiedRecordBookSearchMatchesEquivalentArabicAndRomanValues(): void
+    {
+        self::assertSame(['3', 'III'], unified_record_search_book_values('3'));
+        self::assertSame(['III', '3'], unified_record_search_book_values('III'));
+        self::assertSame(['03', '3', 'III'], unified_record_search_book_values('03'));
+        self::assertSame(['IIII'], unified_record_search_book_values('IIII'));
+        self::assertSame(['4000'], unified_record_search_book_values('4000'));
+    }
+
     public function testAdminNotificationLinksStayInsideTheAdminApplication(): void
     {
         self::assertSame(
@@ -80,6 +114,36 @@ final class FunctionsTest extends TestCase
             'status' => 'matched',
             'paid_at' => null,
         ], 'for_signature')['ok']);
+    }
+
+    public function testCertificateReleaseRequiresPaymentAndCounterVerification(): void
+    {
+        $request = ['status' => 'ready', 'paid_at' => null];
+        self::assertSame(
+            'Payment has not been recorded.',
+            cert_request_release_gate($request, 'self', '', true, false)['reason']
+        );
+
+        $request['paid_at'] = '2026-10-14 05:00:00';
+        self::assertSame(
+            'Confirm that the claimant presented a valid ID at the counter.',
+            cert_request_release_gate($request, 'self', '', false, false)['reason']
+        );
+        self::assertTrue(cert_request_release_gate($request, 'self', '', true, false)['ok']);
+        self::assertSame(
+            'Select a valid claimant and provide representative details when applicable.',
+            cert_request_release_gate($request, 'representative', '', true, true)['reason']
+        );
+        self::assertSame(
+            'Confirm that the signed authorization letter was received.',
+            cert_request_release_gate($request, 'representative', 'Representative', true, false)['reason']
+        );
+        self::assertTrue(
+            cert_request_release_gate($request, 'representative', 'Representative', true, true)['ok']
+        );
+        self::assertFalse(
+            cert_request_release_gate(['status' => 'matched', 'paid_at' => 'now'], 'self', '', true, false)['ok']
+        );
     }
 
     public function testSacramentApplicationRules(): void
@@ -188,6 +252,14 @@ final class FunctionsTest extends TestCase
                 (5, 'first_communion')"
         );
 
+        self::assertSame(
+            [2, 6, 1],
+            array_column(sd_get_age_eligible_persons($pdo, 'first_communion'), 'id')
+        );
+        self::assertSame(
+            [2],
+            array_column(sd_get_age_eligible_persons($pdo, 'confirmation'), 'id')
+        );
         self::assertSame(4, notify_newly_age_eligible_persons($pdo));
         self::assertSame(0, notify_newly_age_eligible_persons($pdo));
         self::assertSame(4, (int) $pdo->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
@@ -216,6 +288,35 @@ final class FunctionsTest extends TestCase
                    AND type = 'age_eligible_first_communion'"
             )->fetchColumn()
         );
+    }
+
+    public function testAgeEligibilityFiltersAreDisplayOnlyAndSupportCustomRanges(): void
+    {
+        $people = [
+            ['id' => 1, 'age' => 8],
+            ['id' => 2, 'age' => 11],
+            ['id' => 3, 'age' => 16],
+            ['id' => 4, 'age' => 22],
+        ];
+
+        self::assertSame([1], array_column(sd_filter_age_eligible_persons($people, '7_9'), 'id'));
+        self::assertSame([2], array_column(sd_filter_age_eligible_persons($people, '10_12'), 'id'));
+        self::assertSame([3], array_column(sd_filter_age_eligible_persons($people, '13_17'), 'id'));
+        self::assertSame([4], array_column(sd_filter_age_eligible_persons($people, '18_plus'), 'id'));
+        self::assertSame([2, 3], array_column(sd_filter_age_eligible_persons($people, 'custom', 10, 17), 'id'));
+        self::assertCount(4, sd_filter_age_eligible_persons($people, 'all'));
+    }
+
+    public function testCustomAgeEligibilityFilterRequiresValidBounds(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        sd_filter_age_eligible_persons([['age' => 8]], 'custom', 9, 8);
+    }
+
+    public function testCustomAgeEligibilityFilterRequiresBothBounds(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        sd_filter_age_eligible_persons([['age' => 8]], 'custom', 7, null);
     }
 
     public function testSafeReturnUrls(): void
@@ -501,10 +602,11 @@ final class FunctionsTest extends TestCase
             [
                 'first_name' => ['before' => 'Maria', 'after' => 'Mary'],
                 'birth_place' => ['before' => null, 'after' => 'Taguig'],
+                'observanda' => ['before' => null, 'after' => 'Profile note'],
             ],
             sd_person_audit_changes(
-                ['first_name' => 'Maria', 'middle_name' => null, 'birth_place' => ''],
-                ['first_name' => 'Mary', 'middle_name' => null, 'birth_place' => 'Taguig']
+                ['first_name' => 'Maria', 'middle_name' => null, 'birth_place' => '', 'observanda' => ''],
+                ['first_name' => 'Mary', 'middle_name' => null, 'birth_place' => 'Taguig', 'observanda' => 'Profile note']
             )
         );
         self::assertSame(

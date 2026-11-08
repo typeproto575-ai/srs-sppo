@@ -24,14 +24,19 @@ if (!$person) {
 $personLabel = sd_full_name($person);
 $notice = null;
 $noticeType = null;
+$observandaValue = (string) ($person['observanda'] ?? '');
 $updatedFlag = isset($_GET['updated']) && (string) $_GET['updated'] === '1';
+$observandaUpdatedFlag = isset($_GET['observanda_updated']) && (string) $_GET['observanda_updated'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = trim((string) ($_POST['action'] ?? ''));
+    if ($action === 'save_observanda') {
+        $observandaValue = trim((string) ($_POST['observanda'] ?? ''));
+    }
     if (!csrf_verify()) {
         $notice = 'Your session token is invalid or expired. Refresh the page and try again.';
         $noticeType = 'error';
     } else {
-        $action = trim((string) ($_POST['action'] ?? ''));
         $recordId = filter_input(INPUT_POST, 'record_id', FILTER_VALIDATE_INT);
         $userId = (int) current_user()['id'];
         if ($action === 'verify' && $recordId) {
@@ -47,6 +52,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } catch (Throwable $e) {
                     error_log('SRS-SPPO verify book entry failed: ' . $e->getMessage());
                     $notice = 'Could not verify the book entry. Check the server error log.';
+                    $noticeType = 'error';
+                }
+            }
+        } elseif ($action === 'save_observanda') {
+            if (strlen($observandaValue) > 4000) {
+                $notice = 'Observanda must be 4,000 bytes or fewer.';
+                $noticeType = 'error';
+            } else {
+                try {
+                    $pdo->beginTransaction();
+                    $before = sd_person_audit_snapshot($pdo, $personId);
+                    sd_save_person($pdo, ['observanda' => $observandaValue], $personId);
+                    $after = sd_person_audit_snapshot($pdo, $personId);
+                    sd_log_person_edit(
+                        $pdo,
+                        $userId,
+                        $personId,
+                        $before,
+                        $after,
+                        'Updated profile Observanda'
+                    );
+                    $pdo->commit();
+                    redirect_to('/admin/system/person-profile.php?id=' . $personId . '&observanda_updated=1');
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    error_log('SRS-SPPO profile Observanda update failed: ' . $e->getMessage());
+                    $notice = 'Could not save profile Observanda. Check the server error log.';
                     $noticeType = 'error';
                 }
             }
@@ -99,6 +133,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <?php if ($updatedFlag): ?>
     <p class="alert alert-success">Person details updated.</p>
 <?php endif; ?>
+<?php if ($observandaUpdatedFlag): ?>
+    <p class="alert alert-success">Profile Observanda saved.</p>
+<?php endif; ?>
 <?php if ($verifiedFlag): ?>
     <p class="alert alert-success">Book entry verified.</p>
 <?php endif; ?>
@@ -120,9 +157,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <span class="person-profile-summary__value"><?= $recordCount ?></span>
             <span class="person-profile-summary__label">Sacramental <?= $recordCount === 1 ? 'record' : 'records' ?></span>
         </div>
-        <span class="person-profile-state<?= !empty($person['is_deceased']) ? ' is-deceased' : '' ?>">
-            <?= !empty($person['is_deceased']) ? 'Deceased' : 'Living' ?>
-        </span>
     </div>
 </header>
 
@@ -171,6 +205,26 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <span class="person-profile-detail__value"><?= e($person['contact_number'] ?: 'Not specified') ?></span>
         </div>
     </div>
+</section>
+
+<section class="panel-card person-profile-section" aria-labelledby="profile-observanda-heading">
+    <div class="person-profile-section__heading">
+        <div>
+            <p class="person-profile-section__eyebrow">Person-level note</p>
+            <h2 id="profile-observanda-heading">Profile Observanda</h2>
+        </div>
+    </div>
+    <p class="field-hint">Use this for a note about the person as a whole. Individual sacrament Observanda remain with their register entries.</p>
+    <form method="post" class="person-profile-observanda-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_observanda">
+        <label for="profile-observanda">Observanda</label>
+        <textarea id="profile-observanda" name="observanda" maxlength="4000" rows="5"><?= e($observandaValue) ?></textarea>
+        <div class="person-profile-observanda-actions">
+            <span class="field-hint">Saving a change records the previous and new note in Correction History. Leave blank to clear it.</span>
+            <button type="submit" class="btn btn-primary">Save Observanda</button>
+        </div>
+    </form>
 </section>
 
 <section class="panel-card person-profile-section" aria-labelledby="person-history-heading">
@@ -254,6 +308,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <span class="person-profile-badge person-profile-badge--neutral">Parents: <?= e($unionLabels[$record['parents_union_type']] ?? $record['parents_union_type']) ?></span>
                     <?php endif; ?>
                 </div>
+                <section class="person-profile-observanda" aria-label="<?= e(sd_type_label($type)) ?> Observanda">
+                    <h4>Observanda</h4>
+                    <?php if (!empty($record['remarks'])): ?>
+                        <p class="record-view-remarks"><?= nl2br(e((string) $record['remarks'])) ?></p>
+                    <?php else: ?>
+                        <p class="person-profile-note">No Observanda recorded.</p>
+                    <?php endif; ?>
+                </section>
                 <div class="person-profile-record__actions">
                     <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/view.php?' . http_build_query([
                         'type' => $type === 'baptism' ? 'baptismal' : $type,
@@ -282,7 +344,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </div>
                 <?php endif; ?>
                 <div class="person-profile-record__actions">
-                    <a class="btn btn-small" href="<?= e($basePath . '/admin/records/record-form.php?type=' . urlencode($type) . '&person_id=' . (int) $personId) ?>">Add record</a>
+                    <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $type, 'person_id' => (int) $personId])) ?>">Add record</a>
                 </div>
             <?php endif; ?>
         </article>
@@ -309,6 +371,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <span class="person-profile-badge"><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></span>
                     <span class="person-profile-badge<?= !empty($record['book_verified_at']) ? ' is-verified' : ' is-unverified' ?>"><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></span>
                 </div>
+                <section class="person-profile-observanda" aria-label="Marriage Observanda">
+                    <h4>Observanda</h4>
+                    <?php if (!empty($record['remarks'])): ?>
+                        <p class="record-view-remarks"><?= nl2br(e((string) $record['remarks'])) ?></p>
+                    <?php else: ?>
+                        <p class="person-profile-note">No Observanda recorded.</p>
+                    <?php endif; ?>
+                </section>
                 <div class="person-profile-record__actions">
                     <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/view.php?' . http_build_query([
                         'type' => 'marriage',
@@ -339,7 +409,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
             <p class="person-profile-empty">No marriage record is linked to this profile yet.</p>
             <div class="person-profile-record__actions">
-                <a class="btn btn-small" href="<?= e($basePath . '/admin/records/record-form.php?type=' . urlencode('marriage') . '&person_id=' . (int) $personId) ?>">Add record</a>
+                <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => 'marriage', 'person_id' => (int) $personId])) ?>">Add record</a>
             </div>
         </article>
     <?php endif; ?>

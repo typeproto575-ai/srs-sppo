@@ -23,27 +23,27 @@ $recordTypes = [
     'baptismal' => [
         'sacrament_type' => 'baptism',
         'label' => 'Baptism',
-        'edit' => '/admin/records/baptismal.php',
+        'edit_type' => 'baptism',
     ],
     'baptism' => [
         'sacrament_type' => 'baptism',
         'label' => 'Baptism',
-        'edit' => '/admin/records/baptismal.php',
+        'edit_type' => 'baptism',
     ],
     'confirmation' => [
         'sacrament_type' => 'confirmation',
         'label' => 'Confirmation',
-        'edit' => '/admin/records/confirmation.php',
+        'edit_type' => 'confirmation',
     ],
     'first_communion' => [
         'sacrament_type' => 'first_communion',
         'label' => 'First Communion',
-        'edit' => '/admin/records/first-communion.php',
+        'edit_type' => 'first_communion',
     ],
     'marriage' => [
         'sacrament_type' => 'marriage',
         'label' => 'Marriage',
-        'edit' => '/admin/records/marriage.php',
+        'edit_type' => 'marriage',
     ],
 ];
 
@@ -193,7 +193,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p class="record-view-hero__date"><?= e(record_view_value($record['event_date'] ?? null)) ?> <span>·</span> <?= e(record_view_value($record['place'] ?? null)) ?></p>
             <div class="page-actions record-view-actions">
                 <a class="btn btn-secondary btn-small" href="<?= e($basePath . ($returnUrl ?: '/admin/records/index.php')) ?>"><?= e(record_return_label($returnUrl)) ?></a>
-                <a class="btn btn-primary btn-small" href="<?= e($basePath . $definition['edit'] . '?' . http_build_query(['edit' => $recordId, 'return' => $editReturnUrl])) ?>">Edit record</a>
+                <a class="btn btn-primary btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $definition['edit_type'], 'edit' => $recordId, 'return' => $editReturnUrl])) ?>">Edit record</a>
                 <?php if (!sd_can_print_certificate($record) && ($record['source'] ?? '') === 'this_parish' && !empty($personIds)): ?>
                     <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $personIds[0]) ?>">Verify register entry</a>
                 <?php endif; ?>

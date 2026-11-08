@@ -15,6 +15,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
+require_once __DIR__ . '/../../includes/record-editor-route.php';
+redirect_legacy_record_editor('confirmation');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
@@ -147,6 +149,8 @@ if (!$editRecord && !$identity) {
 
 $formValues = $_POST;
 $isEdit = $editRecord !== null;
+$isNew = (string) ($_GET['new'] ?? '') === '1';
+$pageTitle = $isEdit ? 'Edit Confirmation Record' : 'New Confirmation Record';
 $recordNameFormValues = $formValues;
 foreach ([
     'sponsor' => $isEdit ? structured_name_parts((string) ($editRecord['sponsor_name'] ?? '')) : ['', '', '', ''],
@@ -540,13 +544,13 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
-            <h1>Confirmation Records</h1>
+            <h1><?= $isEdit ? 'Edit Confirmation Record' : 'New Confirmation Record' ?></h1>
             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
-            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
         </div>
 
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 
+                <?php if (!defined('SRS_UNIFIED_RECORD_EDITOR')): ?>
                 <?php rf_render_bar($basePath . '/admin/records/confirmation.php', $rfConfig, $rf); ?>
         <div class="table-scroll" tabindex="0" role="region" aria-label="Confirmation register records; scroll horizontally to view all columns">
         <table class="admin-table">
@@ -594,10 +598,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/confirmation.php', $rfTotal, $rf); ?>
+        <?php endif; ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] . ' - ' . e(person_identity_label($identity)) : 'Encode New Entry' ?></h2>
+                <h2><?= $isEdit ? 'Edit Confirmation Record #' . (int) $editRecord['id'] . ' - ' . e(person_identity_label($identity)) : 'New Confirmation Record' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">

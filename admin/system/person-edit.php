@@ -17,6 +17,10 @@ $person = sd_get_person($pdo, (int) $personId);
 if (!$person) {
     redirect_to('/admin/dashboard.php');
 }
+$family = sd_get_family($pdo, (int) $personId);
+$hasConnectedFamily = $family['father'] !== null
+    || $family['mother'] !== null
+    || !empty($family['children']);
 
 $errors = [];
 $values = $person;
@@ -28,10 +32,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ] as $field) {
         $values[$field] = trim((string) ($_POST[$field] ?? ''));
     }
+    foreach (['father_person_id', 'mother_person_id'] as $field) {
+        $rawParentId = trim((string) ($_POST[$field] ?? ''));
+        if ($rawParentId === '') {
+            $values[$field] = null;
+            continue;
+        }
+        $parentId = filter_var($rawParentId, FILTER_VALIDATE_INT);
+        if ($parentId === false || $parentId < 1) {
+            $values[$field] = null;
+            $errors[] = 'Select parent profiles from the search results.';
+            continue;
+        }
+        $values[$field] = $parentId;
+    }
     $reason = trim((string) ($_POST['correction_reason'] ?? ''));
 
     if (!csrf_verify()) {
         $errors[] = 'Your session token is invalid or expired. Refresh the page and try again.';
+    }
+    $parentLinkError = sd_validate_parent_profile_links(
+        $pdo,
+        (int) $personId,
+        [$values['father_person_id'], $values['mother_person_id']]
+    );
+    if ($parentLinkError !== null) {
+        $errors[] = $parentLinkError;
     }
     if ($values['first_name'] === '' || $values['last_name'] === '') {
         $errors[] = 'First name and last name are required.';
@@ -129,6 +155,40 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label>Address <input name="address" value="<?= e($values['address'] ?? '') ?>"></label>
             <label>Contact number <input name="contact_number" value="<?= e($values['contact_number'] ?? '') ?>"></label>
         </div>
+        <?php if (!$hasConnectedFamily): ?>
+            <div class="person-parent-links">
+                <h3>Linked parent profiles</h3>
+                <p class="field-hint">Link only when you have confirmed the parent's identity. These links are separate from the parent names above.</p>
+                <?php foreach ([
+                    'father_person_id' => ['label' => 'Father profile', 'search' => 'father_profile_search', 'id' => 'father-profile-search'],
+                    'mother_person_id' => ['label' => 'Mother profile', 'search' => 'mother_profile_search', 'id' => 'mother-profile-search'],
+                ] as $field => $config): ?>
+                    <?php
+                    $linkedParent = !empty($values[$field]) ? sd_get_person($pdo, (int) $values[$field]) : null;
+                    $selectedLabel = $linkedParent
+                        ? sd_full_name($linkedParent)
+                        : (!empty($values[$field]) ? 'Unavailable profile #' . (int) $values[$field] : '');
+                    $searchValue = $linkedParent
+                        ? sd_full_name($linkedParent)
+                        : (string) ($_POST[$config['search']] ?? $selectedLabel);
+                    ?>
+                    <div class="person-parent-link" data-parent-profile-search
+                         data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>"
+                         data-person-id="<?= (int) $personId ?>">
+                        <label for="<?= e($config['id']) ?>"><?= e($config['label']) ?></label>
+                        <input id="<?= e($config['id']) ?>" type="search" name="<?= e($config['search']) ?>"
+                               value="<?= e($searchValue) ?>" placeholder="Search existing person profiles"
+                               autocomplete="off" data-parent-profile-query>
+                        <input type="hidden" name="<?= e($field) ?>" value="<?= (int) ($values[$field] ?? 0) ?: '' ?>" data-parent-profile-id>
+                        <div class="person-parent-link__selection" data-parent-profile-selection aria-live="polite">
+                            <?= $linkedParent ? 'Linked to ' . e(sd_full_name($linkedParent)) . ' (#' . (int) $linkedParent['id'] . ')' : (!empty($values[$field]) ? 'Review or clear this unavailable profile link.' : 'No profile linked.') ?>
+                        </div>
+                        <div class="person-parent-link__results" data-parent-profile-results aria-live="polite"></div>
+                        <button type="button" class="btn btn-secondary btn-small" data-parent-profile-clear<?= empty($values[$field]) ? ' hidden' : '' ?>>Clear profile link</button>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </section>
     <section class="panel-card">
         <h2>Correction history</h2>

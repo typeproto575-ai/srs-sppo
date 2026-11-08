@@ -141,7 +141,7 @@ Admin layout: `includes/admin-header.php` / `admin-footer.php`.
 
 **System:** accounts, backup/export, archive/restore, email delivery log, audit log.
 
-Also: dashboard, notifications, login/logout, forgot/reset password.
+Also: dashboard, age-eligibility review, notifications, login/logout, forgot/reset password.
 
 Home page text is fixed in `public/index.php`; changing it requires a code edit.
 
@@ -204,7 +204,7 @@ Corrections follow Parish Office procedures. Staff record edits append an audit 
 
 Canonical create script: `database/v2/schema.sql`. Fresh installs use that, then seed if needed (`database/v2/seed_demo.sql`).
 
-Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes.
+Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes. Person-level Observanda is included in the V2 schema; existing V2 databases need backup and review before applying `migrations/047_add_person_profile_observanda.sql`, which is not handled by this page.
 
 Application and database-generated timestamps use Philippine local time (`Asia/Manila`, UTC+08:00).
 

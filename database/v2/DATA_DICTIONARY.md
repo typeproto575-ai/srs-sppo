@@ -61,6 +61,7 @@ Rule: `last_name` is always the surname at birth. Unknown details are NULL (this
 | father_name, mother_maiden_name | VARCHAR(150) | yes | Parents as text |
 | father_person_id, mother_person_id | INT FK persons | yes | Optional link if the parent also has a profile |
 | address, contact_number, email | VARCHAR | yes | |
+| observanda | TEXT | yes | Person-level note; sacrament-specific remarks remain on `sacrament_records` |
 | baptismal_status | ENUM('baptized_catholic','baptized_non_catholic','unbaptized') | yes | NULL = unknown |
 | is_deceased, death_date | TINYINT(1), DATE | no / yes | Status flag only |
 | created_at, updated_at | DATETIME | no | |

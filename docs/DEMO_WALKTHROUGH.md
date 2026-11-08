@@ -1,103 +1,71 @@
-# SRS-SPPO Demo Dataset and Walkthrough
+# SRS-SPPO Local V2 Demo and Walkthrough
 
-This guide is the project-specific, runnable version of the supplied demo
-walkthrough. It uses the routes, tables, and status values that exist in the
-current codebase.
+This guide covers the unified V2 schema and the current XAMPP workflow.
 
 ## Safety and setup
 
-1. Use a disposable local/demo database. Back it up first if it already
-   contains anything you need.
-2. Import the current canonical schema in
-   [`database/srs_sppo_schema.sql`](../database/srs_sppo_schema.sql). On an
-   existing installation, complete the applicable migrations first, including
-   `039_master_person_profile.sql` and
-   `045_link_sacrament_applications_to_persons.sql` and
-   `046_confirmation_application_profile_fields.sql`.
-3. Import [`database/seed_defense_demo.sql`](../database/seed_defense_demo.sql)
-   through phpMyAdmin or the MySQL command line. The seed is additive and
-   repeatable: it does not delete data, reset workflow statuses, or replace
-   existing site copy. It can also be used alongside
-   [`database/seed_process_demo.sql`](../database/seed_process_demo.sql).
-   The walkthrough seed above targets the older canonical schema. For the
-   currently hosted V2 schema, optionally import
-   [`database/v2/seed_many_demo.sql`](../database/v2/seed_many_demo.sql)
-   instead; it adds 100 fictional profiles and 170 linked sacramental records.
-   To add pre-application and certificate-request queue samples, plus public
-   calendar events and announcements, also import
+1. Use a disposable local/demo database. Do not import a schema or demo seed
+   into the hosted parish database or any database containing data you need.
+2. The current schema is
+   [`database/v2/schema.sql`](../database/v2/schema.sql). For a clean local
+   demonstration database, import that schema through phpMyAdmin, then import
+   [`database/v2/seed_demo.sql`](../database/v2/seed_demo.sql).
+3. The V2 demo seed contains fictional records and a local-only demo account
+   (`secretary` / `demo1234`). Use it only on a disposable local database.
+   Never use that account on the hosted site.
+4. Optional V2 seeds add a larger fictional register dataset or extra
+   application/request/calendar examples; see
+   [`database/v2/seed_many_demo.sql`](../database/v2/seed_many_demo.sql) and
    [`database/v2/seed_demo_workflows.sql`](../database/v2/seed_demo_workflows.sql).
-   All public entries from that optional seed are explicitly marked fictional.
-4. Create staff logins separately with `php scripts/create-admin.php`.
-   Repeat the command to create a second secretary. The script prompts for a
-   password and stores a password hash; use local-only credentials of at least
-   12 characters. The current schema supports the `secretary` role only, not a
-   separate `admin` role. The SQL seed intentionally creates no accounts or
-   reusable passwords.
+   Do not load optional seeds into a live parish database.
 5. Sign in at `/admin/login.php`. Open the public portal at `/public/index.php`.
 
-All seed identities, audit examples, announcements, and events are fictional.
-The demonstration audit rows are explicitly labeled as seed samples; actions
-you perform while signed in are logged as actual staff actions. Do not load the
-dataset into a live parish database.
+To run database integration tests with XAMPP, set the test database variables
+to a **dedicated disposable database name** before running the setup script.
+The setup script drops and recreates that named database using the V2 schema:
 
-> `database/seed_demo_data.sql` is a separate reset-style seed for disposable
-> databases. It clears targeted tables. Do not use it as a repeatable,
-> additive import.
+```powershell
+$env:SRS_TEST_DB_NAME = 'srs_sppo_test'
+$env:SRS_TEST_DB_DSN = 'mysql:host=127.0.0.1;dbname=srs_sppo_test;charset=utf8mb4'
+$env:SRS_TEST_DB_HOST = '127.0.0.1'
+$env:SRS_TEST_DB_USER = 'root'
+$env:SRS_TEST_DB_PASS = ''
+composer test:setup-db
+composer test:integration
+```
 
-## What the defense seed contains
+Do not set `SRS_TEST_DB_NAME` to the application's database. The test runner
+also verifies that the DSN selects exactly the configured test database.
 
-- 11 master person profiles and linked official register entries:
-  - 5 Baptisms, with sponsors;
-  - 4 First Communions;
-  - 3 Confirmations;
-  - 2 Marriages, with witnesses.
-- 4 public sacrament pre-applications, including a new-child intake, a Confirmation
-  and First Communion pre-application ready for review/encoding, and a Marriage
-  pre-application with two separate people to match.
-- 5 certificate requests across submission, payment, review, pickup-ready, and
-  released states, with extension details and generation/pickup history.
-- Document checklist examples, 6 upcoming calendar events, 3 published
-  announcements, missing default public-site settings, and clearly marked
-  sample audit rows.
+All seed identities and public sample entries are fictional. Do not load demo
+data into a live parish database.
 
-The sample request reference numbers are:
+## V2 sample request numbers
 
 | Reference number | Sample |
 |---|---|
-| `SPPO-APP-2026-BAPDEFENSEABCDEF` | New-child Baptism pre-application |
-| `SPPO-APP-2026-CNFDEFENSABCDEFG` | Confirmation pre-application |
-| `SPPO-APP-2026-FCDEFENSABCDEFGH` | First Communion pre-application |
-| `SPPO-APP-2026-MARRDEFENSABCDEF` | Marriage pre-application |
-| `SPPO-2026-CERTDEFENSABCDEF` | Certificate submitted for initial review |
-| `SPPO-2026-CERTDEFENSABCDEG` | Certificate awaiting payment |
-| `SPPO-2026-CERTDEFENSABCDEH` | Certificate under review |
-| `SPPO-2026-CERTDEFENSABCDEJ` | Certificate ready for pickup |
-| `SPPO-2026-CERTDEFENSABCDEK` | Sample released certificate |
+| `SA-2026-0001` | New Baptism pre-application |
+| `SA-2026-0002` | Marriage pre-application |
+| `SA-2026-0003` | First Communion pre-application |
+| `CR-2026-0001` | Released Baptism certificate request |
+| `CR-2026-0002` | Ready for pickup |
+| `CR-2026-0003` | Released First Communion request |
+| `CR-2026-0004` | New Confirmation request |
+| `CR-2026-0005` | Waiting for priest signature |
+| `CR-2026-0006` | Rejected: record belongs to another parish |
 
-Use **Eva Demo Santos**, born `2014-06-15`, to find the cross-register profile.
-Other useful matches include **Marco Demo Reyes** (`1997-04-20`),
-**Nina Demo Cruz** (`1998-09-08`), **Emma Demo Reyes** (`2012-02-11`), and
-**Sofia Demo Garcia** (`2016-09-17`).
+## V2 status terminology
 
-## Status terminology used by the pre-application workflow
-
-The supplied guide used phrases such as “Under Review” and “Ready for
-Processing” as if they were stored status values. They are not values in the
-current database enum. Use the actual labels/statuses below when describing
-the system:
-
-- Certificate requests use values including `submitted`, `under_review`,
-  `awaiting_payment`, `approved`, `processing`, `ready_for_pickup`, and
-  `released`.
-- Sacrament pre-applications use values including `submitted`,
-  `requirements_pending`, `awaiting_payment`, `documents_pending`,
-  `interview_scheduled`, `ready_for_approval`, `approved`, `scheduled`, and
-  `completed`. Marriage has additional interview and banns stages.
-- Payment is recorded manually by staff; no amount is stored. Recording
-  payment does not automatically approve a request. Staff must use the
-  allowed status transitions and meet the relevant prerequisite checks.
-- Official register entries are separate from online intake. A submitted
-  pre-application is not automatically an official sacrament record.
+- Certificate requests use `new`, `matched`, `for_signature`, `ready`,
+  `released`, or `rejected`.
+- Sacrament applications use `new`, `reviewing`, `requirements_pending`,
+  `approved`, `scheduled`, `completed`, or `rejected`. Marriage interview,
+  banns, and document checks are recorded in the application details and
+  checklist, not as separate status values.
+- Payment is made outside the system and recorded by staff only after receipt.
+  The system stores no amount. Payment does not itself approve a request.
+- Online applications are intake records, not official sacrament-register
+  entries. Staff review and record the eventual sacrament separately.
 
 ## Adviser walkthrough
 
@@ -116,46 +84,44 @@ the system:
 ### 2. Staff review and person matching
 
 1. Sign in at `/admin/login.php`.
-2. Open **Requests → Sacrament Pre-Applications**
+2. Open **Age Eligibility Review** from the dashboard or staff navigation.
+   Show the separate First Communion and Confirmation lists, and explain that
+   they are advisory minimum-age reminders for secretary review—not approval
+   or confirmation that someone is ready to receive the sacrament. Filter by a
+   preset age group or choose a custom minimum and maximum; these filters only
+   narrow the displayed list.
+3. Open **Requests → Sacrament Pre-Applications**
    (`/admin/requests/applications-queue.php`).
-3. Find `SPPO-APP-2026-CNFDEFENSABCDEFG` and use the person matcher to search for **Emma Demo
-   Reyes**, birth date `2012-02-11`; select the matching master person. For
-   `SPPO-APP-2026-MARRDEFENSABCDEF`, match groom **Marco Demo Reyes** and bride **Nina Demo
-   Cruz** separately. Explain that matching is a staff confirmation, not an
+4. Open `SA-2026-0002` to review the marriage application and its two linked
+   people. Explain that person linking is a staff confirmation, not an
    automatic name-only merge.
-4. Review the pre-application’s existing prerequisites and status controls. For
-   Confirmation and First Communion, the approved/scheduled examples can be
-   used to demonstrate the register prefill after matching.
+5. Open `SA-2026-0001` to demonstrate a new Baptism intake, then review the
+   application details, requirements checklist, and status controls.
 
 ### 3. Certificate review, requirements, and pickup
 
 1. Open **Requests → Certificate Requests**
-   (`/admin/requests/queue.php`) and locate
-   `SPPO-2026-CERTDEFENSABCDEG` or `SPPO-2026-CERTDEFENSABCDEJ`.
-   Explain that this queue tracks certificate-copy requests; **Records**
-   contains completed sacrament entries from the parish register. Start an
-   in-person request with **Start walk-in certificate request**.
-2. Open the request detail page. The certificate requirements checklist is
-   displayed there (`/admin/requests/certificate-detail.php`); mark document
-   states only for the fictional sample. The general checklist table supports
-   pre-application rows too, but sacrament pre-application screens currently
-   use their own prerequisite fields rather than this generic checklist UI.
-3. Use `SPPO-2026-CERTDEFENSABCDEJ` to show ready-for-pickup printing from
-   the request detail page. The released sample
-   `SPPO-2026-CERTDEFENSABCDEK` is available for viewing without changing it.
-4. Certificate printing is available from the request detail page after review
-   and approval prerequisites are met.
+   (`/admin/requests/queue.php`) and locate `CR-2026-0004` or
+   `CR-2026-0002`. This queue tracks certificate-copy requests; **Records**
+   contains completed sacrament entries from the parish register.
+2. Open the request details. Review the submitted information and match the
+   exact parish record. Confirm the matched record against the physical book
+   with **Verify book entry** before printing.
+3. For an online request, record payment only after it has actually been
+   received. Use **Print certificate** to preview and print. After printing,
+   mark the request **For Signature**, then **Ready** after the priest has
+   signed it.
+4. At pickup, verify the claimant's ID and record the release. A
+   representative must also provide the signed authorization letter. The
+   sample `CR-2026-0001` is already released and should only be viewed.
 
 ### 4. One-click register prefill
 
-1. Use the row-level person matcher to link `SPPO-APP-2026-CNFDEFENSABCDEFG` to **Emma Demo
-   Reyes**, then use the Confirmation register page
-   `/admin/records/confirmation.php?from_application=<application-id>`.
-2. Link `SPPO-APP-2026-FCDEFENSABCDEFGH` to **Sofia Demo Garcia**, then open
-   `/admin/records/first-communion.php?from_application=<application-id>`.
-3. Confirm the pre-application is approved or scheduled before using the prefill
-   URL. Verify the copied identity details, check the physical book/page/line
-   reference, then save only if performing a fresh encoding demonstration.
+1. Use an eligible application in the queue, link it to the correct master
+   person, and select the register-encoding action.
+2. Verify the prefilled identity and sacrament details against the source
+   information and physical book, then save only when demonstrating a new
+   official register entry.
 
 The placeholder `<application-id>` is the numeric ID shown in the staff
 application queue or database; it is not the reference number. Do not create a
@@ -163,17 +129,16 @@ second official record merely to show the prefilled form.
 
 From the dashboard, search the master person index by name or birth year and
 open the matching profile. If a name search does not match, try fewer name
-parts; use **Records** to search the register entries themselves. On a
-verified, in-parish entry under **Sacramental history**, choose
-**Start certificate request**. The request form is prefilled from that
-register entry. Complete its guided Certificate details, Requester, Purpose &
-requirements, and Review steps; submit, then record payment. For an
-unverified entry, verify it against the physical register from the person
-profile before starting a request. The request is
-linked to that entry and appears in the
-certificate queue with an audit entry. Print from request details, mark it for
-the priest's signature after printing, then mark it ready and record release
-after pickup.
+parts; use **Records** to search the register entries themselves. For an exact
+register lookup, search `b12 p1 l4` (or `book 12 page 1 line 4`); `b12`, `p1`,
+and `l4` can also search one register field at a time. Ordinary name and record
+ID searches remain available. On an
+in-parish entry under **Sacramental history**, choose **Start certificate
+request**. The request form is prefilled from that register entry. Complete
+the requester and purpose details, submit, and record payment only when it is
+actually received. The request appears in the certificate queue with an audit
+entry. Verify the physical register, print from request details, mark it for
+the priest's signature, then mark it ready and record release after pickup.
 
 ## Large register/search dataset
 
@@ -195,33 +160,31 @@ fabricated by this seed. It is repeatable and inserts no duplicates.
 ### 5. Master profile and linked records
 
 1. Open a person profile such as
-   `/admin/system/person-profile.php?id=<person-id>` and find **Eva Demo
-   Santos**, born `2014-06-15`.
-2. Open her profile at `/admin/system/person-profile.php?id=<person-id>`.
-   Show the linked Baptism, First Communion, and Confirmation entries.
-3. Point out the available action for a missing sacrament and how it can start
-   a pre-application/encoding flow with the existing person identity attached.
+   `/admin/system/person-profile.php?id=<person-id>` from the person search.
+2. Show the profile-level Observanda field and save a person-wide note directly
+   from the profile. Changes are recorded in Correction History.
+3. Show the linked sacramental history and register references. Each register
+   card also displays its own Observanda, kept separate from the profile note.
+4. Explain that matching is staff-confirmed and that the physical register
+   remains the authority for historical details.
 
 ### 6. Schedule, announcements, and audit history
 
-1. Open **Schedule → Calendar** (`/admin/schedule/calendar.php`) to show the
-   six upcoming demo events.
+1. Open **Schedule → Calendar** (`/admin/schedule/calendar.php`) to review
+   demo events and show that overlaps are flagged for staff review.
 2. Open **Schedule → Announcements**
-   (`/admin/schedule/announcements.php`) and point out the three published
-   demo notices. Their titles start with `DEMO:`.
-3. Open **System → Audit Log** (`/admin/system/audit-log.php`). Identify the
-   explicitly labeled seed samples, then perform a person match or status
-   change and show the new real audit entry under the signed-in staff user.
+   (`/admin/schedule/announcements.php`) to manage public notices.
+3. Open **Reports** or **System → Audit Log**
+   (`/admin/reports/index.php`, `/admin/system/audit-log.php`) to review
+   period summaries and recorded staff actions.
 
 ## Notes and limitations
 
-- The seed does not create staff users or passwords; create those locally
-  using the CLI account tool above.
-- The generic `workflow_requirements` UI is currently part of certificate
-  request detail. Pre-application-specific document review uses the existing
-  sacrament-specific fields and status workflow.
+- The base V2 seed provides a demo secretary account only for local testing.
+  Do not use it on the hosted site.
+- Certificate lifecycle data lives on `certificate_requests`; V2 does not use
+  a separate certificate-generation log or a `workflow_requirements` table.
 - Do not treat seeded “released” certificate or sample audit rows as evidence
   of real parish transactions.
-- The seed has not been applied to any database by this task. Import it only
-  after confirming that the selected database is a disposable local/demo
-  database and that its schema is current.
+- Import demo data only after confirming that the selected database is
+  disposable and its schema is current.

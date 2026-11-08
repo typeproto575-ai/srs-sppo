@@ -15,6 +15,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
+require_once __DIR__ . '/../../includes/record-editor-route.php';
+redirect_legacy_record_editor('marriage');
 
 class MarriageSamePersonException extends RuntimeException
 {
@@ -141,6 +143,8 @@ if (isset($_GET['edit'])) {
     $editWitnesses = $witnessStmt->fetchAll(PDO::FETCH_ASSOC);
 }
 $isEdit = $editRecord !== null;
+$isNew = (string) ($_GET['new'] ?? '') === '1';
+$pageTitle = $isEdit ? 'Edit Marriage Record' : 'New Marriage Record';
 
 $groomIdentity = null;
 $brideIdentity = null;
@@ -639,11 +643,11 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
-            <h1>Marriage Records</h1>
+            <h1><?= $isEdit ? 'Edit Marriage Record' : 'New Marriage Record' ?></h1>
             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
-            <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
         </div>
         <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
+        <?php if (!defined('SRS_UNIFIED_RECORD_EDITOR')): ?>
         <?php rf_render_bar($basePath . '/admin/records/marriage.php', $rfConfig, $rf); ?>
         <div class="table-scroll" tabindex="0" role="region" aria-label="Marriage register records; scroll horizontally to view all columns">
         <table class="admin-table">
@@ -692,7 +696,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <td><span class="link-status-badge link-status-<?= e($linkStatus) ?>"><?= e($linkLabels[$linkStatus]) ?></span></td>
                             <td class="row-actions">
                                 <a href="<?= e($basePath . '/admin/records/view.php?type=marriage&id=' . (int) $rec['id'] . '&return=' . urlencode($selfReturn)) ?>" class="btn btn-secondary btn-small">View record</a>
-                                <a href="<?= e($basePath . '/admin/records/marriage.php?edit=' . (int) $rec['id']) ?>" class="btn btn-secondary btn-small">Edit</a>
+                                <a href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => 'marriage', 'edit' => (int) $rec['id']])) ?>" class="btn btn-secondary btn-small">Edit</a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -701,10 +705,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </table>
         </div>
         <?php rf_render_pagination($basePath . '/admin/records/marriage.php', $rfTotal, $rf); ?>
+        <?php endif; ?>
 
-        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $errors !== [] || $fromApplicationId) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
+        <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors !== [] || $fromApplicationId) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit Entry #' . (int) $editRecord['id'] : 'Encode New Entry' ?></h2>
+                <h2><?= $isEdit ? 'Edit Marriage Record #' . (int) $editRecord['id'] : 'New Marriage Record' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">

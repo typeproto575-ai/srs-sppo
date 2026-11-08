@@ -137,18 +137,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $representativeRelationship = certificate_detail_post_string('representative_relationship');
                 $claimantNotes = certificate_detail_post_string('claimant_notes');
                 $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
-                if (!cert_request_transition_valid($current['status'], 'released')) {
-                    throw new DomainException('Only a Ready request can be released.');
-                }
-                if (!in_array($claimantType, ['self', 'representative'], true)
-                    || ($claimantType === 'representative' && $representativeName === '')) {
-                    throw new DomainException('Select a valid claimant and provide representative details when applicable.');
-                }
-                if (empty($current['paid_at'])) {
-                    throw new DomainException('Payment has not been recorded.');
-                }
-                if ($claimantType === 'representative' && !$repDocsReceived) {
-                    throw new DomainException('Confirm that the signed authorization letter was received.');
+                $idVerified = certificate_detail_post_string('id_verified') === '1';
+                $releaseGate = cert_request_release_gate(
+                    $current,
+                    $claimantType,
+                    $representativeName,
+                    $idVerified,
+                    $repDocsReceived
+                );
+                if (!$releaseGate['ok']) {
+                    throw new DomainException($releaseGate['reason'] ?? 'The release requirements are not met.');
                 }
                 $setParts = [
                     "status = 'released'",
@@ -156,13 +154,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'representative_name = ?',
                     'representative_relationship = ?',
                     'claimant_notes = ?',
-                    'id_verified = 0',
+                    'id_verified = ?',
                 ];
                 $params = [
                     $claimantType,
                     $claimantType === 'representative' ? $representativeName : null,
                     $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
                     $claimantNotes !== '' ? $claimantNotes : null,
+                    1,
                 ];
 
                 $setParts[] = 'released_by = ?';
@@ -175,8 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update->execute($params);
                 $claimantDescription = $claimantType === 'representative' ? 'an authorized representative' : 'the requester/subject';
                 $releaseEvidence = $claimantType === 'representative'
-                    ? 'Recorded payment verified; signed authorization letter confirmed.'
-                    : 'Recorded payment verified.';
+                    ? 'Recorded payment and claimant ID verified; signed authorization letter confirmed.'
+                    : 'Recorded payment and claimant ID verified.';
                 log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . '. ' . $releaseEvidence);
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
@@ -376,7 +375,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php if (!empty($req['representative_name'])): ?>
                 <dt>Representative</dt><dd><?= e($req['representative_name']) ?> (<?= e($req['representative_relationship']) ?>)</dd>
             <?php endif; ?>
-            <dt>ID verification</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Previously verified' : 'Not required' ?></dd>
+            <dt>ID verification</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Verified at the counter' : 'Not recorded' ?></dd>
         <?php endif; ?>
     </dl>
     <?php if (!empty($req['notes'])): ?>
@@ -526,6 +525,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <option value="representative">Authorized representative</option>
             </select>
             <p id="claimant-guidance" class="field-hint">Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.</p>
+            <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID at the counter.</label>
             <div id="representative-fields">
                 <label for="representative_name">Representative name</label>
                 <input type="text" id="representative_name" name="representative_name" maxlength="150">

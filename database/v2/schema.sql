@@ -61,6 +61,7 @@ CREATE TABLE persons (
   mother_person_id INT UNSIGNED NULL,                 -- optional link when the mother also has a profile
   address          VARCHAR(255) NULL,
   contact_number   VARCHAR(30)  NULL,
+  observanda       TEXT NULL,
   email            VARCHAR(150) NULL,
   baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') NULL,
   is_deceased      TINYINT(1) NOT NULL DEFAULT 0,     -- status flag only, no burial details

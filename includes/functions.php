@@ -1762,6 +1762,37 @@ function cert_request_payment_gate(array $req, string $to): array
 }
 
 /**
+ * Validate the counter requirements before releasing a certificate.
+ *
+ * @return array{ok: bool, reason?: string}
+ */
+function cert_request_release_gate(
+    array $req,
+    string $claimantType,
+    string $representativeName,
+    bool $idVerified,
+    bool $authorizationReceived
+): array {
+    if (!cert_request_transition_valid((string) ($req['status'] ?? ''), 'released')) {
+        return ['ok' => false, 'reason' => 'Only a Ready request can be released.'];
+    }
+    if (!in_array($claimantType, ['self', 'representative'], true)
+        || ($claimantType === 'representative' && trim($representativeName) === '')) {
+        return ['ok' => false, 'reason' => 'Select a valid claimant and provide representative details when applicable.'];
+    }
+    if (empty($req['paid_at'])) {
+        return ['ok' => false, 'reason' => 'Payment has not been recorded.'];
+    }
+    if (!$idVerified) {
+        return ['ok' => false, 'reason' => 'Confirm that the claimant presented a valid ID at the counter.'];
+    }
+    if ($claimantType === 'representative' && !$authorizationReceived) {
+        return ['ok' => false, 'reason' => 'Confirm that the signed authorization letter was received.'];
+    }
+    return ['ok' => true];
+}
+
+/**
  * Legacy pre-v2 certificate-generation-log compatibility.
  *
  * @deprecated The v2 workflow stores the certificate lifecycle in certificate_requests.

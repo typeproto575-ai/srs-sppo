@@ -9,13 +9,15 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
+require_once __DIR__ . '/../../includes/record-editor-route.php';
+redirect_legacy_record_editor('baptism');
 
 $basePath = $basePath ?? base_path();
 $selfUrl = '/admin/records/index.php?type=baptismal';
 $selfReturn = '/admin/records/index.php?type=baptismal';
 $editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
 $editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
-$pageTitle = 'Baptismal Records';
+$pageTitle = 'Baptismal Record';
 $errors = [];
 $duplicateMatches = [];
 $success = null;
@@ -30,6 +32,7 @@ $identity = null;
 $formValues = $_POST;
 $isEdit = isset($_GET['edit']);
 $isNew = isset($_GET['new']);
+$pageTitle = $isEdit ? 'Edit Baptism Record' : 'New Baptism Record';
 
 function baptismal_next_logbook_numbers(PDO $pdo): array
 {
@@ -502,9 +505,8 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <div class="page-heading">
-    <h1>Baptismal Record Entry</h1>
+    <h1><?= $isEdit ? 'Edit Baptism Record' : 'New Baptism Record' ?></h1>
     <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php?type=baptismal') ?>">Back to Records</a>
-    <button type="button" class="btn btn-success btn-small" data-open-dialog="#encode-dialog">+ Add New Entry</button>
 </div>
 <?php if ($success): ?><div class="alert alert-success"><p><?= e($success) ?></p></div><?php endif; ?>
 <?php if ($notice): ?><div class="alert alert-info"><p><?= e($notice) ?></p></div><?php endif; ?>
@@ -531,7 +533,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
     }
 }
 ?>
-<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?><?= $isEdit && $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
+<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
     <div class="dialog-head">
         <h2><?= $isEdit ? 'Edit Baptism Record #' . (int) $editRecord['id'] : 'Encode New Baptism Record' ?></h2>
         <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
