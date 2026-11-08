@@ -45,7 +45,7 @@ function sacrament_application_requirements(string $type): array
                 'A PSA Certificate of No Marriage Record (CENOMAR) for each applicant; confirm the required copy count with the Parish Office.',
                 'A list of wedding sponsors with their addresses; the Parish Office will confirm the applicable sponsor requirements.',
                 'If the couple is already civilly married, the civil marriage contract.',
-                'If either applicant’s sacramental records are from another parish, ask whether a transfer or permission letter is required.',
+                'If the wedding is outside St. Patrick’s Parish, the Parish Office will confirm whether a transfer or permission letter is required. Missing sacramental records are reviewed separately.',
             ],
             'after' => [
                 'The Parish Office reviews the documents and arranges an interview with the priest.',

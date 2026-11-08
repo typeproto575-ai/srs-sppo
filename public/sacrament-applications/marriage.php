@@ -241,12 +241,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'marriage_license_ref' => $g('marriage_license_ref'),
                 'sponsors' => array_values(array_filter($sponsorNames, 'is_string')),
             ];
+            $transferLetterRequirement = $venue === 'church'
+                ? ['status' => 'not_applicable', 'note' => "Wedding is at St. Patrick's Parish; missing sacramental records are reviewed separately."]
+                : ['status' => 'not_received', 'note' => 'Parish Office to confirm whether a transfer or permission letter is required.'];
             $requirements = [
                 'psa_cenomar_groom' => ['status' => 'not_received', 'note' => ''],
                 'psa_cenomar_bride' => ['status' => 'not_received', 'note' => ''],
                 'origin_baptismal_certificate_groom' => ['status' => 'not_received', 'note' => ''],
                 'origin_baptismal_certificate_bride' => ['status' => 'not_received', 'note' => ''],
-                'transfer_letter' => ['status' => 'not_received', 'note' => ''],
+                'transfer_letter' => $transferLetterRequirement,
                 'pre_cana_seminar' => ['status' => 'not_received', 'note' => ''],
             ];
             $stmt = $pdo->prepare(

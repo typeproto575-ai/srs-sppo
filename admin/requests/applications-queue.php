@@ -102,7 +102,7 @@ function application_queue_requirement_label(string $sacramentType, string $requ
             'psa_cenomar_bride' => 'Bride PSA CENOMAR',
             'origin_baptismal_certificate_groom' => 'Groom Origin Baptismal Certificate',
             'origin_baptismal_certificate_bride' => 'Bride Origin Baptismal Certificate',
-            'transfer_letter' => 'Transfer Letter',
+            'transfer_letter' => 'Parish Transfer / Permission Letter',
             'pre_cana_seminar' => 'Pre-Cana Seminar',
         ],
     ];
