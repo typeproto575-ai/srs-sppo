@@ -192,10 +192,8 @@ DELETE FROM settings
 WHERE updated_by = 1
   AND (
     (setting_key = 'parish_name' AND setting_value = 'St. Patrick Parish')
-    OR (setting_key = 'first_communion_min_age' AND setting_value = '7')
-    OR (setting_key = 'first_communion_max_age' AND setting_value = '12')
+    OR (setting_key = 'first_communion_min_age' AND setting_value = '8')
     OR (setting_key = 'confirmation_min_age' AND setting_value = '12')
-    OR (setting_key = 'confirmation_max_age' AND setting_value = '18')
     OR (setting_key = 'priest_approval_email' AND setting_value = 'priest@example.com')
   );
 

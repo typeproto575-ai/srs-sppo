@@ -19,16 +19,11 @@ if (!isset($labels[$type])) {
 }
 $ageGroup = (string) ($_GET['age_group'] ?? 'all');
 $minimumAge = null;
-$maximumAge = null;
 $filterError = null;
 if ($ageGroup === 'custom') {
     $minimumValue = trim((string) ($_GET['min_age'] ?? ''));
-    $maximumValue = trim((string) ($_GET['max_age'] ?? ''));
     if ($minimumValue !== '' && preg_match('/^\d{1,3}$/', $minimumValue)) {
         $minimumAge = (int) $minimumValue;
-    }
-    if ($maximumValue !== '' && preg_match('/^\d{1,3}$/', $maximumValue)) {
-        $maximumAge = (int) $maximumValue;
     }
 }
 
@@ -44,8 +39,7 @@ try {
         $filteredPeopleByType[$sacramentType] = sd_filter_age_eligible_persons(
             $candidates,
             $ageGroup,
-            $minimumAge,
-            $maximumAge
+            $minimumAge
         );
     }
 } catch (InvalidArgumentException $e) {
@@ -72,23 +66,17 @@ $paginationUrl = static function (int $targetPage) use ($basePath, $type, $ageGr
     ];
     if ($ageGroup === 'custom') {
         $params['min_age'] = (string) ($_GET['min_age'] ?? '');
-        $params['max_age'] = (string) ($_GET['max_age'] ?? '');
     }
 
     return $basePath . '/admin/age-eligibility.php?' . http_build_query($params);
 };
 $ageGroupLabels = [
     'all' => 'All ages',
-    '7_9' => '7–9',
-    '10_12' => '10–12',
-    '13_17' => '13–17',
-    '18_plus' => '18+',
-    'custom' => 'Custom range',
+    'custom' => 'Custom minimum age',
 ];
 $tabQuery = ['age_group' => $ageGroup, 'per_page' => $perPage];
 if ($ageGroup === 'custom') {
     $tabQuery['min_age'] = (string) ($_GET['min_age'] ?? '');
-    $tabQuery['max_age'] = (string) ($_GET['max_age'] ?? '');
 }
 $pageTitle = 'Age Eligibility Review';
 require_once __DIR__ . '/../includes/admin-header.php';
@@ -111,7 +99,7 @@ require_once __DIR__ . '/../includes/admin-header.php';
         <span class="age-eligibility-notice__mark" aria-hidden="true">i</span>
         <div>
             <strong>For secretary review only</strong>
-            <p>Age is an advisory reminder, not approval or confirmation of readiness. Confirm prerequisites and parish requirements before proceeding. People above the configured age range remain listed for review.</p>
+            <p>Age is an advisory reminder, not approval or confirmation of readiness. Confirm prerequisites and parish requirements before proceeding.</p>
         </div>
     </aside>
 
@@ -149,11 +137,9 @@ require_once __DIR__ . '/../includes/admin-header.php';
                 </select>
             </label>
             <div id="custom-age-range" class="age-eligibility-custom-range" data-custom-age-fields role="group" aria-labelledby="custom-age-range-heading">
-                <strong id="custom-age-range-heading">Custom age range</strong>
+                <strong id="custom-age-range-heading">Custom minimum age</strong>
                 <div class="age-eligibility-custom-range__inputs">
-                    <label>From <input type="number" name="min_age" min="0" max="120" value="<?= e((string) ($_GET['min_age'] ?? '')) ?>"></label>
-                    <span class="age-eligibility-custom-range__separator" aria-hidden="true">to</span>
-                    <label>To <input type="number" name="max_age" min="0" max="120" value="<?= e((string) ($_GET['max_age'] ?? '')) ?>"></label>
+                    <label>Minimum age <input type="number" name="min_age" min="0" max="120" value="<?= e((string) ($_GET['min_age'] ?? '')) ?>"></label>
                 </div>
             </div>
             <div class="age-eligibility-filters__actions">
@@ -179,7 +165,6 @@ require_once __DIR__ . '/../includes/admin-header.php';
                     <input type="hidden" name="age_group" value="<?= e($ageGroup) ?>">
                     <?php if ($ageGroup === 'custom'): ?>
                         <input type="hidden" name="min_age" value="<?= e((string) ($_GET['min_age'] ?? '')) ?>">
-                        <input type="hidden" name="max_age" value="<?= e((string) ($_GET['max_age'] ?? '')) ?>">
                     <?php endif; ?>
                     <label for="age-eligibility-per-page">Show
                         <select id="age-eligibility-per-page" name="per_page" onchange="this.form.submit()">
@@ -209,25 +194,16 @@ require_once __DIR__ . '/../includes/admin-header.php';
                             <th>Date of birth</th>
                             <th>Age</th>
                             <th>Baptism record</th>
-                            <th>Age range note</th>
                             <th>Review</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($people as $person): ?>
-                            <?php $outsideRange = $person['age'] > $range['max_age']; ?>
                             <tr>
                                 <td><strong><?= e($person['full_name']) ?></strong></td>
                                 <td><?= e(date('M j, Y', strtotime((string) $person['birth_date']))) ?></td>
                                 <td><span class="age-eligibility-age"><?= (int) $person['age'] ?></span></td>
                                 <td><span class="age-eligibility-baptism"><span aria-hidden="true">✓</span> Recorded</span></td>
-                                <td>
-                                    <?php if ($outsideRange): ?>
-                                        <span class="age-eligibility-review-flag">Outside configured range — review</span>
-                                    <?php else: ?>
-                                        <span class="age-eligibility-in-range">Within configured range</span>
-                                    <?php endif; ?>
-                                </td>
                                 <td><a class="age-eligibility-open" href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $person['id']) ?>">Open profile <span aria-hidden="true">→</span></a></td>
                             </tr>
                         <?php endforeach; ?>

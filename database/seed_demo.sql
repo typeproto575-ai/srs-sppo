@@ -101,10 +101,8 @@ INSERT INTO announcements (title, content, event_date, is_published, posted_by) 
 
 -- settings (age ranges are placeholders until the priest confirms them)
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('parish_name', 'St. Patrick Parish', 1);
-INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('first_communion_min_age', '7', 1);
-INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('first_communion_max_age', '12', 1);
+INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('first_communion_min_age', '8', 1);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('confirmation_min_age', '12', 1);
-INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('confirmation_max_age', '18', 1);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('priest_approval_email', 'priest@example.com', 1);
 
 -- notifications
