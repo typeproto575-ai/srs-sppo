@@ -179,22 +179,17 @@ final class FunctionsTest extends TestCase
         $pdo->exec('CREATE TABLE settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
 
         self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'first_communion', 6));
-        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 7));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 8));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 12));
-        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'first_communion', 13));
 
         self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'confirmation', 11));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 12));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 18));
-        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'confirmation', 19));
 
-        $pdo->exec("INSERT INTO settings (setting_key, setting_value) VALUES
-        ('first_communion_min_age', '8'),
-        ('first_communion_max_age', '11')");
+        $pdo->exec("INSERT INTO settings (setting_key, setting_value) VALUES ('first_communion_min_age', '8')");
         self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'first_communion', 7));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 8));
-        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 11));
-        self::assertSame('Outside configured range - secretary review', sacrament_age_status($pdo, 'first_communion', 12));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'first_communion', 12));
     }
 
     public function testDashboardNotifiesNewlyEligibleBaptizedPersonsOnlyOnce(): void
@@ -237,8 +232,8 @@ final class FunctionsTest extends TestCase
             )'
         );
 
-        $firstCommunionBirthday = (new DateTimeImmutable('today'))->modify('-7 years')->format('Y-m-d');
-        $alreadyAgeEligible = (new DateTimeImmutable('today'))->modify('-8 years')->format('Y-m-d');
+        $firstCommunionBirthday = (new DateTimeImmutable('today'))->modify('-8 years')->format('Y-m-d');
+        $alreadyAgeEligible = (new DateTimeImmutable('today'))->modify('-9 years')->format('Y-m-d');
         $confirmationBirthday = (new DateTimeImmutable('today'))->modify('-12 years')->format('Y-m-d');
         $insertPerson = $pdo->prepare(
             'INSERT INTO persons (id, first_name, last_name, birth_date, is_deceased)
@@ -307,24 +302,22 @@ final class FunctionsTest extends TestCase
             ['id' => 4, 'age' => 22],
         ];
 
-        self::assertSame([1], array_column(sd_filter_age_eligible_persons($people, '7_9'), 'id'));
-        self::assertSame([2], array_column(sd_filter_age_eligible_persons($people, '10_12'), 'id'));
-        self::assertSame([3], array_column(sd_filter_age_eligible_persons($people, '13_17'), 'id'));
-        self::assertSame([4], array_column(sd_filter_age_eligible_persons($people, '18_plus'), 'id'));
-        self::assertSame([2, 3], array_column(sd_filter_age_eligible_persons($people, 'custom', 10, 17), 'id'));
-        self::assertCount(4, sd_filter_age_eligible_persons($people, 'all'));
+        self::assertSame([1, 2, 3, 4], array_column(sd_filter_age_eligible_persons($people, 'all'), 'id'));
+        self::assertSame([2, 3, 4], array_column(sd_filter_age_eligible_persons($people, 'custom', 10), 'id'));
+        self::assertSame([1, 2, 3, 4], array_column(sd_filter_age_eligible_persons($people, 'custom', 8), 'id'));
+        self::assertSame([4], array_column(sd_filter_age_eligible_persons($people, 'custom', 20), 'id'));
     }
 
     public function testCustomAgeEligibilityFilterRequiresValidBounds(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        sd_filter_age_eligible_persons([['age' => 8]], 'custom', 9, 8);
+        sd_filter_age_eligible_persons([['age' => 8]], 'custom', 150);
     }
 
-    public function testCustomAgeEligibilityFilterRequiresBothBounds(): void
+    public function testCustomAgeEligibilityFilterRejectsInvalidGroup(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        sd_filter_age_eligible_persons([['age' => 8]], 'custom', 7, null);
+        sd_filter_age_eligible_persons([['age' => 8]], '7_9');
     }
 
     public function testSafeReturnUrls(): void

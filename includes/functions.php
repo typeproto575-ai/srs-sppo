@@ -266,21 +266,17 @@ function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
     $settings = match ($sacramentType) {
         'first_communion' => [
             'min_key' => 'first_communion_min_age',
-            'max_key' => 'first_communion_max_age',
-            'min_default' => 7,
-            'max_default' => 12,
+            'min_default' => 8,
         ],
         'confirmation' => [
             'min_key' => 'confirmation_min_age',
-            'max_key' => 'confirmation_max_age',
             'min_default' => 12,
-            'max_default' => 18,
         ],
         default => throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.'),
     };
 
-    $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM settings WHERE setting_key IN (?, ?)');
-    $stmt->execute([$settings['min_key'], $settings['max_key']]);
+    $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM settings WHERE setting_key = ?');
+    $stmt->execute([$settings['min_key']]);
     $values = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $values[$row['setting_key']] = $row['setting_value'];
@@ -290,22 +286,11 @@ function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
         $values[$settings['min_key']] ?? $settings['min_default'],
         FILTER_VALIDATE_INT
     );
-    $maxAge = filter_var(
-        $values[$settings['max_key']] ?? $settings['max_default'],
-        FILTER_VALIDATE_INT
-    );
-    if (
-        $minAge === false
-        || $maxAge === false
-        || $minAge < 0
-        || $minAge > 120
-        || $maxAge < $minAge
-        || $maxAge > 120
-    ) {
-        throw new UnexpectedValueException('The configured sacrament age range is invalid.');
+    if ($minAge === false || $minAge < 0 || $minAge > 120) {
+        throw new UnexpectedValueException('The configured sacrament minimum age is invalid.');
     }
 
-    return ['min_age' => $minAge, 'max_age' => $maxAge];
+    return ['min_age' => $minAge];
 }
 
 /** Return the configured age range and review-friendly status without blocking the application. */
@@ -314,8 +299,6 @@ function sacrament_age_assessment(PDO $pdo, string $sacramentType, int $age): ar
     $range = sacrament_eligibility_range($pdo, $sacramentType);
     if ($age < $range['min_age']) {
         $status = 'Not yet age-eligible';
-    } elseif ($age > $range['max_age']) {
-        $status = 'Outside configured range - secretary review';
     } else {
         $status = 'Age-eligible';
     }

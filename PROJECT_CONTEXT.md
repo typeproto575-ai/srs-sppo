@@ -77,9 +77,9 @@ The register uses the shared `sacrament_records` table, with `sacrament_type` di
 
 **Baptismal** — no age prerequisite. Public certificate requests use the unified form at `public/certificate-request.php` and are stored in the shared v2 `certificate_requests` table. Public pre-application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
 
-**Confirmation** — certificate request and online pre-application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Age range in `settings` is a **placeholder (12–18)** until the priest confirms it.
+**Confirmation** — certificate request and online pre-application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Minimum age in `settings` is a **placeholder (12+)** until the priest confirms it.
 
-**First Communion** — same pattern as Confirmation: online pre-application (`public/sacrament-applications/first-communion.php`) plus walk-in encoding, and a one-time received record, not per-Mass attendance. Age placeholder **7–12**, unconfirmed.
+**First Communion** — same pattern as Confirmation: online pre-application (`public/sacrament-applications/first-communion.php`) plus walk-in encoding, and a one-time received record, not per-Mass attendance. Age placeholder **8+**, unconfirmed.
 
 **Marriage** — most complex. The secretary records canonical preparation and verifies the parties' sacramental documents with the priest. Applicants do not self-certify those steps on the public form. Baptismal and Confirmation certificates requested for marriage are marked “For Marriage Purposes.” The project does not define an expiry period; follow the Parish Office's current instructions.
 
@@ -232,6 +232,6 @@ Leftover files that are **not** the live path: `includes/public-office-only.php`
 
 ## Known open questions
 
-- Confirm First Communion and Confirmation age ranges with the parish priest (placeholders 7–12 and 12–18).
+- Confirm First Communion and Confirmation minimum ages with the parish priest (placeholders 8+ and 12+).
 - Confirm any separate recency requirement with the Parish Office or receiving institution; the project does not impose certificate expiry dates.
 - Production SMTP settings, `MAIL_SITE_URL`, and HTTPS when leaving localhost.

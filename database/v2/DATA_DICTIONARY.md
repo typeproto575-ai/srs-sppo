@@ -163,7 +163,7 @@ Reprints and other staff actions are recorded in `audit_logs`, not in a separate
 
 ### 3.10 settings
 `setting_key` (PK, VARCHAR 64), `setting_value` (TEXT), `updated_by`, `updated_at`.
-Age eligibility currently reads `first_communion_min_age`, `first_communion_max_age`, `confirmation_min_age`, and `confirmation_max_age`. The demo defaults are 7-12 years for First Communion and 12-18 years for Confirmation; these ranges are guidance for secretary review, not automatic rejection criteria. Other planned keys include `parish_name`, `priest_approval_email`, and `retention_months`.
+Age eligibility currently reads `first_communion_min_age` and `confirmation_min_age`. The demo defaults are 8+ years for First Communion and 12+ years for Confirmation; these minimum ages are guidance for secretary review, not automatic rejection criteria. Other planned keys include `parish_name`, `priest_approval_email`, and `retention_months`.
 
 ### 3.11 notifications
 | Column | Type | Notes |

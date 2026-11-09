@@ -336,25 +336,17 @@ function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
 function sd_filter_age_eligible_persons(
     array $people,
     string $ageGroup,
-    ?int $minimumAge = null,
-    ?int $maximumAge = null
+    ?int $minimumAge = null
 ): array {
     $ranges = [
         'all' => null,
-        '7_9' => [7, 9],
-        '10_12' => [10, 12],
-        '13_17' => [13, 17],
-        '18_plus' => [18, 120],
     ];
 
     if ($ageGroup === 'custom') {
-        if ($minimumAge === null || $maximumAge === null) {
-            throw new InvalidArgumentException('Enter both a minimum and maximum age for a custom range.');
+        if ($minimumAge === null || $minimumAge < 0 || $minimumAge > 120) {
+            throw new InvalidArgumentException('Enter a valid minimum age from 0 to 120.');
         }
-        if ($minimumAge < 0 || $maximumAge > 120 || $minimumAge > $maximumAge) {
-            throw new InvalidArgumentException('Enter a valid age range from 0 to 120, with the minimum no greater than the maximum.');
-        }
-        $range = [$minimumAge, $maximumAge];
+        $range = [$minimumAge];
     } elseif (array_key_exists($ageGroup, $ranges)) {
         $range = $ranges[$ageGroup];
     } else {
@@ -368,7 +360,6 @@ function sd_filter_age_eligible_persons(
     return array_values(array_filter(
         $people,
         static fn(array $person): bool => (int) $person['age'] >= $range[0]
-            && (int) $person['age'] <= $range[1]
     ));
 }
 

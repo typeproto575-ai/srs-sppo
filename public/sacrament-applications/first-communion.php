@@ -324,7 +324,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <?php if ($ageAssessment !== null): ?>
                             <p class="alert alert-info" role="note">
                                 <strong>Age guidance:</strong> The applicant is <?= (int) $ageAssessment['age'] ?> years old.
-                                The configured range is <?= (int) $ageAssessment['range']['min_age'] ?>-<?= (int) $ageAssessment['range']['max_age'] ?> years;
+                                The minimum age is <?= (int) $ageAssessment['range']['min_age'] ?> years;
                                 assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
                                 This is advisory only and does not prevent submission; the Parish Secretary will review the application.
                             </p>
