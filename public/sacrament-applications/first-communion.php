@@ -30,12 +30,32 @@ if (!isset($_SESSION['first_communion_app']) || !is_array($_SESSION['first_commu
     $_SESSION['first_communion_app'] = ['current_step' => 1, 'form_data' => []];
 }
 $wizard = &$_SESSION['first_communion_app'];
+$formData = &$wizard['form_data'];
+if (($_GET['start'] ?? '') === 'profile') {
+    if ((current_user()['role'] ?? '') !== 'secretary') {
+        http_response_code(403);
+        exit('Only parish secretaries can start a profile-linked walk-in pre-application.');
+    }
+    $personId = filter_var($_GET['person_id'] ?? null, FILTER_VALIDATE_INT);
+    $person = $personId ? public_application_profile($pdo, (int) $personId) : null;
+    if (!$person) {
+        $errors[] = 'The selected parishioner profile could not be found. Search for the person again.';
+    } else {
+        $formData = array_merge(public_application_profile_fields($person, 'applicant'), [
+            'contact_number' => (string) ($person['contact_number'] ?? ''),
+            'email' => (string) ($person['email'] ?? ''),
+        ]);
+        $wizard['current_step'] = 1;
+        session_write_close();
+        header('Location: first-communion.php');
+        exit;
+    }
+}
 $currentStep = (int) ($wizard['current_step'] ?? 1);
 if ($currentStep < 1 || $currentStep > count($steps)) {
     $currentStep = 1;
     $wizard['current_step'] = 1;
 }
-$formData = &$wizard['form_data'];
 $wizardAction = $_POST['_action'] ?? '';
 $isWizardNavigation = $_SERVER['REQUEST_METHOD'] === 'POST'
     && in_array($wizardAction, ['next', 'back'], true);

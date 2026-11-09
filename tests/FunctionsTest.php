@@ -45,6 +45,14 @@ final class FunctionsTest extends TestCase
         self::assertSame(['4000'], unified_record_search_book_values('4000'));
     }
 
+    public function testPersonSearchRecognizesDottedAndUndottedMiddleInitials(): void
+    {
+        self::assertSame('R', search_middle_initial('R.'));
+        self::assertSame('R', search_middle_initial('R'));
+        self::assertSame('É', search_middle_initial('É.'));
+        self::assertNull(search_middle_initial('Ramos'));
+    }
+
     public function testAdminNotificationLinksStayInsideTheAdminApplication(): void
     {
         self::assertSame(
@@ -545,6 +553,76 @@ final class FunctionsTest extends TestCase
         self::assertTrue(record_lookup_name_matches('Maria', '', 'Maria Santos', 'Maria', 'Santos'));
         self::assertTrue(record_lookup_name_matches('', 'Santos', 'Maria Santos', 'Maria', 'Santos'));
         self::assertFalse(record_lookup_name_matches('', '', 'Maria Santos', 'Maria', 'Santos'));
+    }
+
+    public function testPublicApplicationCanLoadAProfileForPrefill(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec(
+            'CREATE TABLE persons (
+                id INTEGER PRIMARY KEY,
+                first_name TEXT, middle_name TEXT, last_name TEXT, suffix TEXT,
+                birth_date TEXT, birth_place TEXT, father_name TEXT, mother_maiden_name TEXT,
+                address TEXT, contact_number TEXT, email TEXT, sex TEXT
+            )'
+        );
+        $pdo->exec(
+            "INSERT INTO persons VALUES
+                (7, 'Maria', 'Therese', 'Santos', '', '2010-03-12', 'Quezon City',
+                 'Juan Santos', 'Ana Cruz', 'Parish address', '09171234567', 'maria@example.com', 'female')"
+        );
+
+        $person = public_application_profile($pdo, 7);
+        self::assertNotNull($person);
+        self::assertSame('Maria', $person['first_name']);
+        self::assertSame('maria@example.com', $person['email']);
+        self::assertNull(public_application_profile($pdo, 0));
+        self::assertNull(public_application_profile($pdo, 999));
+    }
+
+    public function testPublicApplicationProfileFieldsMapIdentityWithoutInventingValues(): void
+    {
+        self::assertSame([
+            'applicant_first' => 'Maria',
+            'applicant_middle' => '',
+            'applicant_last' => 'Santos',
+            'applicant_suffix' => '',
+            'applicant_birthdate' => '',
+            'applicant_birthplace' => '',
+            'applicant_person_id' => '7',
+            'selected_father_name' => '',
+            'selected_mother_maiden_name' => '',
+        ], public_application_profile_fields([
+            'id' => 7,
+            'first_name' => 'Maria',
+            'middle_name' => null,
+            'last_name' => 'Santos',
+            'suffix' => null,
+            'birth_date' => null,
+            'birth_place' => null,
+            'father_name' => null,
+            'mother_maiden_name' => null,
+        ], 'applicant'));
+    }
+
+    public function testPublicApplicationCanKeepAProfileLinkedWhenItsBirthDateIsUnknown(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec(
+            'CREATE TABLE persons (
+                id INTEGER PRIMARY KEY,
+                first_name TEXT, middle_name TEXT, last_name TEXT, suffix TEXT, birth_date TEXT
+            )'
+        );
+        $pdo->exec(
+            "INSERT INTO persons VALUES
+                (7, 'Maria', NULL, 'Santos', NULL, NULL),
+                (8, 'Ana', NULL, 'Cruz', NULL, '2010-03-12')"
+        );
+
+        self::assertSame(7, public_selected_person_id($pdo, '7', 'Maria', '', 'Santos', '', '2010-03-12'));
+        $this->expectException(InvalidArgumentException::class);
+        public_selected_person_id($pdo, '8', 'Ana', '', 'Cruz', '', '2011-03-12');
     }
 
     public function testScheduleOverlapRules(): void

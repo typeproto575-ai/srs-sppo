@@ -50,7 +50,7 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         $term = '%' . addcslashes($part, '\\_%') . '%';
         array_push($params, $term, $term, $term, $term);
     }
-    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, father_name, mother_maiden_name
+    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
             FROM persons
             WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
             ORDER BY last_name, first_name
@@ -67,6 +67,7 @@ if (($_GET['person_lookup'] ?? '') === '1') {
                 'last_name' => $person['last_name'],
                 'suffix' => $person['suffix'] ?? '',
                 'birth_date' => $person['birth_date'],
+                'birth_place' => $person['birth_place'] ?? '',
                 'father_name' => $person['father_name'] ?? '',
                 'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
             ];

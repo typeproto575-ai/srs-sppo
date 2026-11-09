@@ -161,6 +161,7 @@ CREATE TABLE sacrament_applications (
   paid_at            DATETIME NULL,
   paid_by            INT UNSIGNED NULL,
   processed_by       INT UNSIGNED NULL,
+  assigned_to        INT UNSIGNED NULL,                  -- staff member currently responsible for the handoff
   privacy_consent_at DATETIME NULL,
   anonymized_at      DATETIME NULL,
   created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -168,11 +169,13 @@ CREATE TABLE sacrament_applications (
   INDEX idx_sa_status (status),
   INDEX idx_sa_type (sacrament_type, preferred_date),
   INDEX idx_sa_name (applicant_name),
+  INDEX idx_sa_assigned (assigned_to),
   CONSTRAINT fk_sa_person    FOREIGN KEY (person_id)        REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_sa_spouse    FOREIGN KEY (spouse_person_id) REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_sa_record    FOREIGN KEY (record_id)        REFERENCES sacrament_records(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_paid_by   FOREIGN KEY (paid_by)          REFERENCES users(id)             ON DELETE SET NULL,
-  CONSTRAINT fk_sa_processed FOREIGN KEY (processed_by)     REFERENCES users(id)             ON DELETE SET NULL
+  CONSTRAINT fk_sa_processed FOREIGN KEY (processed_by)     REFERENCES users(id)             ON DELETE SET NULL,
+  CONSTRAINT fk_sa_assigned  FOREIGN KEY (assigned_to)      REFERENCES users(id)             ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

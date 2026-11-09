@@ -12,6 +12,16 @@ if (!defined('APP_IN_PROGRESS_STATUSES')) {
 }
 $statuses = array_merge(['in_progress'], APP_IN_PROGRESS_STATUSES, ['new', 'completed', 'rejected']);
 $sacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
+$staffUsers = $pdo->query(
+    'SELECT id, full_name FROM users WHERE is_active = 1 ORDER BY full_name, id'
+)->fetchAll(PDO::FETCH_ASSOC);
+$assigneeOptions = ['unassigned' => 'Unassigned'];
+foreach ($staffUsers as $staffUser) {
+    $assigneeOptions[(string) $staffUser['id']] = (string) $staffUser['full_name'];
+}
+if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
+    unset($_GET['assignee']);
+}
 $requirementStatuses = ['not_received', 'received', 'verified', 'not_applicable'];
 $requirementKeys = [
     'baptism' => ['psa_birth_certificate'],
@@ -26,7 +36,7 @@ $requirementKeys = [
         'pre_cana_seminar',
     ],
 ];
-$returnKeys = ['status', 'sacrament', 'channel', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
+$returnKeys = ['status', 'sacrament', 'channel', 'assignee', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
 $returnParams = array_intersect_key($_GET, array_flip($returnKeys));
 $returnQuery = http_build_query($returnParams);
 $returnUrl = '/admin/requests/applications-queue.php' . ($returnQuery !== '' ? '?' . $returnQuery : '');
@@ -196,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
         $lock = $pdo->prepare(
-            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements
+            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements, assigned_to
              FROM sacrament_applications
              WHERE id = ?
              FOR UPDATE'
@@ -209,14 +219,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to($postReturnUrl);
         }
 
-        if (in_array($action, ['link_person', 'update_requirement'], true)
+        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff'], true)
             && in_array($application['status'], ['completed', 'rejected'], true)) {
             $pdo->rollBack();
-            $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications are locked.';
+            $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications cannot be reassigned or edited.';
             redirect_to($postReturnUrl);
         }
 
-        if ($action === 'link_person') {
+        if ($action === 'assign_staff') {
+            $assigneeInput = (string) ($_POST['assignee_id'] ?? '');
+            $assigneeId = null;
+            $assigneeName = null;
+            if ($assigneeInput !== '' && $assigneeInput !== 'unassigned') {
+                $validatedAssigneeId = filter_var($assigneeInput, FILTER_VALIDATE_INT);
+                if (!$validatedAssigneeId || $validatedAssigneeId < 1) {
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'Choose an active staff member or leave the request unassigned.';
+                    redirect_to($postReturnUrl);
+                }
+
+                $assigneeStmt = $pdo->prepare(
+                    'SELECT id, full_name FROM users WHERE id = ? AND is_active = 1 FOR UPDATE'
+                );
+                $assigneeStmt->execute([(int) $validatedAssigneeId]);
+                $assignee = $assigneeStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$assignee) {
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'That staff account is inactive or no longer exists.';
+                    redirect_to($postReturnUrl);
+                }
+                $assigneeId = (int) $assignee['id'];
+                $assigneeName = (string) $assignee['full_name'];
+            }
+
+            $previousAssigneeId = (int) ($application['assigned_to'] ?? 0);
+            if ($previousAssigneeId === (int) ($assigneeId ?? 0)) {
+                $pdo->rollBack();
+                $_SESSION['application_queue_success'] = 'No assignment change was needed.';
+                redirect_to($postReturnUrl);
+            }
+
+            $previousAssigneeName = null;
+            if ($previousAssigneeId > 0) {
+                $previousStmt = $pdo->prepare('SELECT full_name FROM users WHERE id = ?');
+                $previousStmt->execute([$previousAssigneeId]);
+                $previousAssigneeName = $previousStmt->fetchColumn();
+            }
+            $update = $pdo->prepare('UPDATE sacrament_applications SET assigned_to = ? WHERE id = ?');
+            $update->execute([$assigneeId, (int) $applicationId]);
+
+            $user = current_user();
+            $actionName = $assigneeId === null
+                ? 'sacrament_application_unassigned'
+                : 'sacrament_application_assigned';
+            $description = $assigneeId === null
+                ? 'Unassigned request from ' . ($previousAssigneeName ?: 'a previous staff member') . '.'
+                : 'Assigned request to ' . $assigneeName . ' (previously '
+                    . ($previousAssigneeName ?: 'unassigned') . ').';
+            log_activity(
+                $pdo,
+                isset($user['id']) ? (int) $user['id'] : null,
+                $actionName,
+                'sacrament_applications',
+                (int) $applicationId,
+                $description
+            );
+            $pdo->commit();
+            $_SESSION['application_queue_success'] = $assigneeId === null
+                ? 'Request returned to the unassigned queue.'
+                : 'Request assigned to ' . $assigneeName . '.';
+        } elseif ($action === 'link_person') {
             $role = (string) ($_POST['person_role'] ?? '');
             $personId = filter_var($_POST['person_id'] ?? null, FILTER_VALIDATE_INT);
             if (!$personId || $personId < 1 || !in_array($role, ['applicant', 'spouse'], true)) {
@@ -334,6 +406,7 @@ $rfConfig = [
         'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
         'channel' => ['label' => 'Channel', 'options' => ['online' => 'Submitted: Online', 'onsite' => 'Submitted: At the office']],
         'sacrament' => ['label' => 'Sacrament', 'options' => array_combine($sacraments, array_map('application_queue_label', $sacraments))],
+        'assignee' => ['label' => 'Assigned to', 'options' => $assigneeOptions],
     ],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
@@ -341,6 +414,7 @@ $rf = rf_parse($rfConfig);
 $filterStatus = is_string($_GET['status'] ?? null) ? $_GET['status'] : '';
 $filterSacrament = is_string($_GET['sacrament'] ?? null) ? $_GET['sacrament'] : '';
 $filterChannel = is_string($_GET['channel'] ?? null) ? $_GET['channel'] : '';
+$filterAssignee = is_string($_GET['assignee'] ?? null) ? $_GET['assignee'] : '';
 $whereSql = ' WHERE 1 = 1' . $rf['where'];
 $params = $rf['params'];
 
@@ -362,6 +436,12 @@ if (in_array($filterChannel, ['online', 'onsite'], true)) {
     $whereSql .= ' AND sa.channel = ?';
     $params[] = $filterChannel;
 }
+if ($filterAssignee === 'unassigned') {
+    $whereSql .= ' AND sa.assigned_to IS NULL';
+} elseif ($filterAssignee !== '' && isset($assigneeOptions[$filterAssignee])) {
+    $whereSql .= ' AND sa.assigned_to = ?';
+    $params[] = (int) $filterAssignee;
+}
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications sa{$whereSql}");
 $countStmt->execute($params);
@@ -375,13 +455,33 @@ $rf['offset'] = $offset;
 $stmt = $pdo->prepare(
     "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.spouse_person_id,
             sa.applicant_name, sa.applicant_email, sa.preferred_date, sa.preferred_time,
-            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at
-     FROM sacrament_applications sa{$whereSql}
+            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at,
+            sa.assigned_to, assignee.full_name AS assigned_to_name
+     FROM sacrament_applications sa
+     LEFT JOIN users assignee ON assignee.id = sa.assigned_to{$whereSql}
      ORDER BY sa.created_at DESC, sa.id DESC
      LIMIT {$limit} OFFSET {$offset}"
 );
 $stmt->execute($params);
 $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$assignmentHistoryByApplication = [];
+if ($applications !== []) {
+    $applicationIds = array_map(static fn(array $application): int => (int) $application['id'], $applications);
+    $applicationPlaceholders = implode(', ', array_fill(0, count($applicationIds), '?'));
+    $historyStmt = $pdo->prepare(
+        "SELECT target_id, actor_name, description, created_at
+         FROM audit_logs
+         WHERE target_table = 'sacrament_applications'
+           AND action IN ('sacrament_application_assigned', 'sacrament_application_unassigned')
+           AND target_id IN ({$applicationPlaceholders})
+         ORDER BY created_at DESC, id DESC"
+    );
+    $historyStmt->execute($applicationIds);
+    foreach ($historyStmt->fetchAll(PDO::FETCH_ASSOC) as $historyEntry) {
+        $assignmentHistoryByApplication[(int) $historyEntry['target_id']][] = $historyEntry;
+    }
+}
 
 $linkedPersonIds = [];
 foreach ($applications as $application) {
@@ -493,7 +593,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p>Review pre-applications, link master person profiles, track requirements, and continue the parish review process.</p>
         </div>
         <div class="admin-queue-actions">
-            <a href="<?= e($basePath . '/public/services.php#sacrament-applications') ?>" class="btn btn-secondary">New walk-in pre-application</a>
+            <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in pre-application</a>
         </div>
         <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> pre-applications match the current filters">
             <strong><?= (int) $totalRows ?></strong>
@@ -520,6 +620,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <th>Sacrament</th>
                         <th>Applicant(s)</th>
                         <th>Submitted</th>
+                        <th>Assigned to</th>
                         <th>Status</th>
                         <th>Review</th>
                     </tr>
@@ -604,6 +705,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?= e(application_queue_label($app['channel'])) ?><br>
                         <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
                     </td>
+                    <td><?= e((string) ($app['assigned_to_name'] ?? 'Unassigned')) ?></td>
                     <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span></td>
                     <td>
                         <button
@@ -619,7 +721,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     class="application-queue-detail-row"
                     <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? '' : 'hidden' ?>
                 >
-                    <td colspan="6">
+                    <td colspan="7">
                         <details
                             class="application-queue-review"
                             id="application-review-<?= (int) $app['id'] ?>"
@@ -641,6 +743,62 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <p><strong>Preferred date:</strong> <?= e(date('M j, Y', strtotime($app['preferred_date']))) ?>
                             <?= $app['preferred_time'] ? e(date('g:i A', strtotime($app['preferred_time']))) : '' ?></p>
                     <?php endif; ?>
+
+                    <section class="application-handoff" aria-label="Staff handoff">
+                        <div>
+                            <h3>Staff handoff</h3>
+                            <p>Current owner: <strong><?= e((string) ($app['assigned_to_name'] ?? 'Unassigned')) ?></strong></p>
+                        </div>
+                        <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
+                            <form method="post" class="application-handoff-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                                <input type="hidden" name="action" value="assign_staff">
+                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                <label for="application-assignee-<?= (int) $app['id'] ?>">Assign or hand off to
+                                    <select id="application-assignee-<?= (int) $app['id'] ?>" name="assignee_id" required>
+                                        <?php
+                                        $assignedUserIsActive = false;
+                                        foreach ($staffUsers as $staffUser) {
+                                            if ((int) $staffUser['id'] === (int) ($app['assigned_to'] ?? 0)) {
+                                                $assignedUserIsActive = true;
+                                                break;
+                                            }
+                                        }
+                                        if ($app['assigned_to'] !== null && !$assignedUserIsActive):
+                                        ?>
+                                            <option value="" selected disabled>Choose an active staff member…</option>
+                                        <?php else: ?>
+                                            <option value="unassigned" <?= $app['assigned_to'] === null ? 'selected' : '' ?>>Unassigned</option>
+                                        <?php endif; ?>
+                                        <?php foreach ($staffUsers as $staffUser): ?>
+                                            <option value="<?= (int) $staffUser['id'] ?>" <?= (int) ($app['assigned_to'] ?? 0) === (int) $staffUser['id'] ? 'selected' : '' ?>>
+                                                <?= e($staffUser['full_name']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <button type="submit" class="btn btn-small">Save handoff</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php $assignmentHistory = $assignmentHistoryByApplication[(int) $app['id']] ?? []; ?>
+                        <?php if ($assignmentHistory !== []): ?>
+                            <details class="application-handoff-history">
+                                <summary>Handoff history (<?= count($assignmentHistory) ?>)</summary>
+                                <ol>
+                                    <?php foreach ($assignmentHistory as $historyEntry): ?>
+                                        <li>
+                                            <strong><?= e((string) ($historyEntry['actor_name'] ?: 'Staff')) ?></strong>
+                                            <span><?= e((string) $historyEntry['description']) ?></span>
+                                            <time datetime="<?= e(date('c', strtotime($historyEntry['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($historyEntry['created_at']))) ?></time>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ol>
+                            </details>
+                        <?php else: ?>
+                            <p class="application-handoff-empty">No handoffs recorded yet.</p>
+                        <?php endif; ?>
+                    </section>
 
                     <?php if ($prerequisiteWarnings !== []): ?>
                         <aside class="alert alert-warning" role="note">

@@ -775,14 +775,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <?= person_name_fields($party . '_father', $partyData['label'] . "'s Father", $_POST, false) ?>
                                 <?= person_name_fields($party . '_mother', $partyData['label'] . "'s Mother", $_POST, false) ?>
                                 <div class="person-finder" data-person-finder data-name-prefix="<?= e($party) ?>" data-birth-field="<?= e($party) ?>_birth_date" data-birth-place-field="<?= e($party) ?>_birth_place" data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
-                                    <label>Find an existing person
-                                        <input autocomplete="off" type="search" data-person-search placeholder="Search the master person index">
+                                    <label>Find an existing person first
+                                        <input autocomplete="off" type="search" data-person-search placeholder="Search the master person index by name">
                                     </label>
                                     <button type="button" class="btn btn-secondary btn-small" data-person-find>Find person</button>
                                     <input type="hidden" name="<?= e($party) ?>_person_id" data-person-id value="<?= e($_POST[$party . '_person_id'] ?? '') ?>">
                                     <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                                     <div class="person-finder-results" data-person-results></div>
-                                    <p class="field-hint">If there is no match, saving creates a master person profile for this party.</p>
+                                    <p class="field-hint">Select an existing profile to reuse recorded biographical details. Enter those details below only if no matching parish profile exists.</p>
                                     <?php if (!empty($duplicateMatches[$party])): ?>
                                         <div class="alert alert-warning">
                                             <strong>Possible existing <?= e(strtolower($partyData['label'])) ?> profiles</strong>

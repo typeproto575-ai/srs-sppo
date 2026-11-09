@@ -42,18 +42,30 @@ if ($query !== '') {
             exit;
         }
     }
-    $like = '%' . $query . '%';
+    $tokens = array_slice(preg_split('/[\s,]+/', $query, -1, PREG_SPLIT_NO_EMPTY), 0, 5);
+    $conditions = [];
+    $params = [];
+    foreach ($tokens as $token) {
+        $like = '%' . addcslashes($token, '\\_%') . '%';
+        $middleInitial = search_middle_initial($token);
+        $conditions[] = '(p.first_name LIKE ? OR p.middle_name LIKE ? OR p.last_name LIKE ? OR p.suffix LIKE ?'
+            . ($middleInitial !== null ? " OR UPPER(LEFT(COALESCE(p.middle_name, ''), 1)) = UPPER(?)" : '')
+            . ')';
+        array_push($params, $like, $like, $like, $like);
+        if ($middleInitial !== null) {
+            $params[] = $middleInitial;
+        }
+    }
     $stmt = $pdo->prepare(
         'SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix,
                 p.birth_date, p.birth_place, p.father_name, p.mother_maiden_name, p.address
          FROM persons p
-         WHERE (CONCAT_WS(" ", p.first_name, p.middle_name, p.last_name, p.suffix) LIKE ?
-            OR p.last_name LIKE ? OR p.birth_date LIKE ?)
+         WHERE (' . implode(' AND ', $conditions) . ')
            AND (? = "" OR p.birth_date = ?)
          ORDER BY p.last_name, p.first_name, p.middle_name, p.id
          LIMIT 25'
     );
-    $stmt->execute([$like, $like, $like, $birthDate, $birthDate]);
+    $stmt->execute(array_merge($params, [$birthDate, $birthDate]));
     echo json_encode(['results' => format_person_search_results($stmt->fetchAll(PDO::FETCH_ASSOC))]);
     exit;
 }

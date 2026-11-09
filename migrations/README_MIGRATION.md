@@ -84,6 +84,10 @@ The person-registry sequence documents the original rollout:
 9. `047_add_person_profile_observanda.sql` adds the optional person-level
    Observanda note. It is separate from remarks on individual sacrament
    register entries.
+10. `048_add_sacrament_application_assignment.sql` adds the optional current
+    staff assignee for each sacrament pre-application. Assignment and handoff
+    history is recorded in `audit_logs`; back up and review existing databases
+    before applying this manual migration.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support
@@ -94,6 +98,8 @@ do not rerun historical scripts just because their files are present.
 Existing V2 databases that need person-level Observanda must be backed up and
 reviewed before applying migration 047; the protected upgrade page does not
 apply it.
+Existing V2 databases using the sacrament pre-application queue must also
+apply migration 048 before deploying the staff assignment controls.
 
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a

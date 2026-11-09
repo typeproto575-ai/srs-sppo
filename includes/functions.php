@@ -81,7 +81,7 @@ function public_selected_person_id(
            AND COALESCE(middle_name, \'\') = ?
            AND last_name = ?
            AND COALESCE(suffix, \'\') = ?
-           AND birth_date = ?
+           AND (birth_date = ? OR birth_date IS NULL)
          LIMIT 1'
     );
     $stmt->execute([
@@ -117,12 +117,47 @@ function public_prefill_person_parents(array &$formData): void
                 break;
             }
         }
+
         if (!$hasExistingName) {
             foreach ($keys as $index => $key) {
                 $formData[$key] = $parts[$index];
             }
         }
     }
+}
+
+function public_application_profile(PDO $pdo, int $personId): ?array
+{
+    if ($personId < 1) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place,
+                father_name, mother_maiden_name, address, contact_number, email, sex
+         FROM persons
+         WHERE id = ?
+         LIMIT 1'
+    );
+    $stmt->execute([$personId]);
+    $person = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return is_array($person) ? $person : null;
+}
+
+function public_application_profile_fields(array $person, string $prefix): array
+{
+    return [
+        $prefix . '_first' => (string) ($person['first_name'] ?? ''),
+        $prefix . '_middle' => (string) ($person['middle_name'] ?? ''),
+        $prefix . '_last' => (string) ($person['last_name'] ?? ''),
+        $prefix . '_suffix' => (string) ($person['suffix'] ?? ''),
+        $prefix . '_birthdate' => (string) ($person['birth_date'] ?? ''),
+        $prefix . '_birthplace' => (string) ($person['birth_place'] ?? ''),
+        $prefix . '_person_id' => (string) ($person['id'] ?? ''),
+        'selected_father_name' => (string) ($person['father_name'] ?? ''),
+        'selected_mother_maiden_name' => (string) ($person['mother_maiden_name'] ?? ''),
+    ];
 }
 
 function generate_tracking_token(): string
@@ -1292,6 +1327,13 @@ function validate_full_name(string $name): ?string
     }
 
     return null;
+}
+
+function search_middle_initial(string $token): ?string
+{
+    return preg_match('/^([\p{L}])\.?$/u', trim($token), $matches) === 1
+        ? $matches[1]
+        : null;
 }
 
 function display_name_with_middle_initial(

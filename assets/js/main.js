@@ -639,7 +639,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function fillFromProfile(name, value) {
             var input = form.querySelector('[name="' + name + '"]');
-            if (input && value) input.value = value;
+            if (input) input.value = value || '';
         }
 
         function structuredParts(fullName) {
@@ -656,12 +656,41 @@ document.addEventListener('DOMContentLoaded', function () {
             };
         }
 
-        function fillParentName(prefix, fullName) {
+        function fillParentName(prefix, fullName, personPrefix) {
             var parts = structuredParts(fullName);
-            fillFromProfile(prefix + '_first', parts.first);
-            fillFromProfile(prefix + '_middle', parts.middle);
-            fillFromProfile(prefix + '_last', parts.last);
-            fillFromProfile(prefix + '_suffix', parts.suffix);
+            var fieldPrefix = personPrefix ? personPrefix + '_' : '';
+            fillFromProfile(fieldPrefix + prefix + '_first', parts.first);
+            fillFromProfile(fieldPrefix + prefix + '_middle', parts.middle);
+            fillFromProfile(fieldPrefix + prefix + '_last', parts.last);
+            fillFromProfile(fieldPrefix + prefix + '_suffix', parts.suffix);
+        }
+
+        function identityFieldNames() {
+            var prefix = namePrefix();
+            var names = [
+                prefix + '_first_name',
+                prefix + '_middle_name',
+                prefix + '_last_name',
+                prefix + '_suffix',
+                finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : prefix + '_birth_date'),
+                finder.dataset.birthPlaceField || (prefix === 'child' ? 'child_birthplace' : prefix + '_birth_place')
+            ];
+            var parentPrefix = (prefix === 'groom' || prefix === 'bride') ? prefix + '_' : '';
+            ['father', 'mother'].forEach(function (side) {
+                ['first', 'middle', 'last', 'suffix'].forEach(function (part) {
+                    names.push(parentPrefix + side + '_' + part);
+                });
+            });
+            return names;
+        }
+
+        function setIdentityReadOnly(readOnly) {
+            identityFieldNames().forEach(function (name) {
+                var input = form.querySelector('[name="' + name + '"]');
+                if (!input) return;
+                input.readOnly = readOnly;
+                input.classList.toggle('person-profile-readonly', input.readOnly);
+            });
         }
 
         function renderSelection() {
@@ -672,14 +701,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             var text = document.createElement('strong');
-            text.textContent = 'Selected person ID #' + hiddenId.value;
+            var prefix = namePrefix();
+            var selectedName = [
+                field(prefix + '_first_name'),
+                field(prefix + '_middle_name'),
+                field(prefix + '_last_name'),
+                field(prefix + '_suffix')
+            ].filter(Boolean).join(' ');
+            text.textContent = 'Selected: ' + (selectedName || 'Person profile #' + hiddenId.value);
             selection.appendChild(text);
+            var note = document.createElement('span');
+            note.textContent = 'Recorded biographical details are reused; enter only sacrament-specific information.';
+            selection.appendChild(note);
             selection.appendChild(clear);
             clear.hidden = false;
         }
 
         function clearStaleSelection() {
             hiddenId.value = '';
+            setIdentityReadOnly(false);
             renderSelection();
             resultsBox.textContent = '';
         }
@@ -713,12 +753,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     var birthField = finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : 'birthdate');
                     fillFromProfile(birthField, record.birth_date);
                     fillFromProfile(finder.dataset.birthPlaceField || 'child_birthplace', record.birth_place);
-                    fillParentName('father', record.father_name);
-                    fillParentName('mother', record.mother_maiden_name);
+                    var parentPrefix = (prefix === 'groom' || prefix === 'bride') ? prefix : '';
+                    fillParentName('father', record.father_name, parentPrefix);
+                    fillParentName('mother', record.mother_maiden_name, parentPrefix);
+                    setIdentityReadOnly(true);
                     var birthdateUnknown = form.querySelector('[name="birthdate_not_recorded"]');
                     if (birthdateUnknown && record.birth_date) birthdateUnknown.checked = false;
                     renderSelection();
-                    resultsBox.textContent = 'Person selected. Review the identity before saving.';
+                    resultsBox.textContent = 'Existing master profile selected. Its recorded identity is read-only; complete only the sacrament details below.';
                     if (finder.dataset.linkOnSelect === 'true') form.requestSubmit();
                 });
                 resultsBox.appendChild(button);
@@ -772,6 +814,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         clear.addEventListener('click', function () {
             hiddenId.value = '';
+            setIdentityReadOnly(false);
             search.value = '';
             renderSelection();
             resultsBox.textContent = '';
@@ -792,6 +835,7 @@ document.addEventListener('DOMContentLoaded', function () {
             window.clearTimeout(searchTimer);
             searchPeople();
         });
+        setIdentityReadOnly(hiddenId.value !== '');
         renderSelection();
     });
 
@@ -2071,13 +2115,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function fillName(fieldNames, fullName) {
-            if (!fieldNames.length || !fullName) return;
+            if (!fieldNames.length) return;
             if (fieldNames.length === 1) {
                 var single = field(fieldNames[0]);
-                if (single) single.value = fullName;
+                if (single) single.value = fullName || '';
                 return;
             }
-            var parts = splitName(fullName);
+            var parts = splitName(fullName || '');
             fieldNames.forEach(function (name, index) {
                 var input = field(name);
                 if (input) input.value = parts[index] || '';
@@ -2099,6 +2143,55 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var searchTimer = null;
         var selected = false;
+        var idInput = field(personIdField);
+        var selectionClear = document.createElement('button');
+        selectionClear.type = 'button';
+        selectionClear.className = 'btn btn-secondary btn-small';
+        selectionClear.textContent = 'Change selected profile';
+        selectionClear.hidden = true;
+
+        function identityInputNames() {
+            var parentNames = (widget.getAttribute('data-father-inputs') || '')
+                .split(',').filter(Boolean)
+                .concat((widget.getAttribute('data-mother-inputs') || '').split(',').filter(Boolean));
+            var birthPlaceField = widget.getAttribute('data-birth-place-field');
+            return nameInputs.concat([birthField], parentNames, birthPlaceField ? [birthPlaceField] : []);
+        }
+
+        function setPublicIdentityReadOnly(readOnly) {
+            identityInputNames().forEach(function (name) {
+                var input = field(name);
+                if (!input) return;
+                input.readOnly = readOnly;
+                input.classList.toggle('person-profile-readonly', input.readOnly);
+            });
+        }
+
+        function renderExistingSelection(message) {
+            resultsBox.replaceChildren();
+            var confirmation = document.createElement('p');
+            confirmation.className = 'person-lookup-selection';
+            confirmation.textContent = message || 'A parish profile is selected. Recorded biographical details are read-only; clear the selection to change profiles.';
+            resultsBox.appendChild(confirmation);
+            selectionClear.hidden = false;
+            resultsBox.appendChild(selectionClear);
+        }
+
+        selectionClear.addEventListener('click', function () {
+            if (idInput) idInput.value = '';
+            selected = false;
+            setPublicIdentityReadOnly(false);
+            selectionClear.hidden = true;
+            resultsBox.replaceChildren();
+            resultsBox.textContent = 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
+        });
+
+        if (idInput && idInput.value) {
+            selected = true;
+            setPublicIdentityReadOnly(true);
+            renderExistingSelection();
+        }
+
         function runSearch() {
             var fullName = nameInputs.map(value).filter(Boolean).join(' ');
             var birthDate = value(birthField);
@@ -2142,7 +2235,11 @@ document.addEventListener('DOMContentLoaded', function () {
                             fillName(nameInputs, personName(person));
                             var dob = field(birthField);
                             if (dob) dob.value = person.birth_date || '';
-                            var idInput = field(personIdField);
+                            var birthPlaceField = widget.getAttribute('data-birth-place-field');
+                            if (birthPlaceField) {
+                                var birthPlace = field(birthPlaceField);
+                                if (birthPlace) birthPlace.value = person.birth_place || '';
+                            }
                             if (idInput) idInput.value = String(person.id);
                             fillParent(person, 'father');
                             fillParent(person, 'mother');
@@ -2152,12 +2249,9 @@ document.addEventListener('DOMContentLoaded', function () {
                                 var requester = field(requesterField);
                                 if (requester) requester.value = personName(person);
                             }
-                            resultsBox.replaceChildren();
-                            var confirmation = document.createElement('p');
-                            confirmation.className = 'person-lookup-selection';
-                            confirmation.textContent = 'Selected a matching parish profile. Review the filled details before continuing.';
-                            resultsBox.appendChild(confirmation);
                             selected = true;
+                            setPublicIdentityReadOnly(true);
+                            renderExistingSelection('Selected parish profile: ' + personName(person) + '. Recorded biographical details are read-only; complete only the sacrament-specific information.');
                         });
                         resultsBox.appendChild(button);
                     });
@@ -2172,6 +2266,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (selected && idInput) {
                 idInput.value = '';
                 selected = false;
+                setPublicIdentityReadOnly(false);
+                selectionClear.hidden = true;
                 resultsBox.textContent = 'Details changed. Search again to link a matching parish profile.';
             }
             window.clearTimeout(searchTimer);

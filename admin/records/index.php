@@ -86,9 +86,19 @@ if ($search !== '') {
         $nameTokenConditions = [];
         $nameTokenParams = [];
         foreach ($nameTokens as $token) {
-            $nameTokenConditions[] = '(record_name LIKE ? OR spouse_name LIKE ?)';
             $nameTokenLike = '%' . addcslashes($token, '\\_%') . '%';
+            $middleInitial = search_middle_initial($token);
+            $nameTokenConditions[] = '(record_name LIKE ? OR spouse_name LIKE ?'
+                . ($middleInitial !== null
+                    ? " OR UPPER(LEFT(COALESCE(record_middle_name, ''), 1)) = UPPER(?)"
+                        . " OR UPPER(LEFT(COALESCE(spouse_middle_name, ''), 1)) = UPPER(?)"
+                    : '')
+                . ')';
             array_push($nameTokenParams, $nameTokenLike, $nameTokenLike);
+            if ($middleInitial !== null) {
+                $nameTokenParams[] = $middleInitial;
+                $nameTokenParams[] = $middleInitial;
+            }
         }
         $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
             . ($nameTokenConditions ? ' OR (' . implode(' AND ', $nameTokenConditions) . ')' : '')

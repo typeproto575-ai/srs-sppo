@@ -108,8 +108,14 @@ function sd_search_persons(PDO $pdo, string $query, int $limit = 20): array
             $params[] = (int) $tok;
         } else {
             $like = '%' . addcslashes($tok, '%_\\') . '%';
-            $where[] = '(p.first_name LIKE ? OR p.middle_name LIKE ? OR p.last_name LIKE ?)';
+            $middleInitial = search_middle_initial($tok);
+            $where[] = '(p.first_name LIKE ? OR p.middle_name LIKE ? OR p.last_name LIKE ?'
+                . ($middleInitial !== null ? " OR UPPER(LEFT(COALESCE(p.middle_name, ''), 1)) = UPPER(?)" : '')
+                . ')';
             array_push($params, $like, $like, $like);
+            if ($middleInitial !== null) {
+                $params[] = $middleInitial;
+            }
         }
     }
     $limit = max(1, min(100, $limit));

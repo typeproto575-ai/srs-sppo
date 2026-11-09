@@ -166,7 +166,41 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <p class="person-profile-section__eyebrow">Identity</p>
             <h2 id="identity-heading">Personal details</h2>
         </div>
-        <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-edit.php?id=' . (int) $personId) ?>">Edit personal details</a>
+        <div class="person-profile-identity-actions">
+            <details class="person-profile-application-menu">
+                <summary class="btn btn-secondary btn-small">New walk-in pre-application</summary>
+                <div class="person-profile-application-menu__items">
+                    <p class="person-profile-application-menu__note">A sacrament may have been received at another parish. No linked record here does not mean it was never received. Verify with the person and, when needed, the originating parish before starting a new application.</p>
+                    <?php foreach ([
+                        'baptism' => ['label' => 'Baptism', 'file' => 'baptismal.php'],
+                        'first_communion' => ['label' => 'First Communion', 'file' => 'first-communion.php'],
+                        'confirmation' => ['label' => 'Confirmation', 'file' => 'confirmation.php'],
+                    ] as $type => $application): ?>
+                        <?php if (!empty($recs[$type])): ?>
+                            <?php $recordLocation = ($recs[$type]['source'] ?? '') === 'other_parish' ? 'recorded from another parish' : 'recorded at this parish'; ?>
+                            <span class="person-profile-application-menu__status"><?= e($application['label']) ?> — <?= e($recordLocation) ?></span>
+                        <?php else: ?>
+                            <a href="<?= e($basePath . '/public/sacrament-applications/' . $application['file'] . '?start=profile&person_id=' . (int) $personId) ?>"><?= e($application['label']) ?></a>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                    <?php if (!empty($recs['marriages'])): ?>
+                        <span class="person-profile-application-menu__note">A prior marriage is on file. Refer the case to the priest for review before proceeding with marriage preparation or scheduling.</span>
+                    <?php else: ?>
+                        <span class="person-profile-application-menu__note">No marriage record is linked here. Ask about any prior marriage and refer it to the priest before proceeding with preparation or scheduling.</span>
+                    <?php endif; ?>
+                    <?php if (($person['sex'] ?? null) === 'male'): ?>
+                        <a href="<?= e($basePath . '/public/sacrament-applications/marriage.php?start=profile&person_id=' . (int) $personId . '&applicant=groom') ?>">Marriage — groom</a>
+                    <?php elseif (($person['sex'] ?? null) === 'female'): ?>
+                        <a href="<?= e($basePath . '/public/sacrament-applications/marriage.php?start=profile&person_id=' . (int) $personId . '&applicant=bride') ?>">Marriage — bride</a>
+                    <?php else: ?>
+                        <span class="person-profile-application-menu__note">Sex is not recorded on this profile. Choose the correct role:</span>
+                        <a href="<?= e($basePath . '/public/sacrament-applications/marriage.php?start=profile&person_id=' . (int) $personId . '&applicant=groom') ?>">Marriage — this person as groom</a>
+                        <a href="<?= e($basePath . '/public/sacrament-applications/marriage.php?start=profile&person_id=' . (int) $personId . '&applicant=bride') ?>">Marriage — this person as bride</a>
+                    <?php endif; ?>
+                </div>
+            </details>
+            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/system/person-edit.php?id=' . (int) $personId) ?>">Edit personal details</a>
+        </div>
     </div>
     <div class="person-profile-details">
         <div class="person-profile-detail">

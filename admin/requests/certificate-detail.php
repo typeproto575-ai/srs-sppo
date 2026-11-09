@@ -328,30 +328,33 @@ if ($record && !empty($record['person_id'])) {
 }
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<section class="admin-page-heading">
+<div class="certificate-detail-page">
+<header class="admin-queue-heading certificate-detail-heading">
     <div>
         <p class="admin-queue-kicker">Certificate request</p>
         <h1><?= e($req['request_no']) ?></h1>
-        <p><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
+        <p class="certificate-detail-heading__subject"><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
+        <span class="status-badge certificate-detail-status status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span>
     </div>
-    <div>
+    <nav class="certificate-detail-heading__actions" aria-label="Certificate request actions">
         <?php if (!empty($req['record_id'])
             && in_array((string) $req['status'], ['matched', 'for_signature', 'ready', 'released'], true)
             && ((string) $req['status'] !== 'matched' || $processingPaymentGate['ok'])): ?>
             <a class="btn btn-primary" href="<?= e($basePath . '/admin/requests/certificate-print.php?id=' . (int) $req['id']) ?>">Print certificate</a>
         <?php endif; ?>
         <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Back to queue</a>
-    </div>
-</section>
+    </nav>
+</header>
 
 <?php if ($notice): ?>
     <div class="alert alert-<?= e($notice[0]) ?>" role="status"><?= e($notice[1]) ?></div>
 <?php endif; ?>
 
-<section class="card">
+<div class="certificate-detail-layout">
+<div class="certificate-detail-main">
+<section class="card certificate-detail-card certificate-summary-card">
     <h2>Request summary</h2>
-    <dl class="detail-grid">
-        <dt>Status</dt><dd><span class="status-badge status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span></dd>
+    <dl class="detail-grid certificate-detail-grid">
         <dt>Channel</dt><dd><?= e(($req['channel'] === 'onsite') ? 'Submitted: At the office' : 'Submitted: Online') ?></dd>
         <dt>Submitted</dt><dd><?= e(certificate_detail_date_label((string) $req['created_at'], true)) ?></dd>
         <dt>Requested use</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?><br><small>This is the requester's stated use, not an official certificate annotation.</small></dd>
@@ -388,9 +391,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php endif; ?>
 </section>
 
-<section class="card">
+<section class="card certificate-detail-card">
     <h2>Information provided</h2>
-    <dl class="detail-grid">
+    <dl class="detail-grid certificate-detail-grid">
         <dt>Subject</dt><dd><?= e($req['subject_name']) ?></dd>
         <?php foreach ($details as $key => $value): ?>
             <?php if (strtolower((string) $key) === 'legitimacy') continue; ?>
@@ -412,7 +415,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </dl>
 </section>
 
-<section class="card">
+<section class="card certificate-detail-card">
     <h2>Matched parish record</h2>
     <?php if ($person): ?>
         <p><strong>Person:</strong> <?= e(trim(implode(' ', array_filter([$person['first_name'], $person['middle_name'], $person['last_name'], $person['suffix']]))) ?: 'Name unavailable') ?> (Person #<?= (int) $person['id'] ?>)</p>
@@ -420,7 +423,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <p>No person is linked to this request.</p>
     <?php endif; ?>
     <?php if ($record): ?>
-        <dl class="detail-grid">
+        <dl class="detail-grid certificate-detail-grid">
             <dt>Record</dt><dd>#<?= (int) $record['id'] ?> — <?= e($recordName) ?></dd>
             <dt>Event date</dt><dd><?= e(certificate_detail_date_label($record['event_date'] ?: null)) ?></dd>
             <dt>Place</dt><dd><?= e($record['place'] ?: 'Not recorded') ?></dd>
@@ -446,7 +449,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
     <?php if (in_array($req['status'], ['new', 'matched'], true)): ?>
         <?php $searchQ = trim((string) ($_GET['q'] ?? $req['subject_name'])); ?>
-        <form method="get" action="<?= e($detailUrl) ?>" class="stacked-form" style="margin-bottom:1rem;">
+        <form method="get" action="<?= e($detailUrl) ?>" class="stacked-form certificate-person-search">
             <input type="hidden" name="id" value="<?= (int) $requestId ?>">
             <label for="q">Search person by name</label>
             <input type="text" id="q" name="q" value="<?= e($searchQ) ?>">
@@ -468,15 +471,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             if ($r) $recsToShow = [$r];
                         }
                     ?>
-                    <div style="margin-bottom:1rem;">
+                    <div class="certificate-person-result">
                         <p><strong><?= e($sp['full_name']) ?></strong> (Person #<?= (int) $sp['id'] ?>)</p>
                         <?php if (empty($recsToShow)): ?>
                             <p class="field-hint">No <?= e(sd_type_label($req['sacrament_type'])) ?> record for this person.</p>
                         <?php else: ?>
                             <?php foreach ($recsToShow as $r): ?>
-                                <div style="margin:.25rem 0; padding:.5rem; border:1px solid #ddd;">
+                                <div class="certificate-record-result">
                                     <span><?= e(date('M j, Y', strtotime($r['event_date']))) ?> &middot; <?= e($r['place'] ?: 'no place') ?> &middot; <?= e(implode(' / ', array_filter([$r['entry_no'], $r['book_no'], $r['page_no'], $r['line_no']])) ?: 'no ref') ?></span>
-                                    <form method="post" action="<?= e($detailUrl) ?>" style="display:inline;margin-left:.5rem;">
+                                    <form method="post" action="<?= e($detailUrl) ?>" class="certificate-link-form">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="action" value="link_record">
                                         <input type="hidden" name="record_id" value="<?= (int) $r['id'] ?>">
@@ -491,8 +494,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php endif; ?>
     <?php endif; ?>
 </section>
+</div>
 
-<section class="card">
+<aside class="card certificate-detail-card certificate-detail-actions">
     <h2>Processing actions</h2>
     <?php if ($req['status'] === 'matched'): ?>
         <form method="post" action="<?= e($detailUrl) ?>" class="stacked-form">
@@ -512,7 +516,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <form method="post" action="<?= e($detailUrl) ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="mark_ready">
-            <label><input type="checkbox" name="signature_confirmed" value="1" required> I confirm the priest has signed the certificate.</label>
+            <label class="certificate-checkbox-label"><input type="checkbox" name="signature_confirmed" value="1" required> I confirm the priest has signed the certificate.</label>
             <button type="submit" class="btn">Mark Ready for Pickup</button>
         </form>
     <?php elseif ($req['status'] === 'ready'): ?>
@@ -525,14 +529,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <option value="representative">Authorized representative</option>
             </select>
             <p id="claimant-guidance" class="field-hint">Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.</p>
-            <label><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID at the counter.</label>
+            <label class="certificate-checkbox-label"><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID at the counter.</label>
             <div id="representative-fields">
                 <label for="representative_name">Representative name</label>
                 <input type="text" id="representative_name" name="representative_name" maxlength="150">
                 <label for="representative_relationship">Representative relationship (optional)</label>
                 <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
                 <p class="field-hint">A representative must bring a signed authorization letter from the person named on the certificate.</p>
-                <label><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the signed authorization letter.</label>
+                <label class="certificate-checkbox-label"><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the signed authorization letter.</label>
             </div>
             <label for="claimant_notes">Pickup notes (optional)</label>
             <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
@@ -564,9 +568,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <button type="submit" class="btn btn-danger">Reject Request</button>
         </form>
     <?php endif; ?>
-</section>
+</aside>
+</div>
 
-<section class="card">
+<section class="card certificate-detail-card certificate-activity-card">
     <h2>Activity history</h2>
     <?php if (!$auditHistory): ?>
         <p>No audit events are recorded for this request.</p>
@@ -583,6 +588,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </ul>
     <?php endif; ?>
 </section>
+</div>
 
 <script>
 (() => {

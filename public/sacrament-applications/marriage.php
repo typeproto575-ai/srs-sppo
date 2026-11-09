@@ -36,6 +36,38 @@ if ($currentStep < 1 || $currentStep > count($steps)) {
     $wizard['current_step'] = 1;
 }
 $formData = &$wizard['form_data'];
+if (($_GET['start'] ?? '') === 'profile') {
+    if ((current_user()['role'] ?? '') !== 'secretary') {
+        http_response_code(403);
+        exit('Only parish secretaries can start a profile-linked walk-in pre-application.');
+    }
+    $personId = filter_var($_GET['person_id'] ?? null, FILTER_VALIDATE_INT);
+    $applicant = $_GET['applicant'] ?? '';
+    $person = $personId ? public_application_profile($pdo, (int) $personId) : null;
+    if (!$person) {
+        $errors[] = 'The selected parishioner profile could not be found. Search for the person again.';
+    } elseif (!in_array($applicant, ['groom', 'bride'], true)) {
+        $errors[] = 'Choose whether this person is the groom or bride before starting the marriage pre-application.';
+    } else {
+        $formData = public_application_profile_fields($person, $applicant);
+        $formData[$applicant . '_current_address'] = (string) ($person['address'] ?? '');
+        $formData[$applicant . '_contact_number'] = (string) ($person['contact_number'] ?? '');
+        $formData[$applicant . '_email'] = (string) ($person['email'] ?? '');
+        foreach ([
+            'father' => (string) ($person['father_name'] ?? ''),
+            'mother' => (string) ($person['mother_maiden_name'] ?? ''),
+        ] as $parent => $fullName) {
+            foreach (structured_name_parts($fullName) as $index => $part) {
+                $namePart = ['first', 'middle', 'last', 'suffix'][$index];
+                $formData[$applicant . '_' . $parent . '_' . $namePart] = $part;
+            }
+        }
+        $wizard['current_step'] = 1;
+        session_write_close();
+        header('Location: marriage.php');
+        exit;
+    }
+}
 if (($formData['preferred_wedding_venue'] ?? '') === 'barangay_chapel') {
     $formData['preferred_wedding_venue'] = 'other';
 }
@@ -339,10 +371,10 @@ require __DIR__ . '/../../includes/submission-success.php';
 <div class="public-person-lookup" data-public-person-lookup
      data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
      data-name-inputs="groom_first,groom_middle,groom_last,groom_suffix"
-     data-birth-field="groom_birthdate" data-person-id-field="groom_person_id"
+     data-birth-field="groom_birthdate" data-birth-place-field="groom_birthplace" data-person-id-field="groom_person_id"
      data-father-inputs="groom_father_first,groom_father_middle,groom_father_last,groom_father_suffix"
      data-mother-inputs="groom_mother_first,groom_mother_middle,groom_mother_last,groom_mother_suffix">
-    <p class="field-hint">Search the parish person index by full name and date of birth. A match fills the groom’s name and parents; you can also continue without a match.</p>
+    <p class="field-hint">Search by the groom’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the wedding-specific details.</p>
     <div data-person-results aria-live="polite"></div>
 </div>
 <label>Current Address <input name="groom_current_address" value="<?= mv('groom_current_address') ?>"></label><label>Telephone / Mobile <span class="field-hint">(optional; email is used for updates)</span><input name="groom_contact_number" value="<?= mv('groom_contact_number') ?>"></label><label>Religion / Sect <input name="groom_religion" value="<?= mv('groom_religion') ?>"></label><label>Email * <input type="email" name="groom_email" value="<?= mv('groom_email') ?>" required></label><?= person_name_fields('groom_father', "Groom's father's name", $formData, false) ?><?= person_name_fields('groom_mother', "Groom's mother's maiden name", $formData, false) ?><div class="inline-fields"><label>Marital Status * <select name="groom_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('groom_marital_status','single') ?>>Single</option><option value="married" <?= msel('groom_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('groom_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('groom_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="groom_previous_marriage"><option value="no" <?= msel('groom_previous_marriage','no') ?>>No</option><option value="church" <?= msel('groom_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('groom_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>
@@ -361,10 +393,10 @@ require __DIR__ . '/../../includes/submission-success.php';
 <div class="public-person-lookup" data-public-person-lookup
      data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
      data-name-inputs="bride_first,bride_middle,bride_last,bride_suffix"
-     data-birth-field="bride_birthdate" data-person-id-field="bride_person_id"
+     data-birth-field="bride_birthdate" data-birth-place-field="bride_birthplace" data-person-id-field="bride_person_id"
      data-father-inputs="bride_father_first,bride_father_middle,bride_father_last,bride_father_suffix"
      data-mother-inputs="bride_mother_first,bride_mother_middle,bride_mother_last,bride_mother_suffix">
-    <p class="field-hint">Search the parish person index by full name and date of birth. A match fills the bride’s name and parents; you can also continue without a match.</p>
+    <p class="field-hint">Search by the bride’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the wedding-specific details.</p>
     <div data-person-results aria-live="polite"></div>
 </div>
 <label>Current Address <input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><label>Telephone / Mobile <span class="field-hint">(optional; email is used for updates)</span><input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>"></label><label>Religion / Sect <input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Email * <input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><?= person_name_fields('bride_father', "Bride's father's name", $formData, false) ?><?= person_name_fields('bride_mother', "Bride's mother's maiden name", $formData, false) ?><div class="inline-fields"><label>Marital Status * <select name="bride_marital_status" required><option value="">-- Select --</option><option value="single" <?= msel('bride_marital_status','single') ?>>Single</option><option value="married" <?= msel('bride_marital_status','married') ?>>Married</option><option value="widowed" <?= msel('bride_marital_status','widowed') ?>>Widowed</option><option value="annulled" <?= msel('bride_marital_status','annulled') ?>>Annulled</option></select></label><label>Previous Marriage <select name="bride_previous_marriage"><option value="no" <?= msel('bride_previous_marriage','no') ?>>No</option><option value="church" <?= msel('bride_previous_marriage','church') ?>>Yes — Church</option><option value="civil" <?= msel('bride_previous_marriage','civil') ?>>Yes — Civil</option></select></label></div></fieldset>

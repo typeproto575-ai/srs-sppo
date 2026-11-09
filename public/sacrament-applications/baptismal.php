@@ -55,6 +55,27 @@ $app = &$_SESSION['baptismal_app'];
 $currentStep = (int) $app['current_step'];
 $formData    = &$app['form_data'];
 
+if (($_GET['start'] ?? '') === 'profile') {
+    if ((current_user()['role'] ?? '') !== 'secretary') {
+        http_response_code(403);
+        exit('Only parish secretaries can start a profile-linked walk-in pre-application.');
+    }
+    $personId = filter_var($_GET['person_id'] ?? null, FILTER_VALIDATE_INT);
+    $person = $personId ? public_application_profile($pdo, (int) $personId) : null;
+    if (!$person) {
+        $errors[] = 'The selected parishioner profile could not be found. Search for the person again.';
+    } else {
+        $formData = array_merge(public_application_profile_fields($person, 'child'), [
+            'contact_number' => (string) ($person['contact_number'] ?? ''),
+            'email' => (string) ($person['email'] ?? ''),
+        ]);
+        $app['current_step'] = STEP_APP_DETAILS;
+        session_write_close();
+        header('Location: baptismal.php');
+        exit;
+    }
+}
+
 // Stepper labels shared with certificate-request flows (visual parity).
 $stepLabels = [
     STEP_APP_DETAILS     => 'Child information',

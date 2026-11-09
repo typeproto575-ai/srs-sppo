@@ -647,15 +647,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="confirmand_last_name" value="<?= e($_POST['confirmand_last_name'] ?? '') ?>" required></label>
                         <label>Suffix <input autocomplete="off" type="text" name="confirmand_suffix" value="<?= e($_POST['confirmand_suffix'] ?? '') ?>"></label>
                     </div>
-                    <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
-                        <label>Find possible people
-                            <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
+                    <div class="person-finder" data-person-finder data-name-prefix="confirmand" data-birth-field="birthdate" data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+                        <label>Find an existing person first
+                            <input autocomplete="off" type="search" data-person-search placeholder="Search the master person index">
                         </label>
-                        <button type="button" class="btn btn-secondary btn-small" data-person-find>Find possible people</button>
+                        <button type="button" class="btn btn-secondary btn-small" data-person-find>Search people</button>
                         <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? '') ?>">
                         <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
                         <div class="person-finder-results" data-person-results></div>
-                        <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
+                        <p class="field-hint">If the confirmand is already in the parish index, select that profile to reuse recorded details. Only enter biographical details below if no matching profile exists.</p>
                     </div>
                     <?php if ($duplicateMatches): ?>
                         <div class="alert alert-warning">
