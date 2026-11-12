@@ -9,6 +9,7 @@ $basePath = base_path();
 $pageTitle = 'Holy Matrimony Pre-Application';
 $errors = [];
 $trackingNumber = null;
+$personReferences = [];
 $dateConflictWarning = null;
 
 $steps = [
@@ -229,7 +230,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
     if (!$errors) {
         try {
             $pdo->beginTransaction();
-            $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
+            $requestNo = generate_request_no($pdo, 'sacrament_applications');
+            $groomProfile = public_person_reference($pdo, $groomPersonId, [
+                'first_name' => $g('groom_first'),
+                'middle_name' => $g('groom_middle'),
+                'last_name' => $g('groom_last'),
+                'suffix' => $g('groom_suffix'),
+                'birth_date' => $gd,
+                'birth_place' => $g('groom_birthplace'),
+                'father_name' => compose_person_name($_POST, 'groom_father'),
+                'mother_maiden_name' => compose_person_name($_POST, 'groom_mother'),
+            ]);
+            $brideProfile = public_person_reference($pdo, $bridePersonId, [
+                'first_name' => $g('bride_first'),
+                'middle_name' => $g('bride_middle'),
+                'last_name' => $g('bride_last'),
+                'suffix' => $g('bride_suffix'),
+                'birth_date' => $bd,
+                'birth_place' => $g('bride_birthplace'),
+                'father_name' => compose_person_name($_POST, 'bride_father'),
+                'mother_maiden_name' => compose_person_name($_POST, 'bride_mother'),
+            ]);
+            $groomPersonId = $groomProfile['person_id'];
+            $bridePersonId = $brideProfile['person_id'];
+            if ($groomPersonId === $bridePersonId) {
+                throw new InvalidArgumentException('The groom and bride must have separate master person profiles.');
+            }
+            public_assert_no_open_sacrament_application(
+                $pdo,
+                'marriage',
+                [$groomPersonId, $bridePersonId],
+                $groomProfile['reference']
+            );
+            $personReferences = [
+                ['name' => $groomName, 'reference' => $groomProfile['reference']],
+                ['name' => $brideName, 'reference' => $brideProfile['reference']],
+            ];
             $sponsorNames = compose_person_name_rows($_POST, 'sponsor');
             if (!is_array($sponsorNames)) { $sponsorNames = []; }
             $details = [
@@ -292,7 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                  VALUES (?, ?, 'marriage', ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
             );
             $stmt->execute([
-                $trackingNumber,
+                $requestNo,
                 $channel,
                 $groomPersonId,
                 $bridePersonId,
@@ -306,20 +342,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             ]);
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony pre-application submitted for ' . $groomName . ' & ' . $brideName);
-            notify($pdo, 'application_new', 'New sacrament pre-application', "Holy Matrimony pre-application ({$trackingNumber})", '/admin/requests/applications-queue.php');
+            notify($pdo, 'application_new', 'New sacrament pre-application', "Holy Matrimony pre-application ({$requestNo})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
                 record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
             }
             $pdo->commit();
+            $trackingNumber = $groomProfile['reference'];
             unset($_SESSION['marriage_app']);
             if ($isSecretary) {
-                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
                 exit;
             }
             if ($channel === 'online') {
-                if (mail_request_received($groomEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
-                if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $trackingNumber, 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
+                if (mail_request_received($groomEmail, $groomProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
+                if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $brideProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
             }
+        } catch (InvalidArgumentException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $trackingNumber = null;
+            $errors[] = $e->getMessage();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $trackingNumber = null; error_log('Holy Matrimony application failed: ' . $e->getMessage()); $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
@@ -337,6 +378,7 @@ function msel(string $key, string $value): string { global $formData; return ($f
 <?php
 $successHeading = 'Your pre-application has been submitted';
 $successIsApplication = true;
+$successPersonReferences = $personReferences;
 $successRequiredDocuments = sacrament_application_requirements('marriage')['before'];
 require __DIR__ . '/../../includes/submission-success.php';
 ?>

@@ -47,14 +47,19 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
    **System → Database Setup** to review supported compatibility changes.
    The app does not run schema changes automatically on normal requests. Back
    up the database before applying any update; the page checks schema objects
-   but cannot guarantee a backup or undo MySQL DDL.
+   but cannot guarantee a backup or undo MySQL DDL. Existing V2 databases must
+   also be reviewed for migration
+   `migrations/049_person_level_public_references.sql`; follow
+   `migrations/README_MIGRATION.md` and test the migration on a backup first.
 9. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
    example, `https://parish.example.org` or
    `https://example.org/srs-sppo`). It can be set in the server environment or
    in server-only `config/local.php`. A non-local host automatically enables
    HTTPS enforcement.
-10. Email delivery is disabled unless explicitly configured. To use Gmail SMTP,
-   enable 2-Step Verification on the sending account and create an App Password.
+10. Email delivery is disabled unless explicitly configured. Public person-
+   reference lookup requires an enabled email service to send its one-time
+   access code. To use Gmail SMTP, enable 2-Step Verification on the sending
+   account and create an App Password.
    Add the settings below to the server-only `config/local.php`; do not commit
    that file or share the App Password. The displayed App Password spaces should
    be omitted. The app URL should use HTTPS, and the deployment must include
@@ -233,7 +238,7 @@ srs-sppo/
 ## What's built
 
 - **Live public intake:** One unified certificate-request form and four sacrament-application forms: Baptismal, Confirmation, First Communion, and Marriage.
-- **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, request status management, and the shared System tools. Applicants receive updates by email when available or contact the Parish Office with their reference number. All staff accounts use the same parish secretary access level.
+- **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, request status management, and the shared System tools. Applicants use one stable person reference across linked requests; public request status lookup additionally requires a one-time email access code. All staff accounts use the same parish secretary access level.
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
 

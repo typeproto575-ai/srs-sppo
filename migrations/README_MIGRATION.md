@@ -72,8 +72,9 @@ The person-registry sequence documents the original rollout:
    `persons` and fills only blank profile values from already linked register
    rows. It deliberately does not link records by name. New staff-encoded
    register entries create a master person profile when no existing identity
-   is selected; online submissions are not automatically made into profiles
-   before staff review.
+   is selected. Public applications now create or reuse an exact-name-and-
+   birthdate profile so a stable person reference can be issued; staff still
+   review intake details before approving the sacrament.
 7. `045_link_sacrament_applications_to_persons.sql` adds nullable, staff-
    confirmed person links to sacrament applications. The second link supports
    the other party in a marriage application. Existing applications remain
@@ -88,6 +89,10 @@ The person-registry sequence documents the original rollout:
     staff assignee for each sacrament pre-application. Assignment and handoff
     history is recorded in `audit_logs`; back up and review existing databases
     before applying this manual migration.
+11. `049_person_level_public_references.sql` adds a stable public reference to
+    each master person profile. Public applicants use the same person
+    reference across linked sacrament applications and certificate requests;
+    each request retains its own internal ID and status.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support

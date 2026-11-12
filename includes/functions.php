@@ -100,6 +100,157 @@ function public_selected_person_id(
     return (int) $personId;
 }
 
+function public_person_reference(PDO $pdo, ?int $personId, array $identity): array
+{
+    $name = [
+        'first_name' => trim((string) ($identity['first_name'] ?? '')),
+        'middle_name' => trim((string) ($identity['middle_name'] ?? '')),
+        'last_name' => trim((string) ($identity['last_name'] ?? '')),
+        'suffix' => trim((string) ($identity['suffix'] ?? '')),
+        'birth_date' => trim((string) ($identity['birth_date'] ?? '')),
+    ];
+    if ($name['first_name'] === '' || $name['last_name'] === '') {
+        throw new InvalidArgumentException('A first and last name are needed to create a person reference.');
+    }
+    if ($personId === null && $name['birth_date'] === '') {
+        throw new InvalidArgumentException('A date of birth is needed to create a person reference. If it is unknown, contact the Parish Office.');
+    }
+
+    if ($personId === null) {
+        $stmt = $pdo->prepare(
+            'SELECT id FROM persons
+             WHERE first_name = ?
+               AND COALESCE(middle_name, \'\') = ?
+               AND last_name = ?
+               AND COALESCE(suffix, \'\') = ?
+               AND birth_date = ?
+             ORDER BY id
+             LIMIT 2
+             FOR UPDATE'
+        );
+        $stmt->execute(array_values($name));
+        $matches = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (count($matches) > 1) {
+            throw new InvalidArgumentException('More than one parishioner profile matches these details. Please contact the Parish Office to avoid creating a duplicate profile.');
+        }
+        $personId = $matches ? (int) $matches[0] : null;
+    }
+
+    if ($personId === null) {
+        $stmt = $pdo->prepare(
+            'INSERT INTO persons
+                (first_name, middle_name, last_name, suffix, birth_date, birth_place,
+                 father_name, mother_maiden_name, public_reference)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $reference = 'SPPO-P-' . generate_tracking_token();
+        $stmt->execute([
+            $name['first_name'],
+            $name['middle_name'] !== '' ? $name['middle_name'] : null,
+            $name['last_name'],
+            $name['suffix'] !== '' ? $name['suffix'] : null,
+            $name['birth_date'],
+            trim((string) ($identity['birth_place'] ?? '')) ?: null,
+            trim((string) ($identity['father_name'] ?? '')) ?: null,
+            trim((string) ($identity['mother_maiden_name'] ?? '')) ?: null,
+            $reference,
+        ]);
+        return ['person_id' => (int) $pdo->lastInsertId(), 'reference' => $reference];
+    }
+
+    $stmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ? FOR UPDATE');
+    $stmt->execute([$personId]);
+    $reference = $stmt->fetchColumn();
+    if ($reference === false) {
+        throw new InvalidArgumentException('The selected person profile could not be found. Search again.');
+    }
+    $profileUpdate = $pdo->prepare(
+        "UPDATE persons
+         SET birth_date = COALESCE(birth_date, ?),
+             birth_place = COALESCE(NULLIF(birth_place, ''), ?),
+             father_name = COALESCE(NULLIF(father_name, ''), ?),
+             mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?)
+         WHERE id = ?"
+    );
+    $profileUpdate->execute([
+        $name['birth_date'] !== '' ? $name['birth_date'] : null,
+        trim((string) ($identity['birth_place'] ?? '')) ?: null,
+        trim((string) ($identity['father_name'] ?? '')) ?: null,
+        trim((string) ($identity['mother_maiden_name'] ?? '')) ?: null,
+        $personId,
+    ]);
+    if (is_string($reference) && $reference !== '') {
+        return ['person_id' => $personId, 'reference' => $reference];
+    }
+
+    for ($attempt = 0; $attempt < 3; $attempt++) {
+        $reference = 'SPPO-P-' . generate_tracking_token();
+        $update = $pdo->prepare(
+            "UPDATE persons SET public_reference = ?
+             WHERE id = ? AND (public_reference IS NULL OR public_reference = '')"
+        );
+        try {
+            $update->execute([$reference, $personId]);
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '23000' || $attempt === 2) {
+                throw $e;
+            }
+            continue;
+        }
+
+        $stmt->execute([$personId]);
+        $reference = $stmt->fetchColumn();
+        if (is_string($reference) && $reference !== '') {
+            return ['person_id' => $personId, 'reference' => $reference];
+        }
+    }
+
+    throw new RuntimeException('Could not assign a unique person reference.');
+}
+
+function public_assert_no_open_sacrament_application(
+    PDO $pdo,
+    string $sacramentType,
+    array $personIds,
+    string $personReference
+): void {
+    $personIds = array_values(array_unique(array_filter(
+        array_map('intval', $personIds),
+        static fn(int $id): bool => $id > 0
+    )));
+    if ($personIds === []) {
+        return;
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($personIds), '?'));
+    $stmt = $pdo->prepare(
+        "SELECT request_no
+         FROM sacrament_applications
+         WHERE sacrament_type = ?
+           AND status IN ('new', 'reviewing', 'requirements_pending', 'approved', 'scheduled')
+           AND (
+               person_id IN ({$placeholders})
+               OR spouse_person_id IN ({$placeholders})
+           )
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1"
+           . ' FOR UPDATE'
+    );
+    $stmt->execute(array_merge([$sacramentType], $personIds, $personIds));
+    if ($stmt->fetchColumn()) {
+        $labels = [
+            'baptism' => 'Baptism',
+            'first_communion' => 'First Communion',
+            'confirmation' => 'Confirmation',
+            'marriage' => 'Marriage',
+        ];
+        $label = $labels[$sacramentType] ?? 'sacrament';
+        throw new InvalidArgumentException(
+            "An open {$label} application is already linked to this profile. Use person reference {$personReference} to check its status; do not submit another application."
+        );
+    }
+}
+
 function public_prefill_person_parents(array &$formData): void
 {
     foreach (['father' => 'selected_father_name', 'mother' => 'selected_mother_maiden_name'] as $prefix => $sourceKey) {
@@ -1687,11 +1838,31 @@ function notify_sacrament_application_status(
     // email delivery log; a mail failure must never block the status change.
     $emails = [];
     try {
-        $stmt = $pdo->prepare('SELECT id, applicant_email, details FROM sacrament_applications WHERE request_no = ? LIMIT 1');
+        $stmt = $pdo->prepare(
+            'SELECT id, applicant_email, details, person_id, spouse_person_id
+             FROM sacrament_applications
+             WHERE request_no = ?
+             LIMIT 1'
+        );
         $stmt->execute([$requestNo]);
         $row = $stmt->fetch() ?: [];
         $applicationId = (int) ($row['id'] ?? 0);
-        $emails[] = (string) ($row['applicant_email'] ?? '');
+        $primaryReference = '';
+        $spouseReference = '';
+        if (!empty($row['person_id'])) {
+            $personStmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ?');
+            $personStmt->execute([(int) $row['person_id']]);
+            $primaryReference = (string) ($personStmt->fetchColumn() ?: '');
+        }
+        if (!empty($row['spouse_person_id'])) {
+            $personStmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ?');
+            $personStmt->execute([(int) $row['spouse_person_id']]);
+            $spouseReference = (string) ($personStmt->fetchColumn() ?: '');
+        }
+        $emails[] = [
+            'email' => (string) ($row['applicant_email'] ?? ''),
+            'reference' => $primaryReference !== '' ? $primaryReference : $requestNo,
+        ];
         // Marriage may carry a second email inside details JSON; none in seed schema,
         // so only read if a real key exists.
         $details = [];
@@ -1701,15 +1872,28 @@ function notify_sacrament_application_status(
         } elseif (is_array($row['details'] ?? null)) {
             $details = $row['details'];
         }
-        foreach (['bride_email', 'spouse_email', 'groom_email'] as $key) {
-            if (isset($details[$key]) && is_string($details[$key]) && filter_var($details[$key], FILTER_VALIDATE_EMAIL)) {
-                $emails[] = $details[$key];
+        foreach ([
+            ['email' => $details['bride']['email'] ?? $details['bride_email'] ?? null, 'reference' => $spouseReference],
+            ['email' => $details['groom']['email'] ?? $details['groom_email'] ?? null, 'reference' => $primaryReference],
+            ['email' => $details['spouse_email'] ?? null, 'reference' => $spouseReference],
+        ] as $recipient) {
+            if (is_string($recipient['email']) && filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) {
+                $emails[] = [
+                    'email' => $recipient['email'],
+                    'reference' => $recipient['reference'] !== '' ? $recipient['reference'] : $requestNo,
+                ];
             }
         }
-        $emails = array_values(array_unique(array_filter($emails, static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL))));
+        $uniqueEmails = [];
+        foreach ($emails as $recipient) {
+            if (!filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+            $uniqueEmails[strtolower($recipient['email'])] = $recipient;
+        }
         $kind .= ' Application';
-        foreach ($emails as $email) {
-            mail_status_update($email, $requestNo, $state, $kind, $pdo, 'sacrament_application', $applicationId ?: null);
+        foreach ($uniqueEmails as $recipient) {
+            mail_status_update($recipient['email'], $recipient['reference'], $state, $kind, $pdo, 'sacrament_application', $applicationId ?: null);
         }
     } catch (Throwable $e) {
         error_log('SRS-SPPO application status email failed: ' . $e->getMessage());

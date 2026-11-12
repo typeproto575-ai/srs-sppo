@@ -120,7 +120,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Your name and relationship to the person, if you are requesting for someone else.</li>
                     <li>Your email address for updates. A contact number is optional for quicker contact.</li>
                 </ul>
-                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring your request reference number and any claim stub or payment slip the secretary gave you. If the slip is missing, give the secretary the reference number and certificate name so the request can be located. If you are collecting a request made for yourself, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder. If someone else collects it, they must bring a signed authorization letter from the person named on the certificate.</p>
+                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring your person reference and any claim stub or payment slip the secretary gave you. If you are collecting a request made for yourself, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder. If someone else collects it, they must bring a signed authorization letter from the person named on the certificate.</p>
                 <a href="<?= e($basePath) ?>/public/certificate-request.php" class="btn btn-small">Request a Certificate</a>
             </div>
         </div>
@@ -131,7 +131,7 @@ require_once __DIR__ . '/../includes/header.php';
     <h2 id="what-to-bring-heading">When you visit the office</h2>
     <ul class="req-list">
         <li>Bring only the documents the parish office asks you to provide.</li>
-        <li>When contacting the Parish Office about your request, quote the reference number shown on your submission confirmation.</li>
+        <li>When contacting the Parish Office about your request, quote the person reference shown on your submission confirmation.</li>
     </ul>
     <p class="field-hint">Document requirements and schedules may change. The parish secretary's confirmation is the final guide for your case.</p>
 </section>

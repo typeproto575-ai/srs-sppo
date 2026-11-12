@@ -71,8 +71,16 @@ if (!function_exists('person_identity_choices')) {
                               birth_place = COALESCE(NULLIF(birth_place, ''), ?),
                               sex = COALESCE(sex, ?),
                               father_name = COALESCE(NULLIF(father_name, ''), ?),
-                              mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?)";
-            $updateValues = [$values[5], $values[6], $values[4], $values[7], $values[8]];
+                              mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?),
+                              public_reference = COALESCE(NULLIF(public_reference, ''), ?)";
+            $updateValues = [
+                $values[5],
+                $values[6],
+                $values[4],
+                $values[7],
+                $values[8],
+                'SPPO-P-' . strtoupper(bin2hex(random_bytes(8))),
+            ];
             if (array_key_exists('address', $identity)) {
                 $updateSql .= ", address = COALESCE(NULLIF(address, ''), ?)";
                 $updateValues[] = $name('address');
@@ -85,8 +93,9 @@ if (!function_exists('person_identity_choices')) {
 
         $columns = [
             'first_name', 'middle_name', 'last_name', 'suffix', 'sex',
-            'birth_date', 'birth_place', 'father_name', 'mother_maiden_name',
+            'birth_date', 'birth_place', 'father_name', 'mother_maiden_name', 'public_reference',
         ];
+        $values[] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
         if (array_key_exists('address', $identity)) {
             $columns[] = 'address';
             $values[] = $name('address');

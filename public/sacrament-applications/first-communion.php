@@ -182,7 +182,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
         try {
             $pdo->beginTransaction();
             $ageAssessment = sacrament_age_assessment($pdo, 'first_communion', calculate_age($birthdate));
-            $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
+            $requestNo = generate_request_no($pdo, 'sacrament_applications');
+            $personProfile = public_person_reference($pdo, $personId, [
+                'first_name' => (string) ($formData['applicant_first'] ?? ''),
+                'middle_name' => (string) ($formData['applicant_middle'] ?? ''),
+                'last_name' => (string) ($formData['applicant_last'] ?? ''),
+                'suffix' => (string) ($formData['applicant_suffix'] ?? ''),
+                'birth_date' => $birthdate,
+                'father_name' => $father,
+                'mother_maiden_name' => $mother,
+            ]);
+            $personId = $personProfile['person_id'];
+            public_assert_no_open_sacrament_application(
+                $pdo,
+                'first_communion',
+                [$personId],
+                $personProfile['reference']
+            );
             $details = [
                 'candidate_name' => $name,
                 'candidate_birth_date' => $birthdate,
@@ -209,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                  VALUES (?, ?, 'first_communion', ?, ?, ?, ?, 'new', ?, ?, NOW())"
             );
             $stmt->execute([
-                $trackingNumber,
+                $requestNo,
                 $channel,
                 $personId,
                 $name,
@@ -220,17 +236,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
             ]);
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion pre-application submitted for {$name}");
-            notify($pdo, 'application_new', 'New sacrament pre-application', "First Communion pre-application for {$name} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+            notify($pdo, 'application_new', 'New sacrament pre-application', "First Communion pre-application for {$name} ({$requestNo})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
                 record_public_submission($pdo, [$email], 'application_first_communion');
             }
             $pdo->commit();
+            $trackingNumber = $personProfile['reference'];
             if ($isSecretary) {
-                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
                 exit;
             }
             if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
             unset($_SESSION['first_communion_app']);
+        } catch (InvalidArgumentException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $trackingNumber = null;
+            $errors[] = $e->getMessage();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             $trackingNumber = null;

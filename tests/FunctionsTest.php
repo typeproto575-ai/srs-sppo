@@ -346,7 +346,8 @@ final class FunctionsTest extends TestCase
                 birth_date TEXT,
                 birth_place TEXT,
                 father_name TEXT,
-                mother_maiden_name TEXT
+                mother_maiden_name TEXT,
+                public_reference TEXT
             )'
         );
         $identity = [
@@ -367,6 +368,7 @@ final class FunctionsTest extends TestCase
         $profile = $pdo->query('SELECT * FROM persons')->fetch(PDO::FETCH_ASSOC);
         self::assertSame('Juan Santos', $profile['father_name']);
         self::assertSame('Rosa Cruz', $profile['mother_maiden_name']);
+        self::assertMatchesRegularExpression('/^SPPO-P-[A-F0-9]{16}$/', $profile['public_reference']);
     }
 
     public function testTrackingTokenUsesRandomLookingUnambiguousFormat(): void

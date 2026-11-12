@@ -66,6 +66,65 @@ final class DatabaseIntegrationTest extends TestCase
         self::assertSame($expected, $tables);
         $columns = $this->pdo->query('SHOW COLUMNS FROM persons')->fetchAll(PDO::FETCH_COLUMN);
         self::assertContains('observanda', $columns);
+        self::assertContains('public_reference', $columns);
+    }
+
+    public function testPublicPersonReferenceIsStableAcrossMatchingApplications(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $identity = [
+                'first_name' => 'Reference',
+                'middle_name' => 'Test',
+                'last_name' => 'Parishioner',
+                'suffix' => '',
+                'birth_date' => '2001-02-03',
+                'birth_place' => 'Dingalan',
+            ];
+            $first = public_person_reference($this->pdo, null, $identity);
+            $second = public_person_reference($this->pdo, null, $identity);
+
+            self::assertSame($first['person_id'], $second['person_id']);
+            self::assertSame($first['reference'], $second['reference']);
+            self::assertMatchesRegularExpression('/^SPPO-P-[A-Z2-9]{16}$/', $first['reference']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testPublicSubmissionCannotDuplicateAnOpenApplicationForTheSamePersonAndSacrament(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $person = public_person_reference($this->pdo, null, [
+                'first_name' => 'Open',
+                'last_name' => 'Application Test',
+                'birth_date' => '2002-03-04',
+            ]);
+            $insert = $this->pdo->prepare(
+                "INSERT INTO sacrament_applications
+                    (request_no, sacrament_type, person_id, applicant_name, applicant_email)
+                 VALUES (?, 'confirmation', ?, 'Open Application Test', 'open@example.test')"
+            );
+            $insert->execute([
+                generate_request_no($this->pdo, 'sacrament_applications'),
+                $person['person_id'],
+            ]);
+
+            try {
+                public_assert_no_open_sacrament_application(
+                    $this->pdo,
+                    'confirmation',
+                    [$person['person_id']],
+                    $person['reference']
+                );
+                self::fail('An open application should prevent a duplicate submission.');
+            } catch (InvalidArgumentException $e) {
+                self::assertStringContainsString($person['reference'], $e->getMessage());
+            }
+        } finally {
+            $this->pdo->rollBack();
+        }
     }
 
     public function testUnifiedRegisterAndWorkflowTablesLinkToMasterPersons(): void

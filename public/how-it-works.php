@@ -71,7 +71,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Receive updates from the parish office</h3>
-            <p>The Parish Office may email you about missing information and pickup. You may also contact the office with the reference number on your submission confirmation and the email address you used.</p>
+            <p>The Parish Office may email you about missing information and pickup. Use your person reference and the email address used on a request to see statuses for linked applications and certificate requests.</p>
         </div>
     </div>
 
@@ -80,7 +80,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Finish at the parish office</h3>
-            <p>If documents are needed, the parish office will tell you what to bring. Certificates are collected at the Parish Office; they are not issued online.</p>
+            <p>If documents are needed, the parish office will tell you what to bring. Use your existing person reference and contact the office about the same pending application instead of submitting it again. Certificates are collected at the Parish Office; they are not issued online.</p>
         </div>
     </div>
 
@@ -102,7 +102,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Final calls-to-action -->
 <div class="workflow-cta">
-    <p>After you submit a certificate request or sacrament pre-application, the Parish Office may email you with an update. You may also contact the office with the reference number on your submission confirmation and the email address you used.</p>
+    <p>After you submit a certificate request or sacrament pre-application, the Parish Office may email you with an update. The same person reference is used for requests linked to your profile; use it with the email address on a request to view linked statuses.</p>
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

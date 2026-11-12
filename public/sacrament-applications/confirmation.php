@@ -193,6 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) {
             try {
                 $applicationId = null;
+                $personReference = '';
+                $inputPersonId = $personId;
                 $ageAssessment = sacrament_age_assessment(
                     $pdo,
                     'confirmation',
@@ -200,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $fatherName = compose_person_name($formData, 'father');
                 $motherName = compose_person_name($formData, 'mother');
-                $trackingNumber = retry_on_duplicate($pdo, function () use (
+                $requestNo = retry_on_duplicate($pdo, function () use (
                     $pdo,
                     $applicantName,
                     $applicantBirthdate,
@@ -208,15 +210,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $contactNumber,
                     $email,
                     $baptizedHere,
-                    $personId,
+                    $inputPersonId,
+                    &$personId,
                     $channel,
                     $ageAssessment,
                     $fatherName,
                     $motherName,
-                     &$applicationId
+                    $formData,
+                    &$applicationId,
+                    &$personReference
                      
                 ): string {
                     $requestNo = generate_request_no($pdo, 'sacrament_applications');
+                    $personProfile = public_person_reference($pdo, $inputPersonId, [
+                        'first_name' => cfd('applicant_first', $formData),
+                        'middle_name' => cfd('applicant_middle', $formData),
+                        'last_name' => cfd('applicant_last', $formData),
+                        'suffix' => cfd('applicant_suffix', $formData),
+                        'birth_date' => $applicantBirthdate,
+                        'father_name' => $fatherName,
+                        'mother_maiden_name' => $motherName,
+                    ]);
+                    $personId = $personProfile['person_id'];
+                    $personReference = $personProfile['reference'];
+                    public_assert_no_open_sacrament_application(
+                        $pdo,
+                        'confirmation',
+                        [$personId],
+                        $personReference
+                    );
                     $details = [
                         'applicant_full_name' => $applicantName,
                         'birth_date' => $applicantBirthdate,
@@ -254,14 +276,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     return $requestNo;
                 });
 
+                $trackingNumber = $personReference;
                 log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation pre-application submitted for {$applicantName}");
-                notify($pdo, 'application_new', 'New sacrament pre-application', "Confirmation pre-application for {$applicantName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+                notify($pdo, 'application_new', 'New sacrament pre-application', "Confirmation pre-application for {$applicantName} ({$requestNo})", '/admin/requests/applications-queue.php');
                 if ($channel === 'online') {
                     record_public_submission($pdo, [$email], 'application_confirmation');
                 }
 
                 if ($isSecretary) {
-                    redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                    redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
                     exit;
                 }
 
@@ -269,6 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId)) {
                         log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                     }
+                } catch (InvalidArgumentException $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    $errors[] = $e->getMessage();
                 } catch (Throwable $e) {
                     error_log('Confirmation application confirmation email failed: ' . $e->getMessage());
                 }

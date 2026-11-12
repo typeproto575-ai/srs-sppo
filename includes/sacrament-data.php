@@ -518,6 +518,7 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
         $values['is_deceased'] = empty($values['is_deceased']) ? 0 : 1;
     }
     if ($id === null) {
+        $values['public_reference'] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
         $cols = array_keys($values);
         $stmt = $pdo->prepare('INSERT INTO persons (' . implode(', ', $cols) . ') VALUES ('
             . implode(', ', array_fill(0, count($cols), '?')) . ')');
@@ -528,7 +529,13 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
         throw new InvalidArgumentException('Person not found.');
     }
     if ($values) {
+        $values['public_reference'] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
         $set = implode(', ', array_map(fn($c) => "$c = ?", array_keys($values)));
+        $set = str_replace(
+            'public_reference = ?',
+            "public_reference = COALESCE(NULLIF(public_reference, ''), ?)",
+            $set
+        );
         $stmt = $pdo->prepare("UPDATE persons SET $set WHERE id = ?");
         $stmt->execute(array_merge(array_values($values), [$id]));
     }

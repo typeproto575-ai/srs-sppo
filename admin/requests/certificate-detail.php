@@ -204,11 +204,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $pdo->commit();
+            $referenceStmt = $pdo->prepare(
+                'SELECT p.public_reference
+                 FROM certificate_requests cr
+                 LEFT JOIN persons p ON p.id = cr.person_id
+                 WHERE cr.id = ?
+                 LIMIT 1'
+            );
+            $referenceStmt->execute([$requestId]);
+            $requestReference = (string) ($referenceStmt->fetchColumn() ?: $req['request_no']);
             if ($redirectToDetail) {
                 if ($action === 'mark_paid' && !empty($req['requester_email'])) {
                     mail_status_update(
                         (string) $req['requester_email'],
-                        (string) $req['request_no'],
+                        $requestReference,
                         'Payment received — Under Processing',
                         'certificate_request',
                         $pdo,
@@ -221,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'reject' && !empty($req['requester_email'])) {
                 mail_status_update(
                     (string) $req['requester_email'],
-                    (string) $req['request_no'],
+                    $requestReference,
                     'Rejected',
                     'certificate_request',
                     $pdo,
@@ -233,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'mark_for_signature' && !empty($req['requester_email'])) {
                 mail_status_update(
                     (string) $req['requester_email'],
-                    (string) $req['request_no'],
+                    $requestReference,
                     'Under Processing — Pending Priest Signature',
                     'certificate_request',
                     $pdo,
@@ -244,11 +253,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'mark_ready' && !empty($req['requester_email'])) {
                 $sacramentLabel = sd_type_label($req['sacrament_type']);
                 $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
-                    . "Bring your request reference number and any claim stub or payment slip the secretary gave you. If the slip is missing, provide your reference number and certificate name so the office can locate the request.\n"
+                    . "Bring your person reference and any claim stub or payment slip the secretary gave you. If the slip is missing, provide your person reference and certificate name so the office can locate the request.\n"
                     . "The secretary verifies the recorded payment before release. The Acknowledgment Receipt is placed with the completed certificate in its folder.\n"
                     . "If someone else will claim it for you, they must bring a signed authorization letter from the person named on the certificate.";
                 try {
-                    send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId);
+                    send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId, $requestReference);
                 } catch (Throwable $e) {
                     error_log('SRS-SPPO ready email failed: ' . $e->getMessage());
                 }
@@ -256,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'release' && !empty($req['requester_email'])) {
                 mail_status_update(
                     (string) $req['requester_email'],
-                    (string) $req['request_no'],
+                    $requestReference,
                     'Released',
                     'certificate_request',
                     $pdo,

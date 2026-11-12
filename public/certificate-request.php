@@ -287,6 +287,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 $errors[] = $e->getMessage();
             }
         }
+        if ($selectedPersonId === null && $values['birth_date'] === '') {
+            $errors[] = 'Enter the person’s date of birth so the Parish Office can create or match their master profile.';
+        }
 
         if (empty($errors)) {
             $isSecretary = (current_user()['role'] ?? '') === 'secretary';
@@ -326,11 +329,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 $inserted = false;
                 $requestId = null;
                 $requestNo = '';
+                $personReference = '';
+                $inputPersonId = $selectedPersonId;
                 try {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
                             $pdo->beginTransaction();
+                            [$subjectFirst, $subjectMiddle, $subjectLast, $subjectSuffix] = structured_name_parts($values['subject_name']);
+                            $personProfile = public_person_reference($pdo, $inputPersonId, [
+                                'first_name' => $subjectFirst,
+                                'middle_name' => $subjectMiddle,
+                                'last_name' => $subjectLast,
+                                'suffix' => $subjectSuffix,
+                                'birth_date' => $values['birth_date'],
+                                'father_name' => $values['father_name'],
+                                'mother_maiden_name' => $values['mother_maiden_name'],
+                            ]);
+                            $selectedPersonId = $personProfile['person_id'];
+                            $personReference = $personProfile['reference'];
                             if ($walkInRecord) {
                                 $stmt = $pdo->prepare(
                                     "INSERT INTO certificate_requests
@@ -401,8 +418,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
                     }
-                    error_log('SRS-SPPO certificate request insert failed: ' . $e->getMessage());
-                    $errors[] = 'We could not save your request just now. Please try again in a moment.';
+                    if ($e instanceof InvalidArgumentException) {
+                        $errors[] = $e->getMessage();
+                    } else {
+                        error_log('SRS-SPPO certificate request insert failed: ' . $e->getMessage());
+                        $errors[] = 'We could not save your request just now. Please try again in a moment.';
+                    }
                 }
 
                 if ($inserted) {
@@ -412,7 +433,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $values['requester_email'],
                                 $values['requester_name'],
                                 $readableType,
-                                $requestNo,
+                                $personReference,
                                 $pdo,
                                 $requestId,
                                 $values['requester_relationship'] === 'self'
@@ -425,7 +446,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                         redirect_to('/admin/requests/queue.php?added=' . rawurlencode($requestNo));
                         exit;
                     }
-                    $_SESSION['certificate_success'] = $requestNo;
+                    $_SESSION['certificate_success'] = $personReference;
+                    $trackingNumber = $personReference;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
                     exit;
                 }
@@ -443,8 +465,9 @@ require_once __DIR__ . '/../includes/header.php';
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = false;
+        $successPersonReferences = [['name' => '', 'reference' => $trackingNumber]];
         $successRequiredDocuments = [
-            'Bring the request reference number. If the secretary gave you a claim stub or payment slip, bring it too; if it is missing, give the secretary the reference number and certificate name so the request can be located.',
+            'Bring your person reference. If the secretary gave you a claim stub or payment slip, bring it too.',
             'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];
@@ -518,8 +541,8 @@ require_once __DIR__ . '/../includes/header.php';
             <input type="date" id="marriage_date" name="marriage_date" value="<?= e($values['marriage_date']) ?>">
         </div>
 
-        <label for="birth_date">Date of birth (optional)</label>
-        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>">
+        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
         <div class="public-person-lookup" data-public-person-lookup
              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
@@ -601,7 +624,7 @@ require_once __DIR__ . '/../includes/header.php';
         <strong>After submission: review, payment, and pickup</strong>
         <ol>
             <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
-            <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you; if it is lost, the office can look up the request using its reference number and the certificate name.</li>
+            <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you.</li>
             <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring. An authorized representative must bring a signed authorization letter from the person named on the certificate.</li>
             <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
         </ol>

@@ -63,6 +63,7 @@ CREATE TABLE persons (
   contact_number   VARCHAR(30)  NULL,
   observanda       TEXT NULL,
   email            VARCHAR(150) NULL,
+  public_reference VARCHAR(48) NULL,
   baptismal_status ENUM('baptized_catholic','baptized_non_catholic','unbaptized') NULL,
   is_deceased      TINYINT(1) NOT NULL DEFAULT 0,     -- status flag only, no burial details
   death_date       DATE NULL,
@@ -70,6 +71,7 @@ CREATE TABLE persons (
   updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_persons_name (last_name, first_name),
   INDEX idx_persons_birth (birth_date),
+  UNIQUE KEY uq_persons_public_reference (public_reference),
   CONSTRAINT fk_persons_father FOREIGN KEY (father_person_id) REFERENCES persons(id) ON DELETE SET NULL,
   CONSTRAINT fk_persons_mother FOREIGN KEY (mother_person_id) REFERENCES persons(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -135,8 +137,9 @@ CREATE TABLE sacrament_participants (
 
 -- ---------------------------------------------------------------------
 -- 5. sacrament_applications : online or walk-in application to RECEIVE a
---    sacrament. Unverified intake. The secretary links it to person(s) and
---    approves it; approval prefills a sacrament_records form.
+--    sacrament. Unverified intake. Public intake creates/reuses the master
+--    person profile so requests share one public reference; staff still verify
+--    the intake before approval and link the resulting register record.
 --    details  (JSON) = the type-specific form answers.
 --    requirements (JSON) = checklist the secretary ticks in person.
 -- ---------------------------------------------------------------------
@@ -145,7 +148,7 @@ CREATE TABLE sacrament_applications (
   request_no         VARCHAR(20) NOT NULL UNIQUE,         -- internal reference only, not a public tracking feature
   channel            ENUM('online','onsite') NOT NULL DEFAULT 'onsite',
   sacrament_type     ENUM('baptism','first_communion','confirmation','marriage') NOT NULL,
-  person_id          INT UNSIGNED NULL,                   -- set when the secretary links an existing profile (marriage: the groom)
+  person_id          INT UNSIGNED NULL,                   -- subject profile (marriage: the groom)
   spouse_person_id   INT UNSIGNED NULL,                   -- marriage: the bride
   applicant_name     VARCHAR(150) NOT NULL,
   applicant_email    VARCHAR(150) NOT NULL,

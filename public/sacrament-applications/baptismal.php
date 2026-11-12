@@ -5,7 +5,8 @@
  * =====================================================================
  * Purpose: Online application to HAVE A CHILD BAPTIZED at the parish.
  *          Inserts an unverified intake row into the v2
- *          sacrament_applications table. No person profile is created.
+ *          sacrament_applications table and ensures a master person profile
+ *          with a reusable public reference.
  * Flow:    Enters as 'submitted'; the secretary reviews it in
  *          admin/requests/applications-queue.php. No online ID upload â€”
  *          identity is verified in person at pickup.
@@ -254,7 +255,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if (empty($errors)) {
                         $pdo->beginTransaction();
-                        $trackingNumber = generate_request_no($pdo, 'sacrament_applications');
+                        $requestNo = generate_request_no($pdo, 'sacrament_applications');
+                        $personProfile = public_person_reference($pdo, $childPersonId, [
+                            'first_name' => fd('child_first', $formData),
+                            'middle_name' => fd('child_middle', $formData),
+                            'last_name' => fd('child_last', $formData),
+                            'suffix' => fd('child_suffix', $formData),
+                            'birth_date' => $childBirthdate,
+                            'birth_place' => $childBirthplace,
+                            'father_name' => $fatherName,
+                            'mother_maiden_name' => $motherMaidenName,
+                        ]);
+                        $childPersonId = $personProfile['person_id'];
+                        public_assert_no_open_sacrament_application(
+                            $pdo,
+                            'baptism',
+                            [$childPersonId],
+                            $personProfile['reference']
+                        );
                         $godparents = [];
                         foreach (['godfather' => $godfatherNames, 'godmother' => $godmotherNames] as $role => $names) {
                             foreach ($names as $name) {
@@ -282,7 +300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                              VALUES (?, ?, 'baptism', ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
                         );
                         $stmt->execute([
-                            $trackingNumber,
+                            $requestNo,
                             $channel,
                             $childPersonId,
                             $childName,
@@ -295,14 +313,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $applicationId = (int) $pdo->lastInsertId();
 
                         log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal pre-application submitted for {$childName}");
-                        notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
+                        notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$requestNo})", '/admin/requests/applications-queue.php');
                         if ($channel === 'online') {
                             record_public_submission($pdo, [$email], 'application_baptismal');
                         }
                         $pdo->commit();
+                        $trackingNumber = $personProfile['reference'];
 
                         if ($isSecretary) {
-                            redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($trackingNumber));
+                            redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
                             exit;
                         }
 
@@ -310,6 +329,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
                                 log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                             }
+                        } catch (InvalidArgumentException $e) {
+                            if ($pdo->inTransaction()) $pdo->rollBack();
+                            $trackingNumber = null;
+                            $errors[] = $e->getMessage();
                         } catch (Throwable $e) {
                             error_log('Baptismal application confirmation email failed: ' . $e->getMessage());
                         }

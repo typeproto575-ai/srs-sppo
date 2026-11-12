@@ -155,19 +155,20 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     $displayKind = mail_request_display_name($kind);
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
+    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
     if (mail_is_sacrament_application($kind)) {
         $body = "Dear Parishioner,\r\n\r\n"
             . "The Parish Office received your " . $displayKind . " for review.\r\n\r\n"
-            . "Your reference number is: " . $trackingNumber . "\r\n"
-            . "Quote this reference number when contacting the Parish Office.\r\n\r\n"
+            . "Your person reference is: " . $trackingNumber . "\r\n"
+            . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
             . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this pre-application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"
             . "The parish office has recorded your " . $kind . ".\r\n\r\n"
-            . "Your reference number is: " . $trackingNumber . "\r\n"
-            . "Quote this reference number when contacting the parish office.\r\n\r\n"
+            . "Your person reference is: " . $trackingNumber . "\r\n"
+            . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
             . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
@@ -178,6 +179,8 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
 function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, ?string $officeNote = null): bool
 {
     $displayKind = mail_request_display_name($kind);
+    $referenceLabel = str_starts_with($trackingNumber, 'SPPO-P-') ? 'person reference' : 'reference number';
+    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
     $officeNote = trim((string) $officeNote);
@@ -192,7 +195,8 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
     }
     if (mail_is_sacrament_application($kind)) {
         $body = "Dear Parishioner,\r\n\r\n"
-            . "This is an update on your " . $displayKind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
+            . "This is an update on your " . $displayKind . " ({$referenceLabel}: " . $trackingNumber . ").\r\n"
+            . "View linked requests at " . $trackingUrl . " using this reference and the email address on the request.\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n\r\n"
             . $officeNoteText
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
@@ -200,7 +204,8 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"
-            . "This is an update on your " . $kind . " (reference number: " . $trackingNumber . ").\r\n\r\n"
+            . "This is an update on your " . $kind . " ({$referenceLabel}: " . $trackingNumber . ").\r\n"
+            . "View linked requests at " . $trackingUrl . " using this reference and the email address on the request.\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n"
             . $paymentNote . "\r\n\r\n"
             . ($officeNote !== '' ? "Parish Office note: " . $officeNote . "\r\n\r\n" : '')
@@ -233,14 +238,15 @@ function mail_certificate_request_received(
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
+    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
     $selfPickupRequirement = $requesterIsSubject
         ? "- A valid ID with a name matching the person on the certificate.\r\n"
         : '';
     $body = "Dear " . $requesterName . ",\r\n\r\n"
         . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
-        . "Your reference number is: " . $requestNo . "\r\n"
-        . "Quote this reference number when contacting the parish office.\r\n\r\n"
-        . "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded. Keep any claim stub or payment slip the secretary gives you; if it is lost, provide your reference number and certificate name so the office can locate the request.\r\n\r\n"
+        . "Your person reference is: " . $requestNo . "\r\n"
+        . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
+        . "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded. Keep any claim stub or payment slip the secretary gives you.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
         . $selfPickupRequirement

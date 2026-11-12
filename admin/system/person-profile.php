@@ -204,6 +204,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
     <div class="person-profile-details">
         <div class="person-profile-detail">
+            <span class="person-profile-detail__label">Public person reference</span>
+            <span class="person-profile-detail__value"><?= e($person['public_reference'] ?: 'Not assigned yet') ?></span>
+        </div>
+        <div class="person-profile-detail">
             <span class="person-profile-detail__label">Date of birth</span>
             <span class="person-profile-detail__value"><?= e($person['birth_date'] ? date('M j, Y', strtotime($person['birth_date'])) : 'Not specified') ?></span>
         </div>

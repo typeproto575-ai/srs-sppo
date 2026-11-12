@@ -61,12 +61,13 @@ Rule: `last_name` is always the surname at birth. Unknown details are NULL (this
 | father_name, mother_maiden_name | VARCHAR(150) | yes | Parents as text |
 | father_person_id, mother_person_id | INT FK persons | yes | Optional link if the parent also has a profile |
 | address, contact_number, email | VARCHAR | yes | |
+| public_reference | VARCHAR(48) | yes | Stable public reference shared across requests linked to this person; unique. Existing profiles receive one during migration or first request. |
 | observanda | TEXT | yes | Person-level note; sacrament-specific remarks remain on `sacrament_records` |
 | baptismal_status | ENUM('baptized_catholic','baptized_non_catholic','unbaptized') | yes | NULL = unknown |
 | is_deceased, death_date | TINYINT(1), DATE | no / yes | Status flag only |
 | created_at, updated_at | DATETIME | no | |
 
-Indexes: `(last_name, first_name)`, `(birth_date)`.
+Indexes: `(last_name, first_name)`, `(birth_date)`, unique `(public_reference)`.
 
 ### 3.3 sacrament_records
 One row per sacrament event. The physical logbook stays canonical, so book/page/line are kept on every row.
@@ -101,14 +102,14 @@ Prerequisites are checked by looking for rows: First Communion needs a baptism r
 | sort_order | TINYINT | no | Display order |
 
 ### 3.5 sacrament_applications
-Unverified intake. Never writes to `persons` or `sacrament_records` by itself.
+Unverified intake. Does not write sacramental register entries. It creates or reuses the subject's master person profile so the applicant can use one person reference across linked requests; staff still review the intake before approval.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | request_no | VARCHAR(20) | no | Unique. Internal reference, not a public feature |
 | channel | ENUM('online','onsite') | no | |
 | sacrament_type | ENUM (same four) | no | |
-| person_id, spouse_person_id | FK persons | yes | Set when the secretary links profiles. Spouse is marriage only (checked in the app) |
+| person_id, spouse_person_id | FK persons | yes | Subject profile(s), created or matched on submission; spouse is marriage only |
 | applicant_name, applicant_email, applicant_contact | VARCHAR | no, no, yes | |
 | preferred_date, preferred_time | DATE, TIME | yes | |
 | status | ENUM('new','reviewing','requirements_pending','approved','scheduled','completed','rejected') | no | See section 5 |
@@ -136,7 +137,7 @@ Unverified intake. Never writes to `persons` or `sacrament_records` by itself.
 | requester_email, requester_contact_number | VARCHAR | no, yes | |
 | purpose, purpose_other | VARCHAR | yes | |
 | privacy_consent_at | DATETIME | yes | |
-| person_id | FK persons | yes | Set when the secretary matches |
+| person_id | FK persons | yes | Person profile for the certificate subject |
 | record_id | FK sacrament_records | yes | Record the certificate is printed from |
 | matched_by, matched_at | FK users, DATETIME | yes | |
 | status | ENUM('new','matched','for_signature','ready','released','rejected') | no | See section 5 |
@@ -210,12 +211,13 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 
 ## 6. Business rules
 1. Identity fields exist only in `persons`. Register forms show them read-only for existing people.
-2. Baptism creates the profile. Someone not yet baptized exists only as an application. Exception: a non-Catholic or unbaptized spouse in a marriage may have a profile with the matching `baptismal_status`.
-3. Public submissions never write to `persons` or `sacrament_records`.
-4. `legitimacy` is never exposed publicly, in email, or on certificates.
-5. A certificate can be printed only for a `this_parish` record whose `book_verified_at` is set.
-6. Release requires `claimant_type` and `id_verified = 1`; a representative also needs `representative_name`.
-7. Prerequisites and marriage requirements (CENOMAR, origin baptismal certificate, transfer letter, one party a registered parishioner) are flagged for the secretary, not auto-blocked.
-8. Identity verification is in two stages: Stage 1 the relationship choice plus the upfront pickup notice online; Stage 2 the counter ID check at release.
-9. No monetary amounts are stored. Payment is a manual `paid_at` stamp, recorded at the counter before processing starts (the parish's real rule).
-10. Retention: the backend job sets `anonymized_at` on old requests; sacrament records are never purged.
+2. Online sacrament applications and certificate requests create or reuse a person profile using the submitted name and date of birth; exact duplicate matches are reused, while ambiguous matches require Parish Office help. This profile links requests but does not itself verify the sacramental record.
+3. Public submissions may create or reuse a `persons` profile and link the request to it; they never create `sacrament_records`.
+4. A stable `persons.public_reference` is shared across that person's linked applications and certificate requests. The public status page requires a one-time code sent to the email address on a linked request.
+5. `legitimacy` is never exposed publicly, in email, or on certificates.
+6. A certificate can be printed only for a `this_parish` record whose `book_verified_at` is set.
+7. Release requires `claimant_type` and `id_verified = 1`; a representative also needs `representative_name`.
+8. Prerequisites and marriage requirements (CENOMAR, origin baptismal certificate, transfer letter, one party a registered parishioner) are flagged for the secretary, not auto-blocked.
+9. Identity verification is in two stages: Stage 1 the relationship choice plus the upfront pickup notice online; Stage 2 the counter ID check at release.
+10. No monetary amounts are stored. Payment is a manual `paid_at` stamp, recorded at the counter before processing starts (the parish's real rule).
+11. Retention: the backend job sets `anonymized_at` on old requests; sacrament records are never purged.
