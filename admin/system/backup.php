@@ -14,7 +14,7 @@ $error = null;
 $backupCounts = [];
 $backupPassphrase = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['backup_passphrase'])) {
     if (!csrf_verify()) {
         $error = 'The security token expired. Please refresh the page and try again.';
     } else {
@@ -37,51 +37,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['download'])) {
             } elseif (!function_exists('openssl_encrypt') || !function_exists('openssl_cipher_iv_length')) {
                 $error = 'OpenSSL is required to encrypt backups.';
             } else {
-                $backup = export_database_sql($pdo);
-                $cipher = 'aes-256-gcm';
-                $salt = random_bytes(16);
-                $nonce = random_bytes(openssl_cipher_iv_length($cipher));
-                $iterations = 210000;
-                $key = hash_pbkdf2('sha256', $backupPassphrase, $salt, $iterations, 32, true);
-                $tag = '';
-                $ciphertext = openssl_encrypt($backup['sql'], $cipher, $key, OPENSSL_RAW_DATA, $nonce, $tag);
-                if ($ciphertext === false || strlen($tag) !== 16) {
-                    throw new RuntimeException('Could not encrypt the database backup.');
+                try {
+                    $backup = export_database_sql($pdo);
+                    $cipher = 'aes-256-gcm';
+                    $salt = random_bytes(16);
+                    $nonce = random_bytes(openssl_cipher_iv_length($cipher));
+                    $iterations = 210000;
+                    $key = hash_pbkdf2('sha256', $backupPassphrase, $salt, $iterations, 32, true);
+                    $tag = '';
+                    $ciphertext = openssl_encrypt($backup['sql'], $cipher, $key, OPENSSL_RAW_DATA, $nonce, $tag);
+                    if ($ciphertext === false || strlen($tag) !== 16) {
+                        throw new RuntimeException('Could not encrypt the database backup.');
+                    }
+
+                    $header = json_encode([
+                        'format' => 'srs-sppo-backup-v1',
+                        'algorithm' => 'AES-256-GCM',
+                        'kdf' => 'PBKDF2-SHA256',
+                        'iterations' => $iterations,
+                        'salt' => base64_encode($salt),
+                        'nonce' => base64_encode($nonce),
+                        'tag_length' => strlen($tag),
+                    ], JSON_THROW_ON_ERROR) . "\n";
+                    $payload = $header . $ciphertext . $tag;
+                    log_activity(
+                        $pdo,
+                        (int) $user['id'],
+                        'database_backup_exported',
+                        null,
+                        null,
+                        sprintf('tables=%d bytes=%d', $backup['table_count'], strlen($payload))
+                    );
+
+                    header('Content-Type: application/octet-stream');
+                    header('Content-Disposition: attachment; filename="srs-sppo-backup-' . date('Y-m-d') . '.sql.enc"');
+                    header('Content-Length: ' . strlen($payload));
+                    echo $payload;
+                    exit;
+                } catch (Throwable $e) {
+                    $error = 'The backup could not be created. See the server log.';
+                    error_log($e->getMessage());
                 }
-
-                $header = json_encode([
-                    'format' => 'srs-sppo-backup-v1',
-                    'algorithm' => 'AES-256-GCM',
-                    'kdf' => 'PBKDF2-SHA256',
-                    'iterations' => $iterations,
-                    'salt' => base64_encode($salt),
-                    'nonce' => base64_encode($nonce),
-                    'tag_length' => strlen($tag),
-                ], JSON_THROW_ON_ERROR) . "\n";
-                $payload = $header . $ciphertext . $tag;
-                log_activity(
-                    $pdo,
-                    (int) $user['id'],
-                    'database_backup_exported',
-                    null,
-                    null,
-                    sprintf('tables=%d bytes=%d', $backup['table_count'], strlen($payload))
-                );
-
-                header('Content-Type: application/octet-stream');
-                header('Content-Disposition: attachment; filename="srs-sppo-backup-' . date('Y-m-d') . '.sql.enc"');
-                header('Content-Length: ' . strlen($payload));
-                echo $payload;
-                exit;
             }
         }
     }
 }
 
-foreach (['users','baptismal_records','confirmation_records','first_communion_records','marriage_records',
-          'certificate_requests','sacrament_applications','announcements','audit_logs'] as $table) {
-    $backupCounts[$table] = (int) $pdo->query("SELECT COUNT(*) c FROM `{$table}`")->fetch()['c'];
+$sacramentTypes = ['baptism', 'first_communion', 'confirmation', 'marriage'];
+foreach ($sacramentTypes as $sacramentType) {
+    $backupCounts["sacrament_records ({$sacramentType})"] = 0;
 }
+
+$stmt = $pdo->query(
+    'SELECT sacrament_type, COUNT(*) AS row_count
+     FROM sacrament_records
+     GROUP BY sacrament_type'
+);
+foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $sacramentType = (string) $row['sacrament_type'];
+    $backupCounts["sacrament_records ({$sacramentType})"] = (int) $row['row_count'];
+}
+
+$backupCounts['persons'] = (int) $pdo->query('SELECT COUNT(*) FROM persons')->fetchColumn();
+$backupCounts['sacrament_participants'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_participants')->fetchColumn();
+$backupCounts['certificate_requests'] = (int) $pdo->query('SELECT COUNT(*) FROM certificate_requests')->fetchColumn();
+$backupCounts['sacrament_applications'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_applications')->fetchColumn();
+$backupCounts['schedule_events'] = (int) $pdo->query('SELECT COUNT(*) FROM schedule_events')->fetchColumn();
+$backupCounts['announcements'] = (int) $pdo->query('SELECT COUNT(*) FROM announcements')->fetchColumn();
+$backupCounts['audit_logs'] = (int) $pdo->query('SELECT COUNT(*) FROM audit_logs')->fetchColumn();
+$backupCounts['users'] = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
 $extraHead = '';
 ?>
@@ -89,6 +113,7 @@ $extraHead = '';
         <h1>Database Backup / Export</h1>
         <p class="field-hint">The encrypted export excludes password/hash columns, password-reset tokens, submission rate limits, and email delivery logs.</p>
         <p class="field-hint"><strong>Backup note:</strong> Store backups on an external drive, keep at least two copies, and follow the parish's approved retention policy when disposing of old copies.</p>
+        <p class="field-hint">This page creates a one-time download. Optional automatic monthly Google Drive backups require explicit server-side enablement, a configured host scheduler, and server-only credentials; ask the designated technical administrator whether that job is active.</p>
         <?php if ($error !== null): ?>
             <p class="form-error"><?= e($error) ?></p>
         <?php endif; ?>

@@ -9,6 +9,7 @@
     <testsuites>
         <testsuite name="SRS-SPPO unit tests">
             <file>tests/FunctionsTest.php</file>
+            <file>tests/BackupTest.php</file>
         </testsuite>
         <testsuite name="SRS-SPPO database integration tests">
             <file>tests/DatabaseIntegrationTest.php</file>

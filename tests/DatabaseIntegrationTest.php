@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
-require_once __DIR__ . '/../includes/retention-purge.php';
-require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/backup.php';
-require_once __DIR__ . '/../includes/database-upgrades.php';
+require_once __DIR__ . '/../includes/person-linking.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class DatabaseIntegrationTest extends TestCase
 {
@@ -38,949 +37,458 @@ final class DatabaseIntegrationTest extends TestCase
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]
         );
-    }
 
-    public function testRequiredWorkflowTablesExist(): void
-    {
-        foreach (['users', 'certificate_requests', 'sacrament_applications', 'audit_logs'] as $table) {
-            $statement = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
-            );
-            $statement->execute([$table]);
-            self::assertSame(1, (int) $statement->fetchColumn(), "Missing required table: {$table}");
+        $connectedDatabase = (string) $this->pdo->query('SELECT DATABASE()')->fetchColumn();
+        if ($connectedDatabase !== $databaseName) {
+            self::fail('SRS_TEST_DB_DSN must connect to SRS_TEST_DB_NAME exactly.');
         }
     }
 
-    public function testCanonicalSchemaIncludesManagedUpgradeFeatures(): void
+    public function testV2SchemaContainsOnlyTheUnifiedWorkflowTables(): void
     {
-        $requiredColumns = [
-            'certificate_requests' => ['review_notes', 'rejection_reason', 'paid_at', 'match_confirmed_at', 'anonymized_at', 'requester_mailing_address'],
-            'sacrament_applications' => ['paid_at', 'anonymized_at'],
-            'confirmation_applications' => ['baptism_date', 'baptism_parish_name', 'baptism_parish_address'],
-            'first_communion_applications' => ['applicant_gender', 'psa_birth_certificate_status', 'parental_consent'],
-            'marriage_applications' => ['groom_current_address', 'groom_confirmed', 'civil_marriage_date', 'groom_banns_status'],
-            'schedule_events' => ['public_details'],
-            'correction_requests' => ['anonymized_at'],
+        $tables = $this->pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+        sort($tables);
+        $expected = [
+            'announcements',
+            'audit_logs',
+            'certificate_requests',
+            'notifications',
+            'persons',
+            'sacrament_applications',
+            'sacrament_participants',
+            'sacrament_records',
+            'schedule_events',
+            'settings',
+            'users',
         ];
+        sort($expected);
 
-        foreach ($requiredColumns as $table => $columns) {
-            foreach ($columns as $column) {
-                $statement = $this->pdo->prepare(
-                    'SELECT COUNT(*) FROM information_schema.columns
-                     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
-                );
-                $statement->execute([$table, $column]);
-                self::assertSame(1, (int) $statement->fetchColumn(), "Missing required column: {$table}.{$column}");
-            }
-        }
-
-        $statement = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM information_schema.tables
-             WHERE table_schema = DATABASE() AND table_name = ?'
-        );
-        $statement->execute(['srs_schema_migrations']);
-        self::assertSame(1, (int) $statement->fetchColumn(), 'Missing database-upgrade history table.');
+        self::assertSame($expected, $tables);
+        $columns = $this->pdo->query('SHOW COLUMNS FROM persons')->fetchAll(PDO::FETCH_COLUMN);
+        self::assertContains('observanda', $columns);
+        self::assertContains('public_reference', $columns);
     }
 
-    public function testDatabaseUpgradeChecksAndRecordsCanonicalSchemaIdempotently(): void
-    {
-        $status = srs_database_upgrade_status($this->pdo);
-        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
-            self::assertTrue($status[$migrationKey]['complete'], "Canonical schema is missing {$migrationKey}.");
-            srs_apply_database_upgrade($this->pdo, $migrationKey, 0);
-        }
-
-        $status = srs_database_upgrade_status($this->pdo);
-        foreach (array_keys(srs_database_upgrade_definitions()) as $migrationKey) {
-            self::assertTrue($status[$migrationKey]['recorded'], "Upgrade history did not record {$migrationKey}.");
-        }
-    }
-
-    public function testCertificateRequestCanBeCreatedAndRolledBack(): void
+    public function testPublicPersonReferenceIsStableAcrossMatchingApplications(): void
     {
         $this->pdo->beginTransaction();
         try {
-            $tracking = 'TEST-' . bin2hex(random_bytes(8));
-            $statement = $this->pdo->prepare(
-                'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
-            );
-            $statement->execute([
-                $tracking,
-                'online',
-                'baptismal',
-                'Integration Test',
-                'self',
-                'integration-test@example.invalid',
-                'personal',
-            ]);
+            $identity = [
+                'first_name' => 'Reference',
+                'middle_name' => 'Test',
+                'last_name' => 'Parishioner',
+                'suffix' => '',
+                'birth_date' => '2001-02-03',
+                'birth_place' => 'Dingalan',
+            ];
+            $first = public_person_reference($this->pdo, null, $identity);
+            $second = public_person_reference($this->pdo, null, $identity);
 
-            $check = $this->pdo->prepare(
-                'SELECT status, submission_channel FROM certificate_requests WHERE tracking_number = ?'
-            );
-            $check->execute([$tracking]);
-            $row = $check->fetch();
-
-            self::assertSame('pending', $row['status']);
-            self::assertSame('online', $row['submission_channel']);
+            self::assertSame($first['person_id'], $second['person_id']);
+            self::assertSame($first['reference'], $second['reference']);
+            self::assertMatchesRegularExpression('/^SPPO-P-[A-Z2-9]{16}$/', $first['reference']);
         } finally {
             $this->pdo->rollBack();
         }
     }
 
-    public function testBaptismalCertificateLifecycleThroughRelease(): void
+    public function testPublicSubmissionCannotDuplicateAnOpenApplicationForTheSamePersonAndSacrament(): void
     {
-        $userId = 0;
-        $requestId = 0;
-        $generationId = 0;
-        $tracking = 'TEST-LIFE-' . bin2hex(random_bytes(8));
-
+        $this->pdo->beginTransaction();
         try {
-            $this->pdo->beginTransaction();
-
-            $user = $this->pdo->prepare(
-                'INSERT INTO users (full_name, username, email, password_hash, role)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $user->execute([
-                'Integration Secretary',
-                'integration_' . bin2hex(random_bytes(4)),
-                'integration-secretary-' . bin2hex(random_bytes(4)) . '@example.invalid',
-                password_hash('integration-only-password', PASSWORD_DEFAULT),
-                'secretary',
+            $person = public_person_reference($this->pdo, null, [
+                'first_name' => 'Open',
+                'last_name' => 'Application Test',
+                'birth_date' => '2002-03-04',
             ]);
-            $userId = (int) $this->pdo->lastInsertId();
+            $insert = $this->pdo->prepare(
+                "INSERT INTO sacrament_applications
+                    (request_no, sacrament_type, person_id, applicant_name, applicant_email)
+                 VALUES (?, 'confirmation', ?, 'Open Application Test', 'open@example.test')"
+            );
+            $insert->execute([
+                generate_request_no($this->pdo, 'sacrament_applications'),
+                $person['person_id'],
+            ]);
 
+            try {
+                public_assert_no_open_sacrament_application(
+                    $this->pdo,
+                    'confirmation',
+                    [$person['person_id']],
+                    $person['reference']
+                );
+                self::fail('An open application should prevent a duplicate submission.');
+            } catch (InvalidArgumentException $e) {
+                self::assertStringContainsString($person['reference'], $e->getMessage());
+            }
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testUnifiedRegisterAndWorkflowTablesLinkToMasterPersons(): void
+    {
+        $links = [
+            'sacrament_records' => ['person_id', 'spouse_person_id'],
+            'sacrament_applications' => ['person_id', 'spouse_person_id'],
+            'certificate_requests' => ['person_id', 'record_id'],
+        ];
+
+        foreach ($links as $table => $columns) {
+            foreach ($columns as $column) {
+                $statement = $this->pdo->prepare(
+                    'SELECT COUNT(*)
+                     FROM information_schema.key_column_usage
+                     WHERE table_schema = DATABASE()
+                       AND table_name = ?
+                       AND column_name = ?
+                       AND referenced_table_name = ?'
+                );
+                $expectedTable = $column === 'record_id' ? 'sacrament_records' : 'persons';
+                $statement->execute([$table, $column, $expectedTable]);
+                self::assertSame(
+                    1,
+                    (int) $statement->fetchColumn(),
+                    "Missing foreign key: {$table}.{$column} -> {$expectedTable}"
+                );
+            }
+        }
+    }
+
+    public function testSavingRegisterIdentityReusesMasterPerson(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $identity = [
+                'first_name' => 'Integration',
+                'middle_name' => 'Master',
+                'last_name' => 'Person',
+                'birth_date' => '2000-01-02',
+                'birth_place' => 'Dingalan',
+                'father_name' => 'Parent One',
+                'mother_maiden_name' => 'Parent Two',
+            ];
+            $personId = save_person_identity($this->pdo, null, $identity);
+            $samePersonId = save_person_identity($this->pdo, $personId, [
+                'first_name' => 'Integration',
+                'middle_name' => 'Master',
+                'last_name' => 'Person',
+                'birth_date' => '2000-01-02',
+            ]);
+
+            self::assertSame($personId, $samePersonId);
+            $person = sd_get_person($this->pdo, $personId);
+            self::assertSame('Integration Master Person', $person['full_name']);
+            self::assertSame('Parent One', $person['father_name']);
+            self::assertSame('Parent Two', $person['mother_maiden_name']);
+
+            sd_save_person($this->pdo, ['observanda' => 'Profile-level integration note'], $personId);
+            self::assertSame('Profile-level integration note', sd_get_person($this->pdo, $personId)['observanda']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testParentProfileLinksRejectSelfAndCyclesAndAppearOnFamilyProfiles(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $fatherId = sd_save_person($this->pdo, [
+                'first_name' => 'Linked',
+                'last_name' => 'Father',
+            ]);
+            $childId = sd_save_person($this->pdo, [
+                'first_name' => 'Linked',
+                'last_name' => 'Child',
+                'father_person_id' => $fatherId,
+            ]);
+
+            self::assertNull(sd_validate_parent_profile_links(
+                $this->pdo,
+                $childId,
+                [$fatherId]
+            ));
+            self::assertSame(
+                'A person cannot be linked as their own parent.',
+                sd_validate_parent_profile_links($this->pdo, $childId, [$childId])
+            );
+            self::assertSame(
+                'This parent link would create a family cycle. Choose another profile.',
+                sd_validate_parent_profile_links($this->pdo, $fatherId, [$childId])
+            );
+            self::assertSame($fatherId, (int) sd_get_family($this->pdo, $childId)['father']['id']);
+
+            $snapshot = sd_person_audit_snapshot($this->pdo, $childId);
+            self::assertSame($fatherId, (int) $snapshot['father_person_id']);
+            self::assertArrayHasKey('mother_person_id', $snapshot);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testCertificateRequestMovesThroughTheV2OfficeLifecycle(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Ana',
+                'last_name' => 'Integration',
+                'birth_date' => '2015-04-12',
+            ]);
+            $recordId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2015-05-10',
+                'place' => 'Saint Patrick Parish',
+                'minister_name' => 'Integration Priest',
+                'entry_no' => '15-01',
+                'book_no' => 'I',
+                'page_no' => '1',
+                'line_no' => '1',
+            ], [], $userId);
+            sd_verify_book_entry($this->pdo, $recordId, $userId);
+
+            $requestNo = 'T' . bin2hex(random_bytes(7));
             $request = $this->pdo->prepare(
                 'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
+                    (request_no, channel, sacrament_type, subject_name, requester_name,
                      requester_relationship, requester_email, purpose)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $request->execute([
-                $tracking,
+                $requestNo,
                 'online',
-                'baptismal',
-                'Maria Integration',
+                'baptism',
+                'Ana Integration',
+                'Parent Integration',
                 'parent',
-                'maria-integration@example.invalid',
+                'parent@example.invalid',
                 'school',
             ]);
             $requestId = (int) $this->pdo->lastInsertId();
 
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_certificate_requests
-                    (request_id, child_full_name, father_full_name, mother_full_name, birthdate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $requestId,
-                'Ana Integration',
-                'Juan Integration',
-                'Maria Integration',
-                '2015-04-12',
-            ]);
+            self::assertSame('new', $this->certificateStatus($requestId));
+            self::assertTrue(cert_request_transition_valid('new', 'matched'));
 
             $this->pdo->prepare(
-                'UPDATE certificate_requests
-                 SET status = "awaiting_payment", match_confirmed_at = NOW(), match_confirmed_by = ?
-                 WHERE id = ?'
-            )->execute([$userId, $requestId]);
+                "UPDATE certificate_requests
+                 SET person_id = ?, record_id = ?, matched_by = ?, matched_at = NOW(), status = 'matched'
+                 WHERE id = ?"
+            )->execute([$personId, $recordId, $userId, $requestId]);
 
             self::assertFalse(cert_request_payment_gate([
-                'submission_channel' => 'online',
-                'status' => 'awaiting_payment',
+                'channel' => 'online',
+                'status' => 'matched',
                 'paid_at' => null,
-            ], 'approved')['ok']);
+            ], 'for_signature')['ok']);
 
             $this->pdo->prepare(
-                'UPDATE certificate_requests
-                 SET paid_at = NOW(), paid_by = ?, status = "approved", processed_by = ?
-                 WHERE id = ?'
-            )->execute([$userId, $userId, $requestId]);
+                'UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ?'
+            )->execute([$userId, $requestId]);
+            self::assertTrue(cert_request_payment_gate([
+                'channel' => 'online',
+                'status' => 'matched',
+                'paid_at' => date('Y-m-d H:i:s'),
+            ], 'for_signature')['ok']);
+
+            self::assertTrue(sd_can_print_certificate(sd_get_record($this->pdo, $recordId) ?? []));
+            self::assertTrue(cert_request_transition_valid('matched', 'for_signature'));
             $this->pdo->prepare(
-                'UPDATE certificate_requests SET status = "processing" WHERE id = ?'
+                "UPDATE certificate_requests
+                 SET status = 'for_signature', certificate_no = ?, printed_by = ?, printed_at = NOW()
+                 WHERE id = ?"
+            )->execute(['C-TEST-1', $userId, $requestId]);
+            self::assertTrue(cert_request_transition_valid('for_signature', 'ready'));
+
+            $this->pdo->prepare(
+                "UPDATE certificate_requests SET status = 'ready', signed_at = NOW() WHERE id = ?"
             )->execute([$requestId]);
-
-            $generation = $this->pdo->prepare(
-                'INSERT INTO certificate_generation_log
-                    (certificate_request_id, generated_by, print_status)
-                 VALUES (?, ?, "generated")'
-            );
-            $generation->execute([$requestId, $userId]);
-            $generationId = (int) $this->pdo->lastInsertId();
+            self::assertTrue(cert_request_transition_valid('ready', 'released'));
 
             $this->pdo->prepare(
-                'UPDATE certificate_requests SET status = "ready_for_pickup" WHERE id = ?'
-            )->execute([$requestId]);
-            $this->pdo->commit();
-
-            $printed = log_certificate_printed($this->pdo, $requestId, $userId);
-            self::assertTrue($printed['ok']);
-            self::assertSame('printed', cert_current_generation_log($this->pdo, $requestId)['print_status']);
-
-            $notFinalized = log_certificate_released(
-                $this->pdo,
-                $requestId,
-                $generationId,
-                $userId,
-                'Maria Integration',
-                'Parent',
-                'Integration release before finalization',
-                true
-            );
-            self::assertFalse($notFinalized['ok']);
-
+                "UPDATE certificate_requests
+                 SET status = 'released', claimant_type = 'self', id_verified = 1,
+                     released_by = ?, released_at = NOW()
+                 WHERE id = ?"
+            )->execute([$userId, $requestId]);
             $this->pdo->prepare(
-                'UPDATE certificate_generation_log
-                 SET finalized_by = ?, finalized_at = NOW()
-                 WHERE id = ?'
-            )->execute([$userId, $generationId]);
-
-            $released = log_certificate_released(
-                $this->pdo,
-                $requestId,
-                $generationId,
+                'INSERT INTO audit_logs (user_id, actor_name, action, target_table, target_id, description)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            )->execute([
                 $userId,
-                'Maria Integration',
-                'Parent',
-                'Integration test release',
-                true
-            );
-            self::assertTrue($released['ok'], $released['reason'] ?? 'Release failed.');
+                'Integration Secretary',
+                'certificate.release',
+                'certificate_requests',
+                $requestId,
+                'Integration lifecycle release.',
+            ]);
+            $this->pdo->prepare(
+                'INSERT INTO notifications
+                    (channel, type, title, recipient, delivery_status, entity_type, entity_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+            )->execute([
+                'email',
+                'certificate_ready',
+                'Certificate ready',
+                'parent@example.invalid',
+                'disabled',
+                'certificate_request',
+                $requestId,
+            ]);
 
             $result = $this->pdo->prepare(
-                'SELECT cr.status, gl.print_status, gl.claimant_name, gl.id_verified
+                'SELECT cr.status, cr.printed_at, cr.signed_at, cr.released_at,
+                        cr.claimant_type, cr.id_verified, al.action, n.delivery_status
                  FROM certificate_requests cr
-                 JOIN certificate_generation_log gl ON gl.certificate_request_id = cr.id
-                 WHERE cr.id = ? AND gl.id = ?'
+                 JOIN audit_logs al ON al.target_id = cr.id AND al.target_table = ?
+                 JOIN notifications n ON n.entity_id = cr.id AND n.channel = ?
+                 WHERE cr.id = ?'
             );
-            $result->execute([$requestId, $generationId]);
+            $result->execute(['certificate_requests', 'email', $requestId]);
             $row = $result->fetch();
 
             self::assertSame('released', $row['status']);
-            self::assertSame('released', $row['print_status']);
-            self::assertSame('Maria Integration', $row['claimant_name']);
+            self::assertNotNull($row['printed_at']);
+            self::assertNotNull($row['signed_at']);
+            self::assertNotNull($row['released_at']);
+            self::assertSame('self', $row['claimant_type']);
             self::assertSame(1, (int) $row['id_verified']);
-
-            $audit = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM audit_logs
-                 WHERE action = "certificate_released" AND target_id = ?'
-            );
-            $audit->execute([$requestId]);
-            self::assertSame(1, (int) $audit->fetchColumn());
-
-            $notification = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM notifications
-                 WHERE type = "certificate_picked_up"
-                   AND message LIKE ?
-                   AND link = ?'
-            );
-            $notification->execute([
-                '%Maria Integration%',
-                '/admin/requests/queue.php?status=released',
-            ]);
-            self::assertSame(1, (int) $notification->fetchColumn());
-
-            $email = $this->pdo->prepare(
-                'SELECT recipient, event_type, entity_type, entity_id,
-                        tracking_number, delivery_status, error_message
-                 FROM email_delivery_log
-                 WHERE entity_type = ? AND entity_id = ?
-                 ORDER BY id DESC LIMIT 1'
-            );
-            $email->execute(['certificate_request', $requestId]);
-            $emailRow = $email->fetch();
-            self::assertSame('maria-integration@example.invalid', $emailRow['recipient']);
-            self::assertSame('status_update', $emailRow['event_type']);
-            self::assertSame('certificate_request', $emailRow['entity_type']);
-            self::assertSame($requestId, (int) $emailRow['entity_id']);
-            self::assertSame($tracking, $emailRow['tracking_number']);
-            self::assertSame('disabled', $emailRow['delivery_status']);
-            self::assertSame('Email is disabled.', $emailRow['error_message']);
+            self::assertSame('certificate.release', $row['action']);
+            self::assertSame('disabled', $row['delivery_status']);
         } finally {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM certificate_requests WHERE id = ?')->execute([$requestId]);
-            }
-            if ($userId > 0) {
-                $this->pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
-            }
-            $this->pdo->exec('DELETE FROM notifications WHERE type = "certificate_picked_up"');
-            $this->pdo->prepare(
-                'DELETE FROM audit_logs WHERE action = "certificate_released" AND target_id = ?'
-            )->execute([$requestId]);
-            $this->pdo->prepare(
-                'DELETE FROM email_delivery_log WHERE entity_type = "certificate_request" AND entity_id = ?'
-            )->execute([$requestId]);
+            $this->pdo->rollBack();
         }
     }
 
-    public function testBaptismApplicationApprovalPrerequisites(): void
+    public function testSacramentApplicationAndRegisterRecordShareOnePerson(): void
     {
-        $applicationId = 0;
-        $tracking = 'TEST-BAPTISM-' . bin2hex(random_bytes(8));
-
+        $this->pdo->beginTransaction();
         try {
-            $this->pdo->beginTransaction();
-
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Luis',
+                'last_name' => 'Application',
+                'birth_date' => '2018-06-15',
+            ]);
+            $requestNo = 'A' . bin2hex(random_bytes(7));
             $application = $this->pdo->prepare(
                 'INSERT INTO sacrament_applications
-                    (tracking_number, submission_channel, sacrament_type, status, notes)
-                 VALUES (?, ?, ?, ?, ?)'
+                    (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
+                     preferred_date, details, requirements)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $application->execute([
-                $tracking,
+                $requestNo,
                 'online',
-                'baptismal',
-                'awaiting_payment',
-                'Integration baptism application',
+                'baptism',
+                $personId,
+                'Parent Application',
+                'parent@example.invalid',
+                '2027-06-15',
+                json_encode(['child_name' => 'Luis Application'], JSON_THROW_ON_ERROR),
+                json_encode(['birth_certificate' => 'pending'], JSON_THROW_ON_ERROR),
             ]);
             $applicationId = (int) $this->pdo->lastInsertId();
 
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_applications
-                    (application_id, child_full_name, child_birthdate, child_birthplace,
-                     parent_guardian_name, email)
-                 VALUES (?, ?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $applicationId,
-                'Luis Integration',
-                '2018-06-15',
-                'Dingalan, Aurora',
-                'Parent Integration',
-                'parent-integration-' . bin2hex(random_bytes(4)) . '@example.invalid',
-            ]);
-            $baptismalDetailId = (int) $this->pdo->lastInsertId();
-
-            self::assertFalse(sacrament_application_payment_gate([
-                'submission_channel' => 'online',
-                'status' => 'awaiting_payment',
-                'paid_at' => null,
-            ], 'requirements_pending')['ok']);
-
-            $blocked = can_approve_sacrament_application($this->pdo, $applicationId, 'baptismal');
-            self::assertFalse($blocked['ok']);
-            self::assertContains('Required documents not yet verified.', $blocked['missing']);
-            self::assertContains('Parents/godparents seminar not yet completed.', $blocked['missing']);
-            self::assertContains('At least one godfather (ninong) must be recorded.', $blocked['missing']);
-            self::assertContains('At least one godmother (ninang) must be recorded.', $blocked['missing']);
-
+            $recordId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2027-06-15',
+                'encoded_by' => $userId,
+            ], [], $userId);
             $this->pdo->prepare(
-                'UPDATE sacrament_applications
-                 SET paid_at = NOW(), paid_by = ?, status = "ready_for_approval"
-                 WHERE id = ?'
-            )->execute([null, $applicationId]);
-            $this->pdo->prepare(
-                'UPDATE baptismal_applications
-                 SET documents_verified = 1, seminar_attended = 1
-                 WHERE id = ?'
-            )->execute([$baptismalDetailId]);
+                "UPDATE sacrament_applications
+                 SET status = 'completed', record_id = ?, processed_by = ?
+                 WHERE id = ?"
+            )->execute([$recordId, $userId, $applicationId]);
 
-            $godparent = $this->pdo->prepare(
-                'INSERT INTO baptismal_application_godparents
-                    (baptismal_application_id, godparent_name, godparent_type)
-                 VALUES (?, ?, ?)'
+            $check = $this->pdo->prepare(
+                'SELECT a.status, a.person_id, a.record_id, r.person_id AS record_person_id,
+                        a.details, a.requirements
+                 FROM sacrament_applications a
+                 JOIN sacrament_records r ON r.id = a.record_id
+                 WHERE a.id = ?'
             );
-            $godparent->execute([$baptismalDetailId, 'Godfather Integration', 'godfather']);
-            $godparent->execute([$baptismalDetailId, 'Godmother Integration', 'godmother']);
+            $check->execute([$applicationId]);
+            $row = $check->fetch();
 
-            $ready = can_approve_sacrament_application($this->pdo, $applicationId, 'baptismal');
-            self::assertTrue($ready['ok'], implode(' ', $ready['missing']));
-            self::assertSame([], $ready['missing']);
-
-            $this->pdo->prepare(
-                'UPDATE sacrament_applications
-                 SET status = "approved", date_processed = NOW()
-                 WHERE id = ?'
-            )->execute([$applicationId]);
-
-            $status = $this->pdo->prepare(
-                'SELECT status, paid_at FROM sacrament_applications WHERE id = ?'
-            );
-            $status->execute([$applicationId]);
-            $row = $status->fetch();
-            self::assertSame('approved', $row['status']);
-            self::assertNotNull($row['paid_at']);
-
-            $this->pdo->commit();
+            self::assertSame('completed', $row['status']);
+            self::assertSame($personId, (int) $row['person_id']);
+            self::assertSame($personId, (int) $row['record_person_id']);
+            self::assertSame($recordId, (int) $row['record_id']);
+            self::assertSame(['child_name' => 'Luis Application'], json_decode($row['details'], true));
+            self::assertSame(['birth_certificate' => 'pending'], json_decode($row['requirements'], true));
         } finally {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            if ($applicationId > 0) {
-                $this->pdo->prepare('DELETE FROM sacrament_applications WHERE id = ?')->execute([$applicationId]);
-            }
+            $this->pdo->rollBack();
         }
     }
 
-    public function testMarriageApplicationApprovalPrerequisites(): void
-        {
-            $applicationId = 0;
-            $tracking = 'TEST-MARRIAGE-' . bin2hex(random_bytes(8));
-
-            try {
-                $this->pdo->beginTransaction();
-
-                $application = $this->pdo->prepare(
-                    'INSERT INTO sacrament_applications
-                        (tracking_number, submission_channel, sacrament_type, status, notes)
-                     VALUES (?, ?, ?, ?, ?)'
-                );
-                $application->execute([
-                    $tracking,
-                    'online',
-                    'marriage',
-                    'awaiting_payment',
-                    'Integration marriage application',
-                ]);
-                $applicationId = (int) $this->pdo->lastInsertId();
-
-                $detail = $this->pdo->prepare(
-                    'INSERT INTO marriage_applications
-                        (application_id, groom_full_name, groom_birthdate, groom_birthplace,
-                         groom_email, groom_marital_status, bride_full_name, bride_birthdate,
-                         bride_birthplace, bride_email, bride_marital_status, preferred_wedding_date)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                );
-                $detail->execute([
-                    $applicationId,
-                    'Groom Integration',
-                    '1995-02-10',
-                    'Dingalan, Aurora',
-                    'groom-' . bin2hex(random_bytes(4)) . '@example.invalid',
-                    'single',
-                    'Bride Integration',
-                    '1996-08-21',
-                    'Dingalan, Aurora',
-                    'bride-' . bin2hex(random_bytes(4)) . '@example.invalid',
-                    'single',
-                    '2027-06-12',
-                ]);
-
-                self::assertFalse(sacrament_application_payment_gate([
-                    'submission_channel' => 'online',
-                    'status' => 'awaiting_payment',
-                    'paid_at' => null,
-                ], 'requirements_pending')['ok']);
-
-                $blocked = can_approve_sacrament_application($this->pdo, $applicationId, 'marriage');
-                self::assertFalse($blocked['ok']);
-                self::assertCount(7, $blocked['missing']);
-                self::assertContains('Canonical (pastoral) interview not completed.', $blocked['missing']);
-                self::assertContains('Pre-Cana / marriage seminar not completed.', $blocked['missing']);
-                self::assertContains('Banns must be posted on all three dates (Tawag sa Kasal).', $blocked['missing']);
-                self::assertContains("Groom's baptismal certificate not submitted.", $blocked['missing']);
-                self::assertContains("Bride's baptismal certificate not submitted.", $blocked['missing']);
-                self::assertContains("Groom's confirmation certificate not submitted.", $blocked['missing']);
-                self::assertContains("Bride's confirmation certificate not submitted.", $blocked['missing']);
-
-                $this->pdo->prepare(
-                    'UPDATE sacrament_applications
-                     SET paid_at = NOW(), paid_by = ?, status = "ready_for_approval"
-                     WHERE id = ?'
-                )->execute([null, $applicationId]);
-
-                $this->pdo->prepare(
-                    'UPDATE marriage_applications
-                     SET canonical_interview_completed = 1,
-                         pre_cana_seminar_completed = 1,
-                         banns_date_1 = "2027-05-22",
-                         banns_date_2 = "2027-05-29",
-                         banns_date_3 = "2027-06-05",
-                         groom_baptismal_cert_status = "submitted",
-                         bride_baptismal_cert_status = "submitted",
-                         groom_confirmation_cert_status = "submitted",
-                         bride_confirmation_cert_status = "submitted"
-                     WHERE application_id = ?'
-                )->execute([$applicationId]);
-
-                $ready = can_approve_sacrament_application($this->pdo, $applicationId, 'marriage');
-                self::assertTrue($ready['ok'], implode(' ', $ready['missing']));
-                self::assertSame([], $ready['missing']);
-
-                $this->pdo->prepare(
-                    'UPDATE sacrament_applications
-                     SET status = "approved", date_processed = NOW()
-                     WHERE id = ?'
-                )->execute([$applicationId]);
-
-                $status = $this->pdo->prepare(
-                    'SELECT status, paid_at FROM sacrament_applications WHERE id = ?'
-                );
-                $status->execute([$applicationId]);
-                $row = $status->fetch();
-                self::assertSame('approved', $row['status']);
-                self::assertNotNull($row['paid_at']);
-
-                $this->pdo->commit();
-            } finally {
-                if ($this->pdo->inTransaction()) {
-                    $this->pdo->rollBack();
-                }
-                if ($applicationId > 0) {
-                    $this->pdo->prepare('DELETE FROM sacrament_applications WHERE id = ?')->execute([$applicationId]);
-                }
-            }
-        }
-
-    public function testConfirmationAndFirstCommunionApprovalPrerequisites(): void
+    public function testScheduleEventsPersistAndFlagOverlappingTimes(): void
     {
-                $applicationIds = [];
-
-                try {
-                    $this->pdo->beginTransaction();
-
-                    $insertApplication = $this->pdo->prepare(
-                        'INSERT INTO sacrament_applications
-                            (tracking_number, submission_channel, sacrament_type, status)
-                         VALUES (?, ?, ?, ?)'
-                    );
-                    $insertApplication->execute([
-                        'TEST-CONFIRM-' . bin2hex(random_bytes(8)),
-                        'online',
-                        'confirmation',
-                        'awaiting_payment',
-                    ]);
-                    $confirmationId = (int) $this->pdo->lastInsertId();
-                    $applicationIds[] = $confirmationId;
-
-                    $confirmation = $this->pdo->prepare(
-                        'INSERT INTO confirmation_applications
-                            (application_id, applicant_full_name, applicant_birthdate,
-                             parent_guardian_name, email)
-                         VALUES (?, ?, ?, ?, ?)'
-                    );
-                    $confirmation->execute([
-                        $confirmationId,
-                        'Confirmand Integration',
-                        '2012-03-10',
-                        'Guardian Integration',
-                        'confirmand-' . bin2hex(random_bytes(4)) . '@example.invalid',
-                    ]);
-
-                    $blockedConfirmation = can_approve_sacrament_application(
-                        $this->pdo,
-                        $confirmationId,
-                        'confirmation'
-                    );
-                    self::assertFalse($blockedConfirmation['ok']);
-                    self::assertContains(
-                        'Baptismal certificate not submitted (baptism is required first).',
-                        $blockedConfirmation['missing']
-                    );
-                    self::assertContains('Seminar not yet completed.', $blockedConfirmation['missing']);
-                    self::assertSame(
-                        'Age-eligible',
-                        sacrament_age_status($this->pdo, 'confirmation', 14)
-                    );
-
-                    $this->pdo->prepare(
-                        'UPDATE sacrament_applications
-                         SET paid_at = NOW(), status = "ready_for_approval"
-                         WHERE id = ?'
-                    )->execute([$confirmationId]);
-                    $this->pdo->prepare(
-                        'UPDATE confirmation_applications
-                         SET baptismal_cert_status = "submitted", seminar_attended = 1,
-                             age_eligibility_flag = 1
-                         WHERE application_id = ?'
-                    )->execute([$confirmationId]);
-
-                    $readyConfirmation = can_approve_sacrament_application(
-                        $this->pdo,
-                        $confirmationId,
-                        'confirmation'
-                    );
-                    self::assertTrue($readyConfirmation['ok'], implode(' ', $readyConfirmation['missing']));
-                    self::assertSame([], $readyConfirmation['missing']);
-
-                    $insertApplication->execute([
-                        'TEST-COMM-' . bin2hex(random_bytes(8)),
-                        'online',
-                        'first_communion',
-                        'awaiting_payment',
-                    ]);
-                    $communionId = (int) $this->pdo->lastInsertId();
-                    $applicationIds[] = $communionId;
-
-                    $communion = $this->pdo->prepare(
-                        'INSERT INTO first_communion_applications
-                            (application_id, applicant_full_name, applicant_birthdate,
-                             parent_guardian_name, email)
-                         VALUES (?, ?, ?, ?, ?)'
-                    );
-                    $communion->execute([
-                        $communionId,
-                        'Communicant Integration',
-                        '2018-09-04',
-                        'Guardian Integration',
-                        'communicant-' . bin2hex(random_bytes(4)) . '@example.invalid',
-                    ]);
-
-                    $blockedCommunion = can_approve_sacrament_application(
-                        $this->pdo,
-                        $communionId,
-                        'first_communion'
-                    );
-                    self::assertFalse($blockedCommunion['ok']);
-                    self::assertContains(
-                        'Baptismal certificate not submitted (baptism is required first).',
-                        $blockedCommunion['missing']
-                    );
-                    self::assertContains('Seminar not yet completed.', $blockedCommunion['missing']);
-                    self::assertSame(
-                        'Age-eligible',
-                        sacrament_age_status($this->pdo, 'first_communion', 8)
-                    );
-
-                    $this->pdo->prepare(
-                        'UPDATE sacrament_applications
-                         SET paid_at = NOW(), status = "ready_for_approval"
-                         WHERE id = ?'
-                    )->execute([$communionId]);
-                    $this->pdo->prepare(
-                        'UPDATE first_communion_applications
-                         SET baptismal_cert_status = "submitted", seminar_attended = 1,
-                             age_eligibility_flag = 1
-                         WHERE application_id = ?'
-                    )->execute([$communionId]);
-
-                    $readyCommunion = can_approve_sacrament_application(
-                        $this->pdo,
-                        $communionId,
-                        'first_communion'
-                    );
-                    self::assertTrue($readyCommunion['ok'], implode(' ', $readyCommunion['missing']));
-                    self::assertSame([], $readyCommunion['missing']);
-
-                    $this->pdo->prepare(
-                        'UPDATE sacrament_applications
-                         SET status = "approved", date_processed = NOW()
-                         WHERE id IN (?, ?)'
-                    )->execute([$confirmationId, $communionId]);
-
-                    $approved = $this->pdo->query(
-                        'SELECT COUNT(*) FROM sacrament_applications
-                         WHERE id IN (' . $confirmationId . ', ' . $communionId . ')
-                           AND status = "approved"'
-                    )->fetchColumn();
-                    self::assertSame(2, (int) $approved);
-
-                    $this->pdo->commit();
-                } finally {
-                    if ($this->pdo->inTransaction()) {
-                        $this->pdo->rollBack();
-                    }
-                    foreach ($applicationIds as $applicationId) {
-                        $this->pdo->prepare('DELETE FROM sacrament_applications WHERE id = ?')
-                            ->execute([$applicationId]);
-                    }
-                }
-    }
-
-    public function testScheduleEventsPersistAndDetectTimeConflicts(): void
-    {
-        $eventIds = [];
-
-                    try {
-                        $this->pdo->beginTransaction();
-
-                        $insert = $this->pdo->prepare(
-                            'INSERT INTO schedule_events
-                                (event_type, title, event_date, start_time, end_time, notes)
-                             VALUES (?, ?, ?, ?, ?, ?)'
-                        );
-                        $insert->execute([
-                            'wedding',
-                            'Integration Wedding',
-                            '2027-06-12',
-                            '10:00:00',
-                            '11:00:00',
-                            'Integration schedule event',
-                        ]);
-                        $eventIds[] = (int) $this->pdo->lastInsertId();
-
-                        $insert->execute([
-                            'mass',
-                            'Integration Mass',
-                            '2027-06-12',
-                            '10:30:00',
-                            '11:30:00',
-                            'Overlapping integration event',
-                        ]);
-                        $eventIds[] = (int) $this->pdo->lastInsertId();
-
-                        $insert->execute([
-                            'other',
-                            'Integration Later Event',
-                            '2027-06-12',
-                            '11:00:00',
-                            '12:00:00',
-                            'Back-to-back integration event',
-                        ]);
-                        $eventIds[] = (int) $this->pdo->lastInsertId();
-
-                        $events = $this->pdo->prepare(
-                            'SELECT start_time, end_time FROM schedule_events
-                             WHERE id IN (?, ?, ?) ORDER BY id'
-                        );
-                        $events->execute($eventIds);
-                        $rows = $events->fetchAll();
-
-                        self::assertCount(3, $rows);
-                        self::assertTrue(
-                            event_times_overlap(
-                                $rows[0]['start_time'],
-                                $rows[0]['end_time'],
-                                $rows[1]['start_time'],
-                                $rows[1]['end_time']
-                            )
-                        );
-                        self::assertFalse(
-                            event_times_overlap(
-                                $rows[0]['start_time'],
-                                $rows[0]['end_time'],
-                                $rows[2]['start_time'],
-                                $rows[2]['end_time']
-                            )
-                        );
-                        self::assertTrue(event_times_overlap('10:00:00', null, '10:45:00', '11:45:00'));
-                        self::assertTrue(event_times_overlap(null, null, '23:00:00', '23:30:00'));
-
-                        $sameDay = $this->pdo->prepare(
-                            'SELECT COUNT(*) FROM schedule_events
-                             WHERE event_date = ? AND event_type IN ("wedding", "mass")'
-                        );
-                        $sameDay->execute(['2027-06-12']);
-                        self::assertSame(2, (int) $sameDay->fetchColumn());
-
-                        $this->pdo->commit();
-                    } finally {
-                        if ($this->pdo->inTransaction()) {
-                            $this->pdo->rollBack();
-                        }
-                        foreach ($eventIds as $eventId) {
-                            $this->pdo->prepare('DELETE FROM schedule_events WHERE id = ?')
-                                ->execute([$eventId]);
-                        }
-                    }
-        }
-
-    public function testPublicTrackingAndCertificateRequestData(): void
-    {
-        $requestId = 0;
-        $tracking = 'SPPO-2027-' . bin2hex(random_bytes(3));
-        $email = 'public-tracking-' . bin2hex(random_bytes(4)) . '@example.invalid';
-
+        $this->pdo->beginTransaction();
         try {
-            $this->pdo->beginTransaction();
-            $request = $this->pdo->prepare(
-                'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            $insert = $this->pdo->prepare(
+                'INSERT INTO schedule_events
+                    (event_type, title, public_details, event_date, start_time, end_time, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
-            $request->execute([
-                $tracking, 'online', 'baptismal', 'Public Integration', 'self',
-                $email, 'personal', 'ready_for_pickup',
+            $insert->execute([
+                'wedding',
+                'Integration Wedding',
+                'Public event detail',
+                '2027-06-12',
+                '10:00:00',
+                '11:00:00',
+                'Internal scheduling note',
             ]);
-            $requestId = (int) $this->pdo->lastInsertId();
-
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_certificate_requests
-                    (request_id, child_full_name, father_full_name, mother_full_name, birthdate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $requestId, 'Tracked Child', 'Tracked Father', 'Tracked Mother', '2015-01-02',
+            $firstId = (int) $this->pdo->lastInsertId();
+            $insert->execute([
+                'baptism',
+                'Integration Baptism',
+                null,
+                '2027-06-12',
+                '10:30:00',
+                '11:30:00',
+                null,
             ]);
+            $secondId = (int) $this->pdo->lastInsertId();
 
-            $trackingLookup = $this->pdo->prepare(
-                'SELECT tracking_number, sacrament_type, status, requester_email
-                 FROM certificate_requests WHERE tracking_number = ?'
+            $events = $this->pdo->prepare(
+                'SELECT event_date, start_time, end_time, public_details, notes
+                 FROM schedule_events WHERE id IN (?, ?) ORDER BY id'
             );
-            $trackingLookup->execute([$tracking]);
-            $tracked = $trackingLookup->fetch();
-            self::assertSame($tracking, $tracked['tracking_number']);
-            self::assertSame('baptismal', $tracked['sacrament_type']);
-            self::assertSame('ready_for_pickup', $tracked['status']);
-            self::assertSame(0, strcasecmp($email, $tracked['requester_email']));
-            self::assertNotSame(0, strcasecmp('wrong@example.invalid', $tracked['requester_email']));
+            $events->execute([$firstId, $secondId]);
+            $rows = $events->fetchAll();
 
-            $detailLookup = $this->pdo->prepare(
-                'SELECT cr.tracking_number, cr.sacrament_type, cr.requester_name,
-                        cr.status, cr.anonymized_at, ext.matched_record_id
-                 FROM certificate_requests cr
-                 LEFT JOIN (
-                     SELECT request_id, matched_record_id FROM baptismal_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM confirmation_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM first_communion_certificate_requests
-                     UNION ALL SELECT request_id, matched_record_id FROM marriage_certificate_requests
-                 ) ext ON ext.request_id = cr.id
-                 WHERE cr.tracking_number = ?'
-            );
-            $detailLookup->execute([$tracking]);
-            $found = $detailLookup->fetch();
-            self::assertSame($tracking, $found['tracking_number']);
-            self::assertSame('baptismal', $found['sacrament_type']);
-            self::assertSame('Public Integration', $found['requester_name']);
-            self::assertSame('ready_for_pickup', $found['status']);
-            self::assertNull($found['anonymized_at']);
-            self::assertNull($found['matched_record_id']);
-
-            $detailLookup->execute(['missing-' . bin2hex(random_bytes(8))]);
-            self::assertFalse($detailLookup->fetch());
-            $this->pdo->commit();
+            self::assertCount(2, $rows);
+            self::assertSame('2027-06-12', $rows[0]['event_date']);
+            self::assertTrue(event_times_overlap(
+                $rows[0]['start_time'],
+                $rows[0]['end_time'],
+                $rows[1]['start_time'],
+                $rows[1]['end_time']
+            ));
+            self::assertFalse(event_times_overlap('10:00:00', '11:00:00', '11:00:00', '12:00:00'));
+            self::assertSame('Public event detail', $rows[0]['public_details']);
+            self::assertSame('Internal scheduling note', $rows[0]['notes']);
         } finally {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM certificate_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
+            $this->pdo->rollBack();
         }
     }
 
-    public function testRetentionAnonymizesFinishedOldCertificateRequests(): void
+    public function testDatabaseBackupCanBeRestoredIntoANewIsolatedDatabase(): void
     {
-        $requestId = 0;
-        $tracking = 'TEST-RETAIN-' . bin2hex(random_bytes(8));
-
-        try {
-            $request = $this->pdo->prepare(
-                'INSERT INTO certificate_requests
-                    (tracking_number, submission_channel, sacrament_type, requester_name,
-                     requester_relationship, requester_email, purpose, status, date_processed)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 61 MONTH))'
-            );
-            $request->execute([
-                $tracking,
-                'online',
-                'baptismal',
-                'Retention Integration',
-                'parent',
-                'retention-integration@example.invalid',
-                'personal',
-                'released',
-            ]);
-            $requestId = (int) $this->pdo->lastInsertId();
-
-            $detail = $this->pdo->prepare(
-                'INSERT INTO baptismal_certificate_requests
-                    (request_id, child_full_name, father_full_name, mother_full_name, birthdate)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            $detail->execute([
-                $requestId,
-                'Retention Child',
-                'Retention Father',
-                'Retention Mother',
-                '2010-01-01',
-            ]);
-
-            $preview = retention_dry_run($this->pdo);
-            self::assertGreaterThanOrEqual(1, $preview['certificate_requests']);
-
-            $affected = retention_execute($this->pdo, null);
-            self::assertGreaterThanOrEqual(1, $affected['certificate_requests']);
-
-            $result = $this->pdo->prepare(
-                'SELECT requester_name, requester_email, anonymized_at
-                 FROM certificate_requests WHERE id = ?'
-            );
-            $result->execute([$requestId]);
-            $requestRow = $result->fetch();
-            self::assertSame(RETENTION_ANON_NAME, $requestRow['requester_name']);
-            self::assertSame(RETENTION_ANON_EMAIL, $requestRow['requester_email']);
-            self::assertNotNull($requestRow['anonymized_at']);
-
-            $detailResult = $this->pdo->prepare(
-                'SELECT child_full_name, father_full_name, mother_full_name
-                 FROM baptismal_certificate_requests WHERE request_id = ?'
-            );
-            $detailResult->execute([$requestId]);
-            $detailRow = $detailResult->fetch();
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['child_full_name']);
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['father_full_name']);
-            self::assertSame(RETENTION_ANON_NAME, $detailRow['mother_full_name']);
-        } finally {
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM certificate_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
-            $this->pdo->exec("DELETE FROM audit_logs WHERE action = 'retention_purged'");
+        $databaseName = (string) getenv('SRS_TEST_DB_NAME');
+        $restoreName = $databaseName . '_restore_' . bin2hex(random_bytes(4));
+        if (strlen($restoreName) > 64 || $restoreName === 'srs_sppo_db') {
+            self::fail('The generated restore database name is invalid.');
         }
-    }
 
-    public function testRetentionAnonymizesFinishedOldCorrectionRequests(): void
-    {
-        $requestId = 0;
-
-        try {
-            $request = $this->pdo->prepare(
-                'INSERT INTO correction_requests
-                    (tracking_number, requester_name, requester_email, certificate_id,
-                     requested_changes, document_path, status, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 61 MONTH))'
-            );
-            $request->execute([
-                'TEST-CORRECTION-' . bin2hex(random_bytes(8)),
-                'Correction Integration',
-                'correction-integration@example.invalid',
-                0,
-                'Correct the recorded spelling.',
-                'private-document.pdf',
-                'completed',
-            ]);
-            $requestId = (int) $this->pdo->lastInsertId();
-
-            $preview = retention_dry_run($this->pdo);
-            self::assertGreaterThanOrEqual(1, $preview['correction_requests']);
-
-            $affected = retention_execute($this->pdo, null);
-            self::assertGreaterThanOrEqual(1, $affected['correction_requests']);
-
-            $result = $this->pdo->prepare(
-                'SELECT requester_name, requester_email, requested_changes,
-                        document_path, anonymized_at
-                 FROM correction_requests WHERE id = ?'
-            );
-            $result->execute([$requestId]);
-            $row = $result->fetch();
-
-            self::assertSame(RETENTION_ANON_NAME, $row['requester_name']);
-            self::assertSame(RETENTION_ANON_EMAIL, $row['requester_email']);
-            self::assertSame(RETENTION_ANON_NAME, $row['requested_changes']);
-            self::assertNull($row['document_path']);
-            self::assertNotNull($row['anonymized_at']);
-        } finally {
-            if ($requestId > 0) {
-                $this->pdo->prepare('DELETE FROM correction_requests WHERE id = ?')
-                    ->execute([$requestId]);
-            }
-            $this->pdo->exec("DELETE FROM audit_logs WHERE action = 'retention_purged'");
-        }
-    }
-
-    public function testDatabaseBackupRestoresIntoIsolatedDatabase(): void
-    {
-        $restoreName = (getenv('SRS_TEST_DB_NAME') ?: 'srs_sppo_test_db') . '_restore';
-        $restoreName = preg_replace('/[^A-Za-z0-9_]/', '', $restoreName);
         $host = getenv('SRS_TEST_DB_HOST') ?: '127.0.0.1';
         $user = getenv('SRS_TEST_DB_USER') ?: 'root';
         $password = getenv('SRS_TEST_DB_PASS') !== false ? (string) getenv('SRS_TEST_DB_PASS') : '';
-
-        if ($restoreName === 'srs_sppo_db' || $restoreName === (getenv('SRS_DB_NAME') ?: '')) {
-            self::fail('Refusing to use the application database as a restore target.');
-        }
-
         $server = new PDO(
             "mysql:host={$host};charset=utf8mb4",
             $user,
@@ -991,7 +499,9 @@ final class DatabaseIntegrationTest extends TestCase
             ]
         );
         $quotedRestore = '`' . str_replace('`', '``', $restoreName) . '`';
+        $restoreCreated = false;
 
+        $this->pdo->beginTransaction();
         try {
             $marker = 'Backup restore ' . bin2hex(random_bytes(4));
             $insert = $this->pdo->prepare(
@@ -1004,9 +514,10 @@ final class DatabaseIntegrationTest extends TestCase
             $dump = export_database_sql($this->pdo);
             self::assertStringContainsString('CREATE TABLE `announcements`', $dump['sql']);
             self::assertStringContainsString($this->pdo->quote($marker), $dump['sql']);
+            self::assertGreaterThanOrEqual(11, $dump['table_count']);
 
-            $server->exec("DROP DATABASE IF EXISTS {$quotedRestore}");
             $server->exec("CREATE DATABASE {$quotedRestore} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $restoreCreated = true;
             $restored = new PDO(
                 "mysql:host={$host};dbname={$restoreName};charset=utf8mb4",
                 $user,
@@ -1026,8 +537,35 @@ final class DatabaseIntegrationTest extends TestCase
             $check->execute([$marker]);
             self::assertSame('Integration backup marker', $check->fetchColumn());
         } finally {
-            $server->exec("DROP DATABASE IF EXISTS {$quotedRestore}");
-            $this->pdo->exec("DELETE FROM announcements WHERE content = 'Integration backup marker'");
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            if ($restoreCreated) {
+                $server->exec("DROP DATABASE {$quotedRestore}");
+            }
         }
+    }
+
+    private function insertSecretary(): int
+    {
+        $user = $this->pdo->prepare(
+            'INSERT INTO users (full_name, username, email, password_hash, role)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        $user->execute([
+            'Integration Secretary',
+            'integration_' . bin2hex(random_bytes(5)),
+            'integration-' . bin2hex(random_bytes(5)) . '@example.invalid',
+            password_hash('integration-only-password', PASSWORD_DEFAULT),
+            'secretary',
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    private function certificateStatus(int $requestId): string
+    {
+        $statement = $this->pdo->prepare('SELECT status FROM certificate_requests WHERE id = ?');
+        $statement->execute([$requestId]);
+        return (string) $statement->fetchColumn();
     }
 }

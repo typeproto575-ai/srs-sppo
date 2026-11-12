@@ -1,0 +1,1045 @@
+<?php
+/**
+ * includes/sacrament-data.php
+ *
+ * ROLE: The ONLY place that holds SQL for `persons` and `sacrament_records`
+ * (v2 schema, see database/v2/schema.sql and DATA_DICTIONARY.md).
+ * Pages call these functions. Pages must not write their own SQL for these tables.
+ *
+ * USAGE:  require_once __DIR__ . '/sacrament-data.php';
+ *         $people = sd_search_persons($pdo, 'dela Cruz');
+ * Every function takes the shared PDO connection as its first argument.
+ *
+ * RULES BUILT IN
+ *  - `sacrament_records.legitimacy` is internal. It is never selected here and never written.
+ *  - Unknown values are NULL. Empty strings are stored as NULL.
+ *  - Prerequisite problems are returned as warning strings. They never block saving.
+ *  - Editing a record clears its book verification, so the entry must be checked again.
+ */
+
+if (!defined('SD_TYPES')) {
+    define('SD_TYPES', ['baptism', 'first_communion', 'confirmation', 'marriage']);
+    define('SD_ROLES', ['godfather', 'godmother', 'sponsor', 'principal_sponsor', 'witness']);
+    define('SD_SOURCES', ['this_parish', 'other_parish']);
+    // Explicit column list on purpose: `legitimacy` is NOT in it.
+    define('SD_RECORD_COLUMNS',
+        'r.id, r.sacrament_type, r.person_id, r.spouse_person_id, r.source, r.event_date, r.place, '
+        . 'r.minister_name, r.entry_no, r.book_no, r.page_no, r.line_no, r.parents_union_type, '
+        . 'r.details, r.remarks, r.book_verified_by, r.book_verified_at, r.encoded_by, r.created_at, r.updated_at');
+}
+
+/** Trim a value; empty string becomes NULL. */
+function sd_clean($value)
+{
+    if ($value === null) {
+        return null;
+    }
+    if (is_string($value)) {
+        $value = trim($value);
+        return $value === '' ? null : $value;
+    }
+    return $value;
+}
+
+/** Readable label for a sacrament type. */
+function sd_type_label(string $type): string
+{
+    $labels = [
+        'baptism' => 'Baptism',
+        'first_communion' => 'First Communion',
+        'confirmation' => 'Confirmation',
+        'marriage' => 'Marriage',
+    ];
+    return $labels[$type] ?? $type;
+}
+
+/** "First Middle Last Suffix" from a persons row. */
+function sd_full_name(array $person): string
+{
+    $parts = [];
+    foreach (['first_name', 'middle_name', 'last_name', 'suffix'] as $key) {
+        $v = trim((string) ($person[$key] ?? ''));
+        if ($v !== '') {
+            $parts[] = $v;
+        }
+    }
+    return implode(' ', $parts);
+}
+
+/** A record row is printable only if it is from this parish and checked against the physical register. */
+function sd_can_print_certificate(array $record): bool
+{
+    return ($record['source'] ?? '') === 'this_parish' && !empty($record['book_verified_at']);
+}
+
+/** Decode the JSON `details` column into an array (empty array when NULL or invalid). */
+function sd_decode_record(array $row): array
+{
+    $decoded = null;
+    if (isset($row['details']) && is_string($row['details']) && $row['details'] !== '') {
+        $decoded = json_decode($row['details'], true);
+    }
+    $row['details'] = is_array($decoded) ? $decoded : [];
+    return $row;
+}
+
+/**
+ * Search persons. The query is split into words. Every word must match.
+ *   word like 1985-02-14  -> exact birth date
+ *   word like 1985        -> birth year
+ *   any other word        -> part of first, middle or last name
+ * Each result row has `full_name` plus has_baptism / has_first_communion / has_confirmation / has_marriage (0 or 1).
+ */
+function sd_search_persons(PDO $pdo, string $query, int $limit = 20): array
+{
+    $query = trim($query);
+    if ($query === '') {
+        return [];
+    }
+    $tokens = array_slice(preg_split('/[\s,]+/', $query, -1, PREG_SPLIT_NO_EMPTY), 0, 5);
+    $where = [];
+    $params = [];
+    foreach ($tokens as $tok) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $tok)) {
+            $where[] = 'p.birth_date = ?';
+            $params[] = $tok;
+        } elseif (preg_match('/^\d{4}$/', $tok)) {
+            $where[] = 'YEAR(p.birth_date) = ?';
+            $params[] = (int) $tok;
+        } else {
+            $like = '%' . addcslashes($tok, '%_\\') . '%';
+            $middleInitial = search_middle_initial($tok);
+            $where[] = '(p.first_name LIKE ? OR p.middle_name LIKE ? OR p.last_name LIKE ?'
+                . ($middleInitial !== null ? " OR UPPER(LEFT(COALESCE(p.middle_name, ''), 1)) = UPPER(?)" : '')
+                . ')';
+            array_push($params, $like, $like, $like);
+            if ($middleInitial !== null) {
+                $params[] = $middleInitial;
+            }
+        }
+    }
+    $limit = max(1, min(100, $limit));
+    $has = function (string $type): string {
+        if ($type === 'marriage') {
+            return "EXISTS (SELECT 1 FROM sacrament_records s WHERE s.sacrament_type = 'marriage' "
+                . "AND (s.person_id = p.id OR s.spouse_person_id = p.id))";
+        }
+        return "EXISTS (SELECT 1 FROM sacrament_records s WHERE s.sacrament_type = '$type' AND s.person_id = p.id)";
+    };
+    $sql = 'SELECT p.*, '
+        . $has('baptism') . ' AS has_baptism, '
+        . $has('first_communion') . ' AS has_first_communion, '
+        . $has('confirmation') . ' AS has_confirmation, '
+        . $has('marriage') . ' AS has_marriage '
+        . 'FROM persons p WHERE ' . implode(' AND ', $where)
+        . ' ORDER BY p.last_name, p.first_name, p.birth_date LIMIT ' . $limit;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$row) {
+        $row['full_name'] = sd_full_name($row);
+    }
+    return $rows;
+}
+
+function sd_find_possible_person_matches(PDO $pdo, array $identity, int $excludePersonId = 0): array
+{
+    $name = trim(implode(' ', array_filter([
+        trim((string) ($identity['first_name'] ?? '')),
+        trim((string) ($identity['middle_name'] ?? '')),
+        trim((string) ($identity['last_name'] ?? '')),
+        trim((string) ($identity['suffix'] ?? '')),
+    ], static fn(string $part): bool => $part !== '')));
+    if ($name === '') {
+        return [];
+    }
+
+    $birthDate = trim((string) ($identity['birth_date'] ?? ''));
+    $query = $name . ($birthDate !== '' ? ' ' . $birthDate : '');
+    $matches = sd_search_persons($pdo, $query, 10);
+    if ($excludePersonId > 0) {
+        $matches = array_values(array_filter(
+            $matches,
+            static fn(array $person): bool => (int) ($person['id'] ?? 0) !== $excludePersonId
+        ));
+    }
+    return $matches;
+}
+
+/** One persons row (with `full_name`), or null. */
+function sd_get_person(PDO $pdo, int $id): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM persons WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return null;
+    }
+    $row['full_name'] = sd_full_name($row);
+    return $row;
+}
+
+/** Participants (godparents, sponsors, witnesses) of one record, in display order. */
+function sd_get_participants(PDO $pdo, int $recordId): array
+{
+    $stmt = $pdo->prepare('SELECT id, record_id, role, full_name, residence, sort_order '
+        . 'FROM sacrament_participants WHERE record_id = ? ORDER BY sort_order, id');
+    $stmt->execute([$recordId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/** One sacrament record with decoded details, participants, person_name and spouse_name. Null if missing. */
+function sd_get_record(PDO $pdo, int $id): ?array
+{
+    $stmt = $pdo->prepare('SELECT ' . SD_RECORD_COLUMNS . ' FROM sacrament_records r WHERE r.id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return null;
+    }
+    $row = sd_decode_record($row);
+    $row['participants'] = sd_get_participants($pdo, (int) $row['id']);
+    $person = sd_get_person($pdo, (int) $row['person_id']);
+    $row['person_name'] = $person['full_name'] ?? null;
+    $spouse = $row['spouse_person_id'] ? sd_get_person($pdo, (int) $row['spouse_person_id']) : null;
+    $row['spouse_name'] = $spouse['full_name'] ?? null;
+    return $row;
+}
+
+function sd_record_audit_snapshot(PDO $pdo, int $recordId): array
+{
+    if ($pdo->inTransaction()) {
+        $lock = $pdo->prepare('SELECT id FROM sacrament_records WHERE id = ? FOR UPDATE');
+        $lock->execute([$recordId]);
+        if (!$lock->fetchColumn()) {
+            throw new RuntimeException('Cannot capture correction history for a missing sacrament record.');
+        }
+    }
+    $record = sd_get_record($pdo, $recordId);
+    if (!$record) {
+        throw new RuntimeException('Cannot capture correction history for a missing sacrament record.');
+    }
+
+    $identityFields = [
+        'first_name', 'middle_name', 'last_name', 'suffix', 'birth_date',
+        'birth_place', 'father_name', 'mother_maiden_name', 'address',
+    ];
+    $identity = static function (int $personId) use ($pdo, $identityFields): ?array {
+        if ($personId <= 0) {
+            return null;
+        }
+        $person = sd_get_person($pdo, $personId);
+        if (!$person) {
+            return null;
+        }
+        return array_intersect_key($person, array_flip($identityFields));
+    };
+
+    $recordFields = [
+        'sacrament_type', 'person_id', 'spouse_person_id', 'source', 'event_date',
+        'place', 'minister_name', 'entry_no', 'book_no', 'page_no', 'line_no',
+        'parents_union_type', 'details', 'remarks',
+    ];
+    return [
+        'record' => array_intersect_key($record, array_flip($recordFields)),
+        'person' => $identity((int) ($record['person_id'] ?? 0)),
+        'spouse' => $identity((int) ($record['spouse_person_id'] ?? 0)),
+        'participants' => array_map(
+            static fn(array $participant): array => array_intersect_key(
+                $participant,
+                array_flip(['role', 'full_name', 'residence', 'sort_order'])
+            ),
+            $record['participants'] ?? []
+        ),
+    ];
+}
+
+/**
+ * The four-card timeline for one person.
+ * Returns ['baptism' => row|null, 'first_communion' => row|null, 'confirmation' => row|null, 'marriages' => [rows]].
+ * A marriage row also has `partner_id` and `partner_name` (the other spouse).
+ * Marriages are found through person_id (groom) OR spouse_person_id (bride).
+ */
+function sd_get_person_records(PDO $pdo, int $personId): array
+{
+    $stmt = $pdo->prepare('SELECT ' . SD_RECORD_COLUMNS . ' FROM sacrament_records r '
+        . 'WHERE r.person_id = ? OR r.spouse_person_id = ? ORDER BY r.event_date, r.id');
+    $stmt->execute([$personId, $personId]);
+    $result = ['baptism' => null, 'first_communion' => null, 'confirmation' => null, 'marriages' => []];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $row = sd_decode_record($row);
+        if ($row['sacrament_type'] === 'marriage') {
+            $partnerId = ((int) $row['person_id'] === $personId) ? $row['spouse_person_id'] : $row['person_id'];
+            $partner = $partnerId ? sd_get_person($pdo, (int) $partnerId) : null;
+            $row['partner_id'] = $partnerId ? (int) $partnerId : null;
+            $row['partner_name'] = $partner['full_name'] ?? null;
+            $result['marriages'][] = $row;
+        } elseif ($result[$row['sacrament_type']] === null) {
+            $result[$row['sacrament_type']] = $row;
+        }
+    }
+    return $result;
+}
+
+/**
+ * List living baptized persons who have reached a sacrament's configured
+ * minimum age and do not yet have that sacrament recorded.
+ *
+ * This is an advisory review list, not a determination that someone is ready
+ * to receive a sacrament. Age comparison matches dashboard notifications.
+ */
+function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
+{
+    if (!in_array($sacramentType, ['first_communion', 'confirmation'], true)) {
+        throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.');
+    }
+
+    $range = sacrament_eligibility_range($pdo, $sacramentType);
+    $minimumAge = (int) $range['min_age'];
+    $today = new DateTimeImmutable('today');
+    $stmt = $pdo->prepare(
+        'SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
+                (SELECT b.id FROM sacrament_records b
+                 WHERE b.person_id = p.id AND b.sacrament_type = \'baptism\'
+                 LIMIT 1) AS baptism_record_id
+         FROM persons p
+         WHERE p.birth_date IS NOT NULL
+           AND p.is_deceased = 0
+           AND EXISTS (
+               SELECT 1 FROM sacrament_records baptism
+               WHERE baptism.person_id = p.id AND baptism.sacrament_type = \'baptism\'
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM sacrament_records received
+               WHERE received.person_id = p.id AND received.sacrament_type = ?
+           )
+         ORDER BY p.birth_date, p.last_name, p.first_name, p.id'
+    );
+    $stmt->execute([$sacramentType]);
+
+    $people = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
+        $birthDate = new DateTimeImmutable((string) $person['birth_date']);
+        if ($birthDate->modify('+' . $minimumAge . ' years') > $today) {
+            continue;
+        }
+        $person['full_name'] = sd_full_name($person);
+        $person['age'] = $birthDate->diff($today)->y;
+        $people[] = $person;
+    }
+    return $people;
+}
+
+/**
+ * Apply a display-only age-group or custom range filter to the review list.
+ */
+function sd_filter_age_eligible_persons(
+    array $people,
+    string $ageGroup,
+    ?int $minimumAge = null
+): array {
+    $ranges = [
+        'all' => null,
+    ];
+
+    if ($ageGroup === 'custom') {
+        if ($minimumAge === null || $minimumAge < 0 || $minimumAge > 120) {
+            throw new InvalidArgumentException('Enter a valid minimum age from 0 to 120.');
+        }
+        $range = [$minimumAge];
+    } elseif (array_key_exists($ageGroup, $ranges)) {
+        $range = $ranges[$ageGroup];
+    } else {
+        throw new InvalidArgumentException('Choose a valid age group.');
+    }
+
+    if ($range === null) {
+        return $people;
+    }
+
+    return array_values(array_filter(
+        $people,
+        static fn(array $person): bool => (int) $person['age'] >= $range[0]
+    ));
+}
+
+/** Linked family: ['father' => person|null, 'mother' => person|null, 'children' => [persons]]. */
+function sd_get_family(PDO $pdo, int $personId): array
+{
+    $person = sd_get_person($pdo, $personId);
+    $family = ['father' => null, 'mother' => null, 'children' => []];
+    if (!$person) {
+        return $family;
+    }
+    if (!empty($person['father_person_id'])) {
+        $family['father'] = sd_get_person($pdo, (int) $person['father_person_id']);
+    }
+    if (!empty($person['mother_person_id'])) {
+        $family['mother'] = sd_get_person($pdo, (int) $person['mother_person_id']);
+    }
+    $stmt = $pdo->prepare('SELECT * FROM persons WHERE father_person_id = ? OR mother_person_id = ? '
+        . 'ORDER BY birth_date, id');
+    $stmt->execute([$personId, $personId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $child) {
+        $child['full_name'] = sd_full_name($child);
+        $family['children'][] = $child;
+    }
+    return $family;
+}
+
+/**
+ * Prerequisite WARNINGS for recording $type for one person. Never blocks saving.
+ * For a marriage call this once for each spouse.
+ * Returns a list of plain-language strings (empty list = nothing to flag).
+ */
+function sd_prerequisite_warnings(
+    PDO $pdo,
+    int $personId,
+    string $type,
+    ?string $eventDate = null,
+    ?int $partnerPersonId = null,
+    ?int $excludeRecordId = null
+): array
+{
+    $person = sd_get_person($pdo, $personId);
+    if (!$person) {
+        return ['Person not found.'];
+    }
+    $recs = sd_get_person_records($pdo, $personId);
+    $name = $person['full_name'];
+    $baptized = $recs['baptism'] !== null || ($person['baptismal_status'] ?? '') === 'baptized_catholic';
+    $warnings = [];
+    if ($type === 'baptism') {
+        if ($recs['baptism'] !== null) {
+            $warnings[] = "A baptism is already recorded for $name.";
+        }
+    } elseif ($type === 'first_communion') {
+        if (!$baptized) {
+            $warnings[] = "No baptism on record for $name. Check the origin baptismal certificate.";
+        }
+        if ($recs['first_communion'] !== null) {
+            $warnings[] = "A First Communion is already recorded for $name.";
+        }
+    } elseif ($type === 'confirmation') {
+        if (!$baptized) {
+            $warnings[] = "No baptism on record for $name. Check the origin baptismal certificate.";
+        }
+        if ($recs['first_communion'] === null) {
+            $warnings[] = "No First Communion on record for $name.";
+        }
+        if ($recs['confirmation'] !== null) {
+            $warnings[] = "A Confirmation is already recorded for $name.";
+        }
+    } elseif ($type === 'marriage') {
+        if (!$baptized) {
+            $warnings[] = "No baptism on record for $name. Marriage requires a baptized Catholic.";
+        }
+        if ($recs['confirmation'] === null) {
+            $warnings[] = "No Confirmation record is linked for $name. Verify the applicant's current Confirmation certificate.";
+        }
+        $priorMarriages = array_filter(
+            $recs['marriages'],
+            static fn(array $marriage): bool => (int) ($marriage['id'] ?? 0) !== $excludeRecordId
+        );
+        if ($priorMarriages !== []) {
+            $requiredDocument = !empty($person['is_deceased'])
+                ? 'death certificate'
+                : 'nullity decree or other proof that the prior marriage is no longer binding';
+            $warnings[] = "A prior marriage is recorded for $name. Verify the {$requiredDocument} and PSA CENOMAR before proceeding.";
+        }
+        if (!empty($person['birth_date'])) {
+            try {
+                $birthDate = new DateTimeImmutable((string) $person['birth_date']);
+                $referenceDate = $eventDate !== null && $eventDate !== ''
+                    ? new DateTimeImmutable($eventDate)
+                    : new DateTimeImmutable('today');
+                $age = $birthDate->diff($referenceDate)->y;
+                if ($referenceDate < $birthDate || $age < 21) {
+                    $warnings[] = "Verify {$name}'s age eligibility and any required parental consent with the Parish Office.";
+                }
+            } catch (Throwable $e) {
+                error_log('Marriage prerequisite age check failed for person ' . $personId . ': ' . $e->getMessage());
+            }
+        }
+        if ($partnerPersonId !== null && $partnerPersonId > 0) {
+            $partner = sd_get_person($pdo, $partnerPersonId);
+            $ownStatus = (string) ($person['baptismal_status'] ?? '');
+            $partnerStatus = (string) ($partner['baptismal_status'] ?? '');
+            if ($partner
+                && (($ownStatus === 'baptized_catholic' && $partnerStatus === 'baptized_non_catholic')
+                    || ($ownStatus === 'baptized_non_catholic' && $partnerStatus === 'baptized_catholic'))) {
+                $warnings[] = 'The applicants have different recorded baptismal affiliations. Confirm any mixed-religion permission or dispensation with the priest.';
+            }
+        }
+    }
+    return $warnings;
+}
+
+/**
+ * Create or update a persons row (identity only).
+ * Pass $id to update (only the keys present in $data change). Returns the person id.
+ * Throws InvalidArgumentException on bad input.
+ */
+function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
+{
+    $allowed = ['first_name', 'middle_name', 'last_name', 'suffix', 'sex', 'birth_date', 'birth_place',
+        'father_name', 'mother_maiden_name', 'father_person_id', 'mother_person_id', 'address',
+        'contact_number', 'email', 'baptismal_status', 'is_deceased', 'death_date', 'observanda'];
+    $values = [];
+    foreach ($allowed as $key) {
+        if (array_key_exists($key, $data)) {
+            $values[$key] = sd_clean($data[$key]);
+        }
+    }
+    if ($id === null) {
+        if (empty($values['first_name']) || empty($values['last_name'])) {
+            throw new InvalidArgumentException('First name and last name are required.');
+        }
+    } else {
+        foreach (['first_name', 'last_name'] as $req) {
+            if (array_key_exists($req, $values) && $values[$req] === null) {
+                throw new InvalidArgumentException('First name and last name cannot be empty.');
+            }
+        }
+    }
+    if (isset($values['sex']) && !in_array($values['sex'], ['male', 'female'], true)) {
+        throw new InvalidArgumentException('Sex must be male or female.');
+    }
+    if (isset($values['baptismal_status'])
+        && !in_array($values['baptismal_status'], ['baptized_catholic', 'baptized_non_catholic', 'unbaptized'], true)) {
+        throw new InvalidArgumentException('Invalid baptismal status.');
+    }
+    foreach (['birth_date', 'death_date'] as $dateKey) {
+        if (isset($values[$dateKey]) && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $values[$dateKey])) {
+            throw new InvalidArgumentException("$dateKey must be YYYY-MM-DD.");
+        }
+    }
+    if (array_key_exists('is_deceased', $values)) {
+        $values['is_deceased'] = empty($values['is_deceased']) ? 0 : 1;
+    }
+    if ($id === null) {
+        $values['public_reference'] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
+        $cols = array_keys($values);
+        $stmt = $pdo->prepare('INSERT INTO persons (' . implode(', ', $cols) . ') VALUES ('
+            . implode(', ', array_fill(0, count($cols), '?')) . ')');
+        $stmt->execute(array_values($values));
+        return (int) $pdo->lastInsertId();
+    }
+    if (!sd_get_person($pdo, $id)) {
+        throw new InvalidArgumentException('Person not found.');
+    }
+    if ($values) {
+        $values['public_reference'] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
+        $set = implode(', ', array_map(fn($c) => "$c = ?", array_keys($values)));
+        $set = str_replace(
+            'public_reference = ?',
+            "public_reference = COALESCE(NULLIF(public_reference, ''), ?)",
+            $set
+        );
+        $stmt = $pdo->prepare("UPDATE persons SET $set WHERE id = ?");
+        $stmt->execute(array_merge(array_values($values), [$id]));
+    }
+    return $id;
+}
+
+function sd_validate_parent_profile_links(PDO $pdo, int $personId, array $parentIds): ?string
+{
+    $parentIds = array_values(array_unique(array_filter(
+        array_map('intval', $parentIds),
+        static fn (int $id): bool => $id > 0
+    )));
+    if (in_array($personId, $parentIds, true)) {
+        return 'A person cannot be linked as their own parent.';
+    }
+    if ($parentIds === []) {
+        return null;
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($parentIds), '?'));
+    $stmt = $pdo->prepare("SELECT id FROM persons WHERE id IN ({$placeholders})");
+    $stmt->execute($parentIds);
+    if (count($stmt->fetchAll(PDO::FETCH_COLUMN)) !== count($parentIds)) {
+        return 'Choose existing parent profiles from the search results.';
+    }
+
+    $frontier = $parentIds;
+    $visited = [];
+    $ancestorStmt = $pdo->prepare(
+        'SELECT father_person_id, mother_person_id FROM persons WHERE id = ?'
+    );
+    while ($frontier !== []) {
+        $ancestorId = array_pop($frontier);
+        if ($ancestorId === $personId) {
+            return 'This parent link would create a family cycle. Choose another profile.';
+        }
+        if (isset($visited[$ancestorId])) {
+            continue;
+        }
+        $visited[$ancestorId] = true;
+
+        $ancestorStmt->execute([$ancestorId]);
+        $ancestor = $ancestorStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$ancestor) {
+            continue;
+        }
+        foreach (['father_person_id', 'mother_person_id'] as $field) {
+            if (!empty($ancestor[$field])) {
+                $frontier[] = (int) $ancestor[$field];
+            }
+        }
+    }
+
+    return null;
+}
+
+function sd_person_audit_snapshot(PDO $pdo, int $personId): array
+{
+    $fields = [
+        'first_name', 'middle_name', 'last_name', 'suffix', 'sex', 'birth_date',
+        'birth_place', 'father_name', 'mother_maiden_name', 'father_person_id',
+        'mother_person_id', 'baptismal_status',
+        'address', 'contact_number', 'observanda',
+    ];
+    $columns = implode(', ', array_merge(['id'], $fields));
+    if ($pdo->inTransaction()) {
+        $stmt = $pdo->prepare("SELECT {$columns} FROM persons WHERE id = ? FOR UPDATE");
+    } else {
+        $stmt = $pdo->prepare("SELECT {$columns} FROM persons WHERE id = ?");
+    }
+    $stmt->execute([$personId]);
+    $person = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$person) {
+        throw new RuntimeException('Cannot capture correction history for a missing person.');
+    }
+
+    return array_intersect_key($person, array_flip($fields));
+}
+
+function sd_person_audit_changes(array $before, array $after): array
+{
+    $normalize = static function (mixed $value): mixed {
+        if (is_string($value)) {
+            $value = trim($value);
+            return $value === '' ? null : $value;
+        }
+        return $value;
+    };
+    $changes = [];
+    foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $field) {
+        $oldValue = $normalize($before[$field] ?? null);
+        $newValue = $normalize($after[$field] ?? null);
+        if ($oldValue !== $newValue) {
+            $changes[$field] = ['before' => $oldValue, 'after' => $newValue];
+        }
+    }
+    return $changes;
+}
+
+function sd_log_person_edit(
+    PDO $pdo,
+    int $userId,
+    int $personId,
+    array $before,
+    array $after,
+    string $reason
+): void {
+    $changes = sd_person_audit_changes($before, $after);
+    if ($changes === []) {
+        return;
+    }
+    $description = json_encode([
+        'format' => 'person-correction-v1',
+        'changes' => $changes,
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    log_activity(
+        $pdo,
+        $userId,
+        'person.updated',
+        'persons',
+        $personId,
+        $description,
+        trim($reason)
+    );
+}
+
+/**
+ * Create or update a sacrament record (+ its participants) in one transaction.
+ *
+ * $data keys: id (update when present), sacrament_type, person_id, spouse_person_id (marriage only),
+ *   source, event_date, place, minister_name, entry_no, book_no, page_no, line_no,
+ *   parents_union_type (baptism only), details (array), remarks.
+ *   `legitimacy` is ignored on purpose.
+ * $participants: list of ['role' =>, 'full_name' =>, 'residence' =>, 'sort_order' =>].
+ *   null = leave participants as they are (update). An array replaces all of them.
+ * $userId: the secretary, stored as encoded_by on insert.
+ * A marriage needs both person_id (groom) and spouse_person_id (bride) to exist in persons.
+ * An update clears book_verified_by / book_verified_at: verify the entry again afterwards.
+ * Returns the record id. Throws InvalidArgumentException on bad input.
+ */
+function sd_save_record(PDO $pdo, array $data, ?array $participants = null, ?int $userId = null): int
+{
+    $id = !empty($data['id']) ? (int) $data['id'] : null;
+    $existing = null;
+    if ($id !== null) {
+        $stmt = $pdo->prepare('SELECT sacrament_type FROM sacrament_records WHERE id = ?');
+        $stmt->execute([$id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existing) {
+            throw new InvalidArgumentException('Record not found.');
+        }
+    }
+    $type = sd_clean($data['sacrament_type'] ?? ($existing['sacrament_type'] ?? null));
+    if (!in_array($type, SD_TYPES, true)) {
+        throw new InvalidArgumentException('Invalid sacrament type.');
+    }
+    if ($existing && $existing['sacrament_type'] !== $type) {
+        throw new InvalidArgumentException('The sacrament type of a record cannot be changed.');
+    }
+    $personId = (int) ($data['person_id'] ?? 0);
+    if ($personId <= 0 || !sd_get_person($pdo, $personId)) {
+        throw new InvalidArgumentException('A valid person is required.');
+    }
+    $spouseId = sd_clean($data['spouse_person_id'] ?? null);
+    if ($type === 'marriage') {
+        if ($spouseId === null || !sd_get_person($pdo, (int) $spouseId)) {
+            throw new InvalidArgumentException('A marriage needs both spouses to have a profile.');
+        }
+        if ((int) $spouseId === $personId) {
+            throw new InvalidArgumentException('The two spouses must be different people.');
+        }
+        $spouseId = (int) $spouseId;
+    } else {
+        $spouseId = null;
+    }
+    $eventDate = sd_clean($data['event_date'] ?? null);
+    if ($eventDate === null || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eventDate)) {
+        throw new InvalidArgumentException('Event date is required (YYYY-MM-DD).');
+    }
+    $source = sd_clean($data['source'] ?? 'this_parish') ?? 'this_parish';
+    if (!in_array($source, SD_SOURCES, true)) {
+        throw new InvalidArgumentException('Invalid source.');
+    }
+    $union = sd_clean($data['parents_union_type'] ?? null);
+    if ($type !== 'baptism') {
+        $union = null;
+    } elseif ($union !== null && !in_array($union, ['legitimate', 'civil', 'natural'], true)) {
+        throw new InvalidArgumentException('Invalid parents union type.');
+    }
+    $details = $data['details'] ?? null;
+    if (is_string($details)) {
+        $details = trim($details) === '' ? null : json_decode($details, true);
+        if ($details === null && trim((string) ($data['details'] ?? '')) !== '') {
+            throw new InvalidArgumentException('Details must be valid JSON.');
+        }
+    }
+    $detailsJson = (is_array($details) && $details) ? json_encode($details, JSON_UNESCAPED_UNICODE) : null;
+
+    $clean = [];
+    foreach ($participants ?? [] as $p) {
+        $name = sd_clean($p['full_name'] ?? null);
+        if ($name === null) {
+            continue;
+        }
+        $role = $p['role'] ?? '';
+        if (!in_array($role, SD_ROLES, true)) {
+            throw new InvalidArgumentException('Invalid participant role.');
+        }
+        $clean[] = [$role, $name, sd_clean($p['residence'] ?? null), count($clean) + 1];
+    }
+
+    $own = !$pdo->inTransaction();
+    if ($own) {
+        $pdo->beginTransaction();
+    }
+    try {
+        if ($id === null) {
+            $stmt = $pdo->prepare('INSERT INTO sacrament_records (sacrament_type, person_id, spouse_person_id, source, '
+                . 'event_date, place, minister_name, entry_no, book_no, page_no, line_no, parents_union_type, '
+                . 'details, remarks, encoded_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([$type, $personId, $spouseId, $source, $eventDate, sd_clean($data['place'] ?? null),
+                sd_clean($data['minister_name'] ?? null), sd_clean($data['entry_no'] ?? null),
+                sd_clean($data['book_no'] ?? null), sd_clean($data['page_no'] ?? null),
+                sd_clean($data['line_no'] ?? null), $union, $detailsJson, sd_clean($data['remarks'] ?? null), $userId]);
+            $id = (int) $pdo->lastInsertId();
+        } else {
+            $stmt = $pdo->prepare('UPDATE sacrament_records SET person_id = ?, spouse_person_id = ?, source = ?, '
+                . 'event_date = ?, place = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?, line_no = ?, '
+                . 'parents_union_type = ?, details = ?, remarks = ?, book_verified_by = NULL, book_verified_at = NULL '
+                . 'WHERE id = ?');
+            $stmt->execute([$personId, $spouseId, $source, $eventDate, sd_clean($data['place'] ?? null),
+                sd_clean($data['minister_name'] ?? null), sd_clean($data['entry_no'] ?? null),
+                sd_clean($data['book_no'] ?? null), sd_clean($data['page_no'] ?? null),
+                sd_clean($data['line_no'] ?? null), $union, $detailsJson, sd_clean($data['remarks'] ?? null), $id]);
+        }
+        if ($participants !== null) {
+            $pdo->prepare('DELETE FROM sacrament_participants WHERE record_id = ?')->execute([$id]);
+            $ins = $pdo->prepare('INSERT INTO sacrament_participants (record_id, role, full_name, residence, sort_order) '
+                . 'VALUES (?,?,?,?,?)');
+            foreach ($clean as $row) {
+                $ins->execute([$id, $row[0], $row[1], $row[2], $row[3]]);
+            }
+        }
+        if ($own) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+    return $id;
+}
+
+/** Mark a record as checked against the physical register. Throws if the record does not exist. */
+function sd_verify_book_entry(PDO $pdo, int $recordId, int $userId): void
+{
+    $stmt = $pdo->prepare('SELECT id FROM sacrament_records WHERE id = ?');
+    $stmt->execute([$recordId]);
+    if (!$stmt->fetch()) {
+        throw new InvalidArgumentException('Record not found.');
+    }
+    $pdo->prepare('UPDATE sacrament_records SET book_verified_by = ?, book_verified_at = NOW() WHERE id = ?')
+        ->execute([$userId, $recordId]);
+}
+
+/**
+ * Number of sacrament records per type, for the dashboard counts.
+ * Returns ['baptism' => n, 'first_communion' => n, 'confirmation' => n, 'marriage' => n].
+ */
+function sd_count_records_by_type(PDO $pdo): array
+{
+    $counts = array_fill_keys(SD_TYPES, 0);
+    $stmt = $pdo->query('SELECT sacrament_type, COUNT(*) AS n FROM sacrament_records GROUP BY sacrament_type');
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $counts[$row['sacrament_type']] = (int) $row['n'];
+    }
+    return $counts;
+}
+
+/**
+ * Suggest the next logbook numbers for a sacrament type, from the newest this_parish row of that type.
+ * Entry no. keeps its prefix and padding (1950-003 -> 1950-004). Line runs 1..10 per page,
+ * page 1..500 per book, book in Roman numerals. A row that does not fit the scheme restarts at I / 1 / 1.
+ * Suggestion only: the form fields stay editable.
+ * Returns ['entry_no' => string, 'book_no' => string, 'page_no' => string, 'line_no' => string].
+ */
+function sd_next_logbook_numbers(PDO $pdo, string $type): array
+{
+    if (!in_array($type, SD_TYPES, true)) {
+        throw new InvalidArgumentException('Invalid sacrament type.');
+    }
+    $fresh = ['entry_no' => '', 'book_no' => 'I', 'page_no' => '1', 'line_no' => '1'];
+    $stmt = $pdo->prepare("SELECT entry_no, book_no, page_no, line_no FROM sacrament_records "
+        . "WHERE sacrament_type = ? AND source = 'this_parish' ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$type]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return $fresh;
+    }
+    $entryNo = '';
+    $entryRaw = trim((string) ($row['entry_no'] ?? ''));
+    if ($entryRaw !== '' && preg_match('/^(.*?)(\d+)$/', $entryRaw, $m)) {
+        $entryNo = $m[1] . str_pad((string) ((int) $m[2] + 1), strlen($m[2]), '0', STR_PAD_LEFT);
+    }
+    $fresh['entry_no'] = $entryNo;
+
+    $bookRaw = strtoupper(trim((string) ($row['book_no'] ?? '')));
+    $pageRaw = trim((string) ($row['page_no'] ?? ''));
+    $lineRaw = trim((string) ($row['line_no'] ?? ''));
+    $book = null;
+    if (ctype_digit($bookRaw)) {
+        $book = (int) $bookRaw;
+    } elseif ($bookRaw !== '' && preg_match('/^[IVXLCDM]+$/', $bookRaw)) {
+        $vals = ['I' => 1, 'V' => 5, 'X' => 10, 'L' => 50, 'C' => 100, 'D' => 500, 'M' => 1000];
+        $book = 0;
+        for ($i = 0, $n = strlen($bookRaw); $i < $n; $i++) {
+            $v = $vals[$bookRaw[$i]];
+            $next = $i + 1 < $n ? $vals[$bookRaw[$i + 1]] : 0;
+            $book += ($v < $next) ? -$v : $v;
+        }
+    }
+    if ($book === null || $book < 1 || !ctype_digit($pageRaw) || !ctype_digit($lineRaw)
+        || (int) $pageRaw < 1 || (int) $lineRaw < 1) {
+        return $fresh;
+    }
+    $page = (int) $pageRaw;
+    $line = (int) $lineRaw + 1;
+    if ($line > 10) {
+        $line = 1;
+        $page++;
+    }
+    if ($page > 500) {
+        $page = 1;
+        $book++;
+    }
+    $roman = '';
+    $rem = $book;
+    foreach ([1000 => 'M', 900 => 'CM', 500 => 'D', 400 => 'CD', 100 => 'C', 90 => 'XC', 50 => 'L',
+        40 => 'XL', 10 => 'X', 9 => 'IX', 5 => 'V', 4 => 'IV', 1 => 'I'] as $val => $glyph) {
+        while ($rem >= $val) {
+            $roman .= $glyph;
+            $rem -= $val;
+        }
+    }
+    return ['entry_no' => $entryNo, 'book_no' => $roman, 'page_no' => (string) $page, 'line_no' => (string) $line];
+}
+
+function sd_certificate_source(PDO $pdo, int $recordId): ?array
+{
+    $record = sd_get_record($pdo, $recordId);
+    if (!$record) {
+        return null;
+    }
+
+    $person = sd_get_person($pdo, (int) ($record['person_id'] ?? 0));
+    $spouse = !empty($record['spouse_person_id'])
+        ? sd_get_person($pdo, (int) $record['spouse_person_id'])
+        : null;
+
+    $record['father_name'] = $person['father_name'] ?? null;
+    $record['mother_maiden_name'] = $person['mother_maiden_name'] ?? null;
+
+    $participantNamesForRoles = static function (array $roles) use ($record): array {
+        $names = [];
+        foreach ($record['participants'] ?? [] as $participant) {
+            if (!in_array($participant['role'] ?? '', $roles, true)) {
+                continue;
+            }
+            $name = trim((string) ($participant['full_name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+        return $names;
+    };
+
+    switch ($record['sacrament_type'] ?? '') {
+        case 'baptism':
+            $record['child_full_name'] = $person ? sd_full_name($person) : null;
+            $record['baptism_date'] = $record['event_date'] ?? null;
+            $record['birth_date'] = $person['birth_date'] ?? null;
+            $record['birth_place'] = $person['birth_place'] ?? null;
+            $record['sponsor_names'] = $participantNamesForRoles(['godfather', 'godmother', 'sponsor', 'principal_sponsor']);
+            $notationStmt = $pdo->prepare(
+                "SELECT sacrament_type, event_date, place
+                 FROM sacrament_records
+                 WHERE (person_id = ? OR (sacrament_type = 'marriage' AND spouse_person_id = ?))
+                   AND sacrament_type IN ('confirmation', 'marriage')
+                 ORDER BY event_date, id"
+            );
+            $notationStmt->execute([(int) $record['person_id'], (int) $record['person_id']]);
+            $record['notations'] = $notationStmt->fetchAll(PDO::FETCH_ASSOC);
+            break;
+        case 'first_communion':
+            $record['communicant_full_name'] = $person ? sd_full_name($person) : null;
+            $record['communion_date'] = $record['event_date'] ?? null;
+            break;
+        case 'confirmation':
+            $record['confirmand_full_name'] = $person ? sd_full_name($person) : null;
+            $record['confirmation_date'] = $record['event_date'] ?? null;
+            $sponsorNames = $participantNamesForRoles(['sponsor', 'principal_sponsor']);
+            $record['sponsor_name'] = $sponsorNames === [] ? null : implode(', ', $sponsorNames);
+            break;
+        case 'marriage':
+            $record['husband_full_name'] = $person ? sd_full_name($person) : null;
+            $record['wife_maiden_name'] = $spouse ? sd_full_name($spouse) : null;
+            $record['marriage_date'] = $record['event_date'] ?? null;
+            break;
+    }
+
+    $record['sponsors'] = $record['participants'] ?? [];
+
+    // Never expose legitimacy
+    unset($record['legitimacy']);
+
+    return $record;
+}
+
+function sd_record_changes(array $old, array $new): array
+{
+    $norm = static function ($v) {
+        if (is_string($v)) {
+            $v = trim($v);
+            return $v === '' ? null : $v;
+        }
+        if (is_array($v)) {
+            if (array_is_list($v)) {
+                $out = [];
+                foreach ($v as $p) {
+                    $out[] = [
+                        'role' => $p['role'] ?? null,
+                        'full_name' => trim((string) ($p['full_name'] ?? '')) ?: null,
+                        'residence' => trim((string) ($p['residence'] ?? '')) ?: null,
+                        'sort_order' => (int) ($p['sort_order'] ?? 0),
+                    ];
+                }
+                usort($out, static fn($a, $b) => [$a['role'], $a['sort_order']] <=> [$b['role'], $b['sort_order']]);
+                return $out;
+            }
+            ksort($v);
+            foreach ($v as $k => $val) {
+                $v[$k] = is_string($val) ? (trim($val) === '' ? null : trim($val)) : $val;
+            }
+            return $v;
+        }
+        return $v;
+    };
+
+    $changes = [];
+    foreach (array_keys($new) as $col) {
+        if ($col === 'participants') {
+            if ($norm($old['participants'] ?? []) !== $norm($new['participants'] ?? [])) {
+                $changes[] = 'participants';
+            }
+            continue;
+        }
+        if ($col === 'details') {
+            if ($norm($old['details'] ?? null) !== $norm($new['details'] ?? null)) {
+                $changes[] = 'details';
+            }
+            continue;
+        }
+        if ($norm($old[$col] ?? null) !== $norm($new[$col] ?? null)) {
+            $changes[] = $col;
+        }
+    }
+    return array_values(array_unique($changes));
+}
+
+function sd_log_record_edit(
+    PDO $pdo,
+    int $userId,
+    int $recordId,
+    array $before,
+    array $after,
+    string $reason
+): void
+{
+    $description = json_encode([
+        'format' => 'record-correction-v1',
+        'changes' => sd_record_audit_changes($before, $after),
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    log_activity(
+        $pdo,
+        $userId,
+        'record.updated',
+        'sacrament_records',
+        $recordId,
+        $description,
+        trim($reason)
+    );
+}
+
+function sd_record_audit_changes(array $before, array $after): array
+{
+    $changes = [];
+    foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $section) {
+        $oldValue = $before[$section] ?? null;
+        $newValue = $after[$section] ?? null;
+        if ($oldValue !== $newValue) {
+            $changes[$section] = ['before' => $oldValue, 'after' => $newValue];
+        }
+    }
+    return $changes;
+}

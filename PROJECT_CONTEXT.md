@@ -2,7 +2,7 @@
 
 Read this before generating any code. It is the current operating model of the running PHP + MySQL app, not a history of every design pass. If a request conflicts with something here, flag it rather than silently overriding it.
 
-Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may be stale. Prefer this file plus the PHP pages and `database/srs_sppo_schema.sql`.
+Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may be stale. Prefer this file plus the PHP pages and `database/v2/schema.sql`.
 
 ---
 
@@ -10,7 +10,7 @@ Older markdown in `docs/`, `README.md`, `TASK_PROGRESS.md`, and `memory.md` may 
 
 A web-based **Schedule and Record System** for **Saint Patrick's Parish Office**, Dingalan, Aurora (Philippines) — a capstone project.
 
-It is a **digital index and office workflow** for sacramental records that still live in physical logbooks. It is not a parishioner account portal, not a payment system, and not a replacement for the handwritten registers.
+It is a **digital index and office workflow** for sacramental records that still live in physical logbooks. The database is a single MySQL database with a centralized `persons` master identity table; Baptism, Confirmation, First Communion, and Marriage tables store event/register-specific details and link to that shared identity. They are not separate databases. It is not a parishioner account portal, not a payment system, and not a replacement for the handwritten registers.
 
 **Stack:** Plain PHP (no framework), MySQL/MariaDB, XAMPP. No Composer packages unless explicitly added.
 
@@ -20,15 +20,16 @@ It is a **digital index and office workflow** for sacramental records that still
 
 ## Non-negotiable rules
 
-1. **No monetary/fee/currency data anywhere.** No fields, tables, or logic for payment; the system never takes money and stores no amount. Payment is made **outside the system, before processing** — at the parish office, by contacting the parish, or through someone near the parish — and is recorded only as a **manual status**: the secretary marks it paid by hand (`paid_at` + `paid_by`; no amount). Online rows pause at `awaiting_payment` until the secretary records payment (`cert_request_payment_gate()` / `sacrament_application_payment_gate()` block progress until then).
+1. **No monetary/fee/currency data anywhere.** The system never takes money or stores amounts. Payment is made outside the system and recorded only as a manual status (`paid_at` + `paid_by`). The secretary may match and pre-verify an online certificate request before payment; the online processing gate and certificate release require payment to be recorded. Legacy `awaiting_payment` requests remain supported. Sacrament applications in `awaiting_payment` cannot proceed until payment is recorded.
 2. **Identity verification is in person.** No public form collects a photo or scan of a valid ID. The claimant presents ID at the office. This keeps ID images out of the database (RA 10173).
 3. **Eligibility/prerequisite checks flag, never auto-block.** Age ranges and prior-sacrament checks warn the secretary. They must not silently reject a submission. See `is_outside_eligibility()` in `includes/functions.php`.
-4. **No parishioner accounts.** Visitors never log in. They receive a tracking number and use that **plus the recorded email** on `public/track-request.php`.
+4. **No parishioner accounts.** Visitors never log in. The parish office contacts them using the contact details they provided.
 5. **No priest login.** Canonical clearance (banns, pre-Cana, interview) is data the secretary records after confirming with the priest outside the system. There is no `/priest/` app. (`audit_logs.role_snapshot` may still contain a leftover `'priest'` enum value from older rows; do not revive a priest user role.)
 6. **Certificates are printed and picked up in person.** No public download of the finished certificate, and no public certificate-verification page: a certificate carries no QR code or verification token.
-7. **`legitimacy` on `baptismal_records` is internal-only.** Never put it on public queries, certificates, or reports. New encodes store `NULL`; legacy rows may still have a value, editable only in the baptismal record form.
+7. **`legitimacy` on `sacrament_records` is internal-only.** Never put it on public queries, certificates, or reports. New encodes store `NULL`.
 8. **Physical logbooks remain canonical.** Digital rows must keep `book_no` / `page_no` / `line_no` on Baptism, Confirmation, First Communion, and Marriage.
 9. **An online submission is not an official record.** Public forms write `submission_channel = 'online'`. Walk-in encoders write `'onsite'`. The secretary still verifies requirements and identity before processing or release.
+10. **Staff register entries use the master person index.** When encoding a new sacramental register entry, staff search for and select an existing person when one matches. If there is no match, the save creates a linked person profile. Matching by name alone never merges records. Historical rows may remain unlinked until reviewed. Selecting a known profile fills missing biographical details while keeping register-specific source data in its sacrament table.
 
 ---
 
@@ -38,7 +39,7 @@ It is a **digital index and office workflow** for sacramental records that still
 Parishioner (optional)          Parish office
   online pre-application   OR   walk-in encoding
            \                   /
-            tracking number
+            reference number
                     |
             secretary review
             (requirements, register match)
@@ -51,36 +52,36 @@ Parishioner (optional)          Parish office
 ```
 
 - **Certificate request** = proof of a sacrament that already happened.
-- **Sacrament application** = applying to *receive* a sacrament (Baptism or Marriage only).
+- **Sacrament pre-application** = a preliminary request to begin preparation to receive a sacrament; it is not approval or an official register entry.
 - Requirements are shown in person at the office only. Gmail is the outgoing notification relay (status emails) — staff never ask for documents by email or Messenger, and the system never receives or stores documents. Email contact does not by itself create a system row; the secretary encodes or reviews the transaction in the app.
-- Contact on forms is **email-first**, with a required contact number on the current public application and certificate-request forms. Do not remove the required contact number or add ID-upload fields unless the parish explicitly changes this.
+- Contact on forms is **email-first**, with a required contact number on the current public pre-application and certificate-request forms. Do not remove the required contact number or add ID-upload fields unless the parish explicitly changes this.
 
-There was a Phase 4 “office-only public site” (legacy helper: `includes/public-office-only.php`). **That is not the live product.** Live public certificate and application forms accept POST. Do not redirect those forms through `public-office-only.php`.
+There was a Phase 4 “office-only public site” (legacy helper: `includes/public-office-only.php`). **That is not the live product.** Live public certificate-request and pre-application forms accept POST. Do not redirect those forms through `public-office-only.php`.
 
 ---
 
 ## Two distinct request types — do not merge them
 
 - **Certificate Request** — “give me a copy of my Baptismal / Confirmation / First Communion / Marriage certificate.”
-  - Tables: `certificate_requests` + one extension table (`baptismal_certificate_requests`, `confirmation_certificate_requests`, `first_communion_certificate_requests`, `marriage_certificate_requests`).
+  - Table: `certificate_requests`, shared by all four sacrament types. Request details are held in `subject_details` JSON.
 - **Sacrament Application** — “we want this child baptized” / “we want to marry here.”
   - Live forms (public + walk-in): **all four sacraments (Baptism, Confirmation, First Communion, Marriage)**.
-  - Tables: `sacrament_applications` + `baptismal_applications` / `confirmation_applications` / `first_communion_applications` / `marriage_applications`. All four extension tables are active.
-  - Public forms: `public/sacrament-applications/baptismal.php`, `confirmation.php`, `first-communion.php`, `marriage.php`. Walk-in encoding: `admin/requests/walk-in-application.php` encodes all four sacraments.
+  - Table: `sacrament_applications`, shared by all four sacrament types. Sacrament-specific answers and requirement checklists are stored in `details` and `requirements` JSON.
+  - Public pre-application forms: `public/sacrament-applications/baptismal.php`, `confirmation.php`, `first-communion.php`, `marriage.php`. Walk-in encoding: `admin/requests/walk-in-application.php` encodes all four sacraments.
 
-Every sacrament type uses **shared table + extension table**. New sacrament-specific fields go in the extension table.
+The register uses the shared `sacrament_records` table, with `sacrament_type` distinguishing the four sacraments. Do not add legacy per-sacrament record or request tables.
 
 ---
 
 ## Per-sacrament specifics
 
-**Baptismal** — no age prerequisite. Public certificate form (`public/certificate-requests/baptismal.php`) is the reference pattern for validation, transaction insert, tracking numbers, rate limits, and success panel. Public application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
+**Baptismal** — no age prerequisite. Public certificate requests use the unified form at `public/certificate-request.php` and are stored in the shared v2 `certificate_requests` table. Public pre-application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
 
-**Confirmation** — certificate request and online application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Age range in `sacrament_eligibility_settings` is a **placeholder (12–18)** until the priest confirms it.
+**Confirmation** — certificate request and online pre-application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Minimum age in `settings` is a **placeholder (12+)** until the priest confirms it.
 
-**First Communion** — same pattern as Confirmation: online application (`public/sacrament-applications/first-communion.php`) plus walk-in encoding, and a one-time received record, not per-Mass attendance. Age placeholder **7–12**, unconfirmed.
+**First Communion** — same pattern as Confirmation: online pre-application (`public/sacrament-applications/first-communion.php`) plus walk-in encoding, and a one-time received record, not per-Mass attendance. Age placeholder **8+**, unconfirmed.
 
-**Marriage** — most complex. Canonical interview, three banns dates (`banns_date_1/2/3`), pre-Cana, baptismal + confirmation certificate status for both parties. The secretary records clearance on `admin/requests/marriage-detail.php` after confirming with the priest **outside** the system. Applicants do not self-certify those steps on the public form. “For marriage purposes” certificates are often valid ~6 months in parish practice — **not enforced in the schema**.
+**Marriage** — most complex. The secretary records canonical preparation and verifies the parties' sacramental documents with the priest. Applicants do not self-certify those steps on the public form. Baptismal and Confirmation certificates requested for marriage are marked “For Marriage Purposes.” The project does not define an expiry period; follow the Parish Office's current instructions.
 
 ---
 
@@ -114,16 +115,13 @@ Password recovery: `admin/forgot-password.php` + `admin/reset-password.php`. Tok
 | `public/requirements.php` | Documentary requirements |
 | `public/terms.php` | Terms |
 | `public/certificate-request.php` | Hub for four certificate forms |
-| `public/certificate-requests/*.php` | Online certificate intake |
-| `public/sacrament-application.php` | Hub for four sacrament applications |
-| `public/sacrament-applications/baptismal.php` | Online Baptism application |
-| `public/sacrament-applications/marriage.php` | Online Marriage application |
-| `public/sacrament-applications/confirmation.php` | Online Confirmation application |
-| `public/sacrament-applications/first-communion.php` | Online First Communion application |
-| `public/track-request.php` | Status by tracking number + email |
-| `public/correction-request.php` | Report an error on an issued certificate |
+| `public/certificate-request.php` | Unified online certificate intake for all four sacraments |
+| `public/sacrament-applications/baptismal.php` | Online Baptism pre-application |
+| `public/sacrament-applications/marriage.php` | Online Marriage pre-application |
+| `public/sacrament-applications/confirmation.php` | Online Confirmation pre-application |
+| `public/sacrament-applications/first-communion.php` | Online First Communion pre-application |
 
-Public nav: Home, How It Works, Requirements, Office Services, Track a Request or Application, Request Correction.
+Public navigation is rendered by `includes/header.php`; do not add links to pages that are not present in the repository.
 
 ---
 
@@ -131,11 +129,11 @@ Public nav: Home, How It Works, Requirements, Office Services, Track a Request o
 
 Admin layout: `includes/admin-header.php` / `admin-footer.php`.
 
-**Requests:** online submissions, certificate queue + detail pages, applications queue + detail pages, walk-in request, walk-in application.
+**Requests:** online submissions, certificate queue + detail pages, pre-application queue + detail pages, walk-in request, walk-in pre-application.
 
 **Records:** all-records index, baptismal, confirmation, first communion, marriage, person mapper, person profile, record view.
 
-**Certificates:** generate/preview, print/pickup history, correction list/detail.
+**Certificates:** generate/preview and print/pickup history.
 
 **Schedule:** calendar, booking conflicts, announcements.
 
@@ -143,39 +141,40 @@ Admin layout: `includes/admin-header.php` / `admin-footer.php`.
 
 **System:** accounts, backup/export, archive/restore, email delivery log, audit log.
 
-Also: dashboard, notifications, login/logout, forgot/reset password. `admin/system/site-settings.php` can edit public home copy (`site_settings`) but is **not linked in the sidebar**.
+Also: dashboard, age-eligibility review, notifications, login/logout, forgot/reset password.
+
+Home page text is fixed in `public/index.php`; changing it requires a code edit.
 
 ---
 
 ## Persons and linking
 
-`persons` is an **internal identity index**, not a public account.
+`persons` is the internal master identity index, not a public account. All four sacrament types are stored in `sacrament_records` and link to `persons` through `person_id`; marriage uses `spouse_person_id` for the other party. Record forms search for existing profiles and create a linked profile when no match is selected. Historical records may still have no person link; the secretary can review and map them through the current person-mapping/profile tools.
 
-Register tables have nullable `person_id` (marriage: `husband_person_id` / `wife_person_id`). Encoding a record does **not** auto-create or auto-link a person. The secretary uses `admin/system/person-mapper.php`. Until mapped, the same human can exist as duplicate name strings across tables. Do not assume a connected “person timeline” unless `person_id` is set.
+Identity and family details belong in `persons`; sacrament-specific register data belongs in `sacrament_records.details` and `sacrament_participants`. Do not reintroduce legacy per-sacrament tables or columns such as `husband_person_id` / `wife_person_id`.
 
-When a register row is linked, its birth date fills the person profile only if that profile has no birth date yet. Confirmation encoding also fills a blank birth date from the selected person or linked Baptismal register row. Confirmation birth date and parent-name fields must be entered or explicitly marked “not recorded in the source register”; migration `040_confirmation_required_source_fields.sql` preserves historical blanks with those markers. Baptismal certificate lookup requires the father's first and last name as a search detail. If the source register has no father name, matching still relies on the other required identity details.
-
-Structured name parts (`child_first_name`, etc.) were added for records; keep `*_full_name` in sync when you change either.
+When a register row is linked, its birth date fills the person profile only if that profile has no birth date yet. Confirmation birth date and parent-name fields are captured from the source register. Baptismal certificate lookup uses the linked person identity and the register entry.
 
 ---
 
 ## Certificate workflow
 
-1. Request created (online or walk-in).
-2. Secretary reviews requirements (`workflow_requirements` checklist is status/notes only — **no file storage**).
-3. Match to a register row (`matched_record_id` on the extension table; reverse `certificate_request_id` on the record). Match name mismatch is **warn-only**, never a hard block.
-4. Generate/preview in `admin/certificates/generate.php`.
-5. Print lifecycle on `certificate_generation_log`: generated → printed → released. Claimant name/relationship/notes and ID-verified flag are recorded at the counter (`migrations/009`, `010`). Regenerating can supersede an older log row.
-6. Pickup is in person. Status moves through the certificate enum (includes review, requirements, onsite verification, processing, ready, released, rejected, cancelled). **Payment (online):** once a register match is found, an online request is set to `awaiting_payment`; it cannot advance to processing until the secretary records payment by hand (the payment gates above). Walk-ins pay at the counter and can be marked paid at encode time.
+**Requests → Certificate Requests** is the queue for copies of existing sacramental records; **Records** is the index of events already entered in the parish registers. A secretary can start an in-person certificate request from the dashboard, records index, request queue, or a verified record's profile. A record-based request is unavailable until its in-parish book entry is verified against the physical register.
 
-Corrections: public form writes `correction_requests`; staff process them under Certificates. This is not a public edit of the register.
+1. Request created online or at the office in `certificate_requests`.
+2. The secretary reviews the request, checks requirements in person, and records the outcome; the system stores no uploaded documents.
+3. Match the request to a `sacrament_records` row by setting `certificate_requests.person_id` and `record_id`. If an online search does not find a match, the applicant can ask the secretary to search the physical register; an online miss alone does not establish that the sacrament did not occur.
+4. Record payment manually in `paid_at` / `paid_by` before processing. No monetary amount is stored.
+5. Print, sign, and release using `certificate_requests.printed_at`, `signed_at`, and `released_at` plus the claimant/ID-verification fields. Reprints and other staff actions are audited in `audit_logs`; there is no `certificate_generation_log` table in the current schema.
+
+Corrections follow Parish Office procedures. Staff record edits append an audit event containing before-and-after snapshots of changed record, person, and participant data. The register row itself is updated in place; the audit event preserves the prior values. There is no public correction form or self-service correction workflow.
 
 ---
 
 ## Conventions — follow these
 
-- **Public form insert:** validate server-side → `public_submission_allowed()` (Marriage: groom **and** bride emails) → one PDO transaction (shared row, `lastInsertId()`, extension rows) → `log_activity()` → `record_public_submission()` before commit → `retry_on_duplicate()` for tracking-number races. Copy `public/certificate-requests/baptismal.php`. Set `submission_channel` to `'online'` on public forms and `'onsite'` on walk-in encoders.
-- **Tracking numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament applications use `SPPO-APP-YYYY-` plus the token so public tracking can distinguish them. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
+- **Public certificate intake:** `public/certificate-request.php` validates the request and inserts one row into the v2 `certificate_requests` table. The legacy per-sacrament URLs redirect to this form with a supported type preselected.
+- **Reference numbers:** `generate_tracking_number($pdo, $table)` → new certificate requests use `SPPO-YYYY-` plus a random 16-character token; sacrament pre-applications use `SPPO-APP-YYYY-` plus the token so records can be distinguished. Tokens use an ambiguity-reduced alphabet. Previously issued sequential numbers remain valid.
 - **Success panel:** `includes/submission-success.php`. Print there = confirmation page only, never a certificate.
 - **CSRF:** every POST uses `csrf_field()` / `csrf_verify()`.
 - **SQL:** PDO native prepared statements. Output: `e()`.
@@ -183,9 +182,9 @@ Corrections: public form writes `correction_requests`; staff process them under 
 - **CSS:** `assets/css/style.css` public, `assets/css/admin.css` staff. Reuse `.btn`, `.alert`, `fieldset`/`legend`, `.admin-layout`, `.hub-card`. Do not start a new design system.
 - **Record lists:** `includes/record-filters.php` (`rf_parse`, `rf_render_bar`, `rf_render_pagination`). Copy `$rfConfig` from `admin/records/baptismal.php`. Column names in config are from the page, never user input.
 - **Logbook numbering:** `register_next_logbook_numbers()` — line 1..10 per page, page 1..500 per book, then next Roman book (`I`, `II`, …). Suggestions only; fields stay editable. Mid-register insert: “Shift later entries” uses `register_shift_entry_numbers()` inside the same transaction; “Save as entered” may duplicate. Do not UNIQUE `entry_no` without rewriting the shift to descending order.
-- **Calendar:** `schedule_events` is source of truth. Preferred dates on applications are checked for conflicts; the secretary resolves them manually (no automatic lock).
-- **Archive:** registers have `is_archived` / `archived_at` / `archived_by` / `archive_reason`. Lists exclude archived rows. Use `admin/system/archive-record.php` rather than hard-deleting history.
-- **Rate limits (public):** 3 successful submissions per email / 24h and 20 per IP / 24h (`submission_rate_limits`). Fail **open** if the table is missing. This is spam control, not eligibility. `client_ip()` uses `REMOTE_ADDR` only.
+- **Calendar:** `schedule_events` is source of truth. Preferred dates on pre-applications are checked for conflicts; the secretary resolves them manually (no automatic lock).
+- **Archive:** registers have `is_archived` / `archived_at` / `archived_by` / `archive_reason`. Lists exclude archived rows. Archive history instead of hard-deleting it.
+- **Rate limits (public):** up to 5 successful submissions per email / 24h and 20 per IP / 24h. Hashed email identifiers and client IPs are recorded in `audit_logs`; no separate rate-limit table is required. Submission and lookup checks fail closed if audit logging is unavailable. This is spam control, not eligibility. `client_ip()` uses `REMOTE_ADDR` only.
 - **Mail:** `includes/mail.php` + `config/mail.php` uses PHPMailer SMTP. Failed send must never block a form. **`MAIL_ENABLED` defaults to `false`** until explicitly set in server environment or ignored `config/local.php`. SMTP credentials stay out of tracked files. Set sender, SMTP settings, and HTTPS `MAIL_SITE_URL` when enabling. Delivery attempts log to `email_delivery_log`.
 
 ---
@@ -203,9 +202,9 @@ Corrections: public form writes `correction_requests`; staff process them under 
 
 ## Schema source of truth
 
-Canonical create script: `database/srs_sppo_schema.sql`. Fresh installs use that, then seed if needed (`database/seed_demo_data.sql`).
+Canonical create script: `database/v2/schema.sql`. Fresh installs use that, then seed if needed (`database/v2/seed_demo.sql`).
 
-Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes.
+Existing databases can review supported compatibility updates at **System → Database Setup**. Updates run only after an authenticated secretary explicitly submits them; normal page requests never alter the schema. The page handles public page settings (007), certificate request review fields (012), Philippine sacrament application fields (034), data-retention support (038), the certificate-request mailing address (041), Confirmation application baptism details (042), and Marriage application marital status (043), checking existing tables/columns before applying changes. Person-level Observanda is included in the V2 schema; existing V2 databases need backup and review before applying `migrations/047_add_person_profile_observanda.sql`, which is not handled by this page.
 
 Application and database-generated timestamps use Philippine local time (`Asia/Manila`, UTC+08:00).
 
@@ -233,7 +232,6 @@ Leftover files that are **not** the live path: `includes/public-office-only.php`
 
 ## Known open questions
 
-- Confirm First Communion and Confirmation age ranges with the parish priest (placeholders 7–12 and 12–18).
-- Whether to enforce a 6-month validity window on “for marriage purposes” certificates.
-- Whether `site-settings.php` should be linked in System nav.
+- Confirm First Communion and Confirmation minimum ages with the parish priest (placeholders 8+ and 12+).
+- Confirm any separate recency requirement with the Parish Office or receiving institution; the project does not impose certificate expiry dates.
 - Production SMTP settings, `MAIL_SITE_URL`, and HTTPS when leaving localhost.

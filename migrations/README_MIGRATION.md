@@ -15,6 +15,16 @@
   database. It deletes existing sacramental, request, application, and person
   rows before inserting demo data. Never run it against a real parish or
   hosted database.
+- **Quick process demo:** `database/seed_process_demo.sql` adds a small set of
+  fictional, clearly labeled records without clearing existing data. Use it
+  only on a local/demo database. Existing databases need the relevant schema
+  updates, including migrations 039, 045, and 046. It can be run repeatedly
+  without resetting statuses.
+- **Defense walkthrough:** `database/seed_defense_demo.sql` is a broader,
+  additive fictional dataset for local presentations. It does not create staff
+  accounts or reset existing statuses. See `docs/DEMO_WALKTHROUGH.md` for the
+  current routes, supported status names, and safe import steps. Do not use any
+  demo seed on a live parish database.
 
 The application does not run updates automatically during ordinary requests.
 The protected upgrade page supports only the named compatibility updates
@@ -53,11 +63,36 @@ The person-registry sequence documents the original rollout:
    match alone is not reliable proof of identity.
 4. `003a_validate_person_identity_links.sql` is a read-only report for
    repeated names, missing links, and orphan links.
-5. `004_harden_person_identity_links.sql` adds foreign keys. This is optional
-   hardening, not part of the current canonical/live database design described
-   here, which keeps the links nullable and relies on application-managed
-   integrity. Do not run it without reviewing the target database and
-   confirming that the application is ready for the changed behavior.
+5. `004_harden_person_identity_links.sql` adds foreign keys and search indexes
+   for the person links. The canonical fresh-install schema includes these
+   constraints while allowing legacy rows to remain unlinked. On an existing
+   database, validate orphan links and check for the constraints before
+   applying 004; do not run it blindly or duplicate its constraints.
+6. `039_master_person_profile.sql` adds reusable parent-name fields to
+   `persons` and fills only blank profile values from already linked register
+   rows. It deliberately does not link records by name. New staff-encoded
+   register entries create a master person profile when no existing identity
+   is selected. Public applications now create or reuse an exact-name-and-
+   birthdate profile so a stable person reference can be issued; staff still
+   review intake details before approving the sacrament.
+7. `045_link_sacrament_applications_to_persons.sql` adds nullable, staff-
+   confirmed person links to sacrament applications. The second link supports
+   the other party in a marriage application. Existing applications remain
+   unlinked until reviewed; the migration does not infer identities from names.
+8. `046_confirmation_application_profile_fields.sql` adds optional identity,
+   family, and preparation fields to existing Confirmation applications to
+   match the canonical schema.
+9. `047_add_person_profile_observanda.sql` adds the optional person-level
+   Observanda note. It is separate from remarks on individual sacrament
+   register entries.
+10. `048_add_sacrament_application_assignment.sql` adds the optional current
+    staff assignee for each sacrament pre-application. Assignment and handoff
+    history is recorded in `audit_logs`; back up and review existing databases
+    before applying this manual migration.
+11. `049_person_level_public_references.sql` adds a stable public reference to
+    each master person profile. Public applicants use the same person
+    reference across linked sacrament applications and certificate requests;
+    each request retains its own internal ID and status.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support
@@ -65,6 +100,11 @@ public page settings (007), request review fields (012), and retention support
 may need them, but they are not blindly executed by the application. For an
 existing database, compare its schema with the required application version;
 do not rerun historical scripts just because their files are present.
+Existing V2 databases that need person-level Observanda must be backed up and
+reviewed before applying migration 047; the protected upgrade page does not
+apply it.
+Existing V2 databases using the sacrament pre-application queue must also
+apply migration 048 before deploying the staff assignment controls.
 
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a

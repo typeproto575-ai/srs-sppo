@@ -16,7 +16,8 @@
  * WHAT A MATCH MEANS:
  *   A match is a CLAIM, not an approval. The request is still reviewed by the
  *   parish secretary, checked against the physical register, and released
- *   only at pickup with a valid ID. A "no match" is NOT proof that the person
+ *   only at pickup after the request and recorded payment are confirmed. The
+ *   Acknowledgment Receipt is placed with the completed certificate. A "no match" is NOT proof that the person
  *   was never baptized here -- older register entries may not be encoded yet --
  *   so the page offers a manual-search fallback instead of a dead end.
  *
@@ -39,8 +40,8 @@
 /** Searches allowed per client IP per rolling hour (successful or not). */
 define('PUBLIC_RECORD_SEARCHES_PER_IP_PER_HOUR', 10);
 
-/** form_type label used in submission_rate_limits for search attempts. */
-define('RECORD_SEARCH_LIMIT_TYPE', 'record_search');
+/** Audit action used to count public lookup attempts without a legacy table. */
+define('RECORD_SEARCH_LIMIT_ACTION', 'public_record_lookup');
 
 /**
  * Lower-case a name, strip accents/punctuation, and collapse whitespace.
@@ -286,12 +287,15 @@ function find_baptismal_record_matches(PDO $pdo, array $input): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, child_full_name, child_first_name, child_last_name, baptism_date,
-                father_name, mother_name, mother_maiden_name
-           FROM baptismal_records
-          WHERE birth_date = ?
-          ORDER BY baptism_date ASC, id ASC
-          LIMIT 50'
+        "SELECT r.id, r.event_date AS baptism_date,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS child_full_name,
+                p.first_name AS child_first_name, p.last_name AS child_last_name,
+                p.father_name, p.mother_maiden_name
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.sacrament_type = 'baptism' AND r.source = 'this_parish' AND p.birth_date = ?
+          ORDER BY r.event_date ASC, r.id ASC
+          LIMIT 50"
     );
     $stmt->execute([$birthdate]);
 
@@ -303,7 +307,7 @@ function find_baptismal_record_matches(PDO $pdo, array $input): array
         if (!record_lookup_parents_match([
             ['input' => (string) ($input['father_name'] ?? ''), 'candidates' => [$row['father_name']]],
             // The register's maiden-name column is optional, so accept either spelling.
-            ['input' => (string) ($input['mother_name'] ?? ''), 'candidates' => [$row['mother_name'], $row['mother_maiden_name']]],
+            ['input' => (string) ($input['mother_name'] ?? ''), 'candidates' => [$row['mother_maiden_name']]],
         ])) {
             continue;
         }
@@ -326,9 +330,13 @@ function find_baptismal_record_matches(PDO $pdo, array $input): array
 function load_baptismal_record_for_request(PDO $pdo, int $recordId): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, child_full_name, birth_date, baptism_date, father_name,
-                mother_name, mother_maiden_name, minister_name
-           FROM baptismal_records WHERE id = ?'
+        "SELECT r.id,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS child_full_name,
+                p.birth_date, r.event_date AS baptism_date, p.father_name,
+                p.mother_maiden_name, r.minister_name
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.id = ? AND r.sacrament_type = 'baptism' AND r.source = 'this_parish'"
     );
     $stmt->execute([$recordId]);
     $row = $stmt->fetch();
@@ -336,8 +344,7 @@ function load_baptismal_record_for_request(PDO $pdo, int $recordId): ?array
 }
 
 /**
- * Rolling-hour cap on lookups per client IP. Fails open (allows) if the
- * limits table is missing, matching public_submission_allowed().
+ * Rolling-hour cap on lookups per client IP using the v2 audit log.
  *
  * @return array{ok: bool, reason: ?string}
  */
@@ -349,10 +356,10 @@ function record_search_allowed(PDO $pdo, ?string $ip = null): array
     }
     try {
         $stmt = $pdo->prepare(
-            'SELECT COUNT(*) FROM submission_rate_limits
-              WHERE ip_address = ? AND form_type = ? AND submitted_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)'
+            'SELECT COUNT(*) FROM audit_logs
+              WHERE action = ? AND ip_address = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)'
         );
-        $stmt->execute([$ip, RECORD_SEARCH_LIMIT_TYPE]);
+        $stmt->execute([RECORD_SEARCH_LIMIT_ACTION, $ip]);
         if ((int) $stmt->fetchColumn() >= PUBLIC_RECORD_SEARCHES_PER_IP_PER_HOUR) {
             return [
                 'ok'     => false,
@@ -360,23 +367,21 @@ function record_search_allowed(PDO $pdo, ?string $ip = null): array
             ];
         }
     } catch (Throwable $e) {
-        return ['ok' => true, 'reason' => null];
+        error_log('Public record lookup rate check failed: ' . $e->getMessage());
+        return ['ok' => false, 'reason' => 'Record search is temporarily unavailable. Please try again later.'];
     }
     return ['ok' => true, 'reason' => null];
 }
 
-/** Count one lookup against the hourly cap (email column is unused here). */
+/** Count one lookup against the hourly cap without storing search terms. */
 function record_search_log(PDO $pdo, ?string $ip = null): void
 {
     $ip = $ip ?? client_ip();
-    try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO submission_rate_limits (email, ip_address, form_type) VALUES (?, ?, ?)'
-        );
-        $stmt->execute(['', $ip, RECORD_SEARCH_LIMIT_TYPE]);
-    } catch (Throwable $e) {
-        error_log('SRS-SPPO: could not record search rate limit: ' . $e->getMessage());
-    }
+    $stmt = $pdo->prepare(
+        'INSERT INTO audit_logs (action, target_table, description, ip_address)
+         VALUES (?, ?, ?, ?)'
+    );
+    $stmt->execute([RECORD_SEARCH_LIMIT_ACTION, 'record_lookup', 'Public record lookup attempted.', $ip]);
 }
 
 /**
@@ -395,12 +400,15 @@ function find_confirmation_record_matches(PDO $pdo, array $input): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, confirmand_full_name, confirmand_first_name, confirmand_last_name,
-                confirmation_date, father_name, mother_maiden_name
-           FROM confirmation_records
-          WHERE birthdate = ?
-          ORDER BY confirmation_date ASC, id ASC
-          LIMIT 50'
+        "SELECT r.id, r.event_date AS confirmation_date,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS confirmand_full_name,
+                p.first_name AS confirmand_first_name, p.last_name AS confirmand_last_name,
+                p.father_name, p.mother_maiden_name
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.sacrament_type = 'confirmation' AND r.source = 'this_parish' AND p.birth_date = ?
+          ORDER BY r.event_date ASC, r.id ASC
+          LIMIT 50"
     );
     $stmt->execute([$birthdate]);
 
@@ -434,9 +442,17 @@ function find_confirmation_record_matches(PDO $pdo, array $input): array
 function load_confirmation_record_for_request(PDO $pdo, int $recordId): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, confirmand_full_name, birthdate, confirmation_date, father_name,
-                mother_maiden_name, sponsor_name, minister_name, baptismal_record_id
-           FROM confirmation_records WHERE id = ?'
+        "SELECT r.id,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS confirmand_full_name,
+                p.birth_date AS birthdate, r.event_date AS confirmation_date, p.father_name,
+                p.mother_maiden_name,
+                (SELECT GROUP_CONCAT(sp.full_name ORDER BY sp.sort_order SEPARATOR ', ')
+                   FROM sacrament_participants sp
+                  WHERE sp.record_id = r.id AND sp.role IN ('sponsor', 'principal_sponsor')) AS sponsor_name,
+                r.minister_name, NULL AS baptismal_record_id
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.id = ? AND r.sacrament_type = 'confirmation' AND r.source = 'this_parish'"
     );
     $stmt->execute([$recordId]);
     $row = $stmt->fetch();
@@ -458,16 +474,16 @@ function find_first_communion_record_matches(PDO $pdo, array $input): array
         return [];
     }
 
-    // First Communion records have no birthdate column of their own (the
-    // register logs domicile, not birthdate) -- match through the linked
-    // baptismal record instead, same as the parish office would.
+    // Identity and birth date are taken directly from the master profile.
     $stmt = $pdo->prepare(
-        "SELECT fc.id, fc.communicant_full_name, fc.communicant_first_name, fc.communicant_last_name,
-                fc.communion_date, fc.father_name, fc.mother_maiden_name
-           FROM first_communion_records fc
-           JOIN baptismal_records b ON b.id = fc.baptismal_record_id
-          WHERE b.birth_date = ?
-          ORDER BY fc.communion_date ASC, fc.id ASC
+        "SELECT r.id, r.event_date AS communion_date,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS communicant_full_name,
+                p.first_name AS communicant_first_name, p.last_name AS communicant_last_name,
+                p.father_name, p.mother_maiden_name
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.sacrament_type = 'first_communion' AND r.source = 'this_parish' AND p.birth_date = ?
+          ORDER BY r.event_date ASC, r.id ASC
           LIMIT 50"
     );
     $stmt->execute([$birthdate]);
@@ -502,11 +518,13 @@ function find_first_communion_record_matches(PDO $pdo, array $input): array
 function load_first_communion_record_for_request(PDO $pdo, int $recordId): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT fc.id, fc.communicant_full_name, b.birth_date, fc.communion_date, fc.father_name,
-                fc.mother_maiden_name, fc.minister_name
-           FROM first_communion_records fc
-           LEFT JOIN baptismal_records b ON b.id = fc.baptismal_record_id
-          WHERE fc.id = ?'
+        "SELECT r.id,
+                CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS communicant_full_name,
+                p.birth_date, r.event_date AS communion_date, p.father_name,
+                p.mother_maiden_name, r.minister_name
+           FROM sacrament_records r
+           JOIN persons p ON p.id = r.person_id
+          WHERE r.id = ? AND r.sacrament_type = 'first_communion' AND r.source = 'this_parish'"
     );
     $stmt->execute([$recordId]);
     $row = $stmt->fetch();
@@ -531,12 +549,17 @@ function find_marriage_record_matches(PDO $pdo, array $input): array
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, husband_full_name, husband_first_name, husband_last_name,
-                wife_maiden_name, wife_first_name, wife_last_name, marriage_date
-           FROM marriage_records
-          WHERE marriage_date = ?
-          ORDER BY id ASC
-          LIMIT 50'
+        "SELECT r.id, r.event_date AS marriage_date,
+                CONCAT_WS(' ', groom.first_name, groom.middle_name, groom.last_name, groom.suffix) AS husband_full_name,
+                groom.first_name AS husband_first_name, groom.last_name AS husband_last_name,
+                CONCAT_WS(' ', bride.first_name, bride.middle_name, bride.last_name, bride.suffix) AS wife_maiden_name,
+                bride.first_name AS wife_first_name, bride.last_name AS wife_last_name
+           FROM sacrament_records r
+           JOIN persons groom ON groom.id = r.person_id
+           JOIN persons bride ON bride.id = r.spouse_person_id
+          WHERE r.sacrament_type = 'marriage' AND r.source = 'this_parish' AND r.event_date = ?
+          ORDER BY r.id ASC
+          LIMIT 50"
     );
     $stmt->execute([$marriageDate]);
 
@@ -571,8 +594,14 @@ function find_marriage_record_matches(PDO $pdo, array $input): array
 function load_marriage_record_for_request(PDO $pdo, int $recordId): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, husband_full_name, wife_maiden_name, marriage_date, officiating_minister
-           FROM marriage_records WHERE id = ?'
+        "SELECT r.id,
+                CONCAT_WS(' ', groom.first_name, groom.middle_name, groom.last_name, groom.suffix) AS husband_full_name,
+                CONCAT_WS(' ', bride.first_name, bride.middle_name, bride.last_name, bride.suffix) AS wife_maiden_name,
+                r.event_date AS marriage_date, r.minister_name AS officiating_minister
+           FROM sacrament_records r
+           JOIN persons groom ON groom.id = r.person_id
+           JOIN persons bride ON bride.id = r.spouse_person_id
+          WHERE r.id = ? AND r.sacrament_type = 'marriage' AND r.source = 'this_parish'"
     );
     $stmt->execute([$recordId]);
     $row = $stmt->fetch();

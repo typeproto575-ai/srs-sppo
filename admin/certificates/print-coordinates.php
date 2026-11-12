@@ -117,8 +117,8 @@ function baptismal_blank_stock_layout(): array
             'texts' => [
             ['id' => 'title', 'family' => 'serif', 'weight' => 400, 'color' => 'title', 'size' => 4.942, 'base' => 5.889, 'stroke' => 0.16, 'words' => [
                 [
-    33.5,
-    26.5,
+    32.5,
+    26.0,
     [['B', 1], ['APTISMAL', 0.85]],
 ],
                 [

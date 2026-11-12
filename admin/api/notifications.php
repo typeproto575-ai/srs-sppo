@@ -47,11 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'mark_read') {
         $id = (int) ($_POST['id'] ?? 0);
         if ($id) {
-            $stmt = $pdo->prepare('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE id = ?');
+            $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1, read_at = NOW() WHERE id = ? AND channel = 'inapp'");
             $stmt->execute([$id]);
         }
     } elseif ($action === 'mark_all_read') {
-        $pdo->exec('UPDATE notifications SET is_read = 1, read_at = NOW() WHERE is_read = 0');
+        $pdo->exec("UPDATE notifications SET is_read = 1, read_at = NOW() WHERE channel = 'inapp' AND is_read = 0");
     }
 }
 
@@ -61,19 +61,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 function notifications_snapshot(PDO $pdo): array
 {
     // Unread count (stored notifications only).
-    $unread = (int) $pdo->query('SELECT COUNT(*) FROM notifications WHERE is_read = 0')->fetchColumn();
+    $unread = (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE channel = 'inapp' AND is_read = 0")->fetchColumn();
 
-        // The header bell is an actionable inbox, so read notifications stay in
-        // the archive but are omitted here. The archive page remains unchanged.
+    // The header bell is an actionable inbox, so read in-app notifications
+    // stay in the archive but are omitted here.
     $rows = $pdo->query(
-        'SELECT id, type, title, message, link, is_read, created_at
+        "SELECT id, type, title, message, link, is_read, created_at
          FROM notifications
-            WHERE is_read = 0
+         WHERE channel = 'inapp' AND is_read = 0
             ORDER BY created_at DESC
-         LIMIT 10'
+         LIMIT 10"
     )->fetchAll();
 
-    $prefix = base_path();
     $items = [];
     foreach ($rows as $r) {
         $items[] = [
@@ -82,7 +81,7 @@ function notifications_snapshot(PDO $pdo): array
             'type'       => $r['type'],
             'title'      => $r['title'],
             'message'    => $r['message'],
-            'link'       => $prefix . $r['link'],
+            'link'       => admin_notification_url(isset($r['link']) ? (string) $r['link'] : null),
             'is_read'    => (int) $r['is_read'],
             'created_at' => str_replace(' ', 'T', (string) $r['created_at']),
         ];
@@ -109,7 +108,7 @@ function notifications_snapshot(PDO $pdo): array
             'type'       => 'event_reminder',
             'title'      => $dateLabel . ': ' . $e['title'],
             'message'    => ucfirst($e['event_type']) . ($time !== '' ? ' at ' . $time : ''),
-            'link'       => $prefix . '/admin/schedule/calendar.php',
+            'link'       => admin_notification_url('/admin/schedule/calendar.php'),
             'is_read'    => 0,
             'created_at' => $e['event_date'] . 'T' . ($e['start_time'] ?: '00:00:00'),
         ];

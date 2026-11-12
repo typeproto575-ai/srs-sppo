@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="920" viewBox="0 0 1100 920" role="img" aria-labelledby="title description">
+  <title id="title">Use Case Diagram - Schedule and Record System of Saint Patrick's Parish Office</title>
+  <desc id="description">A reference-style use case diagram. Parishioners submit requests online; the parish secretary reviews those submissions and can also enter walk-in requests and sacrament applications onsite.</desc>
+  <defs>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; }
+      .boundary { fill: #fff; stroke: #222; stroke-width: 2; }
+      .boundary-title { fill: #111; font-size: 23px; text-anchor: middle; }
+      .oval { fill: #3d424a; stroke: #272b31; stroke-width: 1; }
+      .oval-label { fill: #fff; font-size: 15px; text-anchor: middle; dominant-baseline: middle; }
+      .parishioner-link { fill: none; stroke: #d39a08; stroke-width: 1.7; }
+      .secretary-link { fill: none; stroke: #1762ad; stroke-width: 1.7; }
+      .actor-line { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .actor-label { font-size: 17px; font-weight: 700; text-anchor: middle; }
+      .actor-note { font-size: 13px; fill: #444; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="226" y="16" width="648" height="886" class="boundary"/>
+  <text x="550" y="48" class="boundary-title">SRS-SPPO</text>
+
+  <g class="parishioner-link" aria-label="Parishioner associations">
+    <path d="M105 437 L319 124"/>
+    <path d="M105 437 L319 188"/>
+    <path d="M105 437 L319 252"/>
+  </g>
+  <g class="secretary-link" aria-label="Parish Secretary associations">
+    <path d="M995 437 L781 188"/>
+    <path d="M995 437 L781 252"/>
+    <path d="M995 437 L781 316"/>
+    <path d="M995 437 L781 380"/>
+    <path d="M995 437 L781 444"/>
+    <path d="M995 437 L781 508"/>
+    <path d="M995 437 L781 572"/>
+    <path d="M995 437 L781 636"/>
+    <path d="M995 437 L781 700"/>
+    <path d="M995 437 L781 764"/>
+    <path d="M995 437 L781 828"/>
+  </g>
+
+  <g aria-label="Parishioner actor">
+    <circle cx="78" cy="404" r="15" fill="#d39a08"/>
+    <path d="M78 421 L78 466 M54 437 L102 437 M78 466 L60 492 M78 466 L96 492" class="actor-line" stroke="#d39a08"/>
+    <text x="78" y="519" class="actor-label" fill="#202a36">PARISHIONER</text>
+    <text x="78" y="538" class="actor-note">(no account)</text>
+  </g>
+
+  <g aria-label="Parish Secretary actor">
+    <circle cx="1022" cy="404" r="15" fill="#1762ad"/>
+    <path d="M1022 421 L1022 466 M998 437 L1046 437 M1022 466 L1004 492 M1022 466 L1040 492" class="actor-line" stroke="#1762ad"/>
+    <text x="1022" y="519" class="actor-label" fill="#202a36">PARISH</text>
+    <text x="1022" y="539" class="actor-label" fill="#202a36">SECRETARY</text>
+  </g>
+
+  <g aria-label="System use cases">
+    <ellipse cx="550" cy="124" rx="231" ry="21" class="oval"/>
+    <text x="550" y="124" class="oval-label">View public information, calendar and requirements</text>
+
+    <ellipse cx="550" cy="188" rx="231" ry="21" class="oval"/>
+    <text x="550" y="188" class="oval-label">Submit certificate request (shared online / walk-in form)</text>
+
+    <ellipse cx="550" cy="252" rx="231" ry="21" class="oval"/>
+    <text x="550" y="252" class="oval-label">Submit sacrament application (shared online / walk-in form)</text>
+
+    <ellipse cx="550" cy="316" rx="231" ry="21" class="oval"/>
+    <text x="550" y="316" class="oval-label">Log in to staff workspace</text>
+
+    <ellipse cx="550" cy="380" rx="231" ry="21" class="oval"/>
+    <text x="550" y="380" class="oval-label">Search people and view master profiles</text>
+
+    <ellipse cx="550" cy="444" rx="231" ry="21" class="oval"/>
+    <text x="550" y="444" class="oval-label">Search and maintain sacramental records</text>
+
+    <ellipse cx="550" cy="508" rx="231" ry="21" class="oval"/>
+    <text x="550" y="508" class="oval-label">Review and process certificate requests</text>
+
+    <ellipse cx="550" cy="572" rx="231" ry="21" class="oval"/>
+    <text x="550" y="572" class="oval-label">Generate, print and release certificates onsite</text>
+
+    <ellipse cx="550" cy="636" rx="231" ry="21" class="oval"/>
+    <text x="550" y="636" class="oval-label">Review sacrament applications</text>
+
+    <ellipse cx="550" cy="700" rx="231" ry="21" class="oval"/>
+    <text x="550" y="700" class="oval-label">Manage parish calendar and announcements</text>
+
+    <ellipse cx="550" cy="764" rx="231" ry="21" class="oval"/>
+    <text x="550" y="764" class="oval-label">View reports</text>
+
+    <ellipse cx="550" cy="828" rx="231" ry="21" class="oval"/>
+    <text x="550" y="828" class="oval-label">Manage staff accounts, audit log and backups</text>
+  </g>
+</svg>

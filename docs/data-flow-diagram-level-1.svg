@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1800" viewBox="0 0 1400 1800" role="img" aria-labelledby="title description">
+  <title id="title">Data Flow Diagram for SRS-SPPO v2 — Level 1</title>
+  <desc id="description">Portrait DFD with sequential processes down the center and v2 data stores beside them. Parishioners do not log in. The secretary logs in and can enter walk-in requests and sacrament applications through the same intake workflow used for online submissions.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0 L10 5 L0 10 z" fill="#222"/>
+    </marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #111; }
+      .entity { fill: #fff; stroke: #111; stroke-width: 2; }
+      .process { fill: #fff; stroke: #111; stroke-width: 2.2; }
+      .store-top { stroke: #2878b8; stroke-width: 2.5; }
+      .store-bottom { stroke: #d56b32; stroke-width: 2.5; }
+      .store-divider { stroke: #777; stroke-width: 1.4; }
+      .flow { fill: none; stroke: #222; stroke-width: 1.7; marker-end: url(#arrow); }
+      .title { font-size: 25px; font-weight: 700; text-anchor: middle; }
+      .subtitle { font-size: 14px; fill: #444; text-anchor: middle; }
+      .entity-label { font-size: 14px; font-weight: 700; text-anchor: middle; }
+      .entity-note { font-size: 11px; fill: #444; text-anchor: middle; }
+      .process-id { font-size: 12px; font-weight: 700; text-anchor: middle; }
+      .process-label { font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .store-id { font-size: 12px; font-weight: 700; text-anchor: middle; }
+      .store-label { font-size: 12px; }
+      .flow-label { font-size: 10px; fill: #222; }
+      .note { font-size: 11px; fill: #333; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="1400" height="1800" fill="#fff"/>
+  <text x="700" y="43" class="title">Data Flow Diagram for SRS-SPPO v2</text>
+  <text x="700" y="68" class="subtitle">Level 1 — sequential staff and public workflows with v2 data stores</text>
+
+  <rect x="40" y="408" width="190" height="75" class="entity"/>
+  <text x="135" y="440" class="entity-label">PARISHIONER</text>
+  <text x="135" y="463" class="entity-note">Public user — no account</text>
+
+  <rect x="40" y="105" width="190" height="70" class="entity"/>
+  <text x="135" y="135" class="entity-label">PARISH SECRETARY</text>
+  <text x="135" y="158" class="entity-note">Staff login and onsite intake</text>
+
+  <rect x="500" y="100" width="300" height="92" class="process"/>
+  <text x="650" y="127" class="process-id">1.0</text>
+  <text x="650" y="153" class="process-label">Log in to staff workspace</text>
+  <text x="650" y="174" class="process-label">and authenticate secretary</text>
+  <path d="M230 132 L500 132" class="flow"/>
+  <text x="310" y="121" class="flow-label">Login credentials</text>
+  <path d="M500 166 L230 166" class="flow"/>
+  <text x="310" y="183" class="flow-label">Authenticated access / error</text>
+
+  <rect x="920" y="102" width="390" height="82" fill="#fff"/>
+  <line x1="920" y1="102" x2="1310" y2="102" class="store-top"/>
+  <line x1="920" y1="184" x2="1310" y2="184" class="store-bottom"/>
+  <line x1="970" y1="102" x2="970" y2="184" class="store-divider"/>
+  <text x="945" y="150" class="store-id">D1</text>
+  <text x="985" y="135" class="store-label">users</text>
+  <text x="985" y="157" class="store-label">secretary accounts and password data</text>
+  <path d="M800 146 L920 146" class="flow"/>
+  <text x="824" y="135" class="flow-label">Verify account</text>
+
+  <rect x="500" y="265" width="300" height="90" class="process"/>
+  <text x="650" y="293" class="process-id">2.0</text>
+  <text x="650" y="319" class="process-label">Display public information</text>
+  <text x="650" y="340" class="process-label">and parish calendar</text>
+
+  <path d="M230 435 C365 435 390 315 500 315" class="flow"/>
+  <text x="300" y="390" class="flow-label">View public website</text>
+  <path d="M500 340 C390 365 365 458 230 458" class="flow"/>
+  <text x="300" y="470" class="flow-label">Announcements, calendar, requirements</text>
+
+  <rect x="920" y="268" width="390" height="92" fill="#fff"/>
+  <line x1="920" y1="268" x2="1310" y2="268" class="store-top"/>
+  <line x1="920" y1="360" x2="1310" y2="360" class="store-bottom"/>
+  <line x1="970" y1="268" x2="970" y2="360" class="store-divider"/>
+  <text x="945" y="322" class="store-id">D2</text>
+  <text x="985" y="298" class="store-label">announcements</text>
+  <text x="985" y="320" class="store-label">schedule_events</text>
+  <text x="985" y="342" class="store-label">settings</text>
+  <path d="M800 310 L920 310" class="flow"/>
+  <text x="824" y="299" class="flow-label">Read public data</text>
+
+  <rect x="500" y="450" width="300" height="112" class="process"/>
+  <text x="650" y="477" class="process-id">3.0</text>
+  <text x="650" y="503" class="process-label">Receive certificate request</text>
+  <text x="650" y="525" class="process-label">or sacrament application</text>
+  <text x="650" y="547" class="process-label">online or onsite</text>
+  <path d="M230 455 C340 455 385 490 500 490" class="flow"/>
+  <text x="300" y="447" class="flow-label">Online form data</text>
+  <path d="M40 160 L20 160 L20 540 L500 540" class="flow"/>
+  <text x="285" y="525" class="flow-label">Walk-in details entered by secretary</text>
+  <path d="M650 355 L650 450" class="flow"/>
+  <text x="662" y="410" class="flow-label">Selected public service</text>
+
+  <rect x="920" y="440" width="390" height="130" fill="#fff"/>
+  <line x1="920" y1="440" x2="1310" y2="440" class="store-top"/>
+  <line x1="920" y1="570" x2="1310" y2="570" class="store-bottom"/>
+  <line x1="970" y1="440" x2="970" y2="570" class="store-divider"/>
+  <text x="945" y="510" class="store-id">D3</text>
+  <text x="985" y="466" class="store-label">sacrament_applications</text>
+  <text x="985" y="488" class="store-label">certificate_requests</text>
+  <text x="985" y="510" class="store-label">channel: online or onsite</text>
+  <text x="985" y="532" class="store-label">internal request reference and status</text>
+  <text x="985" y="554" class="store-label">no public status lookup</text>
+  <path d="M800 510 L920 510" class="flow"/>
+  <text x="820" y="499" class="flow-label">Save intake</text>
+  <path d="M920 550 C870 550 850 542 800 542" class="flow"/>
+  <text x="818" y="566" class="flow-label">New submission for review</text>
+
+  <path d="M650 562 L650 650" class="flow"/>
+  <text x="662" y="612" class="flow-label">Submission and internal reference</text>
+  <rect x="500" y="650" width="300" height="110" class="process"/>
+  <text x="650" y="678" class="process-id">4.0</text>
+  <text x="650" y="704" class="process-label">Review submission and</text>
+  <text x="650" y="726" class="process-label">check requirements</text>
+  <text x="650" y="748" class="process-label">update workflow status</text>
+  <path d="M800 710 C860 710 860 540 920 540" class="flow"/>
+  <text x="815" y="674" class="flow-label">Reviewed status / checklist</text>
+
+  <rect x="500" y="835" width="300" height="112" class="process"/>
+  <text x="650" y="862" class="process-id">5.0</text>
+  <text x="650" y="888" class="process-label">Search person and match</text>
+  <text x="650" y="910" class="process-label">sacramental register entry</text>
+  <text x="650" y="932" class="process-label">encode approved record</text>
+  <path d="M650 760 L650 835" class="flow"/>
+  <text x="662" y="806" class="flow-label">Verified application / record request</text>
+
+  <rect x="70" y="828" width="330" height="91" fill="#fff"/>
+  <line x1="70" y1="828" x2="400" y2="828" class="store-top"/>
+  <line x1="70" y1="919" x2="400" y2="919" class="store-bottom"/>
+  <line x1="118" y1="828" x2="118" y2="919" class="store-divider"/>
+  <text x="94" y="881" class="store-id">D4</text>
+  <text x="132" y="862" class="store-label">persons</text>
+  <text x="132" y="885" class="store-label">shared master identity profiles</text>
+  <path d="M500 875 L400 875" class="flow"/>
+  <text x="416" y="862" class="flow-label">Find or link person</text>
+  <path d="M400 902 C442 902 452 923 500 923" class="flow"/>
+  <text x="411" y="935" class="flow-label">Person details</text>
+
+  <rect x="70" y="958" width="330" height="115" fill="#fff"/>
+  <line x1="70" y1="958" x2="400" y2="958" class="store-top"/>
+  <line x1="70" y1="1073" x2="400" y2="1073" class="store-bottom"/>
+  <line x1="118" y1="958" x2="118" y2="1073" class="store-divider"/>
+  <text x="94" y="1024" class="store-id">D5</text>
+  <text x="132" y="985" class="store-label">sacrament_records</text>
+  <text x="132" y="1008" class="store-label">sacrament_participants</text>
+  <text x="132" y="1031" class="store-label">four sacraments; book/page/line</text>
+  <text x="132" y="1054" class="store-label">sponsors and witnesses</text>
+  <path d="M500 908 C455 908 450 1000 400 1000" class="flow"/>
+  <text x="408" y="982" class="flow-label">Create or update register</text>
+  <path d="M400 1050 C450 1050 455 932 500 932" class="flow"/>
+  <text x="408" y="1067" class="flow-label">Matched record</text>
+
+  <rect x="500" y="1120" width="300" height="120" class="process"/>
+  <text x="650" y="1147" class="process-id">6.0</text>
+  <text x="650" y="1173" class="process-label">Generate and print certificate</text>
+  <text x="650" y="1196" class="process-label">record priest signature</text>
+  <text x="650" y="1219" class="process-label">and in-person pickup</text>
+  <path d="M650 947 L650 1120" class="flow"/>
+  <text x="662" y="1040" class="flow-label">Matched certificate request</text>
+
+  <path d="M800 1175 L1340 1175 L1340 540 L1310 540" class="flow"/>
+  <text x="1080" y="1164" class="flow-label">Update certificate lifecycle</text>
+  <path d="M1310 550 L1350 550 L1350 1208 L800 1208" class="flow"/>
+  <text x="1080" y="1230" class="flow-label">Request status and release details</text>
+  <rect x="500" y="1390" width="300" height="112" class="process"/>
+  <text x="650" y="1417" class="process-id">7.0</text>
+  <text x="650" y="1443" class="process-label">Manage calendar, announcements,</text>
+  <text x="650" y="1466" class="process-label">reports, staff accounts, audit</text>
+  <text x="650" y="1487" class="process-label">and optional database backups</text>
+  <path d="M650 1240 L650 1390" class="flow"/>
+  <text x="662" y="1324" class="flow-label">Office administration</text>
+
+  <rect x="920" y="1385" width="390" height="98" fill="#fff"/>
+  <line x1="920" y1="1385" x2="1310" y2="1385" class="store-top"/>
+  <line x1="920" y1="1483" x2="1310" y2="1483" class="store-bottom"/>
+  <line x1="970" y1="1385" x2="970" y2="1483" class="store-divider"/>
+  <text x="945" y="1441" class="store-id">D6</text>
+  <text x="985" y="1420" class="store-label">notifications and audit_logs</text>
+  <text x="985" y="1443" class="store-label">staff activity and email results</text>
+  <text x="985" y="1466" class="store-label">account and operational history</text>
+  <path d="M800 1440 L920 1440" class="flow"/>
+  <text x="818" y="1429" class="flow-label">Save activity</text>
+
+  <path d="M780 1502 L780 1520 L1380 1520 L1380 310 L1310 310" class="flow"/>
+  <text x="1080" y="1508" class="flow-label">Save calendar and announcements</text>
+
+  <rect x="70" y="1375" width="330" height="91" class="entity"/>
+  <text x="235" y="1410" class="entity-label">GOOGLE DRIVE</text>
+  <text x="235" y="1435" class="entity-note">Optional scheduled encrypted backup</text>
+  <path d="M500 1478 C455 1478 450 1420 400 1420" class="flow"/>
+  <text x="408" y="1405" class="flow-label">Encrypted backup</text>
+  <path d="M400 1445 C450 1445 455 1493 500 1493" class="flow"/>
+  <text x="410" y="1512" class="flow-label">Upload result</text>
+
+  <rect x="920" y="1540" width="390" height="86" class="entity"/>
+  <text x="1115" y="1575" class="entity-label">EMAIL / SMTP SERVICE</text>
+  <text x="1115" y="1600" class="entity-note">Optional status notifications; failed mail does not block intake</text>
+  <path d="M800 1205 C865 1205 855 1580 920 1580" class="flow"/>
+  <text x="813" y="1550" class="flow-label">Status email</text>
+  <path d="M920 1610 C855 1610 865 1228 800 1228" class="flow"/>
+  <text x="813" y="1640" class="flow-label">Delivery result</text>
+
+  <text x="700" y="1690" class="note">Data stores summarize the 11 tables in database/v2/schema.sql.</text>
+  <text x="700" y="1713" class="note">Request numbers are internal references: no public status lookup, certificate QR verification, or online payment.</text>
+  <text x="700" y="1736" class="note">An online submission is not an official register entry; staff review and in-person completion are required.</text>
+</svg>

@@ -5,12 +5,15 @@ if (!function_exists('baptismal_record_choices')) {
     function baptismal_record_choices(PDO $pdo, ?int $preferredPersonId = null): array
     {
         $rows = $pdo->query(
-            'SELECT id, child_full_name, birth_date, baptism_date, father_name, mother_name,
-                    book_no, page_no, line_no, person_id
-             FROM baptismal_records
-             WHERE is_archived = 0
-             ORDER BY child_full_name, baptism_date DESC, id DESC
-             LIMIT 2000'
+            "SELECT r.id,
+                    CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS child_full_name,
+                    p.birth_date, r.event_date AS baptism_date, p.father_name,
+                    p.mother_maiden_name AS mother_name, r.book_no, r.page_no, r.line_no, r.person_id
+             FROM sacrament_records r
+             JOIN persons p ON p.id = r.person_id
+             WHERE r.sacrament_type = 'baptism' AND r.source = 'this_parish'
+             ORDER BY child_full_name, r.event_date DESC, r.id DESC
+             LIMIT 2000"
         )->fetchAll();
 
         if ($preferredPersonId === null || $preferredPersonId <= 0) return $rows;
@@ -27,7 +30,10 @@ if (!function_exists('baptismal_record_choices')) {
         if ($raw === '') return null;
         $id = (int) $raw;
         if ($id <= 0) throw new InvalidArgumentException('Choose a valid Baptismal record.');
-        $stmt = $pdo->prepare('SELECT id FROM baptismal_records WHERE id = ? AND is_archived = 0');
+        $stmt = $pdo->prepare(
+            "SELECT id FROM sacrament_records
+             WHERE id = ? AND sacrament_type = 'baptism' AND source = 'this_parish'"
+        );
         $stmt->execute([$id]);
         if (!$stmt->fetchColumn()) throw new InvalidArgumentException('The selected Baptismal record is unavailable.');
         return $id;

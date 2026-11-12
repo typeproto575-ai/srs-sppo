@@ -111,9 +111,10 @@ BEGIN
 
     INSERT INTO persons
       (id, first_name, middle_name, last_name, sex, birth_date, birth_place,
-       address, baptismal_status)
+       father_name, mother_maiden_name, address, baptismal_status)
     VALUES
       (i, person_name, NULL, NULL, 'male', person_birthdate, 'Dingalan, Aurora',
+       CONCAT('Ramon A. ', LPAD(i, 2, '0'), ' De Guzman'), parent_name,
        CONCAT('Brgy. Poblacion, Dingalan, Aurora, House ', i), 'baptized_catholic');
 
     INSERT INTO persons

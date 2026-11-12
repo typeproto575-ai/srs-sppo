@@ -21,14 +21,14 @@ $pageTitle = $pageTitle ?? "St. Patrick's Parish Office";
 // Subfolder-safe URL prefix used for every asset and internal link.
 $basePath  = $basePath ?? base_path();
 $pageDescriptions = [
-    'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and track its status.",
+    'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and receive updates by email or contact the office with your reference number.",
     'Requirements' => 'Review parish office requirements before requesting a sacramental certificate or applying for a sacrament.',
-    'Parish Office Services' => 'Request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick Parish Office.',
+    'Office Services' => "Choose a sacrament application or request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick's Parish Office.",
     'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, First Communion, or Marriage preparation for parish review.',
-    'Track a Request or Application' => 'Check the processing status of a St. Patrick Parish Office request or sacrament application using its tracking number and email address.',
-    'How It Works' => 'Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick Parish Office.',
-    'Privacy Notice' => 'Read how St. Patrick Parish Office handles information submitted through this parish records system.',
-    'Terms and Conditions' => 'Review the terms for using the St. Patrick Parish Office online request system.',
+    'How It Works' => "Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick's Parish Office.",
+    'View My Requests' => 'View the status of requests linked to your parish person reference.',
+    'Privacy Notice' => "Read how St. Patrick's Parish Office handles information submitted through this parish records system.",
+    'Terms and Conditions' => "Review the terms for using the St. Patrick's Parish Office online request system.",
 ];
 $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDescriptions['Home']);
 ?>
@@ -54,7 +54,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     <meta property="og:description" content="<?= e($pageDescription) ?>">
     <meta property="og:type" content="website">
     <meta property="og:image" content="<?= $basePath ?>/assets/images/logo-circle.png">
-    <meta property="og:image:alt" content="St. Patrick Parish logo">
+    <meta property="og:image:alt" content="St. Patrick's Parish logo">
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -62,7 +62,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
 <header class="site-header">
     <!-- Brand doubles as the home link; shows the parish logo image + name -->
     <a href="<?= $basePath ?>/public/index.php" class="site-brand">
-        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick Parish logo" class="brand-logo-public">
+        <img src="<?= $basePath ?>/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="brand-logo-public">
         St. Patrick's Parish Office
     </a>
     <!-- Primary public navigation (small inline SVG icons, no external library) -->
@@ -70,10 +70,9 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     <nav id="site-nav">
         <a href="<?= $basePath ?>/public/index.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Home</a>
         <a href="<?= $basePath ?>/public/how-it-works.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>How It Works</a>
+        <a href="<?= $basePath ?>/public/track-request.php">View My Requests</a>
         <a href="<?= $basePath ?>/public/requirements.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Requirements</a>
-        <a href="<?= $basePath ?>/public/certificate-request.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>Office Services</a>
-        <a href="<?= $basePath ?>/public/track-request.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Track a Request or Application</a>
-        <a href="<?= $basePath ?>/public/correction-request.php"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>Request Correction</a>
+        <a href="<?= e($basePath) ?>/public/services.php#sacrament-applications"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>Office Services</a>
     </nav>
 </header>
 <script>
@@ -95,4 +94,4 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     });
 })();
 </script>
-<main class="site-main<?= !empty($pageClass) ? ' ' . e($pageClass) : '' ?>" id="main-content">
+<main class="site-main public-page<?= !empty($pageClass) ? ' ' . e($pageClass) : '' ?>" id="main-content">

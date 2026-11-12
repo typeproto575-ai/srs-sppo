@@ -15,6 +15,136 @@
    ===================================================================== */
 
 document.addEventListener('DOMContentLoaded', function () {
+    // ---- Dashboard person search ----------------------------------------
+    document.querySelectorAll('[data-dashboard-person-search]').forEach(function (form) {
+        var input = form.querySelector('input[name="q"]');
+        var results = document.getElementById('dashboard-search-results');
+        if (!input || !results) return;
+
+        var searchTimer = null;
+        var requestNumber = 0;
+        var controller = null;
+
+        function appendCell(row, value) {
+            var cell = document.createElement('td');
+            cell.textContent = value;
+            row.appendChild(cell);
+        }
+
+        function appendHeading(row, label) {
+            var cell = document.createElement('th');
+            cell.scope = 'col';
+            cell.textContent = label;
+            row.appendChild(cell);
+        }
+
+        function renderResults(query, people) {
+            results.replaceChildren();
+            results.hidden = false;
+
+            var heading = document.createElement('h2');
+            heading.textContent = 'Search results for "' + query + '"';
+            results.appendChild(heading);
+
+            if (!people.length) {
+                var empty = document.createElement('p');
+                empty.className = 'field-hint';
+                empty.appendChild(document.createTextNode('No master person profile matched. Try another name part or birth year. For a register-entry search, open '));
+                var recordsLink = document.createElement('a');
+                recordsLink.href = form.getAttribute('data-records-url') || '#';
+                recordsLink.textContent = 'Records';
+                empty.appendChild(recordsLink);
+                empty.appendChild(document.createTextNode('; for a certificate copy request, open '));
+                var requestsLink = document.createElement('a');
+                requestsLink.href = form.getAttribute('data-requests-url') || '#';
+                requestsLink.textContent = 'Certificate Requests';
+                empty.appendChild(requestsLink);
+                empty.appendChild(document.createTextNode('.'));
+                results.appendChild(empty);
+                return;
+            }
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'table-scroll';
+            var table = document.createElement('table');
+            table.className = 'admin-table';
+            var head = document.createElement('thead');
+            var headerRow = document.createElement('tr');
+            ['Name', 'Birth date', 'Birth place', 'Baptism', 'First Communion', 'Confirmation', 'Marriage']
+                .forEach(function (label) { appendHeading(headerRow, label); });
+            head.appendChild(headerRow);
+            table.appendChild(head);
+
+            var body = document.createElement('tbody');
+            people.forEach(function (person) {
+                var row = document.createElement('tr');
+                var nameCell = document.createElement('td');
+                var link = document.createElement('a');
+                link.href = form.dataset.profileUrl + '?id=' + encodeURIComponent(person.id);
+                link.textContent = person.full_name;
+                nameCell.appendChild(link);
+                row.appendChild(nameCell);
+                appendCell(row, person.birth_date ? new Date(person.birth_date + 'T00:00:00').toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                }) : '—');
+                appendCell(row, person.birth_place || '—');
+                appendCell(row, person.has_baptism ? '✓' : '—');
+                appendCell(row, person.has_first_communion ? '✓' : '—');
+                appendCell(row, person.has_confirmation ? '✓' : '—');
+                appendCell(row, person.has_marriage ? '✓' : '—');
+                body.appendChild(row);
+            });
+            table.appendChild(body);
+            wrapper.appendChild(table);
+            results.appendChild(wrapper);
+        }
+
+        function runSearch() {
+            var query = input.value.trim();
+            var currentRequest = ++requestNumber;
+            if (controller) controller.abort();
+
+            if (!query) {
+                results.replaceChildren();
+                results.hidden = true;
+                return;
+            }
+
+            results.hidden = false;
+            results.textContent = 'Searching parishioners...';
+            controller = new AbortController();
+            var url = new URL(form.dataset.endpoint, window.location.href);
+            url.searchParams.set('q', query);
+
+            fetch(url.toString(), { credentials: 'same-origin', signal: controller.signal })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        if (!response.ok) throw new Error(data.error || 'Search is temporarily unavailable.');
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (currentRequest === requestNumber) renderResults(query, data.results || []);
+                })
+                .catch(function (error) {
+                    if (error.name === 'AbortError' || currentRequest !== requestNumber) return;
+                    results.textContent = error.message || 'Search is temporarily unavailable. Please try again.';
+                });
+        }
+
+        input.addEventListener('input', function () {
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 300);
+        });
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            window.clearTimeout(searchTimer);
+            runSearch();
+        });
+    });
+
     // Surface server-rendered errors to assistive technology.
     document.querySelectorAll('.alert-error').forEach(function (alert) {
         alert.setAttribute('role', 'alert');
@@ -46,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Avoid duplicate submissions while leaving the review modal's two-step
     // flow in control of its own submit handling. This runs after confirmation
     // handlers so cancelling a confirmation never disables the button.
-    document.querySelectorAll('form:not([data-review])').forEach(function (form) {
+    document.querySelectorAll('form:not([data-review]):not([data-person-match-widget])').forEach(function (form) {
         form.addEventListener('submit', function (ev) {
             if (ev.defaultPrevented) return;
             var button = ev.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
@@ -73,11 +203,29 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeof dlg.showModal === 'function') dlg.showModal();
     });
     document.querySelectorAll('dialog [data-close-dialog]').forEach(function (btn) {
-        btn.addEventListener('click', function () { btn.closest('dialog').close(); });
+        btn.addEventListener('click', function () {
+            var dlg = btn.closest('dialog');
+            var returnUrl = dlg && dlg.getAttribute('data-return-url');
+            if (returnUrl) {
+                window.location.assign(returnUrl);
+                return;
+            }
+            if (dlg) dlg.close();
+        });
     });
     document.querySelectorAll('dialog.encode-dialog').forEach(function (dlg) {
+        dlg.addEventListener('cancel', function (ev) {
+            var returnUrl = dlg.getAttribute('data-return-url');
+            if (returnUrl) {
+                ev.preventDefault();
+                window.location.assign(returnUrl);
+            }
+        });
         dlg.addEventListener('click', function (ev) {
-            if (ev.target === dlg) dlg.close(); // click landed on the backdrop
+            if (ev.target !== dlg) return;
+            var returnUrl = dlg.getAttribute('data-return-url');
+            if (returnUrl) window.location.assign(returnUrl);
+            else dlg.close(); // click landed on the backdrop
         });
     });
 
@@ -213,9 +361,258 @@ document.addEventListener('DOMContentLoaded', function () {
         var search = finder.querySelector('[data-person-search]');
         var findButton = finder.querySelector('[data-person-find]');
         var hiddenId = finder.querySelector('[data-person-id]');
+        var birthDateSearch = finder.querySelector('[data-person-birth-date]');
         var selection = finder.querySelector('[data-person-selection]');
         var resultsBox = finder.querySelector('[data-person-results]');
-        if (!form || !search || !findButton || !hiddenId || !selection || !resultsBox) return;
+        if (!form || !search || !hiddenId || !selection || !resultsBox) return;
+
+        if (finder.dataset.matchWidget === 'true') {
+            if (!findButton) return;
+            var createToggle = finder.querySelector('[data-person-create-toggle]');
+            var createPanel = finder.querySelector('[data-person-create-panel]');
+            var createButton = finder.querySelector('[data-person-create]');
+            var linkEndpoint = form.dataset.personLinkEndpoint;
+            var latestMatchSearch = 0;
+            var clearMatch = document.createElement('button');
+            clearMatch.type = 'button';
+            clearMatch.className = 'btn btn-secondary btn-small person-finder-clear';
+            clearMatch.textContent = 'Clear link';
+            clearMatch.hidden = true;
+
+            function matchName(person) {
+                return [person.first_name, person.middle_name, person.last_name, person.suffix]
+                    .filter(Boolean).join(' ');
+            }
+
+            function renderMatchSelection(person, message) {
+                selection.textContent = '';
+                if (!hiddenId.value) {
+                    clearMatch.hidden = true;
+                    selection.appendChild(clearMatch);
+                    return;
+                }
+                var name = document.createElement('strong');
+                name.textContent = 'Linked: ' + (person ? matchName(person) : search.value) + ' (#' + hiddenId.value + ')';
+                var state = document.createElement('span');
+                state.textContent = message || 'This pre-application is linked to the master person profile.';
+                selection.appendChild(name);
+                selection.appendChild(state);
+                selection.appendChild(clearMatch);
+                clearMatch.hidden = false;
+            }
+
+            function showMatchError(message) {
+                resultsBox.textContent = message;
+                resultsBox.setAttribute('role', 'alert');
+            }
+
+            function postMatch(action) {
+                var body = new FormData(form);
+                body.set(action, '1');
+                return fetch(linkEndpoint, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    body: body
+                }).then(function (response) {
+                    return response.json().catch(function () {
+                        throw new Error('The server returned an unreadable response.');
+                    }).then(function (data) {
+                        if (!response.ok) throw new Error(data.error || 'The person could not be linked.');
+                        return data;
+                    });
+                });
+            }
+
+            function linkMatch(person) {
+                hiddenId.value = person.id;
+                findButton.disabled = true;
+                resultsBox.textContent = 'Linking person profile...';
+                postMatch('link_application_person')
+                    .then(function (data) {
+                        search.value = matchName(data.person);
+                        if (birthDateSearch) birthDateSearch.value = data.person.birth_date || '';
+                        renderMatchSelection(data.person, data.message);
+                        resultsBox.textContent = data.message;
+                        resultsBox.removeAttribute('role');
+                        if (createPanel) createPanel.hidden = true;
+                    })
+                    .catch(function (error) {
+                        hiddenId.value = '';
+                        renderMatchSelection();
+                        showMatchError(error.message);
+                    })
+                    .finally(function () { findButton.disabled = false; });
+            }
+
+            function renderMatchResults(people) {
+                resultsBox.textContent = '';
+                resultsBox.removeAttribute('role');
+                if (!people.length) {
+                    resultsBox.textContent = 'No matching people found. Check the spelling and birth date before creating a new profile.';
+                    return;
+                }
+                var wrapper = document.createElement('div');
+                wrapper.className = 'table-scroll person-match-results-scroll';
+                var table = document.createElement('table');
+                table.className = 'admin-table';
+                var head = document.createElement('thead');
+                var headerRow = document.createElement('tr');
+                ['Name', 'Birth date', 'Birth place', 'Baptism', 'First Communion', 'Confirmation', 'Marriage']
+                    .forEach(function (label) {
+                        var cell = document.createElement('th');
+                        cell.scope = 'col';
+                        cell.textContent = label;
+                        headerRow.appendChild(cell);
+                    });
+                head.appendChild(headerRow);
+                table.appendChild(head);
+
+                var body = document.createElement('tbody');
+                people.forEach(function (person) {
+                    var row = document.createElement('tr');
+                    var nameCell = document.createElement('td');
+                    var selectButton = document.createElement('button');
+                    var fullName = person.full_name || matchName(person) || 'Unnamed person';
+                    selectButton.type = 'button';
+                    selectButton.className = 'person-match-result-select';
+                    selectButton.textContent = fullName;
+                    selectButton.setAttribute('aria-label', 'Link ' + fullName + ' to this pre-application');
+                    selectButton.addEventListener('click', function () { linkMatch(person); });
+                    nameCell.appendChild(selectButton);
+                    row.appendChild(nameCell);
+
+                    [
+                        person.birth_date || '—',
+                        person.birth_place || '—',
+                        person.has_baptism ? '✓' : '—',
+                        person.has_first_communion ? '✓' : '—',
+                        person.has_confirmation ? '✓' : '—',
+                        person.has_marriage ? '✓' : '—'
+                    ].forEach(function (value) {
+                        var cell = document.createElement('td');
+                        cell.textContent = value;
+                        row.appendChild(cell);
+                    });
+                    body.appendChild(row);
+                });
+                table.appendChild(body);
+                wrapper.appendChild(table);
+                resultsBox.appendChild(wrapper);
+            }
+
+            function searchMatches() {
+                var requestNumber = ++latestMatchSearch;
+                var birthDate = birthDateSearch ? birthDateSearch.value : '';
+                var query = search.value.trim();
+                if (birthDate && query.indexOf(birthDate) === -1) {
+                    query = query ? query + ' ' + birthDate : birthDate;
+                }
+                if (!query && !birthDate) {
+                    findButton.disabled = false;
+                    resultsBox.textContent = 'Enter a surname or date of birth to search.';
+                    return;
+                }
+                var params = new URLSearchParams({ q: query });
+                findButton.disabled = true;
+                resultsBox.textContent = 'Searching master persons...';
+                fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
+                    .then(function (response) {
+                        return response.json().then(function (data) {
+                            if (!response.ok) throw new Error(data.error || 'Person search failed.');
+                            return data;
+                        });
+                    })
+                    .then(function (data) {
+                        if (requestNumber === latestMatchSearch) renderMatchResults(data.results || []);
+                    })
+                    .catch(function (error) {
+                        if (requestNumber === latestMatchSearch) showMatchError(error.message || 'Person search is unavailable.');
+                    })
+                    .finally(function () {
+                        if (requestNumber === latestMatchSearch) findButton.disabled = false;
+                    });
+            }
+
+            var matchSearchTimer = null;
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                searchMatches();
+            });
+            findButton.addEventListener('click', searchMatches);
+            search.addEventListener('input', function () {
+                latestMatchSearch++;
+                hiddenId.value = '';
+                renderMatchSelection();
+                window.clearTimeout(matchSearchTimer);
+                matchSearchTimer = window.setTimeout(searchMatches, 300);
+            });
+            if (birthDateSearch) {
+                birthDateSearch.addEventListener('change', function () {
+                    latestMatchSearch++;
+                    hiddenId.value = '';
+                    renderMatchSelection();
+                    window.clearTimeout(matchSearchTimer);
+                    searchMatches();
+                });
+            }
+            var reviewDetails = form.closest('details.application-queue-review');
+            function searchPrefilledApplicant() {
+                if (!hiddenId.value && (search.value.trim() || (birthDateSearch && birthDateSearch.value))) {
+                    searchMatches();
+                }
+            }
+            if (reviewDetails && !reviewDetails.open) {
+                reviewDetails.addEventListener('toggle', function () {
+                    if (reviewDetails.open) searchPrefilledApplicant();
+                }, { once: true });
+            } else {
+                searchPrefilledApplicant();
+            }
+            if (createToggle && createPanel) {
+                createToggle.addEventListener('click', function () {
+                    createPanel.hidden = !createPanel.hidden;
+                    if (!createPanel.hidden) {
+                        var firstName = createPanel.querySelector('[name="new_first_name"]');
+                        if (firstName) firstName.focus();
+                    }
+                });
+            }
+            if (createButton && createPanel) {
+                createButton.addEventListener('click', function () {
+                    if (hiddenId.value) {
+                        showMatchError('Clear the current person link before creating a new profile.');
+                        return;
+                    }
+                    if (!createPanel.querySelector('[name="new_first_name"]').reportValidity()
+                        || !createPanel.querySelector('[name="new_last_name"]').reportValidity()) return;
+                    createButton.disabled = true;
+                    resultsBox.textContent = 'Creating and linking person profile...';
+                    postMatch('create_person')
+                        .then(function (data) {
+                            hiddenId.value = data.person.id;
+                            search.value = matchName(data.person);
+                            if (birthDateSearch) birthDateSearch.value = data.person.birth_date || '';
+                            renderMatchSelection(data.person, data.message);
+                            resultsBox.textContent = data.message;
+                            resultsBox.removeAttribute('role');
+                            createPanel.hidden = true;
+                        })
+                        .catch(function (error) { showMatchError(error.message); })
+                        .finally(function () { createButton.disabled = false; });
+                });
+            }
+            clearMatch.addEventListener('click', function () {
+                latestMatchSearch++;
+                hiddenId.value = '';
+                search.value = '';
+                if (birthDateSearch) birthDateSearch.value = '';
+                renderMatchSelection();
+                resultsBox.textContent = '';
+            });
+            renderMatchSelection();
+            return;
+        }
 
         var clear = document.createElement('button');
         clear.type = 'button';
@@ -229,9 +626,71 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function namePrefix() {
+            if (finder.dataset.namePrefix) return finder.dataset.namePrefix;
             if (form.querySelector('[name="child_first_name"]')) return 'child';
             if (form.querySelector('[name="confirmand_first_name"]')) return 'confirmand';
             return 'communicant';
+        }
+
+        function fillIfBlank(name, value) {
+            var input = form.querySelector('[name="' + name + '"]');
+            if (input && !input.value.trim() && value) input.value = value;
+        }
+
+        function fillFromProfile(name, value) {
+            var input = form.querySelector('[name="' + name + '"]');
+            if (input) input.value = value || '';
+        }
+
+        function structuredParts(fullName) {
+            var parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+            var suffix = '';
+            if (parts.length && ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v'].indexOf(parts[parts.length - 1].toLowerCase()) !== -1) {
+                suffix = parts.pop();
+            }
+            return {
+                first: parts.shift() || '',
+                middle: parts.length > 1 ? parts.slice(0, -1).join(' ') : '',
+                last: parts.length ? parts[parts.length - 1] : '',
+                suffix: suffix
+            };
+        }
+
+        function fillParentName(prefix, fullName, personPrefix) {
+            var parts = structuredParts(fullName);
+            var fieldPrefix = personPrefix ? personPrefix + '_' : '';
+            fillFromProfile(fieldPrefix + prefix + '_first', parts.first);
+            fillFromProfile(fieldPrefix + prefix + '_middle', parts.middle);
+            fillFromProfile(fieldPrefix + prefix + '_last', parts.last);
+            fillFromProfile(fieldPrefix + prefix + '_suffix', parts.suffix);
+        }
+
+        function identityFieldNames() {
+            var prefix = namePrefix();
+            var names = [
+                prefix + '_first_name',
+                prefix + '_middle_name',
+                prefix + '_last_name',
+                prefix + '_suffix',
+                finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : prefix + '_birth_date'),
+                finder.dataset.birthPlaceField || (prefix === 'child' ? 'child_birthplace' : prefix + '_birth_place')
+            ];
+            var parentPrefix = (prefix === 'groom' || prefix === 'bride') ? prefix + '_' : '';
+            ['father', 'mother'].forEach(function (side) {
+                ['first', 'middle', 'last', 'suffix'].forEach(function (part) {
+                    names.push(parentPrefix + side + '_' + part);
+                });
+            });
+            return names;
+        }
+
+        function setIdentityReadOnly(readOnly) {
+            identityFieldNames().forEach(function (name) {
+                var input = form.querySelector('[name="' + name + '"]');
+                if (!input) return;
+                input.readOnly = readOnly;
+                input.classList.toggle('person-profile-readonly', input.readOnly);
+            });
         }
 
         function renderSelection() {
@@ -242,14 +701,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             var text = document.createElement('strong');
-            text.textContent = 'Selected person ID #' + hiddenId.value;
+            var prefix = namePrefix();
+            var selectedName = [
+                field(prefix + '_first_name'),
+                field(prefix + '_middle_name'),
+                field(prefix + '_last_name'),
+                field(prefix + '_suffix')
+            ].filter(Boolean).join(' ');
+            text.textContent = 'Selected: ' + (selectedName || 'Person profile #' + hiddenId.value);
             selection.appendChild(text);
+            var note = document.createElement('span');
+            note.textContent = 'Recorded biographical details are reused; enter only sacrament-specific information.';
+            selection.appendChild(note);
             selection.appendChild(clear);
             clear.hidden = false;
         }
 
         function clearStaleSelection() {
             hiddenId.value = '';
+            setIdentityReadOnly(false);
             renderSelection();
             resultsBox.textContent = '';
         }
@@ -273,14 +743,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 button.addEventListener('click', function () {
                     hiddenId.value = record.id;
                     search.value = name.textContent;
-                    var birthdateInput = form.querySelector('[name="birthdate"]');
+                    var prefix = namePrefix();
+                    var personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    if (prefix === 'wife' && record.maiden_name) personName.last = record.maiden_name;
+                    fillFromProfile(prefix + '_first_name', personName.first);
+                    fillFromProfile(prefix + '_middle_name', personName.middle);
+                    fillFromProfile(prefix + '_last_name', personName.last);
+                    fillFromProfile(prefix + '_suffix', personName.suffix);
+                    var birthField = finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : 'birthdate');
+                    fillFromProfile(birthField, record.birth_date);
+                    fillFromProfile(finder.dataset.birthPlaceField || 'child_birthplace', record.birth_place);
+                    var parentPrefix = (prefix === 'groom' || prefix === 'bride') ? prefix : '';
+                    fillParentName('father', record.father_name, parentPrefix);
+                    fillParentName('mother', record.mother_maiden_name, parentPrefix);
+                    setIdentityReadOnly(true);
                     var birthdateUnknown = form.querySelector('[name="birthdate_not_recorded"]');
-                    if (birthdateInput && !birthdateInput.value && record.birth_date) {
-                        birthdateInput.value = record.birth_date;
-                        if (birthdateUnknown) birthdateUnknown.checked = false;
-                    }
+                    if (birthdateUnknown && record.birth_date) birthdateUnknown.checked = false;
                     renderSelection();
-                    resultsBox.textContent = 'Person selected. Review the identity before saving.';
+                    resultsBox.textContent = 'Existing master profile selected. Its recorded identity is read-only; complete only the sacrament details below.';
+                    if (finder.dataset.linkOnSelect === 'true') form.requestSubmit();
                 });
                 resultsBox.appendChild(button);
             });
@@ -288,32 +769,52 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function searchPeople() {
             var prefix = namePrefix();
-            var birthField = prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : '';
+            var birthField = finder.dataset.birthField || (prefix === 'child' ? 'birth_date' : prefix === 'confirmand' ? 'birthdate' : '');
+            var query = search.value.trim();
+            var requestedBirthDate = birthDateSearch ? birthDateSearch.value : (birthField ? field(birthField) : '');
             var params = new URLSearchParams({
                 first_name: field(prefix + '_first_name'),
                 middle_name: field(prefix + '_middle_name'),
                 last_name: field(prefix + '_last_name'),
                 suffix: field(prefix + '_suffix'),
-                birth_date: birthField ? field(birthField) : ''
+                birth_date: requestedBirthDate
             });
-            if (!params.get('first_name') && !params.get('middle_name') && !params.get('last_name') && !params.get('birth_date')) {
-                resultsBox.textContent = 'Enter a name or birth date before searching.';
-                return;
+            if (query) {
+                params.set('q', query);
             }
-            findButton.disabled = true;
+            if (!params.get('first_name') && !params.get('middle_name') && !params.get('last_name') && !params.get('birth_date')) {
+                if (!params.get('q')) {
+                    resultsBox.textContent = 'Enter a name or birth date before searching.';
+                    return;
+                }
+            }
+            if (findButton) findButton.disabled = true;
             resultsBox.textContent = 'Searching possible people...';
             fetch(finder.dataset.endpoint + '?' + params.toString(), { credentials: 'same-origin' })
                 .then(function (response) { return response.ok ? response.json() : Promise.reject(new Error('Search failed')); })
                 .then(function (data) { renderResults(data.results || []); })
                 .catch(function () { resultsBox.textContent = 'The person search is unavailable. Please try again.'; })
-                .finally(function () { findButton.disabled = false; });
+                .finally(function () { if (findButton) findButton.disabled = false; });
             }
 
             var searchTimer = null;
-            findButton.addEventListener('click', searchPeople);
+            if (findButton) findButton.addEventListener('click', searchPeople);
+            search.addEventListener('input', function () {
+                clearStaleSelection();
+                window.clearTimeout(searchTimer);
+                searchTimer = window.setTimeout(searchPeople, 300);
+            });
+            if (birthDateSearch) {
+                birthDateSearch.addEventListener('change', function () {
+                    clearStaleSelection();
+                    window.clearTimeout(searchTimer);
+                    searchPeople();
+                });
+            }
 
         clear.addEventListener('click', function () {
             hiddenId.value = '';
+            setIdentityReadOnly(false);
             search.value = '';
             renderSelection();
             resultsBox.textContent = '';
@@ -323,6 +824,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var input = form.querySelector('[name="' + namePrefix() + '_' + part + '"]');
             if (input) input.addEventListener('input', function () {
                 clearStaleSelection();
+                search.value = '';
                 window.clearTimeout(searchTimer);
                 searchTimer = window.setTimeout(searchPeople, 600);
             });
@@ -333,6 +835,7 @@ document.addEventListener('DOMContentLoaded', function () {
             window.clearTimeout(searchTimer);
             searchPeople();
         });
+        setIdentityReadOnly(hiddenId.value !== '');
         renderSelection();
     });
 
@@ -408,6 +911,104 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.textContent = '';
         });
     });
+
+    document.querySelectorAll('[data-parent-profile-search]').forEach(function (finder) {
+        var search = finder.querySelector('[data-parent-profile-query]');
+        var hiddenId = finder.querySelector('[data-parent-profile-id]');
+        var selection = finder.querySelector('[data-parent-profile-selection]');
+        var results = finder.querySelector('[data-parent-profile-results]');
+        var clearButton = finder.querySelector('[data-parent-profile-clear]');
+        if (!search || !hiddenId || !selection || !results || !clearButton) return;
+
+        var endpoint = finder.dataset.endpoint;
+        var currentPersonId = Number(finder.dataset.personId);
+        var selectedLabel = hiddenId.value ? search.value : '';
+        var searchTimer = null;
+        var requestNumber = 0;
+
+        function renderResults(people) {
+            results.replaceChildren();
+            if (!people.length) {
+                results.textContent = 'No matching profiles found. Check the spelling or leave the link blank.';
+                return;
+            }
+            people.forEach(function (person) {
+                if (Number(person.id) === currentPersonId) return;
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'person-finder-result';
+                var name = document.createElement('strong');
+                name.textContent = [person.first_name, person.middle_name, person.last_name, person.suffix]
+                    .filter(Boolean).join(' ');
+                var details = document.createElement('span');
+                details.textContent = [
+                    person.birth_date || 'Date of birth not recorded',
+                    'Profile #' + person.id
+                ].join(' · ');
+                button.append(name, details);
+                button.addEventListener('click', function () {
+                    hiddenId.value = String(person.id);
+                    selectedLabel = name.textContent;
+                    search.value = selectedLabel;
+                    selection.textContent = 'Linked to ' + selectedLabel + ' (#' + person.id + ').';
+                    clearButton.hidden = false;
+                    results.replaceChildren();
+                });
+                results.appendChild(button);
+            });
+            if (!results.childElementCount) {
+                results.textContent = 'A person cannot be linked as their own parent.';
+            }
+        }
+
+        function searchPeople() {
+            var query = search.value.trim();
+            var requestId = ++requestNumber;
+            results.replaceChildren();
+            if (query.length < 2) {
+                if (query.length) results.textContent = 'Enter at least two characters to search.';
+                return;
+            }
+            if (query === selectedLabel && hiddenId.value) return;
+            results.textContent = 'Searching profiles...';
+            fetch(endpoint + '?' + new URLSearchParams({ q: query }), { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Search failed');
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (requestId === requestNumber) renderResults(data.results || []);
+                })
+                .catch(function () {
+                    if (requestId === requestNumber) {
+                        results.textContent = 'Profile search is unavailable. Please try again.';
+                    }
+                });
+        }
+
+        search.addEventListener('input', function () {
+            requestNumber++;
+            if (hiddenId.value && search.value.trim() !== selectedLabel) {
+                hiddenId.value = '';
+                selectedLabel = '';
+                selection.textContent = 'Select a search result to link a profile.';
+                clearButton.hidden = true;
+            }
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(searchPeople, 250);
+        });
+
+        clearButton.addEventListener('click', function () {
+            requestNumber++;
+            hiddenId.value = '';
+            selectedLabel = '';
+            search.value = '';
+            selection.textContent = 'No profile linked.';
+            results.replaceChildren();
+            clearButton.hidden = true;
+        });
+    });
+
     // ---- 6) Admin sidebar ---------------------------------------------------
     // Group open state remains server-driven; only the compact rail preference
     // is saved. On narrow layouts the full-width menu is always shown.
@@ -1066,7 +1667,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 { key: 'review', label: 'Review' }
             ]
             : [
-                { key: 'type', label: 'Application type' },
+                { key: 'type', label: 'Pre-application type' },
                 { key: 'details', label: 'Applicant details' },
                 { key: 'wrap-up', label: 'Notes & payment' },
                 { key: 'review', label: 'Review' }
@@ -1083,7 +1684,7 @@ document.addEventListener('DOMContentLoaded', function () {
         wizard.className = 'walk-in-wizard-shell';
         var progress = document.createElement('ol');
         progress.className = 'walk-in-progress';
-        progress.setAttribute('aria-label', isRequest ? 'Request progress' : 'Application progress');
+        progress.setAttribute('aria-label', isRequest ? 'Request progress' : 'Pre-application progress');
         var status = document.createElement('p');
         status.className = 'walk-in-phase-status';
         status.setAttribute('aria-live', 'polite');
@@ -1296,4 +1897,388 @@ document.addEventListener('DOMContentLoaded', function () {
         showStep(currentInput.value || '1');
     });
 
+    // ---- Phased certificate request form -------------------------------
+    document.querySelectorAll('form[data-certificate-wizard]').forEach(function (form) {
+        var allPhaseNodes = Array.from(form.querySelectorAll('[data-certificate-phase]'));
+        var isPrefilled = form.getAttribute('data-certificate-prefilled') === '1';
+        var recordPhaseNode = allPhaseNodes.find(function (node) {
+            return node.getAttribute('data-certificate-phase') === 'record';
+        });
+        if (isPrefilled && recordPhaseNode) recordPhaseNode.hidden = true;
+        var phaseNodes = isPrefilled
+            ? allPhaseNodes.filter(function (node) {
+                return node.getAttribute('data-certificate-phase') !== 'record';
+            })
+            : allPhaseNodes;
+        var submitButton = form.querySelector('[data-certificate-submit]');
+        var currentStep = form.querySelector('[data-certificate-current-step]');
+        var reviewList = form.querySelector('[data-certificate-review]');
+        if (phaseNodes.length !== (isPrefilled ? 3 : 4) || !submitButton || !currentStep || !reviewList) return;
+
+        var allPhases = [
+            { key: 'record', label: 'Certificate details' },
+            { key: 'requester', label: 'Requester' },
+            { key: 'purpose', label: 'Purpose & requirements' },
+            { key: 'review', label: 'Review' }
+        ];
+        var phases = isPrefilled ? allPhases.slice(1) : allPhases;
+        var reviewSourceNodes = allPhaseNodes.filter(function (node) {
+            return node.getAttribute('data-certificate-phase') !== 'review';
+        });
+        var wizard = document.createElement('div');
+        wizard.className = 'certificate-wizard';
+        var progress = document.createElement('ol');
+        progress.className = 'certificate-wizard-progress';
+        progress.setAttribute('aria-label', 'Certificate request progress');
+        var status = document.createElement('p');
+        status.className = 'certificate-wizard-status';
+        status.setAttribute('aria-live', 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        var alert = document.createElement('p');
+        alert.className = 'certificate-wizard-error';
+        alert.setAttribute('role', 'alert');
+        alert.hidden = true;
+        var panels = phases.map(function (phase) {
+            var panel = document.createElement('section');
+            panel.className = 'certificate-wizard-panel';
+            panel.setAttribute('aria-label', phase.label);
+            panel.dataset.phase = phase.key;
+            wizard.appendChild(panel);
+            return panel;
+        });
+        phaseNodes.forEach(function (node, index) {
+            panels[index].appendChild(node);
+        });
+        var controls = document.createElement('div');
+        controls.className = 'certificate-wizard-actions';
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn-secondary';
+        back.textContent = 'Back';
+        var next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'btn';
+        next.textContent = 'Continue';
+        controls.append(back, next);
+        wizard.append(progress, status, alert, ...panels, controls);
+        form.appendChild(wizard);
+        controls.appendChild(submitButton);
+        form.noValidate = true;
+        submitButton.hidden = true;
+
+        phases.forEach(function (phase, index) {
+            var item = document.createElement('li');
+            item.dataset.step = String(index + 1);
+            var number = document.createElement('span');
+            number.textContent = String(index + 1);
+            var label = document.createElement('span');
+            label.textContent = phase.label;
+            item.append(number, label);
+            progress.appendChild(item);
+        });
+
+        function fieldLabel(field) {
+            if (field.id) {
+                var matchingLabel = Array.from(form.querySelectorAll('label[for]')).find(function (label) {
+                    return label.htmlFor === field.id;
+                });
+                if (matchingLabel) return matchingLabel.textContent.trim().replace(/\s*\*$/, '');
+            }
+            var wrappingLabel = field.closest('label');
+            return wrappingLabel
+                ? wrappingLabel.textContent.trim().replace(/\s*\*$/, '')
+                : field.name.replace(/[_\[\]]+/g, ' ').trim();
+        }
+
+        function updateReview() {
+            reviewList.replaceChildren();
+            reviewSourceNodes.forEach(function (phaseNode) {
+                phaseNode.querySelectorAll('input, select, textarea').forEach(function (field) {
+                    var hiddenAncestor = field.closest('[hidden]');
+                    if (field.type === 'hidden' || field.type === 'submit' || field.type === 'button'
+                        || field.type === 'password' || field.disabled || field.name === 'website'
+                        || (field.type === 'checkbox' && !field.checked)
+                        || (field.type === 'radio' && !field.checked)
+                        || (hiddenAncestor
+                            && hiddenAncestor !== phaseNode
+                            && !hiddenAncestor.classList.contains('certificate-wizard-panel'))) return;
+                    var value = field.type === 'checkbox' ? 'Yes'
+                        : (field.tagName === 'SELECT'
+                            ? (field.selectedOptions[0] ? field.selectedOptions[0].textContent.trim() : '')
+                            : field.value.trim());
+                    if (!value) return;
+                    var term = document.createElement('dt');
+                    var detail = document.createElement('dd');
+                    term.textContent = fieldLabel(field);
+                    detail.textContent = value;
+                    reviewList.append(term, detail);
+                });
+            });
+        }
+
+        function validatePanel(index) {
+            var fields = Array.from(panels[index].querySelectorAll('input, select, textarea'));
+            var invalid = fields.find(function (field) {
+                return !field.disabled && !field.closest('[hidden]') && !field.checkValidity();
+            });
+            alert.hidden = !invalid;
+            alert.textContent = invalid ? 'Please check the highlighted field before continuing.' : '';
+            if (invalid) {
+                invalid.focus();
+                invalid.reportValidity();
+                return false;
+            }
+            return true;
+        }
+
+        function showStep(step, moveFocus) {
+            var index = Math.max(0, Math.min(phases.length - 1, step - 1));
+            currentStep.value = String(index + 1);
+            panels.forEach(function (panel, panelIndex) {
+                panel.hidden = panelIndex !== index;
+            });
+            Array.from(progress.children).forEach(function (item, itemIndex) {
+                item.classList.toggle('is-current', itemIndex === index);
+                item.classList.toggle('is-done', itemIndex < index);
+                if (itemIndex === index) item.setAttribute('aria-current', 'step');
+                else item.removeAttribute('aria-current');
+            });
+            status.textContent = 'Step ' + (index + 1) + ' of ' + phases.length + ' — ' + phases[index].label;
+            back.hidden = index === 0;
+            next.hidden = index === phases.length - 1;
+            submitButton.hidden = index !== phases.length - 1;
+            alert.hidden = true;
+            if (index === phases.length - 1) updateReview();
+            if (moveFocus) {
+                var focusTarget = panels[index].querySelector('input:not([type="hidden"]), select, textarea, button');
+                if (focusTarget) focusTarget.focus();
+            }
+        }
+
+        next.addEventListener('click', function () {
+            var index = Number(currentStep.value) - 1;
+            if (validatePanel(index)) showStep(index + 2, true);
+        });
+        back.addEventListener('click', function () {
+            showStep(Number(currentStep.value) - 1, true);
+        });
+        form.addEventListener('submit', function (event) {
+            var index = Number(currentStep.value) - 1;
+            if (index !== phases.length - 1) {
+                event.preventDefault();
+                if (validatePanel(index)) showStep(index + 2, true);
+                return;
+            }
+            for (var phaseIndex = 0; phaseIndex < phases.length - 1; phaseIndex++) {
+                if (!validatePanel(phaseIndex)) {
+                    event.preventDefault();
+                    showStep(phaseIndex + 1, true);
+                    return;
+                }
+            }
+        });
+        form.querySelectorAll('input, select, textarea').forEach(function (field) {
+            field.addEventListener('input', updateReview);
+            field.addEventListener('change', updateReview);
+        });
+        showStep(currentStep.value || '1');
+    });
+
+    // ---- 6) Public master-person lookup -------------------------------
+    document.querySelectorAll('[data-public-person-lookup]').forEach(function (widget) {
+        var form = widget.closest('form');
+        var resultsBox = widget.querySelector('[data-person-results]');
+        var endpoint = widget.getAttribute('data-endpoint');
+        var nameInputs = (widget.getAttribute('data-name-inputs') || '').split(',').filter(Boolean);
+        var birthField = widget.getAttribute('data-birth-field');
+        var personIdField = widget.getAttribute('data-person-id-field');
+        if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
+
+        function field(name) {
+            return Array.prototype.find.call(form.elements, function (element) {
+                return element.name === name;
+            }) || null;
+        }
+
+        function value(name) {
+            var input = field(name);
+            return input ? input.value.trim() : '';
+        }
+
+        function splitName(name) {
+            var parts = name.trim().split(/\s+/).filter(Boolean);
+            var suffix = '';
+            if (parts.length && /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) {
+                suffix = parts.pop();
+            }
+            return [parts.shift() || '', parts.length > 1 ? parts.slice(0, -1).join(' ') : '', parts.length ? parts[parts.length - 1] : '', suffix];
+        }
+
+        function fillName(fieldNames, fullName) {
+            if (!fieldNames.length) return;
+            if (fieldNames.length === 1) {
+                var single = field(fieldNames[0]);
+                if (single) single.value = fullName || '';
+                return;
+            }
+            var parts = splitName(fullName || '');
+            fieldNames.forEach(function (name, index) {
+                var input = field(name);
+                if (input) input.value = parts[index] || '';
+            });
+        }
+
+        function personName(person) {
+            return [person.first_name, person.middle_name, person.last_name, person.suffix].filter(Boolean).join(' ');
+        }
+
+        function fillParent(person, side) {
+            var fullName = side === 'father' ? person.father_name : person.mother_maiden_name;
+            var inputNames = (widget.getAttribute('data-' + side + '-inputs') || '').split(',').filter(Boolean);
+            fillName(inputNames, fullName);
+            var valueField = widget.getAttribute('data-' + side + '-value-field');
+            var hiddenValue = valueField ? field(valueField) : null;
+            if (hiddenValue) hiddenValue.value = fullName || '';
+        }
+
+        var searchTimer = null;
+        var selected = false;
+        var idInput = field(personIdField);
+        var selectionClear = document.createElement('button');
+        selectionClear.type = 'button';
+        selectionClear.className = 'btn btn-secondary btn-small';
+        selectionClear.textContent = 'Change selected profile';
+        selectionClear.hidden = true;
+
+        function identityInputNames() {
+            var parentNames = (widget.getAttribute('data-father-inputs') || '')
+                .split(',').filter(Boolean)
+                .concat((widget.getAttribute('data-mother-inputs') || '').split(',').filter(Boolean));
+            var birthPlaceField = widget.getAttribute('data-birth-place-field');
+            return nameInputs.concat([birthField], parentNames, birthPlaceField ? [birthPlaceField] : []);
+        }
+
+        function setPublicIdentityReadOnly(readOnly) {
+            identityInputNames().forEach(function (name) {
+                var input = field(name);
+                if (!input) return;
+                input.readOnly = readOnly;
+                input.classList.toggle('person-profile-readonly', input.readOnly);
+            });
+        }
+
+        function renderExistingSelection(message) {
+            resultsBox.replaceChildren();
+            var confirmation = document.createElement('p');
+            confirmation.className = 'person-lookup-selection';
+            confirmation.textContent = message || 'A parish profile is selected. Recorded biographical details are read-only; clear the selection to change profiles.';
+            resultsBox.appendChild(confirmation);
+            selectionClear.hidden = false;
+            resultsBox.appendChild(selectionClear);
+        }
+
+        selectionClear.addEventListener('click', function () {
+            if (idInput) idInput.value = '';
+            selected = false;
+            setPublicIdentityReadOnly(false);
+            selectionClear.hidden = true;
+            resultsBox.replaceChildren();
+            resultsBox.textContent = 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
+        });
+
+        if (idInput && idInput.value) {
+            selected = true;
+            setPublicIdentityReadOnly(true);
+            renderExistingSelection();
+        }
+
+        function runSearch() {
+            var fullName = nameInputs.map(value).filter(Boolean).join(' ');
+            var birthDate = value(birthField);
+            resultsBox.replaceChildren();
+            if (fullName.trim().split(/\s+/).length < 2 || !birthDate) {
+                resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
+                return;
+            }
+
+            var status = document.createElement('p');
+            status.className = 'field-hint';
+            status.textContent = 'Searching parish records…';
+            resultsBox.appendChild(status);
+            var url = new URL(endpoint, window.location.href);
+            url.searchParams.set('person_lookup', '1');
+            url.searchParams.set('name', fullName);
+            url.searchParams.set('birth_date', birthDate);
+            fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (response) {
+                    return response.json().then(function (payload) {
+                        if (!response.ok) throw new Error(payload.error || 'Search is temporarily unavailable.');
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    resultsBox.replaceChildren();
+                    if (!payload.results || !payload.results.length) {
+                        resultsBox.textContent = 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
+                        return;
+                    }
+                    var heading = document.createElement('p');
+                    heading.className = 'field-hint';
+                    heading.textContent = 'Select the matching parish record:';
+                    resultsBox.appendChild(heading);
+                    payload.results.forEach(function (person) {
+                        var button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'public-person-result';
+                        button.textContent = personName(person) + ' · ' + person.birth_date;
+                        button.addEventListener('click', function () {
+                            fillName(nameInputs, personName(person));
+                            var dob = field(birthField);
+                            if (dob) dob.value = person.birth_date || '';
+                            var birthPlaceField = widget.getAttribute('data-birth-place-field');
+                            if (birthPlaceField) {
+                                var birthPlace = field(birthPlaceField);
+                                if (birthPlace) birthPlace.value = person.birth_place || '';
+                            }
+                            if (idInput) idInput.value = String(person.id);
+                            fillParent(person, 'father');
+                            fillParent(person, 'mother');
+                            var requesterField = widget.getAttribute('data-requester-name-field');
+                            var relationshipField = widget.getAttribute('data-relationship-field');
+                            if (requesterField && relationshipField && value(relationshipField) === 'self') {
+                                var requester = field(requesterField);
+                                if (requester) requester.value = personName(person);
+                            }
+                            selected = true;
+                            setPublicIdentityReadOnly(true);
+                            renderExistingSelection('Selected parish profile: ' + personName(person) + '. Recorded biographical details are read-only; complete only the sacrament-specific information.');
+                        });
+                        resultsBox.appendChild(button);
+                    });
+                })
+                .catch(function (error) {
+                    resultsBox.textContent = error.message || 'Person search is temporarily unavailable.';
+                });
+        }
+
+        function scheduleSearch() {
+            var idInput = field(personIdField);
+            if (selected && idInput) {
+                idInput.value = '';
+                selected = false;
+                setPublicIdentityReadOnly(false);
+                selectionClear.hidden = true;
+                resultsBox.textContent = 'Details changed. Search again to link a matching parish profile.';
+            }
+            window.clearTimeout(searchTimer);
+            searchTimer = window.setTimeout(runSearch, 350);
+        }
+
+        nameInputs.concat([birthField]).forEach(function (name) {
+            var input = field(name);
+            if (!input) return;
+            input.addEventListener('input', scheduleSearch);
+            input.addEventListener('change', scheduleSearch);
+        });
+    });
 });

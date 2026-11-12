@@ -29,7 +29,8 @@ if (in_array($databaseName, ['srs_sppo_db', (string) (getenv('SRS_DB_NAME') ?: '
 }
 
 $root = dirname(__DIR__);
-$schemaPath = $root . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . 'srs_sppo_schema.sql';
+$schemaPath = $root . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR
+    . 'v2' . DIRECTORY_SEPARATOR . 'schema.sql';
 
 try {
     $server = new PDO(
@@ -50,6 +51,11 @@ try {
         throw new RuntimeException('Could not read the canonical database schema.');
     }
 
+    $schema = preg_replace(
+        '/^\s*CREATE\s+DATABASE\s+IF\s+NOT\s+EXISTS\s+srs_sppo_db\b[^;]*;/mi',
+        "CREATE DATABASE IF NOT EXISTS {$quotedDatabase} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+        $schema
+    );
     $schema = preg_replace('/^\s*USE\s+srs_sppo_db\s*;/mi', "USE {$quotedDatabase};", $schema);
     if ($schema === null) {
         throw new RuntimeException('Could not prepare the schema for the test database.');

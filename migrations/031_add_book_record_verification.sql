@@ -6,7 +6,7 @@
 -- RECORD, not of any one certificate request -- once verified, it stays
 -- verified for every future request that cites the same entry.
 --
--- admin/certificates/generate.php will not let a certificate be marked
+-- The request detail flow will not let a certificate be marked
 -- "Generated" for a matched request until the matched record carries this
 -- flag. A request with no matched record (manual-search path) is unaffected
 -- -- there is no digital entry to check yet.

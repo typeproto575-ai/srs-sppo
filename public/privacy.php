@@ -63,7 +63,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="purposes">
             <h2 class="legal-clause__title">Why We Use Your Data</h2>
             <ol class="legal-subclauses">
-                <li>To receive an online pre-application or an onsite request/application and issue a tracking number.</li>
+                <li>To receive an online pre-application or an onsite request/application and issue a reference number.</li>
                 <li>To review and verify submitted details against the parish register during staff review. Public pages never reveal whether a register record exists.</li>
                 <li>To contact you about status, missing information, and pickup.</li>
                 <li>To keep parish sacramental records.</li>
@@ -98,7 +98,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause" id="security">
             <h2 class="legal-clause__title">How We Protect It</h2>
-            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Certificates are released in person only, with valid ID. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
+            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
             <p>If a breach puts your data at risk of serious harm, we will notify you and the National Privacy Commission as the law requires.</p>
         </section>
 
@@ -109,7 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <li>be informed about how your data is processed;</li>
                 <li>access the data we hold about you;</li>
                 <li>object to the processing, or withdraw your consent;</li>
-                <li>ask us to correct inaccurate data (you can use the <a href="<?= e($basePath . '/public/correction-request.php') ?>">Request Correction</a> page);</li>
+                <li>ask us to correct inaccurate data (contact the parish office);</li>
                 <li>ask us to block or remove data, where the law allows;</li>
                 <li>claim compensation for damages from unlawful use of your data; and</li>
                 <li>receive your data in a usable format, where applicable.</li>

@@ -1,193 +1,273 @@
 <?php
-/**
- * =====================================================================
- * SRS-SPPO TRACK MY REQUEST (public status lookup)
- * =====================================================================
- * Purpose: Lets a requester check progress WITHOUT an account. They
- *          enter their tracking number plus the email used at
- *          submission; the page looks the request up in:
- *            1. certificate_requests   (email stored on the row itself)
- *            2. sacrament_applications (email lives in the sacrament-
- *               specific extension table: confirmation, first communion
- *               or marriage)
- *          Status is informational only — pickup still happens in person.
- * =====================================================================
- */
-
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/auth.php'; // starts a session for CSRF
+require_once __DIR__ . '/../includes/auth.php';
 
-$pageTitle = 'Track a Request or Application';
-$error = null;
-$results = [];
+$basePath = base_path();
+$pageTitle = 'View My Requests';
+$errors = [];
+$items = [];
+$reference = '';
+$email = '';
+$searched = false;
+$verificationSent = false;
+$verificationError = '';
+$verifiedPersonReference = '';
 
-/**
- * Humanize a status enum value for display, e.g. 'ready_for_pickup' -> 'Ready For Pickup'
- */
-function humanize_status(string $status): string
-{
-    return ucwords(str_replace('_', ' ', $status));
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-// ---- Handle the lookup form submission -------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // CSRF check: the form must carry the session's token.
-    if (!csrf_verify()) {
-        $error = 'Your session expired. Please try again.';
+    $attempts = $_SESSION['person_request_lookup_attempts'] ?? [];
+    $now = time();
+    $attempts = is_array($attempts)
+        ? array_values(array_filter($attempts, static fn($time) => is_int($time) && $time > $now - 900))
+        : [];
+    if (count($attempts) >= 10) {
+        $errors[] = 'Too many attempts. Please wait 15 minutes before trying again.';
+    } elseif (!csrf_verify()) {
+        $errors[] = 'Your session expired. Please try again.';
     } else {
-        // Tracking numbers are generated uppercase; normalize input before rate limiting and lookup.
-        $trackingNumber = strtoupper(trim($_POST['tracking_number'] ?? ''));
-        $email          = trim($_POST['email'] ?? '');
+        $attempts[] = $now;
+        $action = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
+        $reference = strtoupper(trim(is_string($_POST['person_reference'] ?? null) ? $_POST['person_reference'] : ''));
+        $email = trim(is_string($_POST['email'] ?? null) ? $_POST['email'] : '');
+        $pending = $_SESSION['pending_person_request_lookup'] ?? null;
 
-        if ($trackingNumber === '' || $email === '') {
-            $error = 'Please enter both your tracking number and the email address you used when submitting.';
-        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $error = 'Please enter a valid email address.';
-        } else {
-            // ---- Validate tracking-number format before hitting the DB ----
-            // Accept the random format for new submissions and sequential
-            // formats already issued, including legacy baptismal numbers.
-            // Reject anything else before it reaches the database lookup.
-            $trackingPattern = '/^(?:SPPO(?:-APP)?-\d{4}-(?:[A-HJ-NP-Z2-9]{16}|\d{6})|BAP-[A-F0-9]{8})$/';
-            // ---- Rate limiting: block after 8 failed attempts in 15 minutes ----
-            // Keyed on tracking+email (existing key) AND on IP (new, to prevent
-            // rotating one against the other to route around the per-key limit).
-            // The check runs BEFORE format validation so that hammering garbage-
-            // formatted tracking numbers is blocked by the same limit too.
-            $rateKey       = $trackingNumber . '|' . $email;
-            if (lookup_is_throttled($pdo, 'lookup_track', $rateKey, 8, 20, 15)) {
-                $error = 'Too many failed attempts. Please wait 15 minutes before trying again.';
-            } elseif (!preg_match($trackingPattern, $trackingNumber)) {
-                // Malformed format counts as a failed attempt (rate-limit bypass fix).
-                lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                $error = 'We couldn\'t find a request or application matching that tracking number and email combination.';
+        if ($action === 'verify_code' && is_array($pending)) {
+            $code = trim(is_string($_POST['verification_code'] ?? null) ? $_POST['verification_code'] : '');
+            $reference = (string) ($pending['reference'] ?? '');
+            $email = (string) ($pending['email'] ?? '');
+            if ((int) ($pending['expires_at'] ?? 0) < $now
+                || !preg_match('/^\d{6}$/', $code)
+                || !hash_equals((string) ($pending['code_hash'] ?? ''), hash('sha256', $code))) {
+                $pending['attempts'] = (int) ($pending['attempts'] ?? 0) + 1;
+                $_SESSION['pending_person_request_lookup'] = $pending;
+                $verificationError = (int) $pending['attempts'] >= 5
+                    ? 'The access code expired or the attempt limit was reached. Start again to request a new code.'
+                    : 'The access code is invalid or expired.';
+                if ((int) $pending['attempts'] >= 5) {
+                    unset($_SESSION['pending_person_request_lookup']);
+                }
             } else {
-                $certificateStmt = $pdo->prepare(
-                    "SELECT tracking_number, sacrament_type, status, date_submitted, requester_email
-                     FROM certificate_requests WHERE tracking_number = ?"
-                );
-                $certificateStmt->execute([$trackingNumber]);
-                $certificateRow = $certificateStmt->fetch();
-                if ($certificateRow && strcasecmp(trim((string) $certificateRow['requester_email']), $email) === 0) {
-                    $results[] = ['kind' => 'certificate', 'row' => $certificateRow];
-                }
-
-                $applicationStmt = $pdo->prepare(
-                    "SELECT id, tracking_number, sacrament_type, status, date_submitted
-                     FROM sacrament_applications WHERE tracking_number = ?"
-                );
-                $applicationStmt->execute([$trackingNumber]);
-                $applicationRow = $applicationStmt->fetch();
-                if ($applicationRow) {
-                    $emailQuery = match ($applicationRow['sacrament_type']) {
-                        'baptismal' => 'SELECT email FROM baptismal_applications WHERE application_id = ?',
-                        'confirmation' => 'SELECT email FROM confirmation_applications WHERE application_id = ?',
-                        'first_communion' => 'SELECT email FROM first_communion_applications WHERE application_id = ?',
-                        'marriage' => 'SELECT groom_email, bride_email FROM marriage_applications WHERE application_id = ?',
-                        default => null,
-                    };
-                    if ($emailQuery !== null) {
-                        $emailStmt = $pdo->prepare($emailQuery);
-                        $emailStmt->execute([(int) $applicationRow['id']]);
-                        $applicationEmails = $emailStmt->fetch() ?: [];
-                        $matchedEmail = false;
-                        foreach ($applicationEmails as $applicationEmail) {
-                            if (strcasecmp(trim((string) $applicationEmail), $email) === 0) {
-                                $matchedEmail = true;
-                                break;
-                            }
-                        }
-                        if ($matchedEmail) {
-                            $results[] = ['kind' => 'application', 'row' => $applicationRow];
-                        }
-                    }
-                }
-
-                if ($results === []) {
-                    lookup_record_attempt($pdo, 'lookup_track', $rateKey);
-                    $error = 'We couldn\'t find a request or application matching that tracking number and email combination.';
-                }
+                $_SESSION['verified_person_request_lookup'] = [
+                    'reference' => $reference,
+                    'email' => $email,
+                    'person_id' => (int) ($pending['person_id'] ?? 0),
+                    'expires_at' => $now + 900,
+                ];
+                unset($_SESSION['pending_person_request_lookup']);
+                $searched = true;
             }
+        } elseif ($action === 'send_code'
+            && (preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', $reference)
+                || preg_match('/^(?:SA|CR)-\d{4}-\d{4,}$/', $reference))
+            && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            unset($_SESSION['pending_person_request_lookup'], $_SESSION['verified_person_request_lookup']);
+            $personStmt = preg_match('/^SPPO-P-/', $reference)
+                ? $pdo->prepare('SELECT id FROM persons WHERE public_reference = ? LIMIT 1')
+                : $pdo->prepare(
+                    "SELECT CASE
+                                WHEN LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.bride.email'))) = LOWER(?)
+                                     AND spouse_person_id IS NOT NULL
+                                THEN spouse_person_id ELSE person_id
+                            END AS id
+                     FROM sacrament_applications
+                     WHERE request_no = ?
+                       AND (LOWER(applicant_email) = LOWER(?)
+                            OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.bride.email'))) = LOWER(?))
+                     UNION
+                     SELECT person_id AS id FROM certificate_requests
+                     WHERE request_no = ? AND LOWER(requester_email) = LOWER(?)
+                     LIMIT 1"
+                );
+            if (preg_match('/^SPPO-P-/', $reference)) {
+                $personStmt->execute([$reference]);
+            } else {
+                $personStmt->execute([$email, $reference, $email, $email, $reference, $email]);
+            }
+            $personId = $personStmt->fetchColumn();
+            $hasMatchingRequest = false;
+            if ($personId !== false) {
+                $appCheck = $pdo->prepare(
+                    "SELECT 1 FROM sacrament_applications
+                     WHERE (person_id = ? OR spouse_person_id = ?)
+                       AND (LOWER(applicant_email) = LOWER(?)
+                            OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.bride.email'))) = LOWER(?))
+                     LIMIT 1"
+                );
+                $appCheck->execute([(int) $personId, (int) $personId, $email, $email]);
+                $certCheck = $pdo->prepare(
+                    'SELECT 1 FROM certificate_requests
+                     WHERE person_id = ? AND LOWER(requester_email) = LOWER(?) LIMIT 1'
+                );
+                $certCheck->execute([(int) $personId, $email]);
+                $hasMatchingRequest = (bool) $appCheck->fetchColumn() || (bool) $certCheck->fetchColumn();
+            }
+            if ($hasMatchingRequest) {
+                $code = (string) random_int(100000, 999999);
+                $sent = send_mail(
+                    $email,
+                    'Your parish request access code',
+                    "Your one-time access code is {$code}.\r\n\r\nIt expires in 10 minutes. Do not share this code with anyone.\r\n\r\nSt. Patrick's Parish Office — Dingalan, Aurora",
+                    $pdo,
+                    'public_request_access'
+                );
+                if ($sent) {
+                    $_SESSION['pending_person_request_lookup'] = [
+                        'reference' => $reference,
+                        'email' => $email,
+                        'person_id' => (int) $personId,
+                        'code_hash' => hash('sha256', $code),
+                        'expires_at' => $now + 600,
+                        'attempts' => 0,
+                    ];
+                    $verificationSent = true;
+                } else {
+                    $verificationError = 'We could not send an access code. Please contact the Parish Office.';
+                }
+            } else {
+                $verificationSent = true;
+                $_SESSION['pending_person_request_lookup'] = [
+                    'reference' => $reference,
+                    'email' => $email,
+                    'person_id' => 0,
+                    'code_hash' => hash('sha256', bin2hex(random_bytes(16))),
+                    'expires_at' => $now + 600,
+                    'attempts' => 0,
+                ];
+            }
+        } else {
+            $errors[] = 'Enter a valid person reference and the email address used for a linked request.';
+        }
+        $_SESSION['person_request_lookup_attempts'] = $attempts;
+    }
+
+    $verified = $_SESSION['verified_person_request_lookup'] ?? null;
+    if (is_array($verified) && (int) ($verified['expires_at'] ?? 0) >= $now) {
+        $reference = (string) ($verified['reference'] ?? '');
+        $email = (string) ($verified['email'] ?? '');
+        $personId = (int) ($verified['person_id'] ?? 0);
+        $searched = true;
+        if ($personId > 0) {
+            $referenceStmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ? LIMIT 1');
+            $referenceStmt->execute([$personId]);
+            $verifiedPersonReference = (string) ($referenceStmt->fetchColumn() ?: '');
+            $applications = $pdo->prepare(
+                "SELECT 'application' AS item_type, sacrament_type, status, created_at, preferred_date, requirements
+                 FROM sacrament_applications
+                 WHERE person_id = ? OR spouse_person_id = ?
+                 ORDER BY created_at DESC, id DESC"
+            );
+            $applications->execute([(int) $personId, (int) $personId]);
+            $items = $applications->fetchAll(PDO::FETCH_ASSOC);
+
+            $certificates = $pdo->prepare(
+                "SELECT 'certificate' AS item_type, sacrament_type, status, created_at, NULL AS preferred_date, NULL AS requirements
+                 FROM certificate_requests
+                 WHERE person_id = ?
+                 ORDER BY created_at DESC, id DESC"
+            );
+            $certificates->execute([(int) $personId]);
+            $items = array_merge($items, $certificates->fetchAll(PDO::FETCH_ASSOC));
+            usort($items, static fn(array $a, array $b): int => strcmp((string) $b['created_at'], (string) $a['created_at']));
         }
     }
 }
 
+$statusLabels = [
+    'new' => 'Submitted — Pending Review',
+    'reviewing' => 'Under Review',
+    'requirements_pending' => 'Requirements Pending',
+    'approved' => 'Approved',
+    'scheduled' => 'Scheduled',
+    'completed' => 'Completed',
+    'rejected' => 'Closed',
+    'matched' => 'Matched to Parish Record',
+    'for_signature' => 'Pending Priest Signature',
+    'ready' => 'Ready for Pickup',
+    'released' => 'Released',
+];
+$sacramentLabels = [
+    'baptism' => 'Baptism',
+    'first_communion' => 'First Communion',
+    'confirmation' => 'Confirmation',
+    'marriage' => 'Marriage',
+];
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
-
-<section class="request-form">
-    <h1>Track a Request or Application</h1>
-    <p>Use the tracking number and the same email address you provided for that certificate request or sacrament application. One email address can be used for more than one submission; each tracking number shows its own status.</p>
-
-    <?php if ($error): ?>
-        <div class="alert alert-error"><p><?= e($error) ?></p></div>
+<section class="card">
+    <h1>View Requests Linked to Your Person Reference</h1>
+    <p>Use your person reference across linked requests. Older submissions can also be found with their original request number. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
+    <?php if (!$searched && !isset($_SESSION['pending_person_request_lookup'])): ?>
+        <form method="post" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="send_code">
+            <label for="person_reference">Person reference or older request number</label>
+            <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-...">
+            <label for="email">Email address used on the request</label>
+            <input id="email" name="email" type="email" autocomplete="email" required maxlength="150" value="<?= e($email) ?>">
+            <button type="submit" class="btn">Email me an access code</button>
+        </form>
+    <?php elseif (!$searched): ?>
+        <?php if ($verificationSent): ?><p class="alert alert-info" role="status">If the reference and email match a request, an access code has been emailed. Check your inbox and spam folder.</p><?php endif; ?>
+        <?php if ($verificationError !== ''): ?><p class="alert alert-error" role="alert"><?= e($verificationError) ?></p><?php endif; ?>
+        <form method="post" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="verify_code">
+            <label for="verification_code">Six-digit email access code</label>
+            <input id="verification_code" name="verification_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+            <button type="submit" class="btn">Verify and view requests</button>
+        </form>
+        <form method="post" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="send_code">
+            <input type="hidden" name="person_reference" value="<?= e((string) ($_SESSION['pending_person_request_lookup']['reference'] ?? '')) ?>">
+            <input type="hidden" name="email" value="<?= e((string) ($_SESSION['pending_person_request_lookup']['email'] ?? '')) ?>">
+            <button type="submit" class="btn btn-secondary">Send a new code</button>
+        </form>
     <?php endif; ?>
-
-        <?php foreach ($results as $result): ?>
-        <?php
-        $status = $result['row']['status'];
-        if ($result['kind'] === 'certificate') {
-            $timeline = certificate_timeline_definition($status);
-            $stageLabels = array_column($timeline['stages'], 'label');
-            $stageIndex = $timeline['index'];
-        } else {
-            $stageLabels = ['Application Received', 'Secretary Review', 'Requirements / Onsite Verification', 'Approved', 'Scheduled', 'Completed'];
-            $stageMap = ['submitted' => 0, 'awaiting_payment' => 1, 'requirements_pending' => 1, 'requirements_incomplete' => 1, 'documents_pending' => 1, 'interview_scheduled' => 2, 'banns_in_progress' => 2, 'seminar_pending' => 2, 'awaiting_onsite_verification' => 2, 'ready_for_approval' => 2, 'approved' => 3, 'scheduled' => 4, 'completed' => 5];
-            $stageIndex = $stageMap[$status] ?? 0;
-        }
-        ?>
-        <div class="alert alert-success track-result">
-            <h2><?= $result['kind'] === 'application' ? 'Sacrament Application' : 'Certificate Request' ?></h2>
-            <p><strong>Tracking Number:</strong> <?= e($result['row']['tracking_number']) ?></p>
-            <p><strong>Type:</strong> <?= e(humanize_status($result['kind'])) ?> - <?= e(humanize_status($result['row']['sacrament_type'])) ?></p>
-            <p><strong>Date Submitted:</strong> <?= e(date('F j, Y', strtotime($result['row']['date_submitted']))) ?></p>
-
-            <?php if ($status === 'rejected' || $status === 'cancelled'): ?>
-                <div class="alert alert-warning">
-                    <p><strong>Status: <?= e(ucfirst($status)) ?>.</strong> Please contact the parish office directly for details and next steps.</p>
-                </div>
-            <?php elseif (in_array($status, ['correction_needed', 'unable_to_locate_record'], true)): ?>
-                <div class="alert alert-warning"><p><strong><?= e(humanize_status($status)) ?>.</strong> Please contact the parish office for next steps.</p></div>
-            <?php else: ?>
-                <ol class="status-timeline">
-                    <?php foreach ($stageLabels as $i => $label): ?>
-                        <li class="<?= $i < $stageIndex ? 'done' : ($i == $stageIndex ? 'current' : '') ?>">
-                            <span class="timeline-dot"></span>
-                            <span class="timeline-label"><?= e($label) ?></span>
-                        </li>
-                    <?php endforeach; ?>
-                </ol>
-                <p class="field-hint">
-                    <?php if ($status === 'awaiting_payment'): ?>
-                        <strong>Awaiting payment.</strong> Your <?= $result['kind'] === 'application' ? 'application' : 'request' ?> has been received. Payment is made <strong>outside this website</strong> — the office never takes money online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once the office records your payment.
-                    <?php elseif ($status === 'ready_for_pickup'): ?>
-                        Your certificate is ready. Please visit the parish office with your tracking number and valid identification. Certificates are released in person.
-                    <?php elseif ($status === 'released'): ?>
-                        This transaction was released at the parish office.
-                    <?php else: ?>
-                        Current stage: <strong><?= e($stageLabels[$stageIndex] ?? humanize_status($status)) ?></strong>.
-                        Check back any time with this tracking number and your email.
+    <?php if ($errors): ?>
+        <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
+    <?php elseif ($searched && $items === []): ?>
+        <p class="alert alert-info" role="status">No requests matched those details. Check the reference and email, or contact the Parish Office.</p>
+    <?php elseif ($items !== []): ?>
+        <h2>Your requests</h2>
+        <?php if ($verifiedPersonReference !== ''): ?>
+            <p><strong>Your person reference:</strong> <code><?= e($verifiedPersonReference) ?></code> Keep this reference for future requests.</p>
+        <?php endif; ?>
+        <p>If a request needs additional documents, contact the Parish Office using this same person reference. Do not submit a duplicate application.</p>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Request</th><th>Status</th><th>Submitted</th><th>Preferred date</th></tr></thead>
+                <tbody>
+                <?php foreach ($items as $item): ?>
+                    <tr>
+                        <td><?= e(($item['item_type'] === 'application' ? 'Pre-application: ' : 'Certificate: ') . ($sacramentLabels[$item['sacrament_type']] ?? ucfirst((string) $item['sacrament_type']))) ?></td>
+                        <td><?= e($statusLabels[$item['status']] ?? ucfirst(str_replace('_', ' ', (string) $item['status']))) ?></td>
+                        <td><?= e((string) $item['created_at']) ?></td>
+                        <td><?= e((string) ($item['preferred_date'] ?? '—') ?: '—') ?></td>
+                    </tr>
+                    <?php
+                    $requirements = json_decode((string) ($item['requirements'] ?? ''), true);
+                    $missingRequirements = [];
+                    if ($item['item_type'] === 'application' && is_array($requirements)) {
+                        foreach ($requirements as $key => $requirement) {
+                            if (is_array($requirement) && ($requirement['status'] ?? '') === 'not_received') {
+                                $missingRequirements[] = ucwords(str_replace('_', ' ', (string) $key));
+                            }
+                        }
+                    }
+                    ?>
+                    <?php if ($missingRequirements !== []): ?>
+                        <tr><td colspan="4"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this same person reference; do not submit a duplicate.</td></tr>
                     <?php endif; ?>
-                </p>
-            <?php endif; ?>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
-        <?php endforeach; ?>
-
-<!-- Status lookup form: posts back to this page; CSRF-protected -->
-    <form method="post" action="">
-        <?= csrf_field() ?>
-        <fieldset>
-            <legend>Look Up Your Office Transaction</legend>
-            <label>Tracking Number *
-                <input type="text" name="tracking_number" placeholder="Enter the tracking number from your confirmation" value="<?= e($_POST['tracking_number'] ?? '') ?>" required>
-            </label>
-            <label>Email Address *
-                <input type="email" name="email" autocomplete="email" value="<?= e($_POST['email'] ?? '') ?>" required>
-            </label>
-        </fieldset>
-        <button type="submit" class="btn">Track Request or Application</button>
-    </form>
+    <?php endif; ?>
 </section>
-
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

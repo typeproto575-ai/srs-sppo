@@ -7,4 +7,3 @@ Disallow: /scripts/
 Disallow: /storage/
 Disallow: /tests/
 Disallow: /vendor/
-Disallow: /public/track-request.php

@@ -1,11 +1,11 @@
 <?php
-/** Shared helpers for linking register rows to the persons identity index. */
+/** Shared helpers for linking register rows to master person profiles. */
 
 if (!function_exists('person_identity_choices')) {
     function person_identity_choices(PDO $pdo): array
     {
         return $pdo->query(
-            'SELECT id, first_name, middle_name, last_name, suffix, maiden_name, birth_date
+            'SELECT id, first_name, middle_name, last_name, suffix, birth_date
              FROM persons ORDER BY last_name, first_name, middle_name LIMIT 2000'
         )->fetchAll();
     }
@@ -18,7 +18,6 @@ if (!function_exists('person_identity_choices')) {
             $person['last_name'] ?? '',
             $person['suffix'] ?? '',
         ])));
-        if (!empty($person['maiden_name'])) $label .= ' (maiden: ' . $person['maiden_name'] . ')';
         if (!empty($person['birth_date'])) $label .= ' - born ' . date('Y-m-d', strtotime($person['birth_date']));
         return $label;
     }
@@ -35,39 +34,90 @@ if (!function_exists('person_identity_choices')) {
         return $id;
     }
 
-    /**
-     * Section label => bridge table/column for the sacraments that link one
-     * person, plus the two marriage roles. Shared by the person profile page,
-     * the persons directory and the delete guard, so these table and column
-     * names live in exactly one place instead of a copy per page.
-     */
-    function person_bridge_sections(): array
+    function save_person_identity(PDO $pdo, ?int $personId, array $identity): int
     {
-        return [
-            'Baptismal'       => ['type' => 'baptismal',       'table' => 'baptismal_records',       'column' => 'person_id', 'name' => 'child_full_name',       'date' => 'baptism_date'],
-            'Confirmation'    => ['type' => 'confirmation',    'table' => 'confirmation_records',    'column' => 'person_id', 'name' => 'confirmand_full_name',  'date' => 'confirmation_date'],
-            'First Communion' => ['type' => 'first_communion', 'table' => 'first_communion_records', 'column' => 'person_id', 'name' => 'communicant_full_name', 'date' => 'communion_date'],
+        $name = static function (string $key) use ($identity): ?string {
+            $value = trim((string) ($identity[$key] ?? ''));
+            return $value === '' ? null : $value;
+        };
+        $firstName = $name('first_name');
+        $lastName = $name('last_name');
+        if ($firstName === null || $lastName === null) {
+            throw new InvalidArgumentException('Enter the person\'s first and last name to save the master profile.');
+        }
+
+        $values = [
+            $firstName,
+            $name('middle_name'),
+            $lastName,
+            $name('suffix'),
+            $name('sex'),
+            $name('birth_date'),
+            $name('birth_place'),
+            $name('father_name'),
+            $name('mother_maiden_name'),
         ];
+
+        if ($personId !== null) {
+            $exists = $pdo->prepare('SELECT id FROM persons WHERE id = ?');
+            $exists->execute([$personId]);
+            if (!$exists->fetchColumn()) {
+                throw new InvalidArgumentException('The selected person identity no longer exists.');
+            }
+
+            // Keep established master values; fill only profile details not yet recorded.
+            $updateSql = "UPDATE persons
+                          SET birth_date = COALESCE(birth_date, ?),
+                              birth_place = COALESCE(NULLIF(birth_place, ''), ?),
+                              sex = COALESCE(sex, ?),
+                              father_name = COALESCE(NULLIF(father_name, ''), ?),
+                              mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?),
+                              public_reference = COALESCE(NULLIF(public_reference, ''), ?)";
+            $updateValues = [
+                $values[5],
+                $values[6],
+                $values[4],
+                $values[7],
+                $values[8],
+                'SPPO-P-' . strtoupper(bin2hex(random_bytes(8))),
+            ];
+            if (array_key_exists('address', $identity)) {
+                $updateSql .= ", address = COALESCE(NULLIF(address, ''), ?)";
+                $updateValues[] = $name('address');
+            }
+            $updateSql .= ' WHERE id = ?';
+            $updateValues[] = $personId;
+            $pdo->prepare($updateSql)->execute($updateValues);
+            return $personId;
+        }
+
+        $columns = [
+            'first_name', 'middle_name', 'last_name', 'suffix', 'sex',
+            'birth_date', 'birth_place', 'father_name', 'mother_maiden_name', 'public_reference',
+        ];
+        $values[] = 'SPPO-P-' . strtoupper(bin2hex(random_bytes(8)));
+        if (array_key_exists('address', $identity)) {
+            $columns[] = 'address';
+            $values[] = $name('address');
+        }
+        if (isset($identity['baptismal_status'])) {
+            $status = (string) $identity['baptismal_status'];
+            if (!in_array($status, ['baptized_catholic', 'baptized_non_catholic', 'unbaptized'], true)) {
+                throw new InvalidArgumentException('Choose a valid baptismal status.');
+            }
+            $columns[] = 'baptismal_status';
+            $values[] = $status;
+        }
+        $insert = $pdo->prepare(
+            'INSERT INTO persons (' . implode(', ', $columns) . ')
+             VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ')'
+        );
+        $insert->execute($values);
+        return (int) $pdo->lastInsertId();
     }
 
-    function person_bridge_marriage_roles(): array
-    {
-        return [
-            'As husband' => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'husband_person_id', 'name' => 'wife_maiden_name', 'date' => 'marriage_date'],
-            'As wife'    => ['type' => 'marriage', 'table' => 'marriage_records', 'column' => 'wife_person_id',    'name' => 'husband_full_name', 'date' => 'marriage_date'],
-        ];
-    }
-
-    // Deletes a person only if they have zero linked rows across every bridge
-    // table. Recomputes the count itself rather than trusting a caller-
-    // supplied number, since that number could be stale (e.g. a link was
-    // added in another tab after the caller's page loaded).
-    //
-    // Reads the person row itself for two reasons: it proves the row still
-    // exists before anything is deleted, and it lets this one function decide
-    // what the audit entry calls the person — rather than every caller passing
-    // its own label, which is how two entry points end up wording the same
-    // deletion differently.
+    // Recompute links at deletion time so a stale page cannot delete a
+    // profile that has since been used by a request or register entry.
     function person_delete_if_unlinked(PDO $pdo, int $personId, int $userId): array
     {
         $p = $pdo->prepare('SELECT * FROM persons WHERE id = ?');
@@ -77,13 +127,14 @@ if (!function_exists('person_identity_choices')) {
             return ['ok' => false, 'error' => 'That person no longer exists — it may already have been deleted.'];
         }
 
-        $allSections = array_merge(person_bridge_sections(), person_bridge_marriage_roles());
-        $total = 0;
-        foreach ($allSections as $sec) {
-            $c = $pdo->prepare("SELECT COUNT(*) FROM {$sec['table']} WHERE {$sec['column']} = ?");
-            $c->execute([$personId]);
-            $total += (int) $c->fetchColumn();
-        }
+        $links = $pdo->prepare(
+            'SELECT
+                (SELECT COUNT(*) FROM sacrament_records WHERE person_id = ? OR spouse_person_id = ?)
+              + (SELECT COUNT(*) FROM sacrament_applications WHERE person_id = ? OR spouse_person_id = ?)
+              + (SELECT COUNT(*) FROM certificate_requests WHERE person_id = ?) AS total'
+        );
+        $links->execute([$personId, $personId, $personId, $personId, $personId]);
+        $total = (int) $links->fetchColumn();
         if ($total > 0) {
             return ['ok' => false, 'error' => "This person still has {$total} linked record" . ($total === 1 ? '' : 's') . ". Remove every link before deleting."];
         }

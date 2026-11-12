@@ -4,15 +4,15 @@
  * SRS-SPPO BAPTISMAL SACRAMENT APPLICATION (public form)
  * =====================================================================
  * Purpose: Online application to HAVE A CHILD BAPTIZED at the parish.
- *          Inserts a shared row into sacrament_applications plus the
- *          details row in baptismal_applications and one row per
- *          godparent in baptismal_application_godparents.
+ *          Inserts an unverified intake row into the v2
+ *          sacrament_applications table and ensures a master person profile
+ *          with a reusable public reference.
  * Flow:    Enters as 'submitted'; the secretary reviews it in
  *          admin/requests/applications-queue.php. No online ID upload â€”
  *          identity is verified in person at pickup.
  * Limit:   Successful submissions are capped at 5 per email address and 20
  *          per client IP over a rolling 24 hours; the accounting row lives
- *          in submission_rate_limits (migrations/018_add_submission_rate_limits.sql).
+ *          using the shared public-submission guard.
  * =====================================================================
  */
 
@@ -24,7 +24,7 @@ require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
 // Subfolder-safe URL prefix for links inside the success message.
 $basePath = $basePath ?? base_path();
 
-$pageTitle = 'Baptismal Application';
+$pageTitle = 'Baptismal Pre-Application';
 $errors    = [];
 $trackingNumber = null;
 
@@ -55,6 +55,27 @@ if (!isset($_SESSION['baptismal_app'])) {
 $app = &$_SESSION['baptismal_app'];
 $currentStep = (int) $app['current_step'];
 $formData    = &$app['form_data'];
+
+if (($_GET['start'] ?? '') === 'profile') {
+    if ((current_user()['role'] ?? '') !== 'secretary') {
+        http_response_code(403);
+        exit('Only parish secretaries can start a profile-linked walk-in pre-application.');
+    }
+    $personId = filter_var($_GET['person_id'] ?? null, FILTER_VALIDATE_INT);
+    $person = $personId ? public_application_profile($pdo, (int) $personId) : null;
+    if (!$person) {
+        $errors[] = 'The selected parishioner profile could not be found. Search for the person again.';
+    } else {
+        $formData = array_merge(public_application_profile_fields($person, 'child'), [
+            'contact_number' => (string) ($person['contact_number'] ?? ''),
+            'email' => (string) ($person['email'] ?? ''),
+        ]);
+        $app['current_step'] = STEP_APP_DETAILS;
+        session_write_close();
+        header('Location: baptismal.php');
+        exit;
+    }
+}
 
 // Stepper labels shared with certificate-request flows (visual parity).
 $stepLabels = [
@@ -121,8 +142,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email         = fd('email', $_POST);
                 $privacyConsent = $_POST['privacy_consent'] ?? '';
 
-                if ($contactNumber === '' || !is_valid_phone_number($contactNumber)) {
-                    $errors[] = 'Please enter a valid contact number (at least 10 digits).';
+                if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
+                    $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
                 }
                 if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     $errors[] = 'Please enter a valid email address.';
@@ -139,6 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stepData[$k] = $v;
                 }
                 $formData = array_merge($formData, $stepData);
+                public_prefill_person_parents($formData);
                 $app['current_step'] = min($currentStep + 1, STEP_COUNT);
             } else {
                 $app['current_step'] = max($currentStep - 1, STEP_APP_DETAILS);
@@ -153,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stepData[$key] = $value;
             }
             $formData = array_merge($formData, $stepData);
+            public_prefill_person_parents($formData);
         }
     }
     // ------------------------------------------------------------------
@@ -177,9 +200,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email           = fd('email',                 $formData);
             $preferredDate   = $formData['preferred_date'] ?? null;
             $privacyConsent  = $formData['privacy_consent'] ?? '';
+            $isSecretary     = (current_user()['role'] ?? '') === 'secretary';
+            $channel         = $isSecretary ? 'onsite' : 'online';
 
             $godfatherNames      = compose_person_name_rows($formData, 'godfather');
             $godmotherNames      = compose_person_name_rows($formData, 'godmother');
+            $childPersonId = null;
 
             if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
             if (fd('child_last', $formData) === '') $errors[] = "Child's last name is required.";
@@ -188,9 +214,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
             if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
             if ($parentGuardian === '')  $errors[] = 'Parent/Guardian name is required.';
-            if ($contactNumber === '')   $errors[] = 'Contact number is required.';
             if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
-                $errors[] = 'Please enter a valid contact number (at least 10 digits).';
+                $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
             }
             if ($email === '')           $errors[] = 'Email address is required.';
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -199,6 +224,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
                 if (($e = validate_person_name_fields($formData, $prefix, $label, false)) !== null) $errors[] = $e;
+            }
+            if (fd('child_person_id', $formData) !== '') {
+                try {
+                    $childPersonId = public_selected_person_id(
+                        $pdo,
+                        $formData['child_person_id'],
+                        fd('child_first', $formData),
+                        fd('child_middle', $formData),
+                        fd('child_last', $formData),
+                        fd('child_suffix', $formData),
+                        $childBirthdate
+                    );
+                } catch (InvalidArgumentException $e) {
+                    $errors[] = $e->getMessage();
+                }
             }
             $errors = array_merge(
                 $errors,
@@ -215,51 +255,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if (empty($errors)) {
                         $pdo->beginTransaction();
-                        $trackingNumber = generate_tracking_number($pdo, 'sacrament_applications');
-                        $stmt = $pdo->prepare("INSERT INTO sacrament_applications
-                            (tracking_number, submission_channel, sacrament_type, status)
-                            VALUES (?, 'online', 'baptismal', 'awaiting_payment')");
-                        $stmt->execute([$trackingNumber]);
-                        $applicationId = (int) $pdo->lastInsertId();
-
-                        $stmt = $pdo->prepare("INSERT INTO baptismal_applications
-                            (application_id, child_full_name, child_birthdate, child_birthplace,
-                             father_full_name, mother_maiden_name, parents_union_type, parent_guardian_name,
-                             contact_number, email, preferred_date)
-                            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)");
-                        $stmt->execute([
-                            $applicationId, $childName, $childBirthdate, $childBirthplace,
-                            $fatherName, $motherMaidenName, $parentGuardian,
-                            $contactNumber, $email, $preferredDate ?: null,
+                        $requestNo = generate_request_no($pdo, 'sacrament_applications');
+                        $personProfile = public_person_reference($pdo, $childPersonId, [
+                            'first_name' => fd('child_first', $formData),
+                            'middle_name' => fd('child_middle', $formData),
+                            'last_name' => fd('child_last', $formData),
+                            'suffix' => fd('child_suffix', $formData),
+                            'birth_date' => $childBirthdate,
+                            'birth_place' => $childBirthplace,
+                            'father_name' => $fatherName,
+                            'mother_maiden_name' => $motherMaidenName,
                         ]);
-                        $baptismalApplicationId = (int) $pdo->lastInsertId();
-
-                        $godparentStmt = $pdo->prepare("INSERT INTO baptismal_application_godparents
-                            (baptismal_application_id, godparent_name, godparent_type)
-                            VALUES (?, ?, ?)");
-                        foreach ([
-                            ['names' => $godfatherNames, 'type' => 'godfather'],
-                            ['names' => $godmotherNames, 'type' => 'godmother'],
-                        ] as $group) {
-                            foreach ($group['names'] as $i => $name) {
-                                if (!is_scalar($name) || trim((string) $name) === '') continue;
-                                $godparentStmt->execute([
-                                    $baptismalApplicationId,
-                                    trim((string) $name),
-                                    $group['type'],
-                                ]);
+                        $childPersonId = $personProfile['person_id'];
+                        public_assert_no_open_sacrament_application(
+                            $pdo,
+                            'baptism',
+                            [$childPersonId],
+                            $personProfile['reference']
+                        );
+                        $godparents = [];
+                        foreach (['godfather' => $godfatherNames, 'godmother' => $godmotherNames] as $role => $names) {
+                            foreach ($names as $name) {
+                                if (is_scalar($name) && trim((string) $name) !== '') {
+                                    $godparents[] = ['role' => $role, 'full_name' => trim((string) $name)];
+                                }
                             }
                         }
+                        $details = [
+                            'child_name' => $childName,
+                            'child_birth_date' => $childBirthdate,
+                            'child_birthplace' => $childBirthplace,
+                            'father_name' => $fatherName,
+                            'mother_maiden_name' => $motherMaidenName,
+                            'parent_guardian_name' => $parentGuardian,
+                            'godparents' => $godparents,
+                        ];
+                        $requirements = [
+                            'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
+                        ];
+                        $stmt = $pdo->prepare(
+                            "INSERT INTO sacrament_applications
+                             (request_no, channel, sacrament_type, person_id, applicant_name, applicant_email,
+                              applicant_contact, preferred_date, status, details, requirements, privacy_consent_at)
+                             VALUES (?, ?, 'baptism', ?, ?, ?, ?, ?, 'new', ?, ?, NOW())"
+                        );
+                        $stmt->execute([
+                            $requestNo,
+                            $channel,
+                            $childPersonId,
+                            $childName,
+                            $email,
+                            $contactNumber,
+                            $preferredDate ?: null,
+                            json_encode($details, JSON_UNESCAPED_UNICODE),
+                            json_encode($requirements, JSON_UNESCAPED_UNICODE),
+                        ]);
+                        $applicationId = (int) $pdo->lastInsertId();
 
-                        log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal application submitted for {$childName}");
-                        notify($pdo, 'application_new', 'New sacrament application', "Baptismal application for {$childName} ({$trackingNumber})", '/admin/requests/applications-queue.php');
-                        record_public_submission($pdo, [$email], 'application_baptismal');
+                        log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal pre-application submitted for {$childName}");
+                        notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$requestNo})", '/admin/requests/applications-queue.php');
+                        if ($channel === 'online') {
+                            record_public_submission($pdo, [$email], 'application_baptismal');
+                        }
                         $pdo->commit();
+                        $trackingNumber = $personProfile['reference'];
+
+                        if ($isSecretary) {
+                            redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
+                            exit;
+                        }
 
                         try {
-                            if (mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
+                            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
                                 log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                             }
+                        } catch (InvalidArgumentException $e) {
+                            if ($pdo->inTransaction()) $pdo->rollBack();
+                            $trackingNumber = null;
+                            $errors[] = $e->getMessage();
                         } catch (Throwable $e) {
                             error_log('Baptismal application confirmation email failed: ' . $e->getMessage());
                         }
@@ -270,7 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($pdo->inTransaction()) $pdo->rollBack();
                     $trackingNumber = null;
                     error_log('Baptismal application failed: ' . $e->getMessage());
-                    $errors[] = 'Something went wrong while submitting your application. Please try again.';
+                    $errors[] = 'Something went wrong while submitting your pre-application. Please try again.';
                 }
             }
         }
@@ -294,13 +367,19 @@ require_once __DIR__ . '/../../includes/header.php';
 <?php
 if ($currentStep === STEP_COUNT + 1): ?>
     <div class="success-panel">
-        <h1>Application Submitted</h1>
-        <?php $successHeading = 'Keep this tracking number'; $successIsApplication = true; require __DIR__ . '/../../includes/submission-success.php'; ?>
-        <a href="baptismal.php?reset=1" class="btn">Start New Application</a>
+        <h1>Pre-Application Submitted</h1>
+        <?php
+        $successHeading = 'Keep this reference number';
+        $successIsApplication = true;
+        $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
+        require __DIR__ . '/../../includes/submission-success.php';
+        ?>
+        <a href="baptismal.php?reset=1" class="btn">Start a New Pre-Application</a>
     </div>
 </section>
 <?php elseif ($currentStep === STEP_APP_DETAILS): ?>
     <h1><?= e($pageTitle) ?></h1>
+    <?php $applicationType = 'baptism'; require __DIR__ . '/../../includes/public-requirements-notice.php'; ?>
     <ol class="request-steps" aria-label="Progress">
         <?php foreach ($stepOrder as $i => $key): ?>
             <?php $state = $key === $currentStep ? 'is-current' : ($currentStep > $key ? 'is-done' : ''); ?>
@@ -312,6 +391,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -336,6 +416,17 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <label>Date of Birth
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
             </label>
+            <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
+            <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
+            <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
+            <div class="public-person-lookup" data-public-person-lookup
+                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                 data-name-inputs="child_first,child_middle,child_last,child_suffix"
+                 data-birth-field="child_birthdate" data-person-id-field="child_person_id"
+                 data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match.</p>
+                <div data-person-results aria-live="polite"></div>
+            </div>
             <label>Place of Birth
                 <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
@@ -358,6 +449,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -416,13 +508,14 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 3 of 4 — Contact & Consent</legend>
-            <label>Contact Number
-                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>" required>
+            <label>Contact Number <span class="field-hint">(optional; email is used for updates)</span>
+                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>">
             </label>
             <label>Email Address
                 <input type="email" name="email" value="<?= e(fd('email', $formData)) ?>" required>
@@ -437,7 +530,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         </fieldset>
         <div class="form-actions">
             <button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back</button>
-            <button type="submit" class="btn">Review Application</button>
+            <button type="submit" class="btn">Review Pre-Application</button>
         </div>
     </form>
 </section>
@@ -454,6 +547,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
+    <h2 class="form-stage-heading">During: complete the pre-application</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="final_submit">
@@ -473,13 +567,13 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <tr><th>Preferred Date</th><td><?= e((string) ($formData['preferred_date'] ?? '')) ?></td></tr>
             </table>
         </fieldset>
-        <label class="checkbox-label" style="display:block; margin-top: 1rem;">
+        <label class="checkbox-label" style="margin-top: 1rem;">
             <input type="checkbox" name="certify_accuracy" value="1" required>
             I certify that all information provided above is true and correct to the best of my knowledge.
         </label>
         <div class="form-actions">
             <button type="submit" name="_action" value="back" onclick="this.form.querySelector('[name=_action]').value='back'" formnovalidate class="btn btn-secondary">Back to Edit</button>
-            <button type="submit" class="btn">Submit Application</button>
+            <button type="submit" class="btn">Submit Pre-Application</button>
         </div>
     </form>
 </section>

@@ -47,8 +47,8 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause">
             <h2 class="legal-clause__title">Record Verification and Release</h2>
             <ol class="legal-subclauses">
-                <li>The Parish Office verifies the identity of the requesting party and the details of the record concerned prior to the release of any certificate.</li>
-                <li>Certificates are released <span class="legal-term">in person only</span>, at the Parish Office, upon presentation of valid identification and compliance with any further instruction issued by the parish secretary.</li>
+                <li>The Parish Office checks the request and record details before releasing any certificate.</li>
+                <li>Certificates are released <span class="legal-term">in person only</span>, at the Parish Office, after staff verify the request and recorded payment. A claim stub or payment slip, if issued, can help locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must present a signed authorization letter from the person named on the certificate.</li>
                 <li>Nothing in an online submission entitles the requesting party to remote or electronic release of a certificate.</li>
             </ol>
         </section>
@@ -56,7 +56,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="personal-data">
             <h2 class="legal-clause__title">Use of Personal Data</h2>
             <ol class="legal-subclauses">
-                <li>Contact details supplied through this website are used to process the submission, issue a tracking number, communicate status updates, request clarification, and coordinate pickup.</li>
+                <li>Contact details supplied through this website are used to process the submission, issue a reference number, communicate status updates, request clarification, and coordinate pickup.</li>
                 <li>Where a submission includes a record search, the name, birthdate, and parents' names entered are used solely to locate the corresponding entry in the parish register. The volume of searches originating from a given network is monitored to prevent misuse. A search result discloses no more than the recorded name and sacrament date.</li>
                 <li>Personal data collected through this website is handled in a manner consistent with the general principles of the Data Privacy Act of 2012 (Republic Act No. 10173) and is not sold, rented, or disclosed to third parties for marketing purposes.</li>
                 <li>For the full notice on what we collect, why, who receives it, how long we keep it, and your rights, see our <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a>.</li>

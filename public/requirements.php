@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Public preparation guide for certificate requests and sacrament applications.
+ * Public preparation guide for certificate requests and sacrament pre-applications.
  *
  * The public forms collect the information needed to open a pre-application;
  * they do not accept identity-document uploads or promise approval. The parish
@@ -40,32 +40,32 @@ require_once __DIR__ . '/../includes/header.php';
 </section>
 
 <section class="option-group" aria-labelledby="application-preparation-heading">
-    <h2 id="application-preparation-heading">If you are applying to receive a sacrament</h2>
-    <p>These applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
+    <h2 id="application-preparation-heading">Starting a pre-application to receive a sacrament</h2>
+    <p>These pre-applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
 
     <div class="ledger">
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Baptism application</h3>
+                <h3>Baptism pre-application</h3>
                 <ul class="req-list">
                     <li>Child's full name, date of birth, and birthplace.</li>
-                    <li>Parent or guardian's name and contact details.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
                     <li>Parents' names, if known.</li>
                     <li>Godfathers' and godmothers' names, if known. The parish office will explain any requirements for sponsors.</li>
                     <li>A preferred baptism date, if you have one. The parish office confirms the schedule.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the office will explain any documents or preparation needed for your family.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/baptismal.php" class="btn btn-small">Open Baptism Application</a>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/baptismal.php" class="btn btn-small">Start Baptism pre-application</a>
             </div>
         </div>
 
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Marriage application</h3>
+                <h3>Marriage pre-application</h3>
                 <ul class="req-list">
-                    <li>Both parties' names, birth details, contact details, and current marital status. Addresses and religious affiliation can be provided if known.</li>
+                    <li>Both parties' names, birth details, email addresses for updates, and current marital status. Phone numbers are optional for quicker contact. Addresses and religious affiliation can be provided if known.</li>
                     <li>Each party's baptism and Confirmation status, and any previous marriage.</li>
                     <li>Preferred wedding date, time, and venue.</li>
                     <li>Parents' names, if known, and any civil-marriage details that apply.</li>
@@ -73,33 +73,33 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Baptismal and Confirmation certificates, a PSA civil-status document (such as a CENOMAR), or marriage-license documents if requested by the parish.</li>
                 </ul>
                 <p class="field-hint"><strong>After submission:</strong> the parish office will explain document requirements, preparation, interviews, and scheduling. A wedding date is not confirmed by this form.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Open Marriage Application</a>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/marriage.php" class="btn btn-small">Start Marriage pre-application</a>
             </div>
         </div>
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>Confirmation application</h3>
+                <h3>Confirmation pre-application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and birthdate.</li>
-                    <li>Parent or guardian's name and contact details.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
-                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Open Confirmation Application</a>
+                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Start Confirmation pre-application</a>
             </div>
         </div>
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>First Communion application</h3>
+                <h3>First Communion pre-application</h3>
                 <ul class="req-list">
                     <li>Applicant's full name and date of birth.</li>
-                    <li>Parent or guardian's name and contact details. Parents' names are optional.</li>
+                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact. Parents' names are optional.</li>
                     <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
                 </ul>
-                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Open First Communion Application</a>
+                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Start First Communion pre-application</a>
             </div>
         </div>
     </div>
@@ -118,9 +118,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>For Baptism, the father's name and mother's maiden name. For Marriage, both spouses' names and the marriage date.</li>
                     <li>Parent names may also be requested to help find a Baptism, Confirmation, or First Communion record.</li>
                     <li>Your name and relationship to the person, if you are requesting for someone else.</li>
-                    <li>Your email address and contact number.</li>
+                    <li>Your email address for updates. A contact number is optional for quicker contact.</li>
                 </ul>
-                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring identification when collecting the certificate.</p>
+                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring your person reference and any claim stub or payment slip the secretary gave you. If you are collecting a request made for yourself, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder. If someone else collects it, they must bring a signed authorization letter from the person named on the certificate.</p>
                 <a href="<?= e($basePath) ?>/public/certificate-request.php" class="btn btn-small">Request a Certificate</a>
             </div>
         </div>
@@ -131,8 +131,7 @@ require_once __DIR__ . '/../includes/header.php';
     <h2 id="what-to-bring-heading">When you visit the office</h2>
     <ul class="req-list">
         <li>Bring only the documents the parish office asks you to provide.</li>
-        <li>Bring your tracking number when contacting the office or collecting a certificate.</li>
-        <li>Use the same email address with your tracking number to check an online request.</li>
+        <li>When contacting the Parish Office about your request, quote the person reference shown on your submission confirmation.</li>
     </ul>
     <p class="field-hint">Document requirements and schedules may change. The parish secretary's confirmation is the final guide for your case.</p>
 </section>
@@ -143,7 +142,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="hero-actions">
         <a href="https://www.facebook.com/profile.php?id=61575322479373" class="btn" target="_blank" rel="noopener noreferrer">Visit our Facebook Page</a>
         <a href="<?= e($basePath) ?>/public/how-it-works.php" class="btn btn-secondary">How It Works</a>
-        <a href="<?= e($basePath) ?>/public/track-request.php" class="btn btn-secondary">Track a Request</a>
     </div>
 </section>
 

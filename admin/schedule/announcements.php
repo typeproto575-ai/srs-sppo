@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 }
 
 // --- Toggle publish / delete -----------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_publish']) && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_publish' && csrf_verify()) {
     require_role('secretary');
     $id = (int) ($_POST['announcement_id'] ?? 0);
     if ($id) {
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_publish']) && 
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_announcement']) && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_announcement' && csrf_verify()) {
     require_role('secretary');
     $id = (int) ($_POST['announcement_id'] ?? 0);
     if ($id) {
@@ -102,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_announcement']
         $stmt->execute([$id]);
         log_activity($pdo, current_user()['id'], 'announcement_deleted', 'announcements', $id, null);
     }
-    redirect_to('/admin/schedule/announcements.php');
+    redirect_to('/admin/schedule/announcements.php?deleted=1');
     exit;
 }
 
@@ -117,34 +117,6 @@ if (isset($_GET['edit'])) {
         exit;
     }
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_announcement']) && csrf_verify()) {
-    require_role('secretary');
-
-    $editId      = (int) ($_POST['edit_id'] ?? 0);
-    $title      = trim($_POST['title'] ?? '');
-    $content    = trim($_POST['content'] ?? '');
-    $eventDate  = $_POST['event_date'] ?: null;
-    $isPublished = isset($_POST['is_published']) ? 1 : 0;
-
-    if ($title === '')   $errors[] = 'Title is required.';
-    if ($content === '') $errors[] = 'Content is required.';
-
-    if ($editId && empty($errors)) {
-        $stmt = $pdo->prepare(
-            "UPDATE announcements SET title = ?, content = ?, event_date = ?, is_published = ? WHERE id = ?"
-        );
-        $stmt->execute([$title, $content, $eventDate, $isPublished, $editId]);
-        log_activity($pdo, current_user()['id'], 'announcement_updated', 'announcements', $editId, "Updated: {$title}");
-        redirect_to('/admin/schedule/announcements.php?updated=1');
-        exit;
-    }
-    // Validation failed: stay on the record being edited so errors show in the dialog.
-    $editStmt = $pdo->prepare("SELECT * FROM announcements WHERE id = ?");
-    $editStmt->execute([$editId]);
-    $editAnnouncement = $editStmt->fetch() ?: null;
-}
-
-
 if (isset($_GET['added'])) $success = 'Announcement posted.';
 if (isset($_GET['updated'])) $success = 'Announcement updated.';
 if (isset($_GET['deleted'])) $success = 'Announcement deleted.';
@@ -228,13 +200,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <a class="btn btn-small" href="<?= $basePath ?>/admin/schedule/announcements.php?edit=<?= (int) $a['id'] ?>">Edit</a>
                             <form autocomplete="off" method="post" style="display:inline;">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                                <input type="hidden" name="action" value="toggle_publish">
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
-                                <button type="submit" name="toggle_publish" value="1" class="btn btn-secondary btn-small"><?= $a['is_published'] ? 'Unpublish' : 'Publish' ?></button>
+                                <button type="submit" class="btn btn-secondary btn-small"><?= $a['is_published'] ? 'Unpublish' : 'Publish' ?></button>
                             </form>
                             <form autocomplete="off" method="post" style="display:inline;" data-confirm="Delete this announcement?">
                                 <?= csrf_field() ?><!-- CSRF: pairs with the guard above -->
+                                <input type="hidden" name="action" value="delete_announcement">
                                 <input type="hidden" name="announcement_id" value="<?= (int) $a['id'] ?>">
-                                <button type="submit" name="delete_announcement" value="1" class="btn btn-secondary btn-small">Delete</button>
+                                <button type="submit" class="btn btn-secondary btn-small">Delete</button>
                             </form>
                             <?php endif; ?>
                         </td>

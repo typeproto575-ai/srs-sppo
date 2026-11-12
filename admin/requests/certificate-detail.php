@@ -2,578 +2,625 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
+$requestId = (int) ($_GET['id'] ?? 0);
+if ($requestId < 1) {
+    redirect_to('/admin/requests/queue.php');
+}
+
+$detailUrl = $basePath . '/admin/requests/certificate-detail.php?id=' . $requestId;
 $pageTitle = 'Certificate Request';
 $notice = null;
 
-const CERT_EXT = [
-    'baptismal'       => ['table' => 'baptismal_certificate_requests',       'name_col' => 'child_full_name',      'record_table' => 'baptismal_records',       'record_name' => 'child_full_name'],
-    'confirmation'    => ['table' => 'confirmation_certificate_requests',    'name_col' => 'confirmand_full_name',  'record_table' => 'confirmation_records',    'record_name' => 'confirmand_full_name'],
-    'first_communion' => ['table' => 'first_communion_certificate_requests', 'name_col' => 'communicant_full_name', 'record_table' => 'first_communion_records', 'record_name' => 'communicant_full_name'],
-    'marriage'        => ['table' => 'marriage_certificate_requests',        'name_col' => 'party_a_full_name',     'record_table' => 'marriage_records',        'record_name' => 'husband_full_name'],
-];
-
-const ALWAYS_BLANK_ONLINE = [
-    'baptismal'       => ['birthplace', 'sponsors_text', 'book_no', 'page_no', 'line_no'],
-    'confirmation'    => ['place_of_baptism', 'book_no', 'page_no', 'line_no'],
-    'first_communion' => ['book_no', 'page_no', 'line_no'],
-    'marriage'        => [
-        'party_a_father_name', 'party_a_mother_name', 'party_a_baptized_in_church_of',
-        'party_a_date_of_baptism', 'party_a_book_no', 'party_a_page_no', 'party_a_line_no',
-        'party_b_father_name', 'party_b_mother_name', 'party_b_baptized_in_church_of',
-        'party_b_date_of_baptism', 'party_b_book_no', 'party_b_page_no', 'party_b_line_no',
-    ],
-];
-
-// Curated register fields for the matched record, in display order, with the
-// same labels admin/records/view.php uses so one field never reads two
-// different ways across admin screens. Internal columns (legitimacy,
-// union_type, mapper/book-verification stamps) stay out. Dates render as full
-// dates below; `birthdate` needs an explicit test, matching neither the
-// `_date` nor the `_birthdate` suffix.
-const RECORD_DISPLAY_FIELDS = [
-    'baptismal' => [
-        'baptism_date' => 'Date of baptism', 'birth_date' => 'Birth date',
-        'baptism_place' => 'Place of baptism', 'child_birthplace' => "Child's birthplace",
-        'father_name' => "Father's name", 'father_birthplace' => "Father's birthplace",
-        'mother_name' => "Mother's name", 'mother_maiden_name' => "Mother's maiden name",
-        'mother_birthplace' => "Mother's birthplace", 'parents_origin' => "Parents' origin",
-        'parents_residence' => "Parents' residence", 'proxy_name' => 'Proxy (if any)',
-        'minister_name' => 'Minister', 'remarks' => 'Remarks',
-    ],
-    'confirmation' => [
-        'confirmation_date' => 'Date of confirmation', 'birthdate' => 'Birth date',
-        'father_name' => "Father's name", 'mother_maiden_name' => "Mother's maiden name",
-        'sponsor_name' => 'Sponsor', 'minister_name' => 'Minister', 'remarks' => 'Remarks',
-    ],
-    'first_communion' => [
-        'communion_date' => 'Date of first communion', 'domicile' => 'Residence',
-        'father_name' => "Father's name", 'mother_maiden_name' => "Mother's maiden name",
-        'minister_name' => 'Minister', 'remarks' => 'Remarks',
-    ],
-    'marriage' => [
-        'marriage_date' => 'Marriage date', 'wife_maiden_name' => "Wife's maiden name",
-        'husband_birthdate' => "Husband's birth date", 'husband_birthplace' => "Husband's birthplace",
-        'husband_civil_status' => 'Husband civil status', 'wife_birthdate' => "Wife's birth date",
-        'wife_birthplace' => "Wife's birthplace", 'wife_civil_status' => 'Wife civil status',
-        'officiating_minister' => 'Minister', 'remarks' => 'Remarks',
-    ],
-];
-
-$requestId = (int) ($_GET['id'] ?? 0);
-if (!$requestId) { redirect_to('/admin/requests/queue.php'); }
-
-$stmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
-$stmt->execute([$requestId]);
-$req = $stmt->fetch();
-if (!$req) { redirect_to('/admin/requests/queue.php'); }
-
-$config = CERT_EXT[$req['sacrament_type']] ?? null;
-$extRow = null;
-$matchedRecord = null;
-
-if ($config) {
-    $stmt = $pdo->prepare("SELECT * FROM {$config['table']} WHERE request_id = ?");
-    $stmt->execute([$requestId]);
-    $extRow = $stmt->fetch();
-    if ($extRow && !empty($extRow['matched_record_id'])) {
-        $stmt = $pdo->prepare("SELECT * FROM {$config['record_table']} WHERE id = ?");
-        $stmt->execute([$extRow['matched_record_id']]);
-        $matchedRecord = $stmt->fetch();
-    }
+function certificate_detail_post_string(string $key): string
+{
+    $value = $_POST[$key] ?? '';
+    return is_string($value) ? trim($value) : '';
 }
 
-ensure_workflow_requirements($pdo, 'certificate_request', $requestId, (string) $req['sacrament_type']);
-$workflowRequirements = workflow_requirements_for($pdo, 'certificate_request', $requestId);
+function certificate_detail_label(string $value): string
+{
+    return ucwords(str_replace('_', ' ', $value));
+}
 
-// --- Keep the "register record located" checklist row in sync with the
-// real book-verification flag (book_verified_by/book_verified_at on the
-// matched register record -- see migrations/031_add_book_record_verification.sql
-// and admin/certificates/generate.php, where the secretary actually performs
-// this check). This row is NOT independently editable when a record is
-// matched: it would otherwise be a second, disconnected "is this verified?"
-// answer that could silently disagree with the one that actually gates
-// certificate generation. When no record is matched yet, there's nothing to
-// auto-derive, so that row is left as an ordinary manual checklist item.
-if ($matchedRecord) {
-    $autoStatus = !empty($matchedRecord['book_verified_at']) ? 'verified' : 'not_received';
-    foreach ($workflowRequirements as $item) {
-        if ($item['requirement_key'] === 'register_record' && $item['status'] !== $autoStatus) {
-            $sync = $pdo->prepare('UPDATE workflow_requirements SET status = ? WHERE id = ?');
-            $sync->execute([$autoStatus, (int) $item['id']]);
+function certificate_detail_date_label(?string $value, bool $includeTime = false): string
+{
+    if ($value === null || $value === '') {
+        return 'Not recorded';
+    }
+
+    $timestamp = strtotime($value);
+    return $timestamp === false
+        ? $value
+        : date($includeTime ? 'M j, Y g:i A' : 'M j, Y', $timestamp);
+}
+
+$requestStmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
+$requestStmt->execute([$requestId]);
+$req = $requestStmt->fetch();
+if (!$req) {
+    redirect_to('/admin/requests/queue.php');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_verify()) {
+        $notice = ['error', 'Your session token is invalid or expired. Refresh the page and try again.'];
+    } else {
+        try {
+            $pdo->beginTransaction();
+            $lock = $pdo->prepare('SELECT id, status, sacrament_type, channel, person_id, record_id, paid_at, printed_at FROM certificate_requests WHERE id = ? FOR UPDATE');
+            $lock->execute([$requestId]);
+            $current = $lock->fetch();
+            if (!$current) {
+                throw new DomainException('This certificate request no longer exists.');
+            }
+
+            $action = certificate_detail_post_string('action');
+            $userId = (int) current_user()['id'];
+            $message = '';
+            $redirectToDetail = false;
+
+            if ($action === 'link_record') {
+                $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
+                if (!$recordId || !in_array($current['status'], ['new', 'matched'], true)) {
+                    throw new DomainException('Select a valid sacramental record for a request that can be matched.');
+                }
+                $record = sd_get_record($pdo, (int) $recordId);
+                if (!$record || (string) ($record['sacrament_type'] ?? '') !== $current['sacrament_type']) {
+                    throw new DomainException('The selected record does not exist for this sacrament type.');
+                }
+                $nextStatus = $current['status'] === 'new' ? 'matched' : $current['status'];
+                if ($nextStatus !== $current['status'] && !cert_request_transition_valid($current['status'], $nextStatus)) {
+                    throw new DomainException('The request cannot move from its current status to Matched.');
+                }
+                $update = $pdo->prepare(
+                    'UPDATE certificate_requests
+                     SET person_id = ?, record_id = ?, matched_by = ?, matched_at = NOW(), status = ?
+                     WHERE id = ?'
+                );
+                $update->execute([(int) $record['person_id'], (int) $record['id'], $userId, $nextStatus, $requestId]);
+                log_activity($pdo, $userId, 'certificate.match', 'certificate_requests', $requestId, 'Matched to sacrament record ' . (int) $record['id'] . '.');
+                $message = 'The certificate request is linked to the selected sacrament record.';
+            } elseif ($action === 'verify_book') {
+                $verifyRecordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
+                if (!$verifyRecordId) {
+                    throw new DomainException('A valid record ID is required.');
+                }
+                $verifyRecord = sd_get_record($pdo, (int) $verifyRecordId);
+                if (!$verifyRecord || (int) ($verifyRecord['id'] ?? 0) !== (int) $req['record_id']) {
+                    throw new DomainException('The record does not match this request.');
+                }
+                sd_verify_book_entry($pdo, (int) $verifyRecordId, $userId);
+                log_activity($pdo, $userId, 'record.verify', 'sacrament_records', (int) $verifyRecordId, 'Verified book entry');
+                $message = 'Book entry has been verified.';
+            } elseif ($action === 'mark_for_signature') {
+                $certificateNo = certificate_detail_post_string('certificate_no');
+                if (!cert_request_transition_valid($current['status'], 'for_signature')) {
+                    throw new DomainException('This request cannot move to For Signature from its current status.');
+                }
+                if ((int) $current['record_id'] < 1 || $certificateNo === '' || strlen($certificateNo) > 30) {
+                    throw new DomainException('A linked sacrament record and a certificate number (maximum 30 characters) are required.');
+                }
+                $paymentGate = cert_request_payment_gate($current, 'for_signature');
+                if (!$paymentGate['ok']) {
+                    throw new DomainException($paymentGate['reason'] ?? 'Record payment before processing the certificate.');
+                }
+                if (empty($current['printed_at'])) {
+                    throw new DomainException('Print the certificate before marking it as awaiting the priest signature.');
+                }
+                $linkedRecord = sd_get_record($pdo, (int) $current['record_id']);
+                if (!sd_can_print_certificate($linkedRecord ?: [])) {
+                    throw new DomainException('Verify the book entry first (this-parish records only).');
+                }
+                $update = $pdo->prepare(
+                    "UPDATE certificate_requests
+                     SET status = 'for_signature', certificate_no = ?, printed_by = ?, printed_at = NOW()
+                     WHERE id = ?"
+                );
+                $update->execute([$certificateNo, $userId, $requestId]);
+                log_activity($pdo, $userId, 'certificate.print', 'certificate_requests', $requestId, 'Certificate recorded as printed and awaiting priest signature.');
+                $message = 'The request is now awaiting the priest signature.';
+            } elseif ($action === 'mark_ready') {
+                if (!cert_request_transition_valid($current['status'], 'ready') || certificate_detail_post_string('signature_confirmed') !== '1') {
+                    throw new DomainException('Confirm that the priest has signed the certificate before marking it Ready.');
+                }
+                $update = $pdo->prepare("UPDATE certificate_requests SET status = 'ready', signed_at = NOW() WHERE id = ?");
+                $update->execute([$requestId]);
+                log_activity($pdo, $userId, 'certificate.sign', 'certificate_requests', $requestId, 'Priest signature confirmed; request marked ready.');
+                $message = 'The certificate request is marked Ready for pickup.';
+            } elseif ($action === 'release') {
+                $claimantType = certificate_detail_post_string('claimant_type');
+                $representativeName = certificate_detail_post_string('representative_name');
+                $representativeRelationship = certificate_detail_post_string('representative_relationship');
+                $claimantNotes = certificate_detail_post_string('claimant_notes');
+                $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
+                $idVerified = certificate_detail_post_string('id_verified') === '1';
+                $releaseGate = cert_request_release_gate(
+                    $current,
+                    $claimantType,
+                    $representativeName,
+                    $idVerified,
+                    $repDocsReceived
+                );
+                if (!$releaseGate['ok']) {
+                    throw new DomainException($releaseGate['reason'] ?? 'The release requirements are not met.');
+                }
+                $setParts = [
+                    "status = 'released'",
+                    'claimant_type = ?',
+                    'representative_name = ?',
+                    'representative_relationship = ?',
+                    'claimant_notes = ?',
+                    'id_verified = ?',
+                ];
+                $params = [
+                    $claimantType,
+                    $claimantType === 'representative' ? $representativeName : null,
+                    $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
+                    $claimantNotes !== '' ? $claimantNotes : null,
+                    1,
+                ];
+
+                $setParts[] = 'released_by = ?';
+                $setParts[] = 'released_at = NOW()';
+                $params[] = $userId;
+                $params[] = $requestId;
+                $update = $pdo->prepare(
+                    'UPDATE certificate_requests SET ' . implode(', ', $setParts) . ' WHERE id = ?'
+                );
+                $update->execute($params);
+                $claimantDescription = $claimantType === 'representative' ? 'an authorized representative' : 'the requester/subject';
+                $releaseEvidence = $claimantType === 'representative'
+                    ? 'Recorded payment and claimant ID verified; signed authorization letter confirmed.'
+                    : 'Recorded payment and claimant ID verified.';
+                log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . '. ' . $releaseEvidence);
+                $message = 'The certificate request is marked Released.';
+            } elseif ($action === 'reject') {
+                $reason = certificate_detail_post_string('rejection_reason');
+                if (!cert_request_transition_valid($current['status'], 'rejected')) {
+                    throw new DomainException('This request cannot be rejected from its current status.');
+                }
+                if ($reason === '') {
+                    throw new DomainException('Enter a reason for rejecting this request.');
+                }
+                $update = $pdo->prepare("UPDATE certificate_requests SET status = 'rejected', rejection_reason = ? WHERE id = ?");
+                $update->execute([$reason, $requestId]);
+                log_activity($pdo, $userId, 'certificate.reject', 'certificate_requests', $requestId, 'Certificate request rejected.', $reason);
+                $message = 'The certificate request was rejected.';
+            } elseif ($action === 'mark_paid') {
+                if (!empty($current['paid_at']) || in_array($current['status'], ['released', 'rejected'], true)) {
+                    throw new DomainException('Payment cannot be recorded for this request in its current state.');
+                }
+                $update = $pdo->prepare('UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ? AND paid_at IS NULL');
+                $update->execute([$userId, $requestId]);
+                log_activity($pdo, $userId, 'certificate.payment', 'certificate_requests', $requestId, 'Payment received and recorded.');
+                $message = 'Payment has been recorded.';
+                $redirectToDetail = true;
+            } else {
+                throw new DomainException('The requested action is not supported.');
+            }
+
+            $pdo->commit();
+            $referenceStmt = $pdo->prepare(
+                'SELECT p.public_reference
+                 FROM certificate_requests cr
+                 LEFT JOIN persons p ON p.id = cr.person_id
+                 WHERE cr.id = ?
+                 LIMIT 1'
+            );
+            $referenceStmt->execute([$requestId]);
+            $requestReference = (string) ($referenceStmt->fetchColumn() ?: $req['request_no']);
+            if ($redirectToDetail) {
+                if ($action === 'mark_paid' && !empty($req['requester_email'])) {
+                    mail_status_update(
+                        (string) $req['requester_email'],
+                        $requestReference,
+                        'Payment received — Under Processing',
+                        'certificate_request',
+                        $pdo,
+                        'certificate_request',
+                        $requestId
+                    );
+                }
+                redirect_to('/admin/requests/certificate-detail.php?id=' . $requestId);
+            }
+            if ($action === 'reject' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    $requestReference,
+                    'Rejected',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId,
+                    $reason
+                );
+            }
+            if ($action === 'mark_for_signature' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    $requestReference,
+                    'Under Processing — Pending Priest Signature',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId
+                );
+            }
+            if ($action === 'mark_ready' && !empty($req['requester_email'])) {
+                $sacramentLabel = sd_type_label($req['sacrament_type']);
+                $body = "Your " . $sacramentLabel . " certificate for " . $req['subject_name'] . " is ready for pickup at the parish office.\n"
+                    . "Bring your person reference and any claim stub or payment slip the secretary gave you. If the slip is missing, provide your person reference and certificate name so the office can locate the request.\n"
+                    . "The secretary verifies the recorded payment before release. The Acknowledgment Receipt is placed with the completed certificate in its folder.\n"
+                    . "If someone else will claim it for you, they must bring a signed authorization letter from the person named on the certificate.";
+                try {
+                    send_mail($req['requester_email'], 'Your certificate is ready for pickup', $body, $pdo, 'certificate_ready', 'certificate_requests', $requestId, $requestReference);
+                } catch (Throwable $e) {
+                    error_log('SRS-SPPO ready email failed: ' . $e->getMessage());
+                }
+            }
+            if ($action === 'release' && !empty($req['requester_email'])) {
+                mail_status_update(
+                    (string) $req['requester_email'],
+                    $requestReference,
+                    'Released',
+                    'certificate_request',
+                    $pdo,
+                    'certificate_request',
+                    $requestId
+                );
+            }
+            $notice = ['success', $message];
+        } catch (DomainException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $notice = ['error', $e->getMessage()];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Certificate request update failed for id ' . $requestId . ': ' . $e->getMessage());
+            $notice = ['error', 'The certificate request could not be updated. No changes were saved.'];
+        }
+
+        $requestStmt->execute([$requestId]);
+        $req = $requestStmt->fetch();
+        if (!$req) {
+            redirect_to('/admin/requests/queue.php');
         }
     }
-    $workflowRequirements = workflow_requirements_for($pdo, 'certificate_request', $requestId);
 }
 
-$processedByUser = null;
-if (!empty($req['processed_by'])) {
-    $stmt = $pdo->prepare('SELECT full_name FROM users WHERE id = ?');
-    $stmt->execute([$req['processed_by']]);
-    $processedByUser = $stmt->fetchColumn();
+$person = null;
+if (!empty($req['person_id'])) {
+    $person = sd_get_person($pdo, (int) $req['person_id']);
 }
 
-$auditStmt = $pdo->prepare('SELECT al.*, u.full_name AS user_name FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id WHERE al.target_table = ? AND al.target_id = ? ORDER BY al.created_at DESC');
+$record = null;
+if (!empty($req['record_id'])) {
+    $record = sd_get_record($pdo, (int) $req['record_id']);
+    if ($record && (string) ($record['sacrament_type'] ?? '') !== $req['sacrament_type']) {
+        $record = null;
+    }
+}
+
+$details = [];
+if (!empty($req['subject_details'])) {
+    $decodedDetails = json_decode((string) $req['subject_details'], true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decodedDetails)) {
+        $details = $decodedDetails;
+    }
+}
+
+$auditStmt = $pdo->prepare(
+    'SELECT actor_name, action, description, reason, created_at
+     FROM audit_logs
+     WHERE target_table = ? AND target_id = ?
+     ORDER BY created_at DESC, id DESC'
+);
 $auditStmt->execute(['certificate_requests', $requestId]);
 $auditHistory = $auditStmt->fetchAll();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
-    $action = $_POST['action'] ?? '';
-
-    if ($action === 'start_review') {
-        $payGate = cert_request_payment_gate($req, 'under_review');
-        if (!$payGate['ok']) {
-            $notice = $payGate['reason'];
-        } elseif (cert_request_transition_valid($req['status'], 'under_review')) {
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'under_review', date_processed = NOW(), processed_by = ? WHERE id = ?");
-            $stmt->execute([current_user()['id'], $requestId]);
-            log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId, 'Status: pending -> under_review');
-            notify($pdo, 'request_under_review', 'Request under review',
-                "{$req['sacrament_type']} certificate request for {$req['requester_name']} ({$req['tracking_number']}) is now under review.",
-                '/admin/requests/queue.php?status=under_review');
-            notify_certificate_requester_status($pdo, $requestId, 'under_review');
-            $notice = 'Request moved to Under Review.';
-        } else {
-            $notice = "Cannot start review from status '{$req['status']}'.";
-        }
+$requesterName = $req['requester_name'];
+$statusLabel = status_label('certificate', (string) $req['status']);
+$processingPaymentGate = cert_request_payment_gate($req, 'for_signature');
+$recordName = '';
+if ($record && !empty($record['person_id'])) {
+    $recordPerson = sd_get_person($pdo, (int) $record['person_id']);
+    if ($recordPerson) {
+        $recordName = sd_full_name($recordPerson);
     }
-
-    if ($action === 'approve') {
-        $payGate = cert_request_payment_gate($req, 'approved');
-        if (!$payGate['ok']) {
-            $notice = $payGate['reason'];
-        } elseif (cert_request_transition_valid($req['status'], 'approved')) {
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'approved', date_processed = NOW(), processed_by = ? WHERE id = ?");
-            $stmt->execute([current_user()['id'], $requestId]);
-            log_activity($pdo, current_user()['id'], 'certificate_request_status_updated', 'certificate_requests', $requestId, 'Status: under_review -> approved');
-            notify($pdo, 'request_approved', 'Request approved',
-                "{$req['sacrament_type']} certificate request for {$req['requester_name']} ({$req['tracking_number']}) was approved. Next: generate the certificate.",
-                '/admin/requests/queue.php?status=approved');
-            notify_certificate_requester_status($pdo, $requestId, 'approved');
-            $notice = 'Request approved.';
-        } else {
-            $notice = "Cannot approve from status '{$req['status']}'.";
-        }
-    }
-
-    // Mark an online request's payment as received (by hand). Records only
-    // WHO and WHEN -- never an amount. Only valid while awaiting payment and
-    // not yet recorded. This is what unblocks the payment gate above.
-    if ($action === 'mark_paid') {
-        if (($req['status'] ?? '') !== 'awaiting_payment') {
-            $notice = "Only a request that is awaiting payment can be marked paid.";
-        } elseif (!empty($req['paid_at'])) {
-            $notice = 'Payment has already been recorded for this request.';
-        } else {
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ?");
-            $stmt->execute([current_user()['id'], $requestId]);
-            log_activity($pdo, current_user()['id'], 'certificate_request_payment_recorded', 'certificate_requests', $requestId, 'Payment recorded by hand (no amount stored).');
-            $notice = 'Payment recorded. The request can now move forward.';
-        }
-    }
-
-    if ($action === 'reject') {
-        $reason = trim((string) ($_POST['rejection_reason'] ?? ''));
-        if ($reason === '') {
-            $notice = 'A reason is required to reject a request.';
-        } elseif (cert_request_transition_valid($req['status'], 'rejected')) {
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET status = 'rejected', rejection_reason = ?, date_processed = NOW(), processed_by = ? WHERE id = ?");
-            $stmt->execute([$reason, current_user()['id'], $requestId]);
-            log_activity($pdo, current_user()['id'], 'certificate_request_rejected', 'certificate_requests', $requestId, 'Rejected: ' . $reason);
-            notify($pdo, 'request_rejected', 'Request rejected',
-                "{$req['sacrament_type']} certificate request for {$req['requester_name']} ({$req['tracking_number']}) was rejected. Reason: {$reason}",
-                '/admin/requests/queue.php?status=rejected');
-            notify_certificate_requester_status($pdo, $requestId, 'rejected');
-            $notice = 'Request rejected.';
-        } else {
-            $notice = "Cannot reject from status '{$req['status']}'.";
-        }
-    }
-
-    if ($action === 'save_notes') {
-        $notes = trim((string) ($_POST['review_notes'] ?? ''));
-        $stmt = $pdo->prepare("UPDATE certificate_requests SET review_notes = ? WHERE id = ?");
-        $stmt->execute([$notes, $requestId]);
-        log_activity($pdo, current_user()['id'], 'certificate_request_notes_updated', 'certificate_requests', $requestId, 'Review notes updated');
-        $notice = 'Review notes saved.';
-    }
-
-    if ($action === 'save_requirements') {
-        $statuses = ['not_received', 'received', 'under_review', 'incomplete', 'verified', 'not_applicable'];
-        $posted = is_array($_POST['requirement_status'] ?? null) ? $_POST['requirement_status'] : [];
-        $notes = is_array($_POST['requirement_notes'] ?? null) ? $_POST['requirement_notes'] : [];
-        $update = $pdo->prepare('UPDATE workflow_requirements SET status = ?, notes = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND entity_type = ? AND entity_id = ?');
-        foreach ($workflowRequirements as $item) {
-            $id = (int) $item['id'];
-            $status = (string) ($posted[$id] ?? $item['status']);
-            $allowed = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received', 'received', 'not_applicable'] : $statuses;
-            if (!in_array($status, $allowed, true)) continue;
-            $note = trim((string) ($notes[$id] ?? ''));
-            $update->execute([$status, $note !== '' ? $note : null, current_user()['id'], $id, 'certificate_request', $requestId]);
-        }
-        log_activity($pdo, current_user()['id'], 'certificate_request_requirements_updated', 'certificate_requests', $requestId, 'Requirements checklist updated.');
-        $workflowRequirements = workflow_requirements_for($pdo, 'certificate_request', $requestId);
-        $notice = 'Requirements checklist saved.';
-    }
-
-    // Confirm the online register match (staff only). The public flow never
-    // tells the visitor whether a record exists; the tracking page reveals the
-    // payment step only after this is recorded. Valid only while awaiting
-    // payment, with a matched record, and not yet confirmed.
-    if ($action === 'confirm_match') {
-        if (($req['status'] ?? '') !== 'awaiting_payment') {
-            $notice = 'Only a request that is awaiting payment can have its match confirmed.';
-        } elseif (!empty($req['match_confirmed_at'])) {
-            $notice = 'The register match has already been confirmed.';
-        } elseif (empty($extRow['matched_record_id'])) {
-            $notice = 'This request has no register match to confirm.';
-        } else {
-            $stmt = $pdo->prepare("UPDATE certificate_requests SET match_confirmed_at = NOW(), match_confirmed_by = ? WHERE id = ?");
-            $stmt->execute([current_user()['id'], $requestId]);
-            log_activity($pdo, current_user()['id'], 'certificate_request_match_confirmed', 'certificate_requests', $requestId, 'Register match confirmed; requester can now see payment instructions.');
-            notify_certificate_requester_status($pdo, $requestId, 'awaiting_payment');
-            $notice = 'Register match confirmed. The tracking page now shows the requester how to pay.';
-        }
-    }
-
-    $stmt = $pdo->prepare('SELECT * FROM certificate_requests WHERE id = ?');
-    $stmt->execute([$requestId]);
-    $req = $stmt->fetch();
 }
-
-function humanize_label(string $s): string { return ucwords(str_replace('_', ' ', $s)); }
-
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<div class="request-detail-heading">
-    <a href="<?= $basePath ?>/admin/requests/queue.php">&larr; Back to Queue</a>
-    <h1>Certificate Request</h1>
-</div>
-<?php if ($notice): ?><div class="alert alert-success"><p><?= e($notice) ?></p></div><?php endif; ?>
+<div class="certificate-detail-page">
+<header class="admin-queue-heading certificate-detail-heading">
+    <div>
+        <p class="admin-queue-kicker">Certificate request</p>
+        <h1><?= e($req['request_no']) ?></h1>
+        <p class="certificate-detail-heading__subject"><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
+        <span class="status-badge certificate-detail-status status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span>
+    </div>
+    <nav class="certificate-detail-heading__actions" aria-label="Certificate request actions">
+        <?php if (!empty($req['record_id'])
+            && in_array((string) $req['status'], ['matched', 'for_signature', 'ready', 'released'], true)
+            && ((string) $req['status'] !== 'matched' || $processingPaymentGate['ok'])): ?>
+            <a class="btn btn-primary" href="<?= e($basePath . '/admin/requests/certificate-print.php?id=' . (int) $req['id']) ?>">Print certificate</a>
+        <?php endif; ?>
+        <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/queue.php') ?>">Back to queue</a>
+    </nav>
+</header>
 
-<div class="request-detail-grid">
-<section class="request-detail-section request-summary-section">
-<h2>Request Summary</h2>
-<dl class="request-summary-grid">
-    <div class="request-summary-item">
-        <dt>Tracking No.</dt>
-        <dd><?= e($req['tracking_number']) ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Status</dt>
-        <dd><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Submission Channel</dt>
-        <dd><?= e(ucfirst($req['submission_channel'] ?? 'onsite')) ?><?= ($req['submission_channel'] ?? 'onsite') === 'online' ? ' — public pre-application; not yet an official parish record' : '' ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Payment</dt>
-        <dd>
-            <?php if (!empty($req['paid_at'])): ?>
-                Recorded on <?= e(date('F j, Y g:i A', strtotime($req['paid_at']))) ?><?php
-                    $paidByUser = null;
-                    if (!empty($req['paid_by'])) {
-                        $pb = $pdo->prepare('SELECT full_name FROM users WHERE id = ?');
-                        $pb->execute([(int) $req['paid_by']]);
-                        $paidByUser = $pb->fetchColumn();
-                    }
-                    ?><?= $paidByUser ? ' by ' . e($paidByUser) : '' ?> <span class="field-hint">(no amount stored)</span>
-            <?php elseif (($req['status'] ?? '') === 'awaiting_payment'): ?>
-                <strong>Awaiting payment</strong> <span class="field-hint">— payment is made outside the system and recorded by hand.</span>
-            <?php else: ?>
-                Not applicable
+<?php if ($notice): ?>
+    <div class="alert alert-<?= e($notice[0]) ?>" role="status"><?= e($notice[1]) ?></div>
+<?php endif; ?>
+
+<div class="certificate-detail-layout">
+<div class="certificate-detail-main">
+<section class="card certificate-detail-card certificate-summary-card">
+    <h2>Request summary</h2>
+    <dl class="detail-grid certificate-detail-grid">
+        <dt>Channel</dt><dd><?= e(($req['channel'] === 'onsite') ? 'Submitted: At the office' : 'Submitted: Online') ?></dd>
+        <dt>Submitted</dt><dd><?= e(certificate_detail_date_label((string) $req['created_at'], true)) ?></dd>
+        <dt>Requested use</dt><dd><?= e($req['purpose'] ? certificate_detail_label((string) $req['purpose']) : 'Not specified') ?><?= $req['purpose_other'] ? ' — ' . e($req['purpose_other']) : '' ?><br><small>This is the requester's stated use, not an official certificate annotation.</small></dd>
+        <dt>Requester</dt><dd><?= e($requesterName) ?></dd>
+        <dt>Relationship</dt><dd><?= e(certificate_detail_label((string) $req['requester_relationship'])) ?><?= $req['requester_relationship_other'] ? ' — ' . e($req['requester_relationship_other']) : '' ?></dd>
+        <dt>Email</dt><dd><?= e($req['requester_email']) ?></dd>
+        <dt>Contact</dt><dd><?= e($req['requester_contact_number'] ?: 'Not provided') ?></dd>
+        <dt>Payment</dt><dd><?= $req['paid_at'] ? 'Payment: recorded on ' . e(certificate_detail_date_label((string) $req['paid_at'], true)) : 'Payment: not yet recorded' ?></dd>
+        <?php if (!empty($req['certificate_no'])): ?>
+            <dt>Certificate number</dt><dd><?= e($req['certificate_no']) ?></dd>
+        <?php endif; ?>
+        <?php if (!empty($req['printed_at'])): ?>
+            <dt>Printed</dt><dd><?= e(certificate_detail_date_label((string) $req['printed_at'], true)) ?></dd>
+        <?php endif; ?>
+        <?php if (!empty($req['signed_at'])): ?>
+            <dt>Signed</dt><dd><?= e(certificate_detail_date_label((string) $req['signed_at'], true)) ?></dd>
+        <?php endif; ?>
+        <?php if (!empty($req['released_at'])): ?>
+            <dt>Released</dt><dd><?= e(certificate_detail_date_label((string) $req['released_at'], true)) ?></dd>
+            <dt>Claimant</dt><dd><?= e(certificate_detail_label((string) $req['claimant_type'])) ?></dd>
+            <?php if (!empty($req['representative_name'])): ?>
+                <dt>Representative</dt><dd><?= e($req['representative_name']) ?> (<?= e($req['representative_relationship']) ?>)</dd>
             <?php endif; ?>
-        </dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Sacrament</dt>
-        <dd><?= e(humanize_label($req['sacrament_type'])) ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Requester</dt>
-        <dd><?= e($req['requester_name']) ?> (<?= e(humanize_label($req['requester_relationship'])) ?><?= $req['requester_relationship'] === 'other' ? ': ' . e($req['requester_relationship_other']) : '' ?>)</dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Email</dt>
-        <dd><?= e($req['requester_email']) ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Contact</dt>
-        <dd><?= e($req['requester_contact_number']) ?></dd>
-    </div>
-    <?php if (!empty($req['requester_mailing_address'])): ?>
-    <div class="request-summary-item">
-        <dt>Postal mailing address</dt>
-        <dd><?= nl2br(e($req['requester_mailing_address'])) ?></dd>
-    </div>
+            <dt>ID verification</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Verified at the counter' : 'Not recorded' ?></dd>
+        <?php endif; ?>
+    </dl>
+    <?php if (!empty($req['notes'])): ?>
+        <h3>Requester notes</h3>
+        <p><?= nl2br(e($req['notes'])) ?></p>
     <?php endif; ?>
-    <div class="request-summary-item">
-        <dt>Purpose</dt>
-        <dd><?= ($req['purpose'] ?? '') === 'unspecified' ? '—' : e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Submitted</dt>
-        <dd><?= e(date('F j, Y g:i A', strtotime($req['date_submitted']))) ?></dd>
-    </div>
-    <div class="request-summary-item">
-        <dt>Processed</dt>
-        <dd><?= $req['date_processed'] ? e(date('F j, Y g:i A', strtotime($req['date_processed']))) . ($processedByUser ? ' by ' . e($processedByUser) : '') : '—' ?></dd>
-    </div>
-    <?php if ($req['status'] === 'rejected' && $req['rejection_reason']): ?>
-    <div class="request-summary-item">
-        <dt>Rejection Reason</dt>
-        <dd><?= e($req['rejection_reason']) ?></dd>
-    </div>
+    <?php if (!empty($req['rejection_reason'])): ?>
+        <h3>Rejection reason</h3>
+        <p><?= nl2br(e($req['rejection_reason'])) ?></p>
     <?php endif; ?>
-</dl>
 </section>
 
-<?php if (!empty($req['notes'])): ?>
-<section class="request-detail-section">
-<h2>Requester Notes</h2>
-<p><?= e($req['notes']) ?></p>
-</section>
-<?php endif; ?>
-
-<?php if ($extRow): ?>
-<section class="request-detail-section">
-<h2>Submitted Sacrament Data</h2>
-<div class="table-scroll">
-<table class="admin-table" style="max-width:700px;"><tbody>
-    <?php
-$notProvided = [];
-$alwaysBlankOnline = ($req['submission_channel'] ?? 'onsite') === 'online';
-$suppress = ALWAYS_BLANK_ONLINE[$req['sacrament_type']] ?? [];
-foreach ($extRow as $col => $val) {
-    if ($col === 'id' || $col === 'request_id' || $col === 'matched_record_id') continue;
-    // Online forms never collect these columns, so they are structurally
-    // blank on every online row. Skip them entirely so they are neither
-    // displayed nor reported as "Not Provided" (which would wrongly imply
-    // the requester failed to supply something the form never asked for).
-    if ($alwaysBlankOnline && in_array($col, $suppress, true)) continue;
-    if ($val === null || trim((string) $val) === '') {
-        $notProvided[] = humanize_label($col);
-        continue;
-    }
-    ?>
-    <tr><th><?= e(humanize_label($col)) ?></th><td><?= e((string) $val) ?></td></tr>
-    <?php
-}
-if ($notProvided): ?>
-    <tr><th>Not Provided</th><td><?= e(implode(', ', $notProvided)) ?></td></tr>
-<?php endif; ?>
-</tbody></table>
-</div>
-</section>
-<?php endif; ?>
-
-<section class="request-detail-section">
-<h2>Matched Register Record</h2>
-<?php if ($matchedRecord): ?>
-<div class="table-scroll">
-<table class="admin-table" style="max-width:700px;"><tbody>
-    <tr><th>Record ID</th><td>#<?= (int) $matchedRecord['id'] ?></td></tr>
-    <tr><th>Name</th><td><?= e($matchedRecord[CERT_EXT[$req['sacrament_type']]['record_name']]) ?></td></tr>
-    <?php foreach (RECORD_DISPLAY_FIELDS[$req['sacrament_type']] ?? [] as $col => $label):
-        $val = $matchedRecord[$col] ?? null;
-        if ($val === null || trim((string) $val) === '') continue;
-        if (str_ends_with($col, '_date') || str_ends_with($col, '_birthdate') || $col === 'birthdate') {
-            $val = date('F j, Y', strtotime((string) $val));
-        } ?>
-    <tr><th><?= e($label) ?></th><td><?= e((string) $val) ?></td></tr>
-    <?php endforeach;
-    $bookNo = $matchedRecord['book_no'] ?? null;
-    $pageNo = $matchedRecord['page_no'] ?? null;
-    $lineNo = $matchedRecord['line_no'] ?? null;
-    if (($bookNo !== null && $bookNo !== '') || ($pageNo !== null && $pageNo !== '') || ($lineNo !== null && $lineNo !== '')): ?>
-    <tr><th>Register Entry</th><td>Book <?= $bookNo !== null && $bookNo !== '' ? e((string) $bookNo) : '&mdash;' ?> &middot; Page <?= $pageNo !== null && $pageNo !== '' ? e((string) $pageNo) : '&mdash;' ?> &middot; Line <?= $lineNo !== null && $lineNo !== '' ? e((string) $lineNo) : '&mdash;' ?></td></tr>
-    <?php endif; ?>
-</tbody></table>
-</div>
-<?php else: ?>
-<p><em>No register record matched yet.</em></p>
-<?php endif; ?>
-</section>
-
-<section class="request-detail-section request-requirements-section">
-<h2>Requirements Checklist</h2>
-<p class="field-hint">Record whether each requirement was received and verified. Do not upload or store document contents here.</p>
-<?php if (empty($workflowRequirements)): ?>
-    <p><em>Checklist unavailable until migration 019 is applied.</em></p>
-<?php else: ?>
-<div class="checklist-bulk-apply">
-    <label>Set all to:
-        <select id="bulk-requirement-status">
-            <option value="">— choose a status —</option>
-            <option value="not_received">Not Received</option>
-            <option value="received">Received</option>
-            <option value="under_review">Under Review</option>
-            <option value="incomplete">Incomplete</option>
-            <option value="verified">Verified</option>
-            <option value="not_applicable">Not Applicable</option>
-        </select>
-    </label>
-    <button type="button" id="bulk-apply-btn" class="btn btn-small btn-secondary">Apply to all</button>
-    <span class="field-hint">Applies to the editable rows below, then still needs Save Checklist.</span>
-</div>
-
-<form autocomplete="off" method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="save_requirements">
-    <div class="table-scroll">
-    <table class="admin-table checklist-table" style="max-width:900px;">
-        <thead><tr><th>Requirement</th><th>Status</th><th>Notes</th></tr></thead>
-        <tbody>
-        <?php foreach ($workflowRequirements as $item): ?>
-            <?php if ($item['requirement_key'] === 'register_record' && $matchedRecord): ?>
-                <!-- Auto-derived from the matched record's actual book-verification flag
-                     (see the sync block above) -- not independently editable here, so this
-                     can never disagree with what admin/certificates/generate.php enforces. -->
-                <tr>
-                    <td><?= e($item['requirement_label']) ?></td>
-                    <td>
-                        <?php if ($item['status'] === 'verified'): ?>
-                            <span class="flag-badge flag-badge-ok">Verified against register book</span>
-                        <?php else: ?>
-                            <span class="flag-badge">Not yet verified</span>
-                            <a href="<?= $basePath ?>/admin/certificates/generate.php?preview=<?= $requestId ?>" class="field-hint">Verify on Certificate Preview &rarr;</a>
-                        <?php endif; ?>
-                        <input type="hidden" name="requirement_status[<?= (int) $item['id'] ?>]" value="<?= e($item['status']) ?>">
-                    </td>
-                    <td><input type="text" name="requirement_notes[<?= (int) $item['id'] ?>]" value="<?= e($item['notes'] ?? '') ?>" placeholder="Optional note"></td>
-                </tr>
-            <?php else: ?>
-            <tr>
-                <td><?= e($item['requirement_label']) ?></td>
-                <td><select name="requirement_status[<?= (int) $item['id'] ?>]"><?php $rowStatuses = (($item['requirement_key'] ?? '') === 'payment_received') ? ['not_received','received','not_applicable'] : ['not_received','received','under_review','incomplete','verified','not_applicable']; foreach ($rowStatuses as $status): ?><option value="<?= e($status) ?>" <?= $item['status'] === $status ? 'selected' : '' ?>><?= e(workflow_requirement_status_label($status)) ?></option><?php endforeach; ?></select></td>
-                <td><input type="text" name="requirement_notes[<?= (int) $item['id'] ?>]" value="<?= e($item['notes'] ?? '') ?>" placeholder="Optional note"></td>
-            </tr>
-            <?php endif; ?>
+<section class="card certificate-detail-card">
+    <h2>Information provided</h2>
+    <dl class="detail-grid certificate-detail-grid">
+        <dt>Subject</dt><dd><?= e($req['subject_name']) ?></dd>
+        <?php foreach ($details as $key => $value): ?>
+            <?php if (strtolower((string) $key) === 'legitimacy') continue; ?>
+            <?php
+            $detailValue = is_scalar($value)
+                ? (string) $value
+                : (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (
+                is_string($value)
+                && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)
+                && strpos(strtolower((string) $key), 'date') !== false
+            ) {
+                $detailValue = certificate_detail_date_label($value);
+            }
+            ?>
+            <dt><?= e(certificate_detail_label((string) $key)) ?></dt>
+            <dd><?= e($detailValue) ?></dd>
         <?php endforeach; ?>
-        </tbody>
-    </table>
-    </div>
-    <button type="submit" class="btn btn-small">Save Checklist</button>
-</form>
-<?php endif; ?>
+    </dl>
 </section>
+
+<section class="card certificate-detail-card">
+    <h2>Matched parish record</h2>
+    <?php if ($person): ?>
+        <p><strong>Person:</strong> <?= e(trim(implode(' ', array_filter([$person['first_name'], $person['middle_name'], $person['last_name'], $person['suffix']]))) ?: 'Name unavailable') ?> (Person #<?= (int) $person['id'] ?>)</p>
+    <?php else: ?>
+        <p>No person is linked to this request.</p>
+    <?php endif; ?>
+    <?php if ($record): ?>
+        <dl class="detail-grid certificate-detail-grid">
+            <dt>Record</dt><dd>#<?= (int) $record['id'] ?> — <?= e($recordName) ?></dd>
+            <dt>Event date</dt><dd><?= e(certificate_detail_date_label($record['event_date'] ?: null)) ?></dd>
+            <dt>Place</dt><dd><?= e($record['place'] ?: 'Not recorded') ?></dd>
+            <dt>Register reference</dt><dd><?= e(implode(' / ', array_filter([$record['entry_no'], $record['book_no'], $record['page_no'], $record['line_no']]))) ?: 'Not recorded' ?></dd>
+            <dt>Source</dt><dd><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></dd>
+            <dt>Book entry</dt><dd><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></dd>
+        </dl>
+        <?php if (!empty($record['source']) && $record['source'] === 'other_parish'): ?>
+            <p class="field-hint">No certificate is printed for records from another parish.</p>
+        <?php elseif (empty($record['book_verified_at'])): ?>
+            <form method="post" action="<?= e($detailUrl) ?>" style="margin-top:.5rem;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="verify_book">
+                <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
+                <button type="submit" class="btn btn-small">Verify book entry</button>
+            </form>
+        <?php endif; ?>
+    <?php elseif (!empty($req['record_id'])): ?>
+        <p>The linked record is unavailable or has the wrong sacrament type.</p>
+    <?php else: ?>
+        <p>No sacrament record is linked.</p>
+    <?php endif; ?>
+
+    <?php if (in_array($req['status'], ['new', 'matched'], true)): ?>
+        <?php $searchQ = trim((string) ($_GET['q'] ?? $req['subject_name'])); ?>
+        <form method="get" action="<?= e($detailUrl) ?>" class="stacked-form certificate-person-search">
+            <input type="hidden" name="id" value="<?= (int) $requestId ?>">
+            <label for="q">Search person by name</label>
+            <input type="text" id="q" name="q" value="<?= e($searchQ) ?>">
+            <button type="submit" class="btn btn-secondary">Search</button>
+        </form>
+        <?php if ($searchQ !== ''): ?>
+            <?php $searchResults = sd_search_persons($pdo, $searchQ); ?>
+            <?php if (empty($searchResults)): ?>
+                <p>No matching person found.</p>
+            <?php else: ?>
+                <?php foreach ($searchResults as $sp): ?>
+                    <?php $spRecords = sd_get_person_records($pdo, (int) $sp['id']); ?>
+                    <?php
+                        $recsToShow = [];
+                        if ($req['sacrament_type'] === 'marriage') {
+                            $recsToShow = $spRecords['marriages'] ?? [];
+                        } else {
+                            $r = $spRecords[$req['sacrament_type']] ?? null;
+                            if ($r) $recsToShow = [$r];
+                        }
+                    ?>
+                    <div class="certificate-person-result">
+                        <p><strong><?= e($sp['full_name']) ?></strong> (Person #<?= (int) $sp['id'] ?>)</p>
+                        <?php if (empty($recsToShow)): ?>
+                            <p class="field-hint">No <?= e(sd_type_label($req['sacrament_type'])) ?> record for this person.</p>
+                        <?php else: ?>
+                            <?php foreach ($recsToShow as $r): ?>
+                                <div class="certificate-record-result">
+                                    <span><?= e(date('M j, Y', strtotime($r['event_date']))) ?> &middot; <?= e($r['place'] ?: 'no place') ?> &middot; <?= e(implode(' / ', array_filter([$r['entry_no'], $r['book_no'], $r['page_no'], $r['line_no']])) ?: 'no ref') ?></span>
+                                    <form method="post" action="<?= e($detailUrl) ?>" class="certificate-link-form">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="action" value="link_record">
+                                        <input type="hidden" name="record_id" value="<?= (int) $r['id'] ?>">
+                                        <button type="submit" class="btn btn-small">Use this record</button>
+                                    </form>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
+</div>
+
+<aside class="card certificate-detail-card certificate-detail-actions">
+    <h2>Processing actions</h2>
+    <?php if ($req['status'] === 'matched'): ?>
+        <form method="post" action="<?= e($detailUrl) ?>" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="mark_for_signature">
+            <label for="certificate_no">Certificate number</label>
+            <input type="text" id="certificate_no" name="certificate_no" maxlength="30" required value="<?= e($req['certificate_no'] ?: 'C-' . date('Y') . '-' . str_pad((string) $requestId, 5, '0', STR_PAD_LEFT)) ?>">
+            <p>Print the certificate first, then mark it as awaiting the priest's signature.</p>
+            <?php if (!$processingPaymentGate['ok']): ?>
+                <p><?= e($processingPaymentGate['reason'] ?? 'Record payment before processing.') ?></p>
+            <?php elseif (empty($req['printed_at'])): ?>
+                <p>Use Print certificate above before continuing.</p>
+            <?php endif; ?>
+            <button type="submit" class="btn" <?= !$processingPaymentGate['ok'] || empty($req['printed_at']) ? 'disabled' : '' ?>>Mark For Signature</button>
+        </form>
+    <?php elseif ($req['status'] === 'for_signature'): ?>
+        <form method="post" action="<?= e($detailUrl) ?>">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="mark_ready">
+            <label class="certificate-checkbox-label"><input type="checkbox" name="signature_confirmed" value="1" required> I confirm the priest has signed the certificate.</label>
+            <button type="submit" class="btn">Mark Ready for Pickup</button>
+        </form>
+    <?php elseif ($req['status'] === 'ready'): ?>
+        <form method="post" action="<?= e($detailUrl) ?>" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="release">
+            <label for="claimant_type">Claimant</label>
+            <select id="claimant_type" name="claimant_type" required>
+                <option value="self">Requester / subject</option>
+                <option value="representative">Authorized representative</option>
+            </select>
+            <p id="claimant-guidance" class="field-hint">Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.</p>
+            <label class="certificate-checkbox-label"><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID at the counter.</label>
+            <div id="representative-fields">
+                <label for="representative_name">Representative name</label>
+                <input type="text" id="representative_name" name="representative_name" maxlength="150">
+                <label for="representative_relationship">Representative relationship (optional)</label>
+                <input type="text" id="representative_relationship" name="representative_relationship" maxlength="120">
+                <p class="field-hint">A representative must bring a signed authorization letter from the person named on the certificate.</p>
+                <label class="certificate-checkbox-label"><input type="checkbox" id="rep_docs_received" name="rep_docs_received" value="1"> I received the signed authorization letter.</label>
+            </div>
+            <label for="claimant_notes">Pickup notes (optional)</label>
+            <textarea id="claimant_notes" name="claimant_notes" rows="2"></textarea>
+            <?php if (!empty($req['paid_at'])): ?>
+                <p class="field-hint">Payment recorded on <?= e($req['paid_at']) ?></p>
+            <?php endif; ?>
+            <button type="submit" class="btn">Confirm Payment and Release</button>
+        </form>
+    <?php elseif (in_array($req['status'], ['released', 'rejected'], true)): ?>
+        <p>This request is in a terminal status and cannot be advanced.</p>
+    <?php else: ?>
+        <p>Link the request to its parish record to continue processing.</p>
+    <?php endif; ?>
+
+    <?php if (empty($req['paid_at']) && !in_array($req['status'], ['released', 'rejected'], true)): ?>
+        <form method="post" action="<?= e($detailUrl) ?>">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="mark_paid">
+            <button type="submit" class="btn btn-secondary">Record Payment Received</button>
+        </form>
+    <?php endif; ?>
+
+    <?php if (cert_request_transition_valid((string) $req['status'], 'rejected')): ?>
+        <form method="post" action="<?= e($detailUrl) ?>" class="stacked-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="reject">
+            <label for="rejection_reason">Reason for rejection</label>
+            <textarea id="rejection_reason" name="rejection_reason" rows="3" required></textarea>
+            <button type="submit" class="btn btn-danger">Reject Request</button>
+        </form>
+    <?php endif; ?>
+</aside>
+</div>
+
+<section class="card certificate-detail-card certificate-activity-card">
+    <h2>Activity history</h2>
+    <?php if (!$auditHistory): ?>
+        <p>No audit events are recorded for this request.</p>
+    <?php else: ?>
+        <ul class="activity-list">
+            <?php foreach ($auditHistory as $event): ?>
+                <li>
+                    <strong><?= e($event['action']) ?></strong>
+                    <span><?= e($event['actor_name'] ?: 'System') ?> · <?= e($event['created_at']) ?></span>
+                    <?php if ($event['description']): ?><p><?= e($event['description']) ?></p><?php endif; ?>
+                    <?php if ($event['reason']): ?><p>Reason: <?= e($event['reason']) ?></p><?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+</section>
+</div>
 
 <script>
-(function() {
-    var bulkBtn = document.getElementById('bulk-apply-btn');
-    if (!bulkBtn) return;
+(() => {
+    const claimantType = document.getElementById('claimant_type');
+    const representativeFields = document.getElementById('representative-fields');
+    const representativeName = document.getElementById('representative_name');
+    const representativeDocs = document.getElementById('rep_docs_received');
+    const claimantGuidance = document.getElementById('claimant-guidance');
+    if (!claimantType || !representativeFields || !representativeName || !representativeDocs || !claimantGuidance) return;
 
-    bulkBtn.addEventListener('click', function() {
-        var bulkStatus = document.getElementById('bulk-requirement-status').value;
-        if (!bulkStatus) {
-            alert('Please choose a status first.');
-            return;
-        }
+    const updateClaimantFields = () => {
+        const isRepresentative = claimantType.value === 'representative';
+        representativeFields.hidden = !isRepresentative;
+        representativeName.required = isRepresentative;
+        representativeDocs.required = isRepresentative;
+        claimantGuidance.textContent = isRepresentative
+            ? "Verify the request and recorded payment; receive the signed authorization letter. A claim stub is helpful but not required."
+            : "Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.";
+    };
 
-        var selects = document.querySelectorAll('select[name^="requirement_status"]');
-        selects.forEach(function(select) {
-            select.value = bulkStatus;
-        });
-    });
+    claimantType.addEventListener('change', updateClaimantFields);
+    updateClaimantFields();
 })();
 </script>
 
-<section class="request-action-panel">
-<h2>Next Action</h2>
-<?php if (($req['status'] ?? '') === 'awaiting_payment' && empty($req['match_confirmed_at']) && !empty($extRow['matched_record_id'])): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Confirm that this request matches the register entry shown above? The requester will then see the payment instructions.">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="confirm_match">
-    <button type="submit" class="btn btn-small">Confirm Register Match</button>
-    <span class="field-hint">Until this is confirmed, the tracking page stays neutral and does not show the payment step.</span>
-</form>
-<?php endif; ?>
-<?php if (!empty($req['match_confirmed_at'])): ?>
-<p class="field-hint">Register match confirmed on <?= e(date('F j, Y g:i A', strtotime($req['match_confirmed_at']))) ?>.</p>
-<?php endif; ?>
-<?php if (($req['status'] ?? '') === 'awaiting_payment' && empty($req['paid_at'])): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Record that payment for this request has been received (by hand)? No amount is stored.">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="mark_paid">
-    <button type="submit" class="btn btn-small" data-confirm="Record that payment for this request has been received (by hand)? No amount is stored.">Mark as Paid</button>
-    <span class="field-hint">Payment is collected outside the system. This records only that it was received, and by whom.</span>
-</form>
-<?php endif; ?>
-<?php if (cert_request_transition_valid($req['status'], 'under_review')): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Start review of this certificate request?">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="start_review">
-    <button type="submit" class="btn btn-small" data-confirm="Start review of this certificate request?">Start Review</button>
-</form>
-<?php endif; ?>
-
-<?php if (cert_request_transition_valid($req['status'], 'approved')): ?>
-<form autocomplete="off" method="post" style="margin-bottom:0.5rem;" data-confirm="Approve this certificate request?">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="approve">
-    <button type="submit" class="btn btn-small">Approve</button>
-</form>
-<?php endif; ?>
-
-<?php if (cert_request_transition_valid($req['status'], 'rejected')): ?>
-    <details class="reject-disclosure"<?= (($_POST['action'] ?? '') === 'reject') ? ' open' : '' ?>>
-        <summary class="btn btn-small btn-danger">Reject Request</summary>
-        <form autocomplete="off" method="post" style="margin-top:0.5rem;" data-confirm="Reject this request with the reason entered above?">
-
-            <?= csrf_field() ?>
-            <div class="form-group">
-                <label for="rejection_reason">Rejection reason (required):</label>
-                <textarea autocomplete="off" name="rejection_reason" id="rejection_reason" rows="2" required style="width:100%;"></textarea>
-            </div>
-            <input type="hidden" name="action" value="reject">
-            <button type="submit" class="btn btn-small btn-danger">Confirm Rejection</button>
-        </form>
-    </details>
-<?php endif; ?>
-
-<?php if ($req['status'] === 'approved'): ?>
-<p>
-    <a class="btn btn-small" href="<?= $basePath ?>/admin/certificates/generate.php?preview=<?= $requestId ?>">Open Certificate Preview</a>
-    <span class="field-hint">Match a register record and generate the certificate.</span>
-</p>
-<?php endif; ?>
-</section>
-
-<section class="request-detail-section">
-<h2>Review Notes</h2>
-<form autocomplete="off" method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="save_notes">
-    <textarea autocomplete="off" name="review_notes" rows="4" style="width:100%;max-width:600px;" placeholder="Staff-only notes about this request..."><?= e($req['review_notes'] ?? '') ?></textarea>
-    <button type="submit" class="btn btn-small" style="margin-top:0.5rem;">Save Notes</button>
-</form>
-</section>
-
-<section class="request-detail-section request-audit-section">
-<h2>Audit History</h2>
-<?php if (empty($auditHistory)): ?>
-<p><em>No audit entries yet.</em></p>
-<?php else: ?>
-<div class="table-scroll">
-<table class="admin-table" style="max-width:900px;">
-    <thead><tr><th>When</th><th>Staff</th><th>Action</th><th>Description</th></tr></thead>
-    <tbody>
-    <?php foreach ($auditHistory as $entry): ?>
-        <tr>
-            <td><?= e(date('M j, Y g:i A', strtotime($entry['created_at']))) ?></td>
-            <td><?= e($entry['user_name'] ?? 'System') ?></td>
-            <td><?= e($entry['action']) ?></td>
-            <td><?= e($entry['description']) ?></td>
-        </tr>
-    <?php endforeach; ?>
-    </tbody>
-</table>
-</div>
-<?php endif; ?>
-</section>
-</div>
-
-<?php require_once __DIR__ . '/../../includes/admin-footer.php';
+<?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

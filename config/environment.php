@@ -46,8 +46,7 @@ define(
     $explicitHttps || ($appHost !== '' && !in_array($appHost, $localHosts, true))
 );
 
-// Data-retention periods for the retention purge
-// (admin/system/retention-purge.php + scripts/purge-retention.php).
+// Retention periods (kept for reference; purge tooling removed).
 // Sacramental register entries (*_records, persons) are permanent parish
 // records and are never purged. Only finished submissions (released /
 // completed / rejected / cancelled) older than the submissions period are
@@ -55,8 +54,8 @@ define(
 // email removed), never deleted. Rate-limit rows are deleted.
 // Defaults are proposals only — confirm the periods with the parish.
 //   SRS_RETENTION_SUBMISSIONS_MONTHS : 60  (5 years — certificates get
-//       re-requested years later; the tracking number still resolves, but
-//       names/phones need not survive that long)
+//       re-requested years later; the reference number helps the office
+//       identify the request, but names/phones need not survive that long)
 //   SRS_RETENTION_AUDIT_MONTHS : 36  (3 years — accountability needs history,
 //       but IPs and tracking|email strings are the highest-risk fields)
 //   SRS_RETENTION_RATELIMIT_DAYS : 30  (caps are 24h rolling; 30 days is
