@@ -310,7 +310,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                              data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
                              data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
-                            <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match.</p>
+                            <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
                             <div data-person-results aria-live="polite"></div>
                         </div>
                     </fieldset>

@@ -375,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
                  data-father-inputs="father_first,father_middle,father_last,father_suffix"
                  data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
-                <p class="field-hint">Search by the applicant’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the confirmation-specific details.</p>
+                <p class="field-hint">Search by the applicant’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the confirmation-specific details. If you already have a person reference, enter it with the birth date.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
             <?= person_name_fields('father', "Father's name", $formData, false) ?>

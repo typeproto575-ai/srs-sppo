@@ -27,34 +27,50 @@ if (($_GET['person_lookup'] ?? '') === '1') {
     $attempts[] = $now;
     $_SESSION['public_person_lookup_attempts'] = $attempts;
 
-    $fullName = trim(is_string($_GET['name'] ?? null) ? $_GET['name'] : '');
+    $reference = strtoupper(trim(is_string($_GET['reference'] ?? null) ? $_GET['reference'] : ''));
     $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
-    $parts = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     $date = DateTime::createFromFormat('Y-m-d', $birthDate);
-    if (count($parts) < 2 || strlen($fullName) > 150 || !$date || $date->format('Y-m-d') !== $birthDate) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Enter a full name and valid date of birth to search.']);
-        exit;
-    }
+    $validBirthDate = $date && $date->format('Y-m-d') === $birthDate;
+    if ($reference !== '') {
+        if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1 || !$validBirthDate) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Enter a valid person reference and date of birth to search.']);
+            exit;
+        }
 
-    $parts = array_values(array_filter($parts, static fn($part) => strlen($part) >= 2));
-    if (count($parts) < 2) {
-        echo json_encode(['results' => []]);
-        exit;
-    }
+        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+                FROM persons
+                WHERE public_reference = ? AND birth_date = ?
+                LIMIT 1';
+        $params = [$reference, $birthDate];
+    } else {
+        $fullName = trim(is_string($_GET['name'] ?? null) ? $_GET['name'] : '');
+        $parts = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($parts) < 2 || strlen($fullName) > 150 || !$validBirthDate) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Enter a full name and valid date of birth to search.']);
+            exit;
+        }
 
-    $conditions = [];
-    $params = [$birthDate];
-    foreach ($parts as $part) {
-        $conditions[] = "(first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR suffix LIKE ?)";
-        $term = '%' . addcslashes($part, '\\_%') . '%';
-        array_push($params, $term, $term, $term, $term);
+        $parts = array_values(array_filter($parts, static fn($part) => strlen($part) >= 2));
+        if (count($parts) < 2) {
+            echo json_encode(['results' => []]);
+            exit;
+        }
+
+        $conditions = [];
+        $params = [$birthDate];
+        foreach ($parts as $part) {
+            $conditions[] = "(first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR suffix LIKE ?)";
+            $term = '%' . addcslashes($part, '\\_%') . '%';
+            array_push($params, $term, $term, $term, $term);
+        }
+        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+                FROM persons
+                WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
+                ORDER BY last_name, first_name
+                LIMIT 5';
     }
-    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
-            FROM persons
-            WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
-            ORDER BY last_name, first_name
-            LIMIT 5';
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);

@@ -2094,6 +2094,16 @@ document.addEventListener('DOMContentLoaded', function () {
         var personIdField = widget.getAttribute('data-person-id-field');
         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
 
+        var referenceLabel = document.createElement('label');
+        referenceLabel.textContent = 'Person reference (optional, e.g. SPPO-P-...)';
+        var referenceInput = document.createElement('input');
+        referenceInput.type = 'text';
+        referenceInput.autocomplete = 'off';
+        referenceInput.placeholder = 'SPPO-P-...';
+        referenceInput.setAttribute('aria-label', 'Person reference (optional, e.g. SPPO-P-...)');
+        referenceLabel.appendChild(referenceInput);
+        widget.insertBefore(referenceLabel, resultsBox);
+
         function field(name) {
             return Array.prototype.find.call(form.elements, function (element) {
                 return element.name === name;
@@ -2193,10 +2203,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function runSearch() {
+            var reference = referenceInput.value.trim();
             var fullName = nameInputs.map(value).filter(Boolean).join(' ');
             var birthDate = value(birthField);
             resultsBox.replaceChildren();
-            if (fullName.trim().split(/\s+/).length < 2 || !birthDate) {
+            if (reference && !birthDate) {
+                resultsBox.textContent = 'Enter date of birth with the person reference to search.';
+                return;
+            }
+            if (!reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
                 resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
                 return;
             }
@@ -2207,8 +2222,12 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.appendChild(status);
             var url = new URL(endpoint, window.location.href);
             url.searchParams.set('person_lookup', '1');
-            url.searchParams.set('name', fullName);
             url.searchParams.set('birth_date', birthDate);
+            if (reference) {
+                url.searchParams.set('reference', reference);
+            } else {
+                url.searchParams.set('name', fullName);
+            }
             fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
                 .then(function (response) {
                     return response.json().then(function (payload) {
@@ -2219,7 +2238,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (payload) {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
-                        resultsBox.textContent = 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
+                        resultsBox.textContent = reference
+                            ? 'No profile matched that reference and birth date. Check them, or search by name and birth date instead.'
+                            : 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
                         return;
                     }
                     var heading = document.createElement('p');
@@ -2274,8 +2295,8 @@ document.addEventListener('DOMContentLoaded', function () {
             searchTimer = window.setTimeout(runSearch, 350);
         }
 
-        nameInputs.concat([birthField]).forEach(function (name) {
-            var input = field(name);
+        nameInputs.concat([birthField]).concat([referenceInput]).forEach(function (name) {
+            var input = typeof name === 'string' ? field(name) : name;
             if (!input) return;
             input.addEventListener('input', scheduleSearch);
             input.addEventListener('change', scheduleSearch);
