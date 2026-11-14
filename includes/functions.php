@@ -330,11 +330,9 @@ function application_queue_next_statuses(string $status): array
     return [
         'new' => ['reviewing', 'rejected'],
         'reviewing' => ['requirements_pending', 'approved', 'rejected'],
-        'requirements_pending' => ['reviewing', 'approved', 'rejected'],
+        'requirements_pending' => ['approved', 'rejected'],
         'approved' => ['scheduled', 'rejected'],
         'scheduled' => ['rejected'],
-        'completed' => [],
-        'rejected' => [],
     ][$status] ?? [];
 }
 
@@ -2699,13 +2697,13 @@ function status_label(string $kind, string $value): string
             'pending' => 'Needs action',
         ],
         'application' => [
-            'new' => 'New application',
-            'reviewing' => 'Being checked',
-            'requirements_pending' => 'Pending: waiting for documents',,
-            'approved' => "Approved, date not yet set",
-            'scheduled' => 'Date set',
-            'completed' => 'Done and recorded',
-            'rejected' => 'Closed (not eligible)',,
+            'new' => 'New',
+            'reviewing' => 'Under review',
+            'requirements_pending' => 'Pending: missing documents',
+            'approved' => 'Approved',
+            'scheduled' => 'Scheduled',
+            'completed' => 'Completed',
+            'rejected' => 'Closed (not eligible)',
         ],
     ];
     if (isset($map[$kind][$value])) {

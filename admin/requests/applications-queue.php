@@ -11,6 +11,15 @@ if (!defined('APP_IN_PROGRESS_STATUSES')) {
     define('APP_IN_PROGRESS_STATUSES', ['reviewing', 'requirements_pending', 'approved', 'scheduled']);
 }
 $statuses = array_merge(['in_progress'], APP_IN_PROGRESS_STATUSES, ['new', 'completed', 'rejected']);
+if (!defined('APPLICATION_STALE_DAYS')) {
+    define('APPLICATION_STALE_DAYS', 180);
+}
+if (!defined('APPLICATION_CLOSE_REASONS')) {
+    define('APPLICATION_CLOSE_REASONS', [
+        'Entered by mistake',
+        'No response after a long time',
+    ]);
+}
 $sacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
 $staffUsers = $pdo->query(
     'SELECT id, full_name FROM users WHERE is_active = 1 ORDER BY full_name, id'
@@ -360,6 +369,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $update = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
             $update->execute([$newStatus, (int) $applicationId]);
+            $closeReason = '';
+            if ($newStatus === 'rejected') {
+                $closeReason = (string) ($_POST['close_reason'] ?? '');
+                if (!in_array($closeReason, APPLICATION_CLOSE_REASONS, true)) {
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'Choose a reason for closing this application.';
+                    redirect_to($postReturnUrl);
+                }
+            }
+            $update = $pdo->prepare('UPDATE sacrament_applications SET status = ?, rejection_reason = ? WHERE id = ?');
+            $update->execute([$newStatus, $newStatus === 'rejected' ? $closeReason : null, (int) $applicationId]);
             $pdo->commit();
             notify_sacrament_application_status(
                 $pdo,
@@ -454,8 +474,9 @@ $rf['offset'] = $offset;
 $stmt = $pdo->prepare(
     "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.spouse_person_id,
             sa.applicant_name, sa.applicant_email, sa.preferred_date, sa.preferred_time,
-            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at,
-            sa.assigned_to, assignee.full_name AS assigned_to_name
+            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at, 
+            sa.updated_at, sa.rejection_reason, sa.assigned_to, 
+            assignee.full_name AS assigned_to_name
      FROM sacrament_applications sa
      LEFT JOIN users assignee ON assignee.id = sa.assigned_to{$whereSql}
      ORDER BY sa.created_at DESC, sa.id DESC
@@ -703,7 +724,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?= e(application_queue_label($app['channel'])) ?><br>
                         <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
                     </td>
-                    <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span></td>
+                    <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span>
+                    <?php if ($app['status'] === 'requirements_pending'): $pendingDays = (int) floor((time() - strtotime((string) $app['updated_at'])) / 86400); ?>
+                        <br><small><?= $pendingDays >= APPLICATION_STALE_DAYS ? 'Stale: no activity for ' . $pendingDays . ' days' : 'Pending for ' . $pendingDays . ' days' ?></small>
+                    <?php endif; ?></td>
                     <td>
                         <button
                             type="button"
@@ -883,13 +907,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="update_status">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <label>Next status
+                                <label>Move application to
                                     <select name="new_status">
                                         <?php foreach ($validNextStatuses as $nextStatus): ?>
-                                            <option value="<?= e($nextStatus) ?>"><?= e(application_queue_label($nextStatus)) ?></option>
+                                            <option value="<?= e($nextStatus) ?>"><?= e(status_label('application', $nextStatus)) ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </label>
+                                <?php if (in_array('rejected', $validNextStatuses, true)): ?>
+                                    <label class="close-reason" style="display:none">Reason for closing
+                                        <select name="close_reason">
+                                            <option value="">Choose a reason…</option>
+                                            <?php foreach (APPLICATION_CLOSE_REASONS as $closeOption): ?>
+                                                <option value="<?= e($closeOption) ?>"><?= e($closeOption) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </label>
+                                <?php endif; ?>
                                 <button type="submit" class="btn btn-small">Update status</button>
                             </form>
                         <?php endif; ?>
@@ -933,6 +967,25 @@ document.querySelectorAll('form.application-requirement-form').forEach((form) =>
     fields.forEach((field) => {
         field.addEventListener('input', sync);
         field.addEventListener('change', sync);
+    });
+    sync();
+});
+
+document.querySelectorAll('form.application-status-form').forEach((form) => {
+    const status = form.querySelector('select[name="new_status"]');
+    const reasonLabel = form.querySelector('.close-reason');
+    const reason = form.querySelector('select[name="close_reason"]');
+    if (!status || !reasonLabel || !reason) return;
+    const sync = () => {
+        const closing = status.value === 'rejected';
+        reasonLabel.style.display = closing ? '' : 'none';
+        reason.required = closing;
+    };
+    status.addEventListener('change', sync);
+    form.addEventListener('submit', (event) => {
+        if (status.value === 'rejected' && !window.confirm('Close this application? This cannot be undone.')) {
+            event.preventDefault();
+        }
     });
     sync();
 });
