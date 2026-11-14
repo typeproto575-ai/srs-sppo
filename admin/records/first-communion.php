@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $domicile = trim((string) ($_POST['domicile'] ?? ''));
     $fatherName = compose_person_name($_POST, 'father') ?: trim((string) ($_POST['father_name'] ?? ''));
     $motherMaidenName = compose_person_name($_POST, 'mother') ?: trim((string) ($_POST['mother_maiden_name'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister') ?: trim((string) ($_POST['minister_name'] ?? ''));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
 
     if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
@@ -294,7 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $communicantName = compose_structured_name($communicantFirst, $communicantMiddle, $communicantLast, $communicantSuffix);
     $fatherName = compose_person_name($_POST, 'father') ?: trim((string) ($_POST['father_name'] ?? ''));
     $motherMaidenName = compose_person_name($_POST, 'mother') ?: trim((string) ($_POST['mother_maiden_name'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister') ?: trim((string) ($_POST['minister_name'] ?? ''));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
@@ -402,9 +402,12 @@ $suggest = $isEdit
 $communicantParts = $isEdit ? structured_name_parts((string) $editRecord['communicant_full_name']) : ['', '', '', ''];
 $recordNameFormValues = $_POST;
 foreach ([
-    'father' => $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''],
-    'mother' => $isEdit ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? '')) : ['', '', '', ''],
-    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
+    'father' => $isEdit
+        ? structured_name_parts((string) ($editRecord['father_name'] ?? ''))
+        : structured_name_parts((string) ($_POST['father_name'] ?? '')),
+    'mother' => $isEdit
+        ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? ''))
+        : structured_name_parts((string) ($_POST['mother_maiden_name'] ?? '')),
 ] as $prefix => $parts) {
     foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
         $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
@@ -670,7 +673,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                <label>Officiating Minister (full name) <span class="field-hint">(optional)</span>
+                    <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>">
+                </label>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
                 <?php if ($isEdit): ?>
                     <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>

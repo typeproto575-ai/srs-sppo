@@ -169,7 +169,10 @@ if ($isEdit) {
             foreach (['father_name' => 'father', 'mother_maiden_name' => 'mother'] as $detailKey => $prefix) {
                 $name = trim((string) ($applicationDetails[$detailKey] ?? ''));
                 if ($name !== '') {
-                    $formValues[$prefix . '_first'] = $name;
+                    $parts = structured_name_parts($name);
+                    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                        $formValues[$prefix . '_' . $part] = $parts[$index];
+                    }
                 }
             }
             $godfathers = [];
@@ -238,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
     $unionType = trim((string) ($_POST['union_type'] ?? ''));
     $fatherName = compose_person_name($_POST, 'father');
     $motherName = compose_person_name($_POST, 'mother');
-    $ministerName = compose_person_name($_POST, 'minister');
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $parentDetails = [];
     foreach (['father_birthplace', 'mother_birthplace', 'parents_origin', 'parents_residence', 'proxy_name'] as $key) {
@@ -484,7 +487,7 @@ if ($identity) {
     }
 }
 if ($isEdit) {
-    foreach (['father' => 'father_name', 'mother' => 'mother_maiden_name', 'minister' => 'minister_name'] as $prefix => $key) {
+    foreach (['father' => 'father_name', 'mother' => 'mother_maiden_name'] as $prefix => $key) {
         $parts = structured_name_parts((string) ($editRecord[$key] ?? ''));
         foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
             $nameFormValues[$prefix . '_' . $part] ??= $parts[$index];
@@ -653,7 +656,9 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
             <?php endforeach; ?>
             <fieldset>
                 <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $nameFormValues, false) ?>
+                <label>Officiating Minister (full name) <span class="field-hint">(optional)</span>
+                    <input type="text" name="minister_name" maxlength="150" value="<?= e($formValues['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>">
+                </label>
                 <label>Remarks / Observanda <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
 <?php if ($isEdit): ?>
 <label>Reason for change <textarea name="reason_change" minlength="5" maxlength="500"><?= e($formValues['reason_change'] ?? '') ?></textarea></label>

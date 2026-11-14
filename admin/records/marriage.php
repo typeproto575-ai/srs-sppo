@@ -86,6 +86,15 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
                 $_POST[$party . '_suffix'] = $suffix;
                 $_POST[$party . '_birth_date'] = (string) ($applicationDetails[$party]['birth_date'] ?? '');
                 $_POST[$party . '_birth_place'] = (string) ($applicationDetails[$party]['birthplace'] ?? '');
+                foreach (['father_name' => 'father', 'mother_maiden_name' => 'mother'] as $detailKey => $parentPrefix) {
+                    $parentName = trim((string) ($applicationDetails[$party][$detailKey] ?? ''));
+                    if ($parentName !== '') {
+                        $parentParts = structured_name_parts($parentName);
+                        foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                            $_POST[$party . '_' . $parentPrefix . '_' . $part] = $parentParts[$index];
+                        }
+                    }
+                }
             }
         }
         $_POST['marriage_date'] = (string) ($application['preferred_date'] ?? '');
@@ -200,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $marriageDate = trim((string) ($_POST['marriage_date'] ?? ''));
     $place = trim((string) ($_POST['place'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister');
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
     $licenseRef = trim((string) ($_POST['license_ref'] ?? ''));
@@ -527,12 +536,6 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'marriage');
 $recordNameFormValues = $_POST;
-$ministerParts = $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''];
-foreach (['minister' => $ministerParts] as $prefix => $parts) {
-    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
-        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
-    }
-}
 if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked marriage application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Marriage record updated.';
 if (isset($_GET['deleted'])) $success = 'Marriage record deleted.';
@@ -820,7 +823,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             </div>
                         <?php endforeach; ?>
                         <label>Marriage License Reference <input autocomplete="off" type="text" name="license_ref" value="<?= e($_POST['license_ref'] ?? $details['license_ref'] ?? '') ?>"></label>
-                        <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                        <label>Officiating Minister (full name) <span class="field-hint">(optional)</span>
+                            <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>">
+                        </label>
                     </fieldset>
                     <?php
                     $witnessRows = array_key_exists('witness_first', $_POST)

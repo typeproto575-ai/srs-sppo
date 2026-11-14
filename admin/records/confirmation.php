@@ -154,7 +154,6 @@ $pageTitle = $isEdit ? 'Edit Confirmation Record' : 'New Confirmation Record';
 $recordNameFormValues = $formValues;
 foreach ([
     'sponsor' => $isEdit ? structured_name_parts((string) ($editRecord['sponsor_name'] ?? '')) : ['', '', '', ''],
-    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
 ] as $prefix => $parts) {
     foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
         $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
@@ -179,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $fatherName = compose_person_name($_POST, 'father');
     $motherMaidenName = compose_person_name($_POST, 'mother');
     $sponsorName = compose_person_name($_POST, 'sponsor');
-    $ministerName = compose_person_name($_POST, 'minister');
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
@@ -331,7 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $confirmationDate = trim((string) ($_POST['confirmation_date'] ?? ''));
     $sponsorName = compose_person_name($_POST, 'sponsor');
-    $ministerName = compose_person_name($_POST, 'minister');
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
@@ -678,7 +677,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                <label>Officiating Minister (full name) <span class="field-hint">(optional)</span>
+                    <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>">
+                </label>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
                 <?php if ($isEdit): ?>
                     <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>
