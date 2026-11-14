@@ -292,6 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
                         $requirements = [
                             'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
+                            'godparent_eligibility' => ['status' => 'not_received', 'note' => ''],
                         ];
                         $stmt = $pdo->prepare(
                             "INSERT INTO sacrament_applications

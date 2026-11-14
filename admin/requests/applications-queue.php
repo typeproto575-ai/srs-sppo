@@ -33,9 +33,9 @@ if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
 }
 $requirementStatuses = ['not_received', 'received', 'verified'];
 $requirementKeys = [
-    'baptism' => ['psa_birth_certificate'],
+    'baptism' => ['psa_birth_certificate', 'godparent_eligibility'],
     'first_communion' => ['origin_baptismal_certificate', 'catechism_completion'],
-    'confirmation' => ['origin_baptismal_certificate', 'confirmation_sponsor_details'],
+    'confirmation' => ['psa_birth_certificate', 'origin_baptismal_certificate', 'first_communion_verified', 'confirmation_sponsor_details'],
     'marriage' => [
         'psa_cenomar_groom',
         'psa_cenomar_bride',
@@ -107,14 +107,17 @@ function application_queue_requirement_label(string $sacramentType, string $requ
     $labels = [
         'baptism' => [
             'psa_birth_certificate' => 'PSA Birth Certificate',
+            'godparent_eligibility' => 'Godparent Eligibility Checked',
         ],
         'first_communion' => [
             'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
             'catechism_completion' => 'Catechism Completion',
         ],
         'confirmation' => [
+            'psa_birth_certificate' => 'PSA Birth Certificate',
             'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
-            'confirmation_sponsor_details' => 'Confirmation Sponsor Details',
+            'first_communion_verified' => 'First Communion Verified (parish record or origin-parish certificate)',
+            'confirmation_sponsor_details' => 'Sponsor Eligibility Checked',
         ],
         'marriage' => [
             'psa_cenomar_groom' => 'Groom PSA CENOMAR',
@@ -920,7 +923,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <input type="hidden" name="action" value="update_status">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
                                 <label>Move application to
-                                    <select name="new_status">
+                                    <select name="new_status" required>
+                                        <option value="" selected disabled>Choose…</option>
                                         <?php foreach ($validNextStatuses as $nextStatus): ?>
                                             <option value="<?= e($nextStatus) ?>"><?= e(status_label('application', $nextStatus)) ?></option>
                                         <?php endforeach; ?>

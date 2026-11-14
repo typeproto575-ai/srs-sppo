@@ -255,6 +255,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'note' => '',
                         ],
                         'confirmation_sponsor_details' => ['status' => 'not_received', 'note' => ''],
+                        'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
+                        'first_communion_verified' => ['status' => 'not_received', 'note' => ''],
                     ];
                     $stmt = $pdo->prepare(
                         "INSERT INTO sacrament_applications
