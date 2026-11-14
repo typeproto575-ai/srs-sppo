@@ -27,8 +27,7 @@ require_once __DIR__ . '/../includes/header.php';
         <h1>Terms and Conditions</h1>
         <p class="legal-document__subtitle">Governing the use of this website's online certificate-request and sacrament-application service.</p>
         <div class="legal-document__meta">
-            <span>Effective: September 20, 2026</span>
-            <span>Last Updated: September 20, 2026</span>
+            <span>Draft for demonstration. Not yet in effect.</span>
         </div>
     </header>
 
