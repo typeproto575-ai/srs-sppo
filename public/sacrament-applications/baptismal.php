@@ -135,6 +135,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     validate_person_name_rows($_POST, 'godfather', 'Godfather'),
                     validate_person_name_rows($_POST, 'godmother', 'Godmother')
                 );
+                if (
+                    compose_person_name_rows($_POST, 'godfather') === []
+                    && compose_person_name_rows($_POST, 'godmother') === []
+                ) {
+                    $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
+                }
             }
 
             if ($currentStep === STEP_CONTACT_CONSENT) {
@@ -245,6 +251,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 validate_person_name_rows($formData, 'godfather', 'Godfather'),
                 validate_person_name_rows($formData, 'godmother', 'Godmother')
             );
+            if ($godfatherNames === [] && $godmotherNames === []) {
+                $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
+            }
 
             if (empty($errors)) {
                 try {
@@ -293,6 +302,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $requirements = [
                             'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
                             'godparent_eligibility' => ['status' => 'not_received', 'note' => ''],
+                            'guardianship_papers' => [
+                                'status' => $fatherName === '' && $motherMaidenName === '' ? 'not_received' : 'not_applicable',
+                                'note' => '',
+                            ],
                         ];
                         $stmt = $pdo->prepare(
                             "INSERT INTO sacrament_applications

@@ -20,6 +20,44 @@
 require_once __DIR__ . '/../config/environment.php';
 require_once __DIR__ . '/mail.php';
 
+if (!function_exists('application_queue_requirement_label')) {
+    function application_queue_requirement_label(string $sacramentType, string $requirementKey): string
+    {
+        $labels = [
+            'baptism' => [
+                'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
+                'godparent_eligibility' => 'Godparent Eligibility Checked',
+                'guardianship_papers' => 'Legal Guardianship Papers',
+            ],
+            'first_communion' => [
+                'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
+                'first_reconciliation' => 'First Confession (Reconciliation) Completed',
+                'catechism_completion' => 'Catechism Completion',
+            ],
+            'confirmation' => [
+                'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
+                'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
+                'first_communion_verified' => 'First Communion Verified (parish record or origin-parish certificate)',
+                'confirmation_sponsor_details' => 'Sponsor Eligibility Checked',
+            ],
+            'marriage' => [
+                'psa_cenomar_groom' => 'Groom PSA CENOMAR',
+                'psa_cenomar_bride' => 'Bride PSA CENOMAR',
+                'origin_baptismal_certificate_groom' => 'Groom Baptismal Certificate (for marriage purpose)',
+                'origin_baptismal_certificate_bride' => 'Bride Baptismal Certificate (for marriage purpose)',
+                'origin_confirmation_certificate_groom' => 'Groom Confirmation Certificate (for marriage purpose)',
+                'origin_confirmation_certificate_bride' => 'Bride Confirmation Certificate (for marriage purpose)',
+                'transfer_letter' => 'Parish Banns / Transfer Letter (Tawag)',
+                'pre_cana_seminar' => 'Pre-Cana Seminar',
+                'marriage_license_application' => 'Marriage License Application (from the Municipal Civil Registrar)',
+            ],
+        ];
+
+        return $labels[$sacramentType][$requirementKey]
+            ?? ucfirst(str_replace('_', ' ', $requirementKey));
+    }
+}
+
 /**
  * Generate a reference number with a random, non-sequential suffix.
  */
@@ -63,7 +101,8 @@ function public_selected_person_id(
     string $middleName,
     string $lastName,
     string $suffix,
-    string $birthDate
+    string $birthDate,
+    bool $allowDeceased = false
 ): ?int {
     if (!is_scalar($rawId) || trim((string) $rawId) === '') {
         return null;
@@ -74,6 +113,7 @@ function public_selected_person_id(
         throw new InvalidArgumentException('Choose a valid master person profile.');
     }
 
+    $deceasedFilter = $allowDeceased ? '' : ' AND is_deceased = 0';
     $stmt = $pdo->prepare(
         'SELECT id FROM persons
          WHERE id = ?
@@ -81,7 +121,7 @@ function public_selected_person_id(
            AND COALESCE(middle_name, \'\') = ?
            AND last_name = ?
            AND COALESCE(suffix, \'\') = ?
-           AND (birth_date = ? OR birth_date IS NULL)
+           AND (birth_date = ? OR birth_date IS NULL)' . $deceasedFilter . '
          LIMIT 1'
     );
     $stmt->execute([
@@ -287,7 +327,7 @@ function public_application_profile(PDO $pdo, int $personId): ?array
         'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place,
                 father_name, mother_maiden_name, address, contact_number, email, sex
          FROM persons
-         WHERE id = ?
+         WHERE id = ? AND is_deceased = 0
          LIMIT 1'
     );
     $stmt->execute([$personId]);

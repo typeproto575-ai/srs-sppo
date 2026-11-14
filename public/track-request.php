@@ -156,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $verifiedPersonReference = (string) ($referenceStmt->fetchColumn() ?: '');
             $applications = $pdo->prepare(
                 "SELECT 'application' AS item_type, sacrament_type, status, created_at, preferred_date, requirements, rejection_reason
+                  FROM sacrament_applications
                  WHERE person_id = ? OR spouse_person_id = ?
                  ORDER BY created_at DESC, id DESC"
             );

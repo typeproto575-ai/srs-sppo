@@ -9,6 +9,7 @@ require_once __DIR__ . '/../admin/certificates/sacramental-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 require_once __DIR__ . '/../includes/record-search.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/funeral-data.php';
 
 final class FunctionsTest extends TestCase
 {
@@ -569,13 +570,16 @@ final class FunctionsTest extends TestCase
                 id INTEGER PRIMARY KEY,
                 first_name TEXT, middle_name TEXT, last_name TEXT, suffix TEXT,
                 birth_date TEXT, birth_place TEXT, father_name TEXT, mother_maiden_name TEXT,
-                address TEXT, contact_number TEXT, email TEXT, sex TEXT
+                address TEXT, contact_number TEXT, email TEXT, sex TEXT,
+                is_deceased INTEGER NOT NULL DEFAULT 0
             )'
         );
         $pdo->exec(
             "INSERT INTO persons VALUES
                 (7, 'Maria', 'Therese', 'Santos', '', '2010-03-12', 'Quezon City',
-                 'Juan Santos', 'Ana Cruz', 'Parish address', '09171234567', 'maria@example.com', 'female')"
+                 'Juan Santos', 'Ana Cruz', 'Parish address', '09171234567', 'maria@example.com', 'female', 0),
+                (8, 'Dead', 'Person', 'Example', '', '2010-03-12', 'Quezon City',
+                 NULL, NULL, NULL, NULL, NULL, 'female', 1)"
         );
 
         $person = public_application_profile($pdo, 7);
@@ -584,6 +588,7 @@ final class FunctionsTest extends TestCase
         self::assertSame('maria@example.com', $person['email']);
         self::assertNull(public_application_profile($pdo, 0));
         self::assertNull(public_application_profile($pdo, 999));
+        self::assertNull(public_application_profile($pdo, 8));
     }
 
     public function testPublicApplicationProfileFieldsMapIdentityWithoutInventingValues(): void
@@ -617,16 +622,27 @@ final class FunctionsTest extends TestCase
         $pdo->exec(
             'CREATE TABLE persons (
                 id INTEGER PRIMARY KEY,
-                first_name TEXT, middle_name TEXT, last_name TEXT, suffix TEXT, birth_date TEXT
+                first_name TEXT, middle_name TEXT, last_name TEXT, suffix TEXT, birth_date TEXT,
+                is_deceased INTEGER NOT NULL DEFAULT 0
             )'
         );
         $pdo->exec(
             "INSERT INTO persons VALUES
-                (7, 'Maria', NULL, 'Santos', NULL, NULL),
-                (8, 'Ana', NULL, 'Cruz', NULL, '2010-03-12')"
+                (7, 'Maria', NULL, 'Santos', NULL, NULL, 0),
+                (8, 'Ana', NULL, 'Cruz', NULL, '2010-03-12', 0),
+                (9, 'Dead', NULL, 'Person', NULL, '2010-03-12', 1)"
         );
 
         self::assertSame(7, public_selected_person_id($pdo, '7', 'Maria', '', 'Santos', '', '2010-03-12'));
+        try {
+            public_selected_person_id($pdo, '9', 'Dead', '', 'Person', '', '2010-03-12');
+            self::fail('A deceased person must not be linked to a public sacrament application.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame(
+                'The selected person no longer matches these details. Search again.',
+                $exception->getMessage()
+            );
+        }
         $this->expectException(InvalidArgumentException::class);
         public_selected_person_id($pdo, '8', 'Ana', '', 'Cruz', '', '2011-03-12');
     }
@@ -701,12 +717,118 @@ final class FunctionsTest extends TestCase
             )
         );
     }
-        public function testOutstandingRequirementKeys(): void
+    public function testOutstandingRequirementKeys(): void
     {
         $json = '{"catechism_completion":{"status":"not_received","note":""},"baptismal_certificate":{"status":"not_applicable"},"x":{"status":"verified"}}';
         self::assertSame(['catechism_completion'], application_outstanding_requirement_keys($json));
         self::assertSame([], application_outstanding_requirement_keys(null));
         self::assertSame([], application_outstanding_requirement_keys('not json'));
+    }
+
+    public function testFuneralValidationAcceptsAValidRecord(): void
+    {
+        $today = new DateTimeImmutable('today');
+        $death = $today->modify('-2 days')->format('Y-m-d');
+        $burial = $today->modify('+3 days')->format('Y-m-d');
+
+        self::assertSame([], funeral_validate([
+            'date_of_death' => $death,
+            'date_of_burial' => $burial,
+            'age_at_death' => '42',
+            'civil_status' => 'married',
+            'spouse_name' => 'Avery Example',
+            'service_type' => 'mass',
+            'service_date' => $death,
+            'service_time' => '09:30',
+        ], '1984-05-10'));
+    }
+
+    public function testFuneralValidationRejectsFutureDeathDate(): void
+    {
+        $future = (new DateTimeImmutable('today'))->modify('+1 day')->format('Y-m-d');
+
+        self::assertContains('Date of death cannot be in the future.', funeral_validate([
+            'date_of_death' => $future,
+            'service_type' => 'mass',
+        ], null));
+    }
+
+    public function testFuneralValidationRejectsDeathBeforeBirth(): void
+    {
+        self::assertContains('Date of death cannot be before the person\'s date of birth.', funeral_validate([
+            'date_of_death' => '2000-01-01',
+            'service_type' => 'mass',
+        ], '2000-01-02'));
+    }
+
+    public function testFuneralValidationRejectsBurialBeforeDeath(): void
+    {
+        self::assertContains('Date of burial cannot be before date of death.', funeral_validate([
+            'date_of_death' => '2020-01-02',
+            'date_of_burial' => '2020-01-01',
+            'service_type' => 'blessing',
+        ], null));
+    }
+
+    public function testFuneralValidationAllowsFutureBurial(): void
+    {
+        $today = new DateTimeImmutable('today');
+
+        self::assertSame([], funeral_validate([
+            'date_of_death' => $today->format('Y-m-d'),
+            'date_of_burial' => $today->modify('+1 day')->format('Y-m-d'),
+            'service_type' => 'blessing',
+        ], null));
+    }
+
+    public function testFuneralValidationRejectsSpouseNameForSinglePerson(): void
+    {
+        self::assertContains('A single person cannot have a spouse name.', funeral_validate([
+            'date_of_death' => '2020-01-02',
+            'civil_status' => 'single',
+            'spouse_name' => 'Avery Example',
+            'service_type' => 'mass',
+        ], null));
+    }
+
+    public function testFuneralValidationRejectsInvalidCivilStatus(): void
+    {
+        self::assertContains('Choose a valid civil status.', funeral_validate([
+            'date_of_death' => '2020-01-02',
+            'civil_status' => 'divorced',
+            'service_type' => 'mass',
+        ], null));
+    }
+
+    public function testFuneralValidationRejectsBadServiceTypeAndAgeOver130(): void
+    {
+        $errors = funeral_validate([
+            'date_of_death' => '2020-01-02',
+            'service_type' => 'procession',
+            'age_at_death' => '200',
+        ], null);
+
+        self::assertContains('Choose Mass or Blessing for the service type.', $errors);
+        self::assertContains('Age at death must be a whole number from 0 to 130.', $errors);
+    }
+
+    public function testFuneralValidationRejectsNonScalarInput(): void
+    {
+        $errors = funeral_validate([
+            'date_of_death' => '2020-01-02',
+            'service_type' => 'mass',
+            'age_at_death' => ['200'],
+        ], null);
+
+        self::assertContains('Enter a valid age at death.', $errors);
+    }
+
+    public function testFuneralCalculatedAge(): void
+    {
+        self::assertSame(45, funeral_calculated_age('1980-11-15', '2026-11-14'));
+        self::assertSame(46, funeral_calculated_age('1980-11-14', '2026-11-14'));
+        self::assertNull(funeral_calculated_age(null, '2026-11-14'));
+        self::assertNull(funeral_calculated_age('2026-11-15', '2026-11-14'));
     }
 
 }

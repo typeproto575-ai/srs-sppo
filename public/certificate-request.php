@@ -40,7 +40,7 @@ if (($_GET['person_lookup'] ?? '') === '1') {
 
         $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
                 FROM persons
-                WHERE public_reference = ? AND birth_date = ?
+                WHERE public_reference = ? AND birth_date = ? AND is_deceased = 0
                 LIMIT 1';
         $params = [$reference, $birthDate];
     } else {
@@ -67,7 +67,7 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         }
         $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
                 FROM persons
-                WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
+                WHERE birth_date = ? AND is_deceased = 0 AND ' . implode(' AND ', $conditions) . '
                 ORDER BY last_name, first_name
                 LIMIT 5';
     }
@@ -297,7 +297,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                     $personMiddle,
                     $personLast,
                     $personSuffix,
-                    $values['birth_date']
+                    $values['birth_date'],
+                    true
                 );
             } catch (InvalidArgumentException $e) {
                 $errors[] = $e->getMessage();

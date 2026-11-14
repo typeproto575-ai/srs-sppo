@@ -1,4 +1,4 @@
-# SRS-SPPO Data Dictionary (schema v2, 11 tables)
+# SRS-SPPO Data Dictionary (schema v2, 12 tables)
 
 Source of truth: `schema.sql`. If this file and `schema.sql` disagree, `schema.sql` wins.
 Engine: MySQL / MariaDB, InnoDB, utf8mb4. All `id` columns are `INT UNSIGNED AUTO_INCREMENT`.
@@ -10,14 +10,15 @@ Engine: MySQL / MariaDB, InnoDB, utf8mb4. All `id` columns are `INT UNSIGNED AUT
 | 1 | `users` | The single secretary/administrator account | `users`, `password_reset_tokens` |
 | 2 | `persons` | Master identity, stored once per parishioner | `persons` |
 | 3 | `sacrament_records` | Every sacrament event (baptism, first communion, confirmation, marriage) | 4 register tables |
-| 4 | `sacrament_participants` | Godparents, sponsors, witnesses | `baptismal_sponsors`, `marriage_witnesses`, `marriage_principal_sponsors`, `baptismal_application_godparents` |
-| 5 | `sacrament_applications` | Applications to receive a sacrament (unverified intake) | `sacrament_applications` + 4 application tables, `workflow_requirements` |
-| 6 | `certificate_requests` | Certificate requests, from request to pickup | `certificate_requests` + 4 extension tables, `certificate_generation_log`, `submission_rate_limits` |
-| 7 | `schedule_events` | Parish calendar | `schedule_events` |
-| 8 | `announcements` | Public notices | `announcements` |
-| 9 | `settings` | Key/value settings | `site_settings`, `sacrament_eligibility_settings` |
-| 10 | `notifications` | In-app notices and email delivery log | `notifications`, `email_delivery_log` |
-| 11 | `audit_logs` | Who did what | `audit_logs` |
+| 4 | `funeral_records` | Staff-only Liber Defunctorum entries, separate from the sacrament register | `death_burial_records` (retired design, not restored) |
+| 5 | `sacrament_participants` | Godparents, sponsors, witnesses | `baptismal_sponsors`, `marriage_witnesses`, `marriage_principal_sponsors`, `baptismal_application_godparents` |
+| 6 | `sacrament_applications` | Applications to receive a sacrament (unverified intake) | `sacrament_applications` + 4 application tables, `workflow_requirements` |
+| 7 | `certificate_requests` | Certificate requests, from request to pickup | `certificate_requests` + 4 extension tables, `certificate_generation_log`, `submission_rate_limits` |
+| 8 | `schedule_events` | Parish calendar | `schedule_events` |
+| 9 | `announcements` | Public notices | `announcements` |
+| 10 | `settings` | Key/value settings | `site_settings`, `sacrament_eligibility_settings` |
+| 11 | `notifications` | In-app notices and email delivery log | `notifications`, `email_delivery_log` |
+| 12 | `audit_logs` | Who did what | `audit_logs` |
 
 Removed with no replacement: `srs_schema_migrations` (no migrations exist anymore), tracking-number lookup.
 
@@ -31,7 +32,9 @@ persons ◄── person_id ─────── sacrament_records ◄── re
    │  └── father_person_id / mother_person_id (self link, optional)
    ├────── person_id ── certificate_requests ── record_id ──► sacrament_records
    ├────── person_id / spouse_person_id ── sacrament_applications ── record_id ──► sacrament_records
+   └────── person_id ── funeral_records (staff-only death register)
 schedule_events ── application_id ──► sacrament_applications
+users ── encoded_by ──► funeral_records
 ```
 
 ## 3. Tables
@@ -92,7 +95,28 @@ One row per sacrament event. The physical logbook stays canonical, so book/page/
 Profile query for one person: `WHERE person_id = ? OR spouse_person_id = ?`.
 Prerequisites are checked by looking for rows: First Communion needs a baptism row (or `persons.baptismal_status = 'baptized_catholic'`), Confirmation needs baptism and first communion, Marriage needs baptism for both parties. Prerequisite problems are flagged to the secretary, never auto-blocked.
 
-### 3.4 sacrament_participants
+### 3.4 funeral_records
+One staff-only Liber Defunctorum row per person. It does not add a sacrament type or enter the four-sacrament table.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| person_id | FK persons | no | Unique; deleting the linked person is restricted |
+| date_of_death | DATE | no | Indexed |
+| date_of_burial, service_date, service_time | DATE, DATE, TIME | yes | |
+| age_at_death | SMALLINT UNSIGNED | yes | |
+| civil_status | ENUM('single','married','widowed') | yes | |
+| spouse_name, parents_name | VARCHAR(150), VARCHAR(255) | yes | |
+| sacraments_received | JSON | yes | List keys: `baptism`, `confirmation`, `marriage`, `anointing` |
+| cause_of_death | VARCHAR(255) | yes | Staff-only; never shown publicly, emailed, or written to audit details |
+| place_of_burial | VARCHAR(150) | yes | |
+| service_type | ENUM('mass','blessing') | no | |
+| minister_name | VARCHAR(150) | yes | Full name |
+| book_no, page_no, line_no | VARCHAR(20) | yes | Physical register coordinates |
+| contact_number | VARCHAR(30) | yes | |
+| encoded_by | FK users | yes | Set NULL if the account is removed |
+| created_at, updated_at | DATETIME | no | |
+
+### 3.5 sacrament_participants
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | record_id | FK sacrament_records | no | Deleted with the record |
@@ -101,7 +125,7 @@ Prerequisites are checked by looking for rows: First Communion needs a baptism r
 | residence | VARCHAR(150) | yes | |
 | sort_order | TINYINT | no | Display order |
 
-### 3.5 sacrament_applications
+### 3.6 sacrament_applications
 Unverified intake. Does not write sacramental register entries. It creates or reuses the subject's master person profile so the applicant can use one person reference across linked requests; staff still review the intake before approval.
 
 | Column | Type | Null | Notes |
@@ -123,7 +147,7 @@ Unverified intake. Does not write sacramental register entries. It creates or re
 | anonymized_at | DATETIME | yes | Set by the retention job |
 | created_at, updated_at | DATETIME | no | |
 
-### 3.6 certificate_requests
+### 3.7 certificate_requests
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | request_no | VARCHAR(20) | no | Unique. Internal reference only |
@@ -156,17 +180,17 @@ Unverified intake. Does not write sacramental register entries. It creates or re
 
 Reprints and other staff actions are recorded in `audit_logs`, not in a separate certificate-generation log table.
 
-### 3.8 schedule_events
+### 3.9 schedule_events
 `event_type` ENUM('mass','wedding','baptism','other'), `title`, `public_details` (shown publicly), `event_date`, `start_time`, `end_time`, `application_id` (FK, nullable), `notes` (internal only), `created_by`, `created_at`.
 
-### 3.9 announcements
+### 3.10 announcements
 `title`, `content`, `event_date` (nullable), `is_published`, `posted_by`, `created_at`, `updated_at`.
 
-### 3.10 settings
+### 3.11 settings
 `setting_key` (PK, VARCHAR 64), `setting_value` (TEXT), `updated_by`, `updated_at`.
 Age eligibility currently reads `first_communion_min_age` and `confirmation_min_age`. The demo defaults are 8+ years for First Communion and 12+ years for Confirmation; these minimum ages are guidance for secretary review, not automatic rejection criteria. Other planned keys include `parish_name`, `priest_approval_email`, and `retention_months`.
 
-### 3.11 notifications
+### 3.12 notifications
 | Column | Type | Notes |
 |---|---|---|
 | channel | ENUM('inapp','email') | `inapp` uses title/message/link/is_read. `email` uses recipient/delivery_status/error_message |
@@ -180,7 +204,7 @@ Age eligibility currently reads `first_communion_min_age` and `confirmation_min_
 | is_read, read_at | TINYINT(1), DATETIME | In-app rows |
 | created_at | DATETIME | |
 
-### 3.12 audit_logs
+### 3.13 audit_logs
 `user_id` (FK), `actor_name` (account holder's name at that time), `action`, `target_table`, `target_id`, `description`, `reason`, `ip_address`, `user_agent`, `created_at`.
 
 ## 4. JSON column keys

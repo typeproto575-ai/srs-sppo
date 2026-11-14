@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SRS-SPPO: Schedule and Record System of Saint Patrick's Parish Office
--- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  11 tables
+-- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  12 tables
 --
 -- This single file replaces the old 33-table schema and all 54 migrations.
 -- There is no migration runner and no in-app upgrader. To reset a LOCAL
@@ -330,4 +330,36 @@ CREATE TABLE audit_logs (
   INDEX idx_al_target (target_table, target_id),
   INDEX idx_al_created (created_at),
   CONSTRAINT fk_al_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 12. funeral_records : staff-only Liber Defunctorum, separate from sacraments
+-- ---------------------------------------------------------------------
+CREATE TABLE funeral_records (
+  id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  person_id           INT UNSIGNED NOT NULL,
+  date_of_death       DATE NOT NULL,
+  date_of_burial      DATE NULL,
+  age_at_death        SMALLINT UNSIGNED NULL,
+  civil_status        ENUM('single','married','widowed') NULL,
+  spouse_name         VARCHAR(150) NULL,
+  parents_name        VARCHAR(255) NULL,
+  sacraments_received JSON NULL,
+  cause_of_death      VARCHAR(255) NULL,
+  place_of_burial     VARCHAR(150) NULL,
+  service_type        ENUM('mass','blessing') NOT NULL,
+  service_date        DATE NULL,
+  service_time        TIME NULL,
+  minister_name       VARCHAR(150) NULL,
+  book_no             VARCHAR(20) NULL,
+  page_no             VARCHAR(20) NULL,
+  line_no             VARCHAR(20) NULL,
+  contact_number      VARCHAR(30) NULL,
+  encoded_by          INT UNSIGNED NULL,
+  created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_funeral_person (person_id),
+  INDEX idx_funeral_date_of_death (date_of_death),
+  CONSTRAINT fk_funeral_person FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_funeral_encoder FOREIGN KEY (encoded_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

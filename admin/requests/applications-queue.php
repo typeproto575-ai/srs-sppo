@@ -33,8 +33,8 @@ if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
 }
 $requirementStatuses = ['not_received', 'received', 'verified'];
 $requirementKeys = [
-    'baptism' => ['psa_birth_certificate', 'godparent_eligibility'],
-    'first_communion' => ['origin_baptismal_certificate', 'catechism_completion'],
+    'baptism' => ['psa_birth_certificate', 'godparent_eligibility', 'guardianship_papers'],
+    'first_communion' => ['origin_baptismal_certificate', 'first_reconciliation', 'catechism_completion'],
     'confirmation' => ['psa_birth_certificate', 'origin_baptismal_certificate', 'first_communion_verified', 'confirmation_sponsor_details'],
     'marriage' => [
         'psa_cenomar_groom',
@@ -43,6 +43,9 @@ $requirementKeys = [
         'origin_baptismal_certificate_bride',
         'transfer_letter',
         'pre_cana_seminar',
+        'marriage_license_application',
+        'origin_confirmation_certificate_groom',
+        'origin_confirmation_certificate_bride',
     ],
 ];
 $returnKeys = ['status', 'sacrament', 'channel', 'assignee', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
@@ -100,37 +103,6 @@ function application_queue_render_detail_value(mixed $value): void
 
     $text = (string) $value;
     echo e(str_contains($text, '_') ? application_queue_label($text) : $text);
-}
-
-function application_queue_requirement_label(string $sacramentType, string $requirementKey): string
-{
-    $labels = [
-        'baptism' => [
-            'psa_birth_certificate' => 'PSA Birth Certificate',
-            'godparent_eligibility' => 'Godparent Eligibility Checked',
-        ],
-        'first_communion' => [
-            'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
-            'catechism_completion' => 'Catechism Completion',
-        ],
-        'confirmation' => [
-            'psa_birth_certificate' => 'PSA Birth Certificate',
-            'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
-            'first_communion_verified' => 'First Communion Verified (parish record or origin-parish certificate)',
-            'confirmation_sponsor_details' => 'Sponsor Eligibility Checked',
-        ],
-        'marriage' => [
-            'psa_cenomar_groom' => 'Groom PSA CENOMAR',
-            'psa_cenomar_bride' => 'Bride PSA CENOMAR',
-            'origin_baptismal_certificate_groom' => 'Groom Origin Baptismal Certificate',
-            'origin_baptismal_certificate_bride' => 'Bride Origin Baptismal Certificate',
-            'transfer_letter' => 'Parish Transfer / Permission Letter',
-            'pre_cana_seminar' => 'Pre-Cana Seminar',
-        ],
-    ];
-
-    return $labels[$sacramentType][$requirementKey]
-        ?? ucfirst(str_replace('_', ' ', $requirementKey));
 }
 
 function application_queue_details(array $application): array

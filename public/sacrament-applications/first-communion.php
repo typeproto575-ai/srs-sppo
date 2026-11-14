@@ -216,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                     'status' => $baptizedHere === 'this_parish' ? 'not_applicable' : 'not_received',
                     'note' => '',
                 ],
+                'first_reconciliation' => ['status' => 'not_received', 'note' => ''],
                 'catechism_completion' => ['status' => 'not_received', 'note' => ''],
             ];
             $stmt = $pdo->prepare(
@@ -345,9 +346,8 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <?php if ($ageAssessment !== null): ?>
                             <p class="alert alert-info" role="note">
                                 <strong>Age guidance:</strong> The applicant is <?= (int) $ageAssessment['age'] ?> years old.
-                                The minimum age is <?= (int) $ageAssessment['range']['min_age'] ?> years;
-                                assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
-                                This is advisory only and does not prevent submission; the Parish Secretary will review the application.
+                                Assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
+                                This is guidance only. The Parish Office decides eligibility.
                             </p>
                         <?php endif; ?>
                         <label class="checkbox-label"><input type="checkbox" name="certify_accuracy" value="1" <?= ($formData['certify_accuracy'] ?? '') === '1' ? 'checked' : '' ?> required> I certify that this information is true and correct.</label>

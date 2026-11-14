@@ -351,6 +351,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'origin_baptismal_certificate_bride' => ['status' => 'not_received', 'note' => ''],
                 'transfer_letter' => $transferLetterRequirement,
                 'pre_cana_seminar' => ['status' => 'not_received', 'note' => ''],
+                'marriage_license_application' => ['status' => 'not_received', 'note' => ''],
+                'origin_confirmation_certificate_groom' => ['status' => 'not_received', 'note' => ''],
+                'origin_confirmation_certificate_bride' => ['status' => 'not_received', 'note' => ''],
             ];
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_applications

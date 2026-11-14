@@ -212,6 +212,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <span class="person-profile-detail__value"><?= e($person['birth_date'] ? date('M j, Y', strtotime($person['birth_date'])) : 'Not specified') ?></span>
         </div>
         <div class="person-profile-detail">
+            <span class="person-profile-detail__label">Life status</span>
+            <span class="person-profile-detail__value"><?= !empty($person['is_deceased']) ? 'Deceased' : 'Living' ?></span>
+        </div>
+        <?php if (!empty($person['is_deceased'])): ?>
+            <div class="person-profile-detail">
+                <span class="person-profile-detail__label">Date of death</span>
+                <span class="person-profile-detail__value"><?= e(!empty($person['death_date']) ? date('M j, Y', strtotime($person['death_date'])) : 'Not recorded') ?></span>
+            </div>
+        <?php endif; ?>
+        <div class="person-profile-detail">
             <span class="person-profile-detail__label">Birthplace</span>
             <span class="person-profile-detail__value"><?= e($person['birth_place'] ?: 'Not specified') ?></span>
         </div>
