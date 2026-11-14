@@ -669,22 +669,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </fieldset>
 
             <fieldset>
-                <legend>Prerequisite</legend>
-                <div class="baptismal-finder" data-baptismal-finder>
-                    <label>Find possible Baptismal records
-                        <input autocomplete="off" type="search" data-baptismal-search placeholder="Search after entering the person details">
-                    </label>
-                    <div class="mapper-actions">
-                        <button type="button" class="btn btn-secondary btn-small" data-baptismal-find data-endpoint="<?= e($basePath . '/admin/api/baptismal-record-search.php') ?>">Find possible matches</button>
-                    </div>
-                    <input type="hidden" name="baptismal_record_id" data-baptismal-id value="<?= e($_POST['baptismal_record_id'] ?? $editRecord['baptismal_record_id'] ?? '') ?>">
-                    <div class="baptismal-finder-selection" data-baptismal-selection aria-live="polite"></div>
-                    <div class="baptismal-finder-results" data-baptismal-results></div>
-                    <p class="field-hint">Select a record to link it. Leave blank if the Baptismal record is not known yet.</p>
-                </div>
-            </fieldset>
-
-            <fieldset>
                 <legend>Other</legend>
                 <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
