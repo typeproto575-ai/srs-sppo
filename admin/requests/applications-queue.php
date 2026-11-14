@@ -905,6 +905,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
     <?php endif; ?>
 </div>
+
 <script>
 document.addEventListener('click', (event) => {
     const target = event.target;
@@ -918,6 +919,22 @@ document.addEventListener('click', (event) => {
     if (detailRow instanceof HTMLTableRowElement) detailRow.hidden = !review.open;
     button.setAttribute('aria-expanded', review.open ? 'true' : 'false');
     button.textContent = review.open ? 'Close review' : 'Review';
+});
+document.querySelectorAll('form.application-requirement-form').forEach((form) => {
+    const button = form.querySelector('button[type="submit"]');
+    if (!button) return;
+    const fields = form.querySelectorAll('select[name="requirement_status"], input[name="requirement_note"]');
+    const initial = Array.from(fields).map((field) => field.value);
+    const sync = () => {
+        button.disabled = !Array.from(fields).some((field, i) => field.value !== initial[i]);
+        button.style.opacity = button.disabled ? '0.45' : '1';
+        button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
+    };
+    fields.forEach((field) => {
+        field.addEventListener('input', sync);
+        field.addEventListener('change', sync);
+    });
+    sync();
 });
 </script>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
