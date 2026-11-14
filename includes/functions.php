@@ -2701,11 +2701,11 @@ function status_label(string $kind, string $value): string
         'application' => [
             'new' => 'New application',
             'reviewing' => 'Being checked',
-            'requirements_pending' => 'Waiting for documents',
+            'requirements_pending' => 'Pending: waiting for documents',,
             'approved' => "Approved, date not yet set",
             'scheduled' => 'Date set',
             'completed' => 'Done and recorded',
-            'rejected' => 'Declined',
+            'rejected' => 'Closed (not eligible)',,
         ],
     ];
     if (isset($map[$kind][$value])) {

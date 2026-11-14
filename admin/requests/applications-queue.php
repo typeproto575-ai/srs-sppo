@@ -22,7 +22,7 @@ foreach ($staffUsers as $staffUser) {
 if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
     unset($_GET['assignee']);
 }
-$requirementStatuses = ['not_received', 'received', 'verified', 'not_applicable'];
+$requirementStatuses = ['not_received', 'received', 'verified'];
 $requirementKeys = [
     'baptism' => ['psa_birth_certificate'],
     'first_communion' => ['origin_baptismal_certificate', 'catechism_completion'],
@@ -406,7 +406,6 @@ $rfConfig = [
         'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
         'channel' => ['label' => 'Channel', 'options' => ['online' => 'Submitted: Online', 'onsite' => 'Submitted: At the office']],
         'sacrament' => ['label' => 'Sacrament', 'options' => array_combine($sacraments, array_map('application_queue_label', $sacraments))],
-        'assignee' => ['label' => 'Assigned to', 'options' => $assigneeOptions],
     ],
 ];
 require_once __DIR__ . '/../../includes/record-filters.php';
@@ -620,7 +619,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <th>Sacrament</th>
                         <th>Applicant(s)</th>
                         <th>Submitted</th>
-                        <th>Assigned to</th>
                         <th>Status</th>
                         <th>Review</th>
                     </tr>
@@ -705,7 +703,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?= e(application_queue_label($app['channel'])) ?><br>
                         <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
                     </td>
-                    <td><?= e((string) ($app['assigned_to_name'] ?? 'Unassigned')) ?></td>
                     <td><span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span></td>
                     <td>
                         <button
@@ -721,7 +718,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     class="application-queue-detail-row"
                     <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? '' : 'hidden' ?>
                 >
-                    <td colspan="7">
+                    <td colspan="6">
                         <details
                             class="application-queue-review"
                             id="application-review-<?= (int) $app['id'] ?>"
@@ -744,63 +741,34 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?= $app['preferred_time'] ? e(date('g:i A', strtotime($app['preferred_time']))) : '' ?></p>
                     <?php endif; ?>
 
-                    <section class="application-handoff" aria-label="Staff handoff">
-                        <div>
-                            <h3>Staff handoff</h3>
-                            <p>Current owner: <strong><?= e((string) ($app['assigned_to_name'] ?? 'Unassigned')) ?></strong></p>
-                        </div>
-                        <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
-                            <form method="post" class="application-handoff-form">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                <input type="hidden" name="action" value="assign_staff">
-                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <label for="application-assignee-<?= (int) $app['id'] ?>">Assign or hand off to
-                                    <select id="application-assignee-<?= (int) $app['id'] ?>" name="assignee_id" required>
+                    <section aria-label="Pre-application details">
+                        <h3>Submitted details</h3>
+                        <dl class="application-details-list">
+                            <?php if ($details !== []): ?>
+                                <?php foreach ($details as $key => $value): ?>
+                                    <div>
                                         <?php
-                                        $assignedUserIsActive = false;
-                                        foreach ($staffUsers as $staffUser) {
-                                            if ((int) $staffUser['id'] === (int) ($app['assigned_to'] ?? 0)) {
-                                                $assignedUserIsActive = true;
-                                                break;
-                                            }
+                                        $detailKey = (string) $key;
+                                        $detailLabel = $detailKey === 'preferred_wedding_venue_other'
+                                            ? 'Other venue name'
+                                            : application_queue_label($detailKey);
+                                        if ($detailKey === 'preferred_wedding_venue') {
+                                            $value = match ($value) {
+                                                'church' => "St. Patrick's Parish Church",
+                                                'other' => 'Other',
+                                                'barangay_chapel' => 'Barangay Chapel',
+                                                default => $value,
+                                            };
                                         }
-                                        if ($app['assigned_to'] !== null && !$assignedUserIsActive):
                                         ?>
-                                            <option value="" selected disabled>Choose an active staff member…</option>
-                                        <?php else: ?>
-                                            <option value="unassigned" <?= $app['assigned_to'] === null ? 'selected' : '' ?>>Unassigned</option>
-                                        <?php endif; ?>
-                                        <?php foreach ($staffUsers as $staffUser): ?>
-                                            <option value="<?= (int) $staffUser['id'] ?>" <?= (int) ($app['assigned_to'] ?? 0) === (int) $staffUser['id'] ? 'selected' : '' ?>>
-                                                <?= e($staffUser['full_name']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </label>
-                                <button type="submit" class="btn btn-small">Save handoff</button>
-                            </form>
-                        <?php endif; ?>
-                        <?php $assignmentHistory = $assignmentHistoryByApplication[(int) $app['id']] ?? []; ?>
-                        <?php if ($assignmentHistory !== []): ?>
-                            <details class="application-handoff-history">
-                                <summary>Handoff history (<?= count($assignmentHistory) ?>)</summary>
-                                <ol>
-                                    <?php foreach ($assignmentHistory as $historyEntry): ?>
-                                        <li>
-                                            <strong><?= e((string) ($historyEntry['actor_name'] ?: 'Staff')) ?></strong>
-                                            <span><?= e((string) $historyEntry['description']) ?></span>
-                                            <time datetime="<?= e(date('c', strtotime($historyEntry['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($historyEntry['created_at']))) ?></time>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ol>
-                            </details>
-                        <?php else: ?>
-                            <p class="application-handoff-empty">No handoffs recorded yet.</p>
-                        <?php endif; ?>
-                    </section>
-
-                    <?php if ($prerequisiteWarnings !== []): ?>
+                                        <dt><?= e($detailLabel) ?></dt>
+                                        <dd><?php application_queue_render_detail_value($value); ?></dd>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
+                            <?php endif; ?>
+                                                <?php if ($prerequisiteWarnings !== []): ?>
                         <aside class="alert alert-warning" role="note">
                             <strong>Prerequisite review:</strong>
                             <ul><?php foreach ($prerequisiteWarnings as $warning): ?><li><?= e($warning) ?></li><?php endforeach; ?></ul>
@@ -853,42 +821,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </div>
                     </section>
 
-                    <section aria-label="Pre-application details">
-                        <h3>Submitted details</h3>
-                        <dl class="application-details-list">
-                            <?php if ($details !== []): ?>
-                                <?php foreach ($details as $key => $value): ?>
-                                    <div>
-                                        <?php
-                                        $detailKey = (string) $key;
-                                        $detailLabel = $detailKey === 'preferred_wedding_venue_other'
-                                            ? 'Other venue name'
-                                            : application_queue_label($detailKey);
-                                        if ($detailKey === 'preferred_wedding_venue') {
-                                            $value = match ($value) {
-                                                'church' => "St. Patrick's Parish Church",
-                                                'other' => 'Other',
-                                                'barangay_chapel' => 'Barangay Chapel',
-                                                default => $value,
-                                            };
-                                        }
-                                        ?>
-                                        <dt><?= e($detailLabel) ?></dt>
-                                        <dd><?php application_queue_render_detail_value($value); ?></dd>
-                                    </div>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
-                            <?php endif; ?>
-                        </dl>
-                    </section>
-
                     <section aria-label="Document requirements">
                         <h3>Requirements checklist</h3>
                         <div class="application-requirements-list">
                             <?php foreach ($checklistKeys as $requirementKey):
                                 $requirement = $requirements[$requirementKey] ?? [];
                                 $requirement = is_array($requirement) ? $requirement : [];
+                                if (($requirement['status'] ?? '') === 'not_applicable') { continue; }
                                 $currentRequirementStatus = (string) ($requirement['status'] ?? 'not_received');
                                 if (!in_array($currentRequirementStatus, $requirementStatuses, true)) {
                                     $currentRequirementStatus = 'not_received';
@@ -915,7 +854,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                             <?php endforeach; ?>
                                         </select>
                                     </label>
-                                    <label>Note
+                                    <label>Message to applicant (shown on the tracking page)
                                         <input type="text" name="requirement_note" maxlength="500" value="<?= e((string) ($requirement['note'] ?? '')) ?>">
                                     </label>
                                     <button type="submit" class="btn btn-small" aria-label="Save <?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?> checklist item">Save requirement</button>
