@@ -629,8 +629,8 @@ final class FunctionsTest extends TestCase
     {
         self::assertSame("Waiting for priest's signature", status_label('certificate', 'for_signature'));
         self::assertSame('Needs action', status_label('certificate', 'pending'));
-        self::assertSame('New application', status_label('application', 'new'));
-        self::assertSame('Waiting for documents', status_label('application', 'requirements_pending'));
+        self::assertSame('New', status_label('application', 'new'));
+        self::assertSame('Pending: missing documents', status_label('application', 'requirements_pending'));
         self::assertSame('Unknown Value', status_label('certificate', 'unknown_value'));
     }
     public function testRecordChanges(): void

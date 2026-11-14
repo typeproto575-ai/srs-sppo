@@ -155,8 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $referenceStmt->execute([$personId]);
             $verifiedPersonReference = (string) ($referenceStmt->fetchColumn() ?: '');
             $applications = $pdo->prepare(
-                "SELECT 'application' AS item_type, sacrament_type, status, created_at, preferred_date, requirements
-                 FROM sacrament_applications
+                "SELECT 'application' AS item_type, sacrament_type, status, created_at, preferred_date, requirements, rejection_reason
                  WHERE person_id = ? OR spouse_person_id = ?
                  ORDER BY created_at DESC, id DESC"
             );
@@ -177,9 +176,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $statusLabels = [
-    'new' => 'Submitted — Pending Review',
-    'reviewing' => 'Under Review',
-    'requirements_pending' => 'Requirements Pending',
+    'new' => 'New',
+    'reviewing' => 'Under review',
+    'requirements_pending' => 'Pending: missing documents',
     'approved' => 'Approved',
     'scheduled' => 'Scheduled',
     'completed' => 'Completed',
@@ -265,6 +264,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php if ($missingRequirements !== []): ?>
                         <tr><td colspan="4"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this same person reference; do not submit a duplicate.</td></tr>
                     <?php endif; ?>
+                    <?php if ($item['item_type'] === 'application' && $item['status'] === 'rejected' && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
+                    <tr><td colspan="4"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</td></tr>
+                <?php endif; ?>
                 <?php endforeach; ?>
                 </tbody>
             </table>

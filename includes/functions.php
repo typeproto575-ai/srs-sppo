@@ -2703,7 +2703,7 @@ function status_label(string $kind, string $value): string
             'approved' => 'Approved',
             'scheduled' => 'Scheduled',
             'completed' => 'Completed',
-            'rejected' => 'Closed (not eligible)',
+            'rejected' => 'Closed',
         ],
     ];
     if (isset($map[$kind][$value])) {
