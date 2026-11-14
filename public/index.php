@@ -121,12 +121,13 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </section>
 
-<?php if (!empty($announcements)): ?>
+<?php $announcementSlides = array_chunk($announcements, 2); ?>
+<?php if (!empty($announcementSlides)): ?>
 <section class="announcements portal-section" aria-labelledby="announcements-heading">
     <div class="section-heading-row"><div><p class="section-kicker">From the parish office</p><h2 id="announcements-heading">Announcements</h2></div></div>
     <div class="carousel" data-carousel aria-roledescription="carousel" aria-label="Announcements">
         <div class="carousel-viewport"><div class="carousel-track">
-            <?php foreach (array_chunk($announcements, 2) as $batch): ?>
+            <?php foreach ($announcementSlides as $batch): ?>
                 <article class="slide announcement-slide">
                     <?php foreach ($batch as $announcement): ?>
                         <div class="card"><h3><?= e($announcement['title']) ?></h3><?php if ($announcement['event_date']): ?><span class="event-date"><?= e(date('M j, Y', strtotime($announcement['event_date']))) ?></span><?php endif; ?><p><?= e($announcement['content']) ?></p></div>
@@ -134,7 +135,9 @@ require_once __DIR__ . '/../includes/header.php';
                 </article>
             <?php endforeach; ?>
         </div></div>
+        <?php if (count($announcementSlides) > 1): ?>
         <div class="carousel-controls"><button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous announcement">&#8249;</button><div class="carousel-dots" data-carousel-dots></div><button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next announcement">&#8250;</button></div>
+        <?php endif; ?>
     </div>
 </section>
 <?php endif; ?>

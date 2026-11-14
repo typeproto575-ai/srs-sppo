@@ -1254,13 +1254,16 @@ document.addEventListener('DOMContentLoaded', function () {
         var prevBtn = root.querySelector('[data-carousel-prev]');
         var nextBtn = root.querySelector('[data-carousel-next]');
         var dotsWrap = root.querySelector('[data-carousel-dots]');
+        var controls = root.querySelector('.carousel-controls');
         if (!track || slides.length === 0) return;
 
         // A single slide needs no controls at all.
         if (slides.length < 2) {
-            if (prevBtn) prevBtn.hidden = true;
-            if (nextBtn) nextBtn.hidden = true;
-            if (dotsWrap) dotsWrap.hidden = true;
+            [controls, prevBtn, nextBtn, dotsWrap].forEach(function (control) {
+                if (!control) return;
+                control.hidden = true;
+                control.style.display = 'none';
+            });
             return;
         }
 
