@@ -690,5 +690,12 @@ final class FunctionsTest extends TestCase
             )
         );
     }
+        public function testOutstandingRequirementKeys(): void
+    {
+        $json = '{"catechism_completion":{"status":"not_received","note":""},"baptismal_certificate":{"status":"not_applicable"},"x":{"status":"verified"}}';
+        self::assertSame(['catechism_completion'], application_outstanding_requirement_keys($json));
+        self::assertSame([], application_outstanding_requirement_keys(null));
+        self::assertSame([], application_outstanding_requirement_keys('not json'));
+    }
 
 }

@@ -335,6 +335,24 @@ function application_queue_next_statuses(string $status): array
         'scheduled' => ['rejected'],
     ][$status] ?? [];
 }
+/**
+ * Keys of requirements still marked "not_received" in an application's
+ * requirements JSON. Rows marked not applicable, received or verified do not count.
+ */
+function application_outstanding_requirement_keys(?string $requirementsJson): array
+{
+    $requirements = json_decode((string) $requirementsJson, true);
+    if (!is_array($requirements)) {
+        return [];
+    }
+    $outstanding = [];
+    foreach ($requirements as $key => $item) {
+        if (is_array($item) && ($item['status'] ?? '') === 'not_received') {
+            $outstanding[] = (string) $key;
+        }
+    }
+    return $outstanding;
+}
 
 /**
  * True when an exception is a MySQL duplicate-key error (driver code 1062).

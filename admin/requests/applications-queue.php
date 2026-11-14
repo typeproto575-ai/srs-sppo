@@ -369,6 +369,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $update = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
             $update->execute([$newStatus, (int) $applicationId]);
+            if ($newStatus === 'approved') {
+                $outstandingKeys = application_outstanding_requirement_keys((string) ($application['requirements'] ?? ''));
+                if ($outstandingKeys !== []) {
+                    $outstandingLabels = array_map(
+                        static fn(string $key): string => application_queue_requirement_label((string) $application['sacrament_type'], $key),
+                        $outstandingKeys
+                    );
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'This application cannot be approved yet. Still not received: ' . implode(', ', $outstandingLabels) . '. Mark them received, or keep the application as Pending.';
+                    redirect_to($postReturnUrl);
+                }
+            }
             $closeReason = '';
             if ($newStatus === 'rejected') {
                 $closeReason = (string) ($_POST['close_reason'] ?? '');
