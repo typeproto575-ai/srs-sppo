@@ -792,6 +792,51 @@ function record_public_submission(PDO $pdo, array $emails, string $formType, ?st
 /**
  * Validation helpers for public forms.
  */
+/**
+ * Eligibility rule for one marriage party (groom or bride).
+ *
+ * Keeps the panel-approved rule in ONE small function so it is easy to
+ * change in one place:
+ *   - Blocks a party whose marital_status is 'married'.
+ *   - Blocks a party whose previous_marriage is 'church' or 'civil' while
+ *     marital_status is 'single' (the answers contradict each other).
+ *   - Allows 'widowed' or 'annulled' with a previous marriage; the
+ *     secretary checks the supporting documents later.
+ *   - Never consults civilly_married (a couple already married civilly to
+ *     each other seeking the church wedding is normal — a different
+ *     question from previous marriage).
+ *
+ * @param string $maritalStatus   One of single, married, widowed, annulled.
+ * @param string $previousMarriage  'no', 'church', or 'civil'.
+ * @return string|null  The visitor-facing block message, or NULL when allowed.
+ */
+function marriage_party_eligibility_error(string $maritalStatus, string $previousMarriage): ?string
+{
+    if ($maritalStatus === 'married') {
+        return 'Based on the marital status you entered, this application cannot continue online. Please contact the Parish Office.';
+    }
+
+    if (in_array($previousMarriage, ['church', 'civil'], true) && $maritalStatus === 'single') {
+        return 'Based on the marital status you entered, this application cannot continue online. Please contact the Parish Office.';
+    }
+
+    return null;
+}
+/**
+ * Human-readable label for a party's previous-marriage answer, used on the
+ * marriage review screen. 'no' / anything unexpected renders as 'No'.
+ */
+function marriage_previous_marriage_label(string $previousMarriage): string
+{
+    return match ($previousMarriage) {
+        'no' => 'No',
+        'church' => 'Yes — church',
+        'civil' => 'Yes — civil',
+        default => 'No',
+    };
+}
+
+
 
 
 

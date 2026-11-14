@@ -12,6 +12,11 @@ $trackingNumber = null;
 $personReferences = [];
 $dateConflictWarning = null;
 
+// Configurable minimum lead time (days) between today and the target
+// wedding date. Default 0 means any date from today onward is accepted.
+// Change this single value if the parish wants, e.g., a 3-day minimum.
+define('MARRIAGE_MIN_WEDDING_LEAD_DAYS', 0);
+
 $steps = [
     1 => 'Wedding details',
     2 => 'Groom information',
@@ -100,7 +105,17 @@ if ($isWizardNavigation) {
                 return is_scalar($_POST[$key] ?? null) ? trim((string) $_POST[$key]) : '';
             };
             if ($currentStep === 1) {
-                if ($value('preferred_wedding_date') === '') $errors[] = 'Target wedding date is required.';
+                $weddingDate = $value('preferred_wedding_date');
+                if ($weddingDate === '') $errors[] = 'Target wedding date is required.';
+                if ($weddingDate !== '') {
+                    $earliest = (new DateTime('today'))->modify('+' . (int) MARRIAGE_MIN_WEDDING_LEAD_DAYS . ' days')->format('Y-m-d');
+                    if ($weddingDate < $earliest) {
+                        $lead = (int) MARRIAGE_MIN_WEDDING_LEAD_DAYS;
+                        $errors[] = $lead === 0
+                            ? 'The target wedding date cannot be earlier than today.'
+                            : "The target wedding date must be at least $lead day(s) from today.";
+                    }
+                }
                 $venue = $value('preferred_wedding_venue');
                 if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
                 if ($venue === 'other' && $value('preferred_wedding_venue_other') === '') $errors[] = 'Enter the name of the other wedding venue.';
@@ -122,6 +137,11 @@ if ($isWizardNavigation) {
                 foreach ([$prefix . '_father' => "$label's father's name", $prefix . '_mother' => "$label's mother's maiden name"] as $namePrefix => $nameLabel) {
                     if (($e = validate_person_name_fields($_POST, $namePrefix, $nameLabel, false)) !== null) $errors[] = $e;
                 }
+                $partyError = marriage_party_eligibility_error(
+                    $value($prefix . '_marital_status'),
+                    $value($prefix . '_previous_marriage') ?: 'no'
+                );
+                if ($partyError !== null) $errors[] = $partyError;
             } elseif ($currentStep === 4) {
                 foreach (['groom_baptized' => 'Groom', 'bride_baptized' => 'Bride', 'groom_confirmed' => 'Groom', 'bride_confirmed' => 'Bride'] as $key => $label) {
                     if (!in_array($value($key), ['yes', 'no'], true)) $errors[] = "Please indicate whether the $label is baptized and confirmed Catholic.";
@@ -208,7 +228,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
     if ($g('bride_contact_number') !== '' && !is_valid_phone_number($g('bride_contact_number'))) $errors[] = "Enter a valid bride contact number when provided.";
     if (!in_array($g('groom_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "Groom's marital status is required.";
     if (!in_array($g('bride_marital_status'), ['single', 'married', 'widowed', 'annulled'], true)) $errors[] = "Bride's marital status is required.";
+    $groomEligibility = marriage_party_eligibility_error($g('groom_marital_status'), $g('groom_previous_marriage') ?: 'no');
+    $brideEligibility = marriage_party_eligibility_error($g('bride_marital_status'), $g('bride_previous_marriage') ?: 'no');
+    if ($groomEligibility !== null) $errors[] = $groomEligibility;
+    if ($brideEligibility !== null) $errors[] = $brideEligibility;
     if ($weddingDate === '') $errors[] = 'Target wedding date is required.';
+    if ($weddingDate !== '') {
+        $earliest = (new DateTime('today'))->modify('+' . (int) MARRIAGE_MIN_WEDDING_LEAD_DAYS . ' days')->format('Y-m-d');
+        if ($weddingDate < $earliest) {
+            $lead = (int) MARRIAGE_MIN_WEDDING_LEAD_DAYS;
+            $errors[] = $lead === 0
+                ? 'The target wedding date cannot be earlier than today.'
+                : "The target wedding date must be at least $lead day(s) from today.";
+        }
+    }
     if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
     if ($venue === 'other' && $venueOther === '') $errors[] = 'Enter the name of the other wedding venue.';
     if (strlen($venueOther) > 150) $errors[] = 'The other venue name must be 150 characters or fewer.';
@@ -306,7 +339,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'civilly_married' => $g('civilly_married'),
                 'civil_marriage_date' => $g('civil_marriage_date'),
                 'civil_marriage_place' => $g('civil_marriage_place'),
-                'marriage_license_ref' => $g('marriage_license_ref'),
                 'sponsors' => array_values(array_filter($sponsorNames, 'is_string')),
             ];
             $transferLetterRequirement = $venue === 'church'
@@ -368,8 +400,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
     }
 }
 require_once __DIR__ . '/../../includes/header.php';
-function mv(string $key): string { global $formData; $v = $formData[$key] ?? ''; return e(is_string($v) ? $v : ''); }
-function msel(string $key, string $value): string { global $formData; return ($formData[$key] ?? '') === $value ? 'selected' : ''; }
+// These page-local helpers are guarded so the page can be included more than
+// once in a single process (e.g. repeated page simulation in tests) without
+// "cannot redeclare" errors. All top-level request processing still runs on
+// every include.
+if (!function_exists('mv')) {
+    function mv(string $key): string { global $formData; $v = $formData[$key] ?? ''; return e(is_string($v) ? $v : ''); }
+}
+if (!function_exists('msel')) {
+    function msel(string $key, string $value): string { global $formData; return ($formData[$key] ?? '') === $value ? 'selected' : ''; }
+}
 ?>
 <section class="request-form">
 <div class="alert alert-info online-intake-notice">This form starts the parish review. The parish office will confirm documents, preparation, and the wedding schedule. Submitting it does not confirm a wedding date.</div>
@@ -466,6 +506,19 @@ $sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor'
 <tr><th>Bride's marital status</th><td><?= mv('bride_marital_status') ?></td></tr>
 <tr><th>Baptism / confirmation</th><td>Groom: <?= mv('groom_baptized') ?> / <?= mv('groom_confirmed') ?>; Bride: <?= mv('bride_baptized') ?> / <?= mv('bride_confirmed') ?></td></tr>
 <tr><th>Civil marriage</th><td><?= mv('civilly_married') ?> <?= mv('civil_marriage_date') ?> <?= mv('civil_marriage_place') ?></td></tr>
+<tr><th>Groom's place of birth</th><td><?= e(mv('groom_birthplace')) ?></td></tr>
+<tr><th>Bride's place of birth</th><td><?= e(mv('bride_birthplace')) ?></td></tr>
+<tr><th>Groom's religion</th><td><?= e(mv('groom_religion')) ?></td></tr>
+<tr><th>Bride's religion</th><td><?= e(mv('bride_religion')) ?></td></tr>
+<tr><th>Groom's current address</th><td><?= e(mv('groom_current_address')) ?></td></tr>
+<tr><th>Bride's current address</th><td><?= e(mv('bride_current_address')) ?></td></tr>
+<tr><th>Groom's father's name</th><td><?= e(compose_person_name($formData, 'groom_father')) ?></td></tr>
+<tr><th>Groom's mother's maiden name</th><td><?= e(compose_person_name($formData, 'groom_mother')) ?></td></tr>
+<tr><th>Bride's father's name</th><td><?= e(compose_person_name($formData, 'bride_father')) ?></td></tr>
+<tr><th>Bride's mother's maiden name</th><td><?= e(compose_person_name($formData, 'bride_mother')) ?></td></tr>
+<tr><th>Groom's previous marriage</th><td><?= e(marriage_previous_marriage_label($formData['groom_previous_marriage'] ?? '')) ?></td></tr>
+<tr><th>Bride's previous marriage</th><td><?= e(marriage_previous_marriage_label($formData['bride_previous_marriage'] ?? '')) ?></td></tr>
+
 <tr><th>Principal sponsors</th><td><?= e(implode(', ', $sponsorNameList)) ?></td></tr>
 </table>
 </fieldset>
