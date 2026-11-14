@@ -24,8 +24,7 @@ require_once __DIR__ . '/../includes/header.php';
         <h1>Privacy Notice</h1>
         <p class="legal-document__subtitle">How the Parish Office collects, uses, shares, keeps and protects your personal data, in line with the Data Privacy Act of 2012 (Republic Act No. 10173).</p>
         <div class="legal-document__meta">
-            <span>Effective: [DATE]</span>
-            <span>Last Updated: [DATE]</span>
+            <span>Draft for demonstration. Not yet in effect.</span>
         </div>
     </header>
 
@@ -130,7 +129,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause" id="changes">
             <h2 class="legal-clause__title">Changes</h2>
-            <p>We may update this notice. The "Last Updated" date above shows the latest revision. See also our <a href="<?= e($basePath . '/public/terms.php') ?>">Terms and Conditions</a>.</p>
+            <p>We may update this notice. See also our <a href="<?= e($basePath . '/public/terms.php') ?>">Terms and Conditions</a>.</p>
         </section>
 
     </div>

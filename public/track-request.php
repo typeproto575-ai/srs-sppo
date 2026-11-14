@@ -255,7 +255,7 @@ require_once __DIR__ . '/../includes/header.php';
                     if ($item['item_type'] === 'application' && is_array($requirements)) {
                         foreach ($requirements as $key => $requirement) {
                             if (is_array($requirement) && ($requirement['status'] ?? '') === 'not_received') {
-                                $requirementLabel = ucwords(str_replace('_', ' ', (string) $key));
+                                $requirementLabel = application_queue_requirement_label((string) $item['sacrament_type'], (string) $key);
                                 $requirementNote = trim((string) ($requirement['note'] ?? ''));
                                 $missingRequirements[] = $requirementNote !== '' ? $requirementLabel . ' (' . $requirementNote . ')' : $requirementLabel;                            }
                         }
