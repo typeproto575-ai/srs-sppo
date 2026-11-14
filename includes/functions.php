@@ -427,6 +427,30 @@ function calculate_age(string $birthdate): int
     return $birth->diff($today)->y;
 }
 
+/** Validate a report month/year together, falling back to the current period if either is invalid. */
+function validated_report_period(mixed $month, mixed $year, ?DateTimeImmutable $currentDate = null): array
+{
+    $currentDate ??= new DateTimeImmutable('today');
+    $currentMonth = (int) $currentDate->format('n');
+    $currentYear = (int) $currentDate->format('Y');
+
+    $monthValue = is_int($month) || (is_string($month) && preg_match('/\A[0-9]+\z/', $month))
+        ? (int) $month
+        : null;
+    $yearValue = is_int($year) || (is_string($year) && preg_match('/\A[0-9]+\z/', $year))
+        ? (int) $year
+        : null;
+
+    if (
+        $monthValue === null || $monthValue < 1 || $monthValue > 12
+        || $yearValue === null || $yearValue < 2000 || $yearValue > $currentYear + 1
+    ) {
+        return [$currentMonth, $currentYear];
+    }
+
+    return [$monthValue, $yearValue];
+}
+
 /** Return the configured age range for a sacrament. */
 function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
 {

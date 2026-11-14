@@ -12,6 +12,17 @@ require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class FunctionsTest extends TestCase
 {
+    public function testReportPeriodValidationAcceptsValidValuesAndFallsBackForInvalidValues(): void
+    {
+        $currentDate = new DateTimeImmutable('2026-11-14');
+
+        self::assertSame([12, 2027], validated_report_period('12', '2027', $currentDate));
+        self::assertSame([11, 2026], validated_report_period('13', '2026', $currentDate));
+        self::assertSame([11, 2026], validated_report_period('11', 'abc', $currentDate));
+        self::assertSame([11, 2026], validated_report_period('11', '0', $currentDate));
+        self::assertSame([11, 2026], validated_report_period('11', '2101', $currentDate));
+    }
+
     public function testUnifiedRecordSearchParsesRegisterReferences(): void
     {
         self::assertSame(

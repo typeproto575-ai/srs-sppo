@@ -12,9 +12,10 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Reports';
 
 $view = ($_GET['view'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly';
-$month = (int) ($_GET['month'] ?? date('n'));
-$year  = (int) ($_GET['year'] ?? date('Y'));
-if ($month < 1 || $month > 12) $month = (int) date('n');
+[$month, $year] = validated_report_period(
+    $_GET['month'] ?? date('n'),
+    $_GET['year'] ?? date('Y')
+);
 $isMonthly = $view === 'monthly';
 
 $monthNames = [1=>'January',2=>'February',3=>'March',4=>'April',5=>'May',6=>'June',
@@ -113,7 +114,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </select>
             </label>
             <?php endif; ?>
-            <label>Year <input autocomplete="off" type="number" name="year" value="<?= (int) $year ?>" min="2000" max="2100"></label>
+            <label>Year <input autocomplete="off" type="number" name="year" value="<?= (int) $year ?>" min="2000" max="<?= (int) date('Y') + 1 ?>"></label>
             <button type="submit" class="btn btn-small">View</button>
             <a href="?<?= e($periodQuery) ?>&export=csv" class="btn btn-secondary btn-small">Export CSV</a>
         </form>
