@@ -543,7 +543,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
         <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
-            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Before: prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Before: choose a certificate type and review what to prepare' ?></strong>
+            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Choose a certificate type and review what to prepare' ?></strong>
             <ul id="certificate-preparation-list" aria-live="polite">
                 <?php if ($selectedPreparation): ?>
                     <?php foreach ($selectedPreparation as $item): ?><li><?= e($item) ?></li><?php endforeach; ?>
@@ -555,17 +555,18 @@ require_once __DIR__ . '/../includes/header.php';
         </section>
 
         <h2 class="form-stage-heading">Certificate details</h2>
-        <p class="field-hint">Already registered with the parish? Enter your reference number and date of birth.</p>
         <div class="public-person-lookup" data-public-person-lookup
              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
              data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
              data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
              data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
-            <p class="field-hint">Search by person reference and date of birth, or by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
+            <h3 class="lookup-title">Already registered with the parish?</h3>
+            <p class="field-hint">Enter your reference number here (with the date of birth below), or fill in the full name and date of birth below to search. Selecting a match fills in the known details. No match? Just continue with the form.</p>
             <div data-person-results aria-live="polite"></div>
         </div>
         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
 
+        <h3 class="form-subheading">Person on the certificate</h3>
         <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
         <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
 
@@ -670,8 +671,8 @@ require_once __DIR__ . '/../includes/header.php';
                 document.getElementById('spouse_name').required = isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
                 preparationHeading.textContent = typeSelect.value
-                    ? 'Before: prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
-                    : 'Before: choose a certificate type and review what to prepare';
+                    ? 'Prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
+                    : 'Choose a certificate type and review what to prepare';
                 preparationList.replaceChildren();
                 var details = preparationDetails[typeSelect.value] || [
                     'Select a certificate type to see the details that can help the Parish Office find the record.'

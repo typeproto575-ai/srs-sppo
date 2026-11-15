@@ -2098,12 +2098,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
 
         var referenceLabel = document.createElement('label');
-        referenceLabel.textContent = 'Person reference (optional, e.g. SPPO-P-...)';
+        referenceLabel.textContent = 'Reference number (optional)';
         var referenceInput = document.createElement('input');
         referenceInput.type = 'text';
         referenceInput.autocomplete = 'off';
         referenceInput.placeholder = 'SPPO-P-...';
-        referenceInput.setAttribute('aria-label', 'Person reference (optional, e.g. SPPO-P-...)');
+        referenceInput.setAttribute('aria-label', 'Reference number (optional)');
         referenceLabel.appendChild(referenceInput);
         widget.insertBefore(referenceLabel, resultsBox);
 
@@ -2218,7 +2218,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             if (!reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
-                resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
+                resultsBox.textContent = 'Enter the full name and date of birth to search the parish records.';
                 return;
             }
 
@@ -2245,7 +2245,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
                         resultsBox.textContent = reference
-                            ? 'No profile matched that reference and birth date. Check them, or search by name and birth date instead.'
+                            ? 'No profile matched that reference number and date of birth. Check them, or search by name and date of birth instead.'
                             : 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
                         return;
                     }

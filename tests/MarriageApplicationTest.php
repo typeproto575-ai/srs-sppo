@@ -9,7 +9,7 @@ require_once __DIR__ . '/../includes/functions.php';
 
 final class MarriageApplicationTest extends TestCase
 {
-    private const BLOCK_MESSAGE = 'Based on the marital status you entered, this application cannot continue online. Please contact the Parish Office.';
+    private const BLOCK_MESSAGE = 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.';
     private const DATE_MESSAGE = 'The target wedding date cannot be earlier than today.';
 
     private PDO $pdo;

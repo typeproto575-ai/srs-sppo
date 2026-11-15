@@ -95,7 +95,7 @@ if ($isWizardNavigation && csrf_verify()) {
             if ($parentName === '') $errors[] = 'Parent/Guardian name is required.';
             if (($e = validate_full_name($parentName)) !== null) $errors[] = $e;
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-                if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
+                if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
             }
             if ($value('contact_number') !== '' && !is_valid_phone_number($value('contact_number'))) $errors[] = 'Enter a valid contact number when provided.';
             if (!filter_var($value('email'), FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if ($parent === '') $errors[] = 'Parent/Guardian name is required.';
     if (($e = validate_full_name($parent)) !== null) $errors[] = $e;
     foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-        if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
+        if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
     }
     if ($contact !== '' && !is_valid_phone_number($contact)) $errors[] = 'Enter a valid contact number when provided.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
@@ -289,24 +289,24 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
                 <?php endforeach; ?>
             </ol>
-            <h2 class="form-stage-heading">During: complete the pre-application</h2>
+            <h2 class="form-stage-heading">Pre-application form</h2>
             <form method="post">
                 <?= csrf_field() ?>
                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
                 <?php if ($currentStep === 1): ?>
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
                         <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
-                        <h3>Already registered with the parish?</h3>
-                        <p class="field-hint">Enter your reference number and date of birth.</p>
                         <div class="public-person-lookup" data-public-person-lookup
                              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                              data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
                              data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
-                            <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
+                            <h3 class="lookup-title">Already registered with the parish?</h3>
+                            <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
                             <div data-person-results aria-live="polite"></div>
                         </div>
-                        <label>Date of Birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
+                        <h3 class="form-subheading">Child’s details</h3>
+                        <label>Date of birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
                         <div class="inline-fields">
                             <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
                             <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
@@ -321,8 +321,8 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     </fieldset>
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>
-                        <?= person_name_fields('father', "Father's name", $formData, false) ?>
-                        <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
+                        <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
+                        <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name or tick Not applicable', false, true) ?>
                         <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
                         <div class="inline-fields"><label>Contact Number <span class="field-hint">(optional; email is used for updates)</span><input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>"></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
                     </fieldset>

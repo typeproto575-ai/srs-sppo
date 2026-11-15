@@ -149,6 +149,11 @@ function public_person_reference(PDO $pdo, ?int $personId, array $identity): arr
         'suffix' => trim((string) ($identity['suffix'] ?? '')),
         'birth_date' => trim((string) ($identity['birth_date'] ?? '')),
     ];
+    foreach (['father_name', 'mother_maiden_name', 'birth_place'] as $parentKey) {
+        if (strcasecmp(trim((string) ($identity[$parentKey] ?? '')), 'N/A') === 0) {
+            $identity[$parentKey] = '';
+        }
+    }
     if ($name['first_name'] === '' || $name['last_name'] === '') {
         throw new InvalidArgumentException('A first and last name are needed to create a person reference.');
     }
@@ -965,6 +970,9 @@ function e(?string $value): string
 
 function compose_person_name(array $values, string $prefix): string
 {
+    if (($values[$prefix . '_na'] ?? '') === '1') {
+        return 'N/A';
+    }
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
@@ -1020,8 +1028,29 @@ function person_name_row_count(array $values, string $prefix): int
     return $count;
 }
 
+/**
+ * A parent's name that must be answered: either a name or the "Not applicable"
+ * tick box (for example, a father who is not listed on the birth certificate).
+ */
+function validate_parent_name_or_na(array $values, string $prefix, string $label): ?string
+{
+    if (($values[$prefix . '_na'] ?? '') === '1') {
+        return null;
+    }
+    $first = is_scalar($values[$prefix . '_first'] ?? null) ? trim((string) $values[$prefix . '_first']) : '';
+    $last = is_scalar($values[$prefix . '_last'] ?? null) ? trim((string) $values[$prefix . '_last']) : '';
+    if ($first === '' || $last === '') {
+        return "{$label}: enter the first and last name, or tick Not applicable.";
+    }
+
+    return validate_full_name(compose_person_name($values, $prefix));
+}
+
 function validate_person_name_fields(array $values, string $prefix, string $label, bool $required = true): ?string
 {
+    if (($values[$prefix . '_na'] ?? '') === '1') {
+        return null;
+    }
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
@@ -1073,9 +1102,12 @@ function person_name_fields(
     array $values,
     bool $required = true,
     ?int $rowIndex = null,
-    ?string $hint = null
+    ?string $hint = null,
+    bool $withSuffix = true,
+    bool $allowNa = false
 ): string {
     $isList = $rowIndex !== null;
+    $naChecked = $allowNa && (($values[$prefix . '_na'] ?? '') === '1');
     $optionalHint = $hint !== null
         ? ' <span class="field-hint">(' . e($hint) . ')</span>'
         : ($required
@@ -1086,6 +1118,9 @@ function person_name_fields(
     foreach ([['first', 'middle'], ['last', 'suffix']] as $group) {
         $markup .= '<div class="inline-fields">';
         foreach ($group as $part) {
+            if ($part === 'suffix' && !$withSuffix) {
+                continue;
+            }
             $partLabel = match ($part) {
                 'first' => 'First Name',
                 'middle' => 'Middle Name',
@@ -1117,9 +1152,15 @@ function person_name_fields(
 
             $markup .= '<label' . $forAttribute . '>' . e($partLabel) . $hint
                 . '<input type="text"' . $idAttribute . ' name="' . e($inputName) . '" autocomplete="' . $autocomplete
-                . '" value="' . e($value) . '"></label>';
+                . '" value="' . e($value) . '"' . ($naChecked ? ' disabled' : '') . '></label>';
         }
         $markup .= '</div>';
+    }
+
+    if ($allowNa) {
+        $markup .= '<input type="hidden" name="' . e($prefix) . '_na" value="0">'
+            . '<label class="checkbox-label na-toggle"><input type="checkbox" name="' . e($prefix) . '_na" value="1"'
+            . ($naChecked ? ' checked' : '') . '> Not applicable (not listed on the birth certificate or not known)</label>';
     }
 
     return $markup . '</div>';

@@ -50,6 +50,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     ?>
     <!-- Main stylesheet for the public site -->
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $publicStyleVersion ?>">
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/polish.css?v=<?= (int) (file_exists(__DIR__ . '/../assets/css/polish.css') ? filemtime(__DIR__ . '/../assets/css/polish.css') : time()) ?>">
     <meta property="og:title" content="<?= e($pageTitle) ?> | St. Patrick's Parish Office">
     <meta property="og:description" content="<?= e($pageDescription) ?>">
     <meta property="og:type" content="website">

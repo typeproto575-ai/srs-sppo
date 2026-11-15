@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
                 if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
                 foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-                    if (($e = validate_person_name_fields($_POST, $prefix, $label, false)) !== null) $errors[] = $e;
+                    if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
                 }
                 $errors = array_merge(
                     $errors,
@@ -247,7 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-                if (($e = validate_person_name_fields($formData, $prefix, $label, false)) !== null) $errors[] = $e;
+                if (($e = validate_parent_name_or_na($formData, $prefix, $label)) !== null) $errors[] = $e;
             }
             if (fd('child_person_id', $formData) !== '') {
                 try {
@@ -424,24 +424,24 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
+    <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 1 of 4 — Child Information</legend>
             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
-            <h3>Already registered with the parish?</h3>
-            <p class="field-hint">Enter your reference number and date of birth.</p>
             <div class="public-person-lookup" data-public-person-lookup
                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                  data-name-inputs="child_first,child_middle,child_last,child_suffix"
                  data-birth-field="child_birthdate" data-person-id-field="child_person_id"
                  data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
-                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
+                <h3 class="lookup-title">Already registered with the parish?</h3>
+                <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
-            <label>Date of Birth
+            <h3 class="form-subheading">Child’s details</h3>
+            <label>Date of birth *
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
             </label>
             <div class="inline-fields">
@@ -463,9 +463,10 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
-            <label>Place of Birth
+            <label>Place of Birth *
                 <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
+            <label class="checkbox-label na-toggle"><input type="checkbox" data-na-target="child_birthplace"> Not available / unknown (N/A)</label>
         </fieldset>
         <div class="form-actions">
             <button type="submit" class="btn">Next</button>
@@ -485,14 +486,14 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
+    <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 2 of 4 — Family Information</legend>
-            <?= person_name_fields('father', "Father's name", $formData, false, null, 'leave blank if not on record; a guardian is then required') ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, false, null, 'leave blank if not on record; a guardian is then required') ?>
+            <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name or tick Not applicable', false, true) ?>
             <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             <?php
             $godfatherRows = max(1, count(fa('godfather_full_name', $formData)));
@@ -548,7 +549,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
+    <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
@@ -587,7 +588,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
         </div>
     <?php endif; ?>
-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
+    <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="final_submit">
