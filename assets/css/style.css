@@ -704,6 +704,38 @@ html, body {
     margin: 0;
     flex: 1 1 auto;
 }
+.submission-success .submission-reference-reminder {
+    margin: 0.35rem 0 1rem;
+    font-weight: 600;
+}
+.submission-success .submission-request-number {
+    margin: -0.5rem 0 1rem;
+    color: var(--muted, #52605a);
+    font-size: 0.9rem;
+}
+.submission-success .submission-request-number span {
+    font-family: var(--font-mono, monospace);
+}
+.tracker-person-reference {
+    display: grid;
+    gap: 0.2rem;
+    margin: 1rem 0;
+}
+.tracker-person-reference span {
+    color: var(--muted, #52605a);
+    font-size: 0.9rem;
+}
+.tracker-person-reference strong {
+    font-family: var(--font-mono, monospace);
+    font-size: clamp(1.25rem, 4vw, 1.8rem);
+    overflow-wrap: anywhere;
+}
+.tracker-request-group {
+    margin-top: 1.5rem;
+}
+.tracker-request-number {
+    color: var(--muted, #52605a);
+}
 .submission-success .submission-next-steps h3 {
     margin: 0 0 0.4rem;
     font-size: 1rem;

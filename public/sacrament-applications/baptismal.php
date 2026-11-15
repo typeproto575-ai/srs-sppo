@@ -340,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         try {
-                            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId)) {
+                            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Baptismal Application', $pdo, 'sacrament_applications', $applicationId, $requestNo)) {
                                 log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                             }
                         } catch (InvalidArgumentException $e) {
@@ -385,6 +385,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
+        $successRequestNumber = $requestNo;
         $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>

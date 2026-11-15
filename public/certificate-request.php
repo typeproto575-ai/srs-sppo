@@ -10,6 +10,7 @@ $pageTitle = (current_user()['role'] ?? '') === 'secretary'
     ? 'Walk-in Certificate Request'
     : 'Request a Certificate';
 $trackingNumber = null;
+$requestNumber = null;
 
 if (($_GET['person_lookup'] ?? '') === '1') {
     header('Content-Type: application/json; charset=utf-8');
@@ -100,7 +101,10 @@ if (($_GET['person_lookup'] ?? '') === '1') {
 $submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
 if ($submitted && is_string($_SESSION['certificate_success'] ?? null)) {
     $trackingNumber = $_SESSION['certificate_success'];
-    unset($_SESSION['certificate_success']);
+    $requestNumber = is_string($_SESSION['certificate_success_request_no'] ?? null)
+        ? $_SESSION['certificate_success_request_no']
+        : '';
+    unset($_SESSION['certificate_success'], $_SESSION['certificate_success_request_no']);
 }
 
 $values = [
@@ -453,7 +457,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $personReference,
                                 $pdo,
                                 $requestId,
-                                $values['requester_relationship'] === 'self'
+                                $values['requester_relationship'] === 'self',
+                                $requestNo
                             );
                         } catch (Throwable $e) {
                             error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
@@ -464,6 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                         exit;
                     }
                     $_SESSION['certificate_success'] = $personReference;
+                    $_SESSION['certificate_success_request_no'] = $requestNo;
                     $trackingNumber = $personReference;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
                     exit;
@@ -482,6 +488,7 @@ require_once __DIR__ . '/../includes/header.php';
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = false;
+        $successRequestNumber = $requestNumber ?? '';
         $successPersonReferences = [['name' => '', 'reference' => $trackingNumber]];
         $successRequiredDocuments = [
             'Bring your person reference. If the secretary gave you a claim stub or payment slip, bring it too.',

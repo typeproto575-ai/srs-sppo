@@ -6,7 +6,8 @@ require_once __DIR__ . '/../includes/auth.php';
 $basePath = base_path();
 $pageTitle = 'View My Requests';
 $errors = [];
-$items = [];
+$applications = [];
+$certificates = [];
 $reference = '';
 $email = '';
 $searched = false;
@@ -154,24 +155,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $referenceStmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ? LIMIT 1');
             $referenceStmt->execute([$personId]);
             $verifiedPersonReference = (string) ($referenceStmt->fetchColumn() ?: '');
-            $applications = $pdo->prepare(
-                "SELECT 'application' AS item_type, sacrament_type, status, created_at, preferred_date, requirements, rejection_reason
+            $applicationStmt = $pdo->prepare(
+                "SELECT request_no, sacrament_type, status, created_at, preferred_date, requirements, rejection_reason
                   FROM sacrament_applications
                  WHERE person_id = ? OR spouse_person_id = ?
                  ORDER BY created_at DESC, id DESC"
             );
-            $applications->execute([(int) $personId, (int) $personId]);
-            $items = $applications->fetchAll(PDO::FETCH_ASSOC);
+            $applicationStmt->execute([(int) $personId, (int) $personId]);
+            $applications = $applicationStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $certificates = $pdo->prepare(
-                "SELECT 'certificate' AS item_type, sacrament_type, status, created_at, NULL AS preferred_date, NULL AS requirements
+            $certificateStmt = $pdo->prepare(
+                "SELECT request_no, sacrament_type, status, created_at, rejection_reason
                  FROM certificate_requests
                  WHERE person_id = ?
                  ORDER BY created_at DESC, id DESC"
             );
-            $certificates->execute([(int) $personId]);
-            $items = array_merge($items, $certificates->fetchAll(PDO::FETCH_ASSOC));
-            usort($items, static fn(array $a, array $b): int => strcmp((string) $b['created_at'], (string) $a['created_at']));
+            $certificateStmt->execute([(int) $personId]);
+            $certificates = $certificateStmt->fetchAll(PDO::FETCH_ASSOC);
         }
     }
 }
@@ -200,13 +200,14 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 <section class="card">
     <h1>View Requests Linked to Your Person Reference</h1>
-    <p>Use your person reference across linked requests. Older submissions can also be found with their original request number. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
+    <p>Use your person reference to view applications and certificate requests linked to your profile. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
     <?php if (!$searched && !isset($_SESSION['pending_person_request_lookup'])): ?>
         <form method="post" class="stacked-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="send_code">
-            <label for="person_reference">Person reference or older request number</label>
+            <label for="person_reference">Reference number</label>
             <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-...">
+            <p class="field-hint">You received this when you submitted. It works for every sacrament and request.</p>
             <label for="email">Email address used on the request</label>
             <input id="email" name="email" type="email" autocomplete="email" required maxlength="150" value="<?= e($email) ?>">
             <button type="submit" class="btn">Email me an access code</button>
@@ -231,47 +232,67 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endif; ?>
     <?php if ($errors): ?>
         <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
-    <?php elseif ($searched && $items === []): ?>
+    <?php elseif ($searched && $applications === [] && $certificates === []): ?>
         <p class="alert alert-info" role="status">No requests matched those details. Check the reference and email, or contact the Parish Office.</p>
-    <?php elseif ($items !== []): ?>
+    <?php elseif ($searched): ?>
         <h2>Your requests</h2>
         <?php if ($verifiedPersonReference !== ''): ?>
-            <p><strong>Your person reference:</strong> <code><?= e($verifiedPersonReference) ?></code> Keep this reference for future requests.</p>
+            <p class="tracker-person-reference"><span>Reference number</span><strong><?= e($verifiedPersonReference) ?></strong></p>
         <?php endif; ?>
         <p>If a request needs additional documents, contact the Parish Office using this same person reference. Do not submit a duplicate application.</p>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Request</th><th>Status</th><th>Submitted</th><th>Preferred date</th></tr></thead>
-                <tbody>
-                <?php foreach ($items as $item): ?>
-                    <tr>
-                        <td><?= e(($item['item_type'] === 'application' ? 'Pre-application: ' : 'Certificate: ') . ($sacramentLabels[$item['sacrament_type']] ?? ucfirst((string) $item['sacrament_type']))) ?></td>
-                        <td><?= e($statusLabels[$item['status']] ?? ucfirst(str_replace('_', ' ', (string) $item['status']))) ?></td>
-                        <td><?= e((string) $item['created_at']) ?></td>
-                        <td><?= e((string) ($item['preferred_date'] ?? '—') ?: '—') ?></td>
-                    </tr>
-                    <?php
-                    $requirements = json_decode((string) ($item['requirements'] ?? ''), true);
-                    $missingRequirements = [];
-                    if ($item['item_type'] === 'application' && is_array($requirements)) {
-                        foreach ($requirements as $key => $requirement) {
-                            if (is_array($requirement) && ($requirement['status'] ?? '') === 'not_received') {
-                                $requirementLabel = application_queue_requirement_label((string) $item['sacrament_type'], (string) $key);
-                                $requirementNote = trim((string) ($requirement['note'] ?? ''));
-                                $missingRequirements[] = $requirementNote !== '' ? $requirementLabel . ' (' . $requirementNote . ')' : $requirementLabel;                            }
-                        }
-                    }
-                    ?>
-                    <?php if ($missingRequirements !== []): ?>
-                        <tr><td colspan="4"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this same person reference; do not submit a duplicate.</td></tr>
-                    <?php endif; ?>
-                    <?php if ($item['item_type'] === 'application' && $item['status'] === 'rejected' && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
-                    <tr><td colspan="4"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</td></tr>
+        <?php foreach ([
+            'Applications' => ['type' => 'application', 'items' => $applications],
+            'Certificate requests' => ['type' => 'certificate', 'items' => $certificates],
+        ] as $groupTitle => $group): ?>
+            <section class="tracker-request-group">
+                <h3><?= e($groupTitle) ?></h3>
+                <?php if ($group['items'] === []): ?>
+                    <p>No <?= e(strtolower($groupTitle)) ?> found.</p>
+                <?php else: ?>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Request</th><th>Status</th><th>Submitted</th><th>Preferred date</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($group['items'] as $item): ?>
+                                <?php
+                                $sacramentName = $sacramentLabels[$item['sacrament_type']] ?? ucfirst(str_replace('_', ' ', (string) $item['sacrament_type']));
+                                $requestType = $group['type'] === 'application' ? $sacramentName . ' application' : $sacramentName . ' certificate';
+                                $status = $group['type'] === 'certificate'
+                                    ? status_label('certificate', (string) $item['status'])
+                                    : ($statusLabels[$item['status']] ?? ucfirst(str_replace('_', ' ', (string) $item['status'])));
+                                ?>
+                                <tr>
+                                    <td><?= e($requestType) ?><br><small class="tracker-request-number">Request no.: <?= e((string) $item['request_no']) ?></small></td>
+                                    <td><?= e($status) ?></td>
+                                    <td><?= e((string) $item['created_at']) ?></td>
+                                    <td><?= e((string) ($item['preferred_date'] ?? '—') ?: '—') ?></td>
+                                </tr>
+                                <?php
+                                $requirements = json_decode((string) ($item['requirements'] ?? ''), true);
+                                $missingRequirements = [];
+                                if ($group['type'] === 'application' && is_array($requirements)) {
+                                    foreach ($requirements as $key => $requirement) {
+                                        if (is_array($requirement) && ($requirement['status'] ?? '') === 'not_received') {
+                                            $requirementLabel = application_queue_requirement_label((string) $item['sacrament_type'], (string) $key);
+                                            $requirementNote = trim((string) ($requirement['note'] ?? ''));
+                                            $missingRequirements[] = $requirementNote !== '' ? $requirementLabel . ' (' . $requirementNote . ')' : $requirementLabel;
+                                        }
+                                    }
+                                }
+                                ?>
+                                <?php if ($missingRequirements !== []): ?>
+                                    <tr><td colspan="4"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this same person reference; do not submit a duplicate.</td></tr>
+                                <?php endif; ?>
+                                <?php if ($item['status'] === 'rejected' && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
+                                    <tr><td colspan="4"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</td></tr>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+            </section>
+        <?php endforeach; ?>
     <?php endif; ?>
 </section>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

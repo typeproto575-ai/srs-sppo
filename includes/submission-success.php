@@ -15,6 +15,7 @@
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
  *   $successIsApplication - (optional) show sacrament-application next steps
+ *   $successRequestNumber - (optional) the internal request/ticket number
  *   $basePath        - falls back to base_path()
  *
  * Certificates are picked up and printed at the counter per project rules.
@@ -38,6 +39,9 @@ $successRequiredDocuments = isset($successRequiredDocuments) && is_array($succes
 $successPersonReferences = isset($successPersonReferences) && is_array($successPersonReferences)
     ? $successPersonReferences
     : [['name' => '', 'reference' => $trackingNumber]];
+$successRequestNumber = isset($successRequestNumber) && is_string($successRequestNumber)
+    ? trim($successRequestNumber)
+    : '';
 $basePath       = $basePath ?? base_path();
 ?>
         <div class="submission-success" id="submission-success">
@@ -45,19 +49,21 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <div>
-                    <p class="field-hint">Your person reference</p>
                     <?php foreach ($successPersonReferences as $personReference): ?>
                         <?php if (!is_array($personReference) || !is_string($personReference['reference'] ?? null)) continue; ?>
+                        <p class="field-hint"><?= is_string($personReference['name'] ?? null) && $personReference['name'] !== '' ? 'Person reference for ' . e($personReference['name']) : 'Your person reference' ?></p>
                         <p class="submission-tracking">
-                            <?php if (is_string($personReference['name'] ?? null) && $personReference['name'] !== ''): ?>
-                                <?= e($personReference['name']) ?>:
-                            <?php endif; ?>
                             <?= e($personReference['reference']) ?>
                         </p>
                         <button type="button" class="btn btn-secondary btn-small" data-copy-person-reference="<?= e($personReference['reference']) ?>">Copy<?= is_string($personReference['name'] ?? null) && $personReference['name'] !== '' ? ' ' . e($personReference['name']) . ' Reference' : ' Reference' ?></button>
+                        <p class="submission-reference-reminder">Keep this number. It works for every sacrament and request.</p>
                     <?php endforeach; ?>
                 </div>
             </div>
+            <?php if ($successRequestNumber !== ''): ?>
+                <p class="submission-request-number">Request no.: <span><?= e($successRequestNumber) ?></span></p>
+            <?php endif; ?>
+            <p><a class="btn" href="<?= e($basePath . '/public/track-request.php') ?>">Track my requests</a></p>
 
             <div class="submission-next-steps">
                 <h3>After submission: what happens next</h3>
@@ -87,7 +93,7 @@ $basePath       = $basePath ?? base_path();
                 </section>
             <?php endif; ?>
 
-            <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. <a href="<?= e($basePath . '/public/track-request.php') ?>">View requests linked to your person reference</a>.</p>
+            <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online.</p>
         </div>
         <script>
         (function () {

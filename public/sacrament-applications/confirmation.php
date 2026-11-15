@@ -10,6 +10,7 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Confirmation Pre-Application';
 $errors    = [];
 $trackingNumber = null;
+$requestNumber = null;
 
 // --- Wizard state (mirrors baptismal.php phased flow) ---
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
@@ -20,7 +21,10 @@ if (($_GET['reset'] ?? '') === '1') {
 }
 if (($_GET['submitted'] ?? '') === '1' && is_string($_SESSION['confirmation_success'] ?? null)) {
     $trackingNumber = $_SESSION['confirmation_success'];
-    unset($_SESSION['confirmation_success'], $_SESSION['confirmation_app']);
+    $requestNumber = is_string($_SESSION['confirmation_success_request_no'] ?? null)
+        ? $_SESSION['confirmation_success_request_no']
+        : '';
+    unset($_SESSION['confirmation_success'], $_SESSION['confirmation_success_request_no'], $_SESSION['confirmation_app']);
 }
 
 if (!defined('CONF_STEP_DETAILS')) {
@@ -291,7 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 try {
-                    if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId)) {
+                    if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'Confirmation Application', $pdo, 'sacrament_applications', $applicationId, $requestNo)) {
                         log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
                     }
                 } catch (InvalidArgumentException $e) {
@@ -302,6 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $_SESSION['confirmation_success'] = $trackingNumber;
+                $_SESSION['confirmation_success_request_no'] = $requestNo;
                 unset($_SESSION['confirmation_app']);
                 session_write_close();
                 header('Location: confirmation.php?submitted=1');
@@ -322,6 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
+        $successRequestNumber = $requestNumber ?? '';
         $successRequiredDocuments = sacrament_application_requirements('confirmation')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>

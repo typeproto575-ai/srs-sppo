@@ -389,8 +389,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 exit;
             }
             if ($channel === 'online') {
-                if (mail_request_received($groomEmail, $groomProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
-                if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $brideProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
+                if (mail_request_received($groomEmail, $groomProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId, $requestNo)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to groom.');
+                if ($brideEmail !== $groomEmail && mail_request_received($brideEmail, $brideProfile['reference'], 'Holy Matrimony Application', $pdo, 'sacrament_applications', $applicationId, $requestNo)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, 'Confirmation email sent to bride.');
             }
         } catch (InvalidArgumentException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -421,6 +421,7 @@ if (!function_exists('msel')) {
 <?php
 $successHeading = 'Your pre-application has been submitted';
 $successIsApplication = true;
+$successRequestNumber = $requestNo;
 $successPersonReferences = $personReferences;
 $successRequiredDocuments = sacrament_application_requirements('marriage')['before'];
 require __DIR__ . '/../../includes/submission-success.php';

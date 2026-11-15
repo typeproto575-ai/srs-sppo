@@ -247,7 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                 redirect_to('/admin/requests/applications-queue.php?added=' . rawurlencode($requestNo));
                 exit;
             }
-            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
+            if ($channel === 'online' && mail_request_received($email, $trackingNumber, 'First Communion Application', $pdo, 'sacrament_applications', $applicationId, $requestNo)) log_activity($pdo, null, 'confirmation_email_sent', 'sacrament_applications', $applicationId, "Confirmation email sent to {$email}");
             unset($_SESSION['first_communion_app']);
         } catch (InvalidArgumentException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -276,6 +276,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
         <?php
         $successHeading = 'Your pre-application has been submitted';
         $successIsApplication = true;
+        $successRequestNumber = $requestNo;
         $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
