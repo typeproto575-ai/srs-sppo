@@ -125,3 +125,136 @@ function funeral_calculated_age(?string $birth, string $death): ?int
 
     return $birthDate->diff($deathDate)->y;
 }
+
+function funeral_certification_lines(
+    array $record,
+    array $person,
+    string $purpose,
+    string $requesterName,
+    string $issuedOn
+): array {
+    $value = static function (array $source, string $key): string {
+        $raw = $source[$key] ?? '';
+        return is_scalar($raw) ? trim((string) $raw) : '';
+    };
+    $formatDate = static function (mixed $raw): string {
+        $date = funeral_parse_date($raw);
+        return $date?->format('F j, Y') ?? '';
+    };
+
+    $name = $value($person, 'full_name');
+    if ($name === '') {
+        $name = implode(' ', array_filter(array_map(
+            static fn(string $part): string => trim($part),
+            [
+                $value($person, 'first_name'),
+                $value($person, 'middle_name'),
+                $value($person, 'last_name'),
+                $value($person, 'suffix'),
+            ]
+        ), static fn(string $part): bool => $part !== ''));
+    }
+
+    $descriptors = [];
+    $age = $value($record, 'age_at_death');
+    if ($age !== '') {
+        $descriptors[] = $age . ' years old';
+    }
+    $civilStatus = $value($record, 'civil_status');
+    if ($civilStatus !== '') {
+        $descriptors[] = ucfirst(strtolower($civilStatus));
+    }
+    $spouse = $value($record, 'spouse_name');
+    if ($spouse !== '') {
+        $descriptors[] = 'spouse of ' . $spouse;
+    }
+    $parents = $value($record, 'parents_name');
+    if ($parents !== '') {
+        $relation = match (strtolower($value($person, 'sex'))) {
+            'male' => 'son',
+            'female' => 'daughter',
+            default => 'child',
+        };
+        $descriptors[] = $relation . ' of ' . $parents;
+    }
+
+    $subject = $name;
+    if ($descriptors !== []) {
+        $subject .= ($subject !== '' ? ', ' : '') . implode(', ', $descriptors);
+    }
+    $deathDate = $formatDate($record['date_of_death'] ?? null);
+    $first = 'This is to certify that, according to the Liber Defunctorum of this parish, ' . $subject;
+    $deathClause = $descriptors !== [] ? ', died' : ' died';
+    $first .= $deathClause . ($deathDate !== '' ? ' on ' . $deathDate : '');
+    $cause = $value($record, 'cause_of_death');
+    if ($cause !== '') {
+        $first .= ' of ' . $cause;
+    }
+
+    $serviceType = strtolower($value($record, 'service_type'));
+    $serviceName = $serviceType === 'blessing' ? 'Blessing' : 'Mass';
+    $service = 'A Funeral ' . $serviceName . ' was held';
+    $serviceDate = $formatDate($record['service_date'] ?? null);
+    if ($serviceDate !== '') {
+        $service .= ' on ' . $serviceDate;
+    }
+    $serviceTime = $value($record, 'service_time');
+    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/D', $serviceTime)) {
+        $time = DateTimeImmutable::createFromFormat(
+            '!H:i:s',
+            strlen($serviceTime) === 5 ? $serviceTime . ':00' : $serviceTime
+        );
+        if ($time !== false) {
+            $service .= ' at ' . $time->format('g:i A');
+        }
+    }
+    $minister = $value($record, 'minister_name');
+    if ($minister !== '') {
+        $service .= ', officiated by ' . $minister;
+    }
+
+    $burialDetails = [];
+    $burialDate = $formatDate($record['date_of_burial'] ?? null);
+    if ($burialDate !== '') {
+        $burialDetails[] = 'on ' . $burialDate;
+    }
+    $burialPlace = $value($record, 'place_of_burial');
+    if ($burialPlace !== '') {
+        $burialDetails[] = 'at ' . $burialPlace;
+    }
+    if ($burialDetails !== []) {
+        $service .= ', and the remains were laid to rest ' . implode(' ', $burialDetails);
+    }
+
+    $register = ['This is recorded in the Liber Defunctorum'];
+    foreach ([
+        'book_no' => 'Book',
+        'page_no' => 'Page',
+        'line_no' => 'Line',
+    ] as $key => $label) {
+        $entryValue = $value($record, $key);
+        if ($entryValue !== '') {
+            $register[] = $label . ' ' . $entryValue;
+        }
+    }
+
+    $issue = 'Issued';
+    $issueDate = $formatDate($issuedOn);
+    if ($issueDate !== '') {
+        $issue .= ' on ' . $issueDate;
+    }
+    $requesterName = trim($requesterName);
+    if ($requesterName !== '') {
+        $issue .= ' at the request of ' . $requesterName;
+    }
+    $purpose = trim($purpose);
+    if ($purpose !== '') {
+        $issue .= ' for the purpose of ' . $purpose;
+    }
+
+    return [
+        $first . '.',
+        $service . '.',
+        implode(', ', $register) . '. ' . $issue . '.',
+    ];
+}

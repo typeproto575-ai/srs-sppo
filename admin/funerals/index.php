@@ -142,7 +142,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($serviceDetails) ?></td>
                         <td><?= e($record['place_of_burial'] ?? '-') ?></td>
                         <td><?= e($bookReference) ?></td>
-                        <td><a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $record['id']) ?>">Edit</a></td>
+                        <td>
+                            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $record['id']) ?>">Edit</a>
+                            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . (int) $record['id']) ?>">Print certification</a>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>

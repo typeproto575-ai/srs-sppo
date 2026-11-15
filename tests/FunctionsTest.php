@@ -831,4 +831,94 @@ final class FunctionsTest extends TestCase
         self::assertNull(funeral_calculated_age('2026-11-15', '2026-11-14'));
     }
 
+    public function testFuneralCertificationLinesIncludeFullRecordDetails(): void
+    {
+        self::assertSame([
+            'This is to certify that, according to the Liber Defunctorum of this parish, Ramon Elias Santos, 76 years old, Widowed, spouse of Lucia Santos, son of Pedro Santos and Ana Cruz, died on March 4, 2026 of pneumonia.',
+            'A Funeral Mass was held on March 5, 2026 at 9:30 AM, officiated by Rev. Tomas, and the remains were laid to rest on March 6, 2026 at St. Patrick\'s Cemetery.',
+            'This is recorded in the Liber Defunctorum, Book 4, Page 18, Line 6. Issued on March 7, 2026 at the request of Maria Santos for the purpose of SSS claim.',
+        ], funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'age_at_death' => 76,
+            'civil_status' => 'widowed',
+            'spouse_name' => 'Lucia Santos',
+            'parents_name' => 'Pedro Santos and Ana Cruz',
+            'cause_of_death' => 'pneumonia',
+            'service_type' => 'mass',
+            'service_date' => '2026-03-05',
+            'service_time' => '09:30:00',
+            'minister_name' => 'Rev. Tomas',
+            'date_of_burial' => '2026-03-06',
+            'place_of_burial' => 'St. Patrick\'s Cemetery',
+            'book_no' => '4',
+            'page_no' => '18',
+            'line_no' => '6',
+        ], [
+            'first_name' => 'Ramon',
+            'middle_name' => 'Elias',
+            'last_name' => 'Santos',
+            'sex' => 'male',
+        ], 'SSS claim', 'Maria Santos', '2026-03-07'));
+    }
+
+    public function testFuneralCertificationLinesOmitEmptyOptionalClauses(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'service_type' => 'mass',
+        ], [
+            'first_name' => 'Jane',
+            'last_name' => 'Doe',
+        ], 'Insurance', '', '2026-03-05');
+
+        self::assertSame([
+            'This is to certify that, according to the Liber Defunctorum of this parish, Jane Doe died on March 4, 2026.',
+            'A Funeral Mass was held.',
+            'This is recorded in the Liber Defunctorum. Issued on March 5, 2026 for the purpose of Insurance.',
+        ], $lines);
+        self::assertStringNotContainsString('—', implode(' ', $lines));
+        self::assertStringNotContainsString('[]', implode(' ', $lines));
+        self::assertStringNotContainsString('years old', implode(' ', $lines));
+        self::assertStringNotContainsString('officiated by', implode(' ', $lines));
+        self::assertStringNotContainsString('laid to rest', implode(' ', $lines));
+    }
+
+    public function testFuneralCertificationLinesDistinguishMassAndBlessing(): void
+    {
+        $record = ['date_of_death' => '2026-03-04', 'service_type' => 'mass'];
+        $person = ['first_name' => 'Jane', 'last_name' => 'Doe'];
+
+        self::assertSame('A Funeral Mass was held.', funeral_certification_lines(
+            $record,
+            $person,
+            'Legal claim',
+            '',
+            '2026-03-05'
+        )[1]);
+        $record['service_type'] = 'blessing';
+        self::assertSame('A Funeral Blessing was held.', funeral_certification_lines(
+            $record,
+            $person,
+            'Legal claim',
+            '',
+            '2026-03-05'
+        )[1]);
+    }
+
+    public function testFuneralCertificationLinesReturnRawTextForPageEscaping(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'cause_of_death' => '<script>alert(1)</script>',
+            'service_type' => 'blessing',
+        ], [
+            'first_name' => '<b>Jane</b>',
+            'last_name' => 'Doe',
+        ], 'Other <em>claim</em>', '', '2026-03-05');
+
+        self::assertStringContainsString('<b>Jane</b>', $lines[0]);
+        self::assertStringContainsString('<script>alert(1)</script>', $lines[0]);
+        self::assertStringContainsString('Other <em>claim</em>', $lines[2]);
+    }
+
 }

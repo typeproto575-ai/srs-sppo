@@ -449,6 +449,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <p class="hero-eyebrow">Liber Defunctorum</p>
         <h1><?= $isEdit ? 'Edit Funeral Record #' . $editId : 'New Funeral Record' ?></h1>
     </div>
+    <?php if ($isEdit): ?>
+        <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . $editId) ?>">Print certification</a>
+    <?php endif; ?>
     <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Back to Funeral Records</a>
 </div>
 

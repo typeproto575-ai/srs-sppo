@@ -93,6 +93,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $recs = sd_get_person_records($pdo, $personId);
 $family = sd_get_family($pdo, $personId);
+$funeralStmt = $pdo->prepare(
+    'SELECT id, date_of_death, service_type, service_date, place_of_burial,
+            book_no, page_no, line_no
+     FROM funeral_records
+     WHERE person_id = ?
+     LIMIT 1'
+);
+$funeralStmt->execute([$personId]);
+$funeralRecord = $funeralStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+$funeralRegisterParts = [];
+if ($funeralRecord !== null) {
+    foreach ([
+        'book_no' => 'Book',
+        'page_no' => 'Page',
+        'line_no' => 'Line',
+    ] as $key => $label) {
+        $referenceValue = trim((string) ($funeralRecord[$key] ?? ''));
+        if ($referenceValue !== '') {
+            $funeralRegisterParts[] = $label . ' ' . $referenceValue;
+        }
+    }
+}
 $personHistoryStmt = $pdo->prepare(
     'SELECT al.id, al.user_id, al.actor_name, al.action, al.description,
             al.reason, al.created_at, u.full_name AS user_name
@@ -254,6 +276,45 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
     </div>
 </section>
+
+<?php if ($funeralRecord !== null): ?>
+    <?php
+    $funeralService = ($funeralRecord['service_type'] ?? '') === 'mass' ? 'Mass' : 'Blessing';
+    if (!empty($funeralRecord['service_date'])) {
+        $funeralService .= ' — ' . date('M j, Y', strtotime((string) $funeralRecord['service_date']));
+    }
+    ?>
+    <section class="panel-card person-profile-section" aria-labelledby="funeral-record-heading">
+        <div class="person-profile-section__heading">
+            <div>
+                <p class="person-profile-section__eyebrow">Liber Defunctorum</p>
+                <h2 id="funeral-record-heading">Funeral record</h2>
+            </div>
+        </div>
+        <div class="person-profile-details">
+            <div class="person-profile-detail">
+                <span class="person-profile-detail__label">Date of death</span>
+                <span class="person-profile-detail__value"><?= e(date('M j, Y', strtotime((string) $funeralRecord['date_of_death']))) ?></span>
+            </div>
+            <div class="person-profile-detail">
+                <span class="person-profile-detail__label">Service</span>
+                <span class="person-profile-detail__value"><?= e($funeralService) ?></span>
+            </div>
+            <div class="person-profile-detail">
+                <span class="person-profile-detail__label">Place of burial</span>
+                <span class="person-profile-detail__value"><?= e(trim((string) ($funeralRecord['place_of_burial'] ?? '')) ?: 'Not recorded') ?></span>
+            </div>
+            <div class="person-profile-detail">
+                <span class="person-profile-detail__label">Book / Page / Line</span>
+                <span class="person-profile-detail__value"><?= e($funeralRegisterParts !== [] ? implode(' / ', $funeralRegisterParts) : 'Not recorded') ?></span>
+            </div>
+        </div>
+        <div class="person-profile-record__actions">
+            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $funeralRecord['id']) ?>">Open funeral record</a>
+            <a class="btn btn-primary btn-small" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . (int) $funeralRecord['id']) ?>">Print certification</a>
+        </div>
+    </section>
+<?php endif; ?>
 
 <section class="panel-card person-profile-section" aria-labelledby="profile-observanda-heading">
     <div class="person-profile-section__heading">
