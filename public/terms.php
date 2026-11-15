@@ -69,7 +69,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause">
             <h2 class="legal-clause__title">Inquiries and Amendment</h2>
-            <p>A requesting party who is uncertain as to a requirement, eligibility criterion, record detail, or pickup instruction should contact the Parish Office prior to submission. The Parish Office reserves the right to amend these Terms and Conditions from time to time as its online request process changes; the "Last Updated" date above reflects the most recent revision.</p>
+            <p>A requesting party who is uncertain as to a requirement, eligibility criterion, record detail, or pickup instruction should contact the Parish Office prior to submission. The Parish Office reserves the right to amend these Terms and Conditions from time to time as its online request process changes; a revision date will be shown here once these Terms take effect.</p>
         </section>
 
     </div>
