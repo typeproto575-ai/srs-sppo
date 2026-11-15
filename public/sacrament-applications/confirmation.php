@@ -357,6 +357,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($currentStep === CONF_STEP_DETAILS): ?>
         <fieldset>
             <legend>Phase 1 of 4 — Applicant Information</legend>
+            <p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p>
+            <h3>Already registered with the parish?</h3>
+            <p class="field-hint">Enter your reference number and date of birth.</p>
+            <div class="public-person-lookup" data-public-person-lookup
+                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                 data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
+                 data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
+                 data-father-inputs="father_first,father_middle,father_last,father_suffix"
+                 data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
+                <p class="field-hint">Search by the applicant’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the confirmation-specific details. If you already have a person reference, enter it with the birth date.</p>
+                <div data-person-results aria-live="polite"></div>
+            </div>
+            <label>Birthdate *
+                <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
+            </label>
             <div class="inline-fields">
                 <label>First Name *
                     <input type="text" name="applicant_first" autocomplete="given-name" value="<?= $wv('applicant_first') ?>" required>
@@ -373,19 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= $wv('applicant_suffix') ?>">
                 </label>
             </div>
-            <label>Birthdate *
-                <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
-            </label>
             <input type="hidden" name="applicant_person_id" value="<?= $wv('applicant_person_id') ?>">
-            <div class="public-person-lookup" data-public-person-lookup
-                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
-                 data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
-                 data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
-                 data-father-inputs="father_first,father_middle,father_last,father_suffix"
-                 data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
-                <p class="field-hint">Search by the applicant’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the confirmation-specific details. If you already have a person reference, enter it with the birth date.</p>
-                <div data-person-results aria-live="polite"></div>
-            </div>
             <?= person_name_fields('father', "Father's name", $formData, false) ?>
             <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
             <label>Parent/Guardian Name * <span class="field-hint">(if an adult applicant, you may enter your own name)</span>

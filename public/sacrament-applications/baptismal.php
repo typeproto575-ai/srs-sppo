@@ -412,6 +412,20 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 1 of 4 — Child Information</legend>
+            <p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p>
+            <h3>Already registered with the parish?</h3>
+            <p class="field-hint">Enter your reference number and date of birth.</p>
+            <div class="public-person-lookup" data-public-person-lookup
+                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                 data-name-inputs="child_first,child_middle,child_last,child_suffix"
+                 data-birth-field="child_birthdate" data-person-id-field="child_person_id"
+                 data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
+                <div data-person-results aria-live="polite"></div>
+            </div>
+            <label>Date of Birth
+                <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
+            </label>
             <div class="inline-fields">
                 <label>Child's First Name *
                     <input type="text" name="child_first" autocomplete="given-name" value="<?= e(fd('child_first', $formData)) ?>" required>
@@ -428,20 +442,9 @@ if ($currentStep === STEP_COUNT + 1): ?>
                     <input type="text" name="child_suffix" autocomplete="honorific-suffix" value="<?= e(fd('child_suffix', $formData)) ?>">
                 </label>
             </div>
-            <label>Date of Birth
-                <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
-            </label>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
-            <div class="public-person-lookup" data-public-person-lookup
-                 data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
-                 data-name-inputs="child_first,child_middle,child_last,child_suffix"
-                 data-birth-field="child_birthdate" data-person-id-field="child_person_id"
-                 data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
-                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
-                <div data-person-results aria-live="polite"></div>
-            </div>
             <label>Place of Birth
                 <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>

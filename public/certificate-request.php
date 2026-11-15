@@ -555,6 +555,20 @@ require_once __DIR__ . '/../includes/header.php';
         </section>
 
         <h2 class="form-stage-heading">Certificate details</h2>
+        <p class="field-hint">Already registered with the parish? Enter your reference number and date of birth.</p>
+        <div class="public-person-lookup" data-public-person-lookup
+             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+             data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
+             data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
+             data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
+            <p class="field-hint">Search by person reference and date of birth, or by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
+            <div data-person-results aria-live="polite"></div>
+        </div>
+        <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
+
+        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
+
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
 
@@ -563,18 +577,6 @@ require_once __DIR__ . '/../includes/header.php';
             <input type="text" id="spouse_name" name="spouse_name" maxlength="150" value="<?= e($values['spouse_name']) ?>">
             <label for="marriage_date">Date of marriage (optional)</label>
             <input type="date" id="marriage_date" name="marriage_date" value="<?= e($values['marriage_date']) ?>">
-        </div>
-
-        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
-        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
-        <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
-        <div class="public-person-lookup" data-public-person-lookup
-             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
-             data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
-             data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
-             data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
-            <p class="field-hint">Search the parish person index by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
-            <div data-person-results aria-live="polite"></div>
         </div>
 
         <label for="father_name">Father's full name (optional)</label>

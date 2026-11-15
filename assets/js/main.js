@@ -2160,7 +2160,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var selectionClear = document.createElement('button');
         selectionClear.type = 'button';
         selectionClear.className = 'btn btn-secondary btn-small';
-        selectionClear.textContent = 'Change selected profile';
+        selectionClear.textContent = 'Clear';
         selectionClear.hidden = true;
 
         function identityInputNames() {
@@ -2185,14 +2185,17 @@ document.addEventListener('DOMContentLoaded', function () {
             var confirmation = document.createElement('p');
             confirmation.className = 'person-lookup-selection';
             confirmation.textContent = message || 'A parish profile is selected. Recorded biographical details are read-only; clear the selection to change profiles.';
-            resultsBox.appendChild(confirmation);
+            referenceInput.readOnly = true;
             selectionClear.hidden = false;
-            resultsBox.appendChild(selectionClear);
+            confirmation.appendChild(selectionClear);
+            resultsBox.appendChild(confirmation);
         }
 
         selectionClear.addEventListener('click', function () {
             if (idInput) idInput.value = '';
             selected = false;
+            referenceInput.value = '';
+            referenceInput.readOnly = false;
             setPublicIdentityReadOnly(false);
             selectionClear.hidden = true;
             resultsBox.replaceChildren();
@@ -2211,7 +2214,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var birthDate = value(birthField);
             resultsBox.replaceChildren();
             if (reference && !birthDate) {
-                resultsBox.textContent = 'Enter date of birth with the person reference to search.';
+                resultsBox.textContent = 'Now enter your date of birth to find your profile.';
                 return;
             }
             if (!reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
@@ -2275,7 +2278,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             }
                             selected = true;
                             setPublicIdentityReadOnly(true);
-                            renderExistingSelection('Selected parish profile: ' + personName(person) + '. Recorded biographical details are read-only; complete only the sacrament-specific information.');
+                            renderExistingSelection('Found: ' + personName(person) + ', born ' + (person.birth_date || '') + '. Not you? ');
                         });
                         resultsBox.appendChild(button);
                     });
@@ -2285,7 +2288,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
 
-        function scheduleSearch() {
+        function scheduleSearch(event) {
+            if (selected && event && event.currentTarget === referenceInput) return;
             var idInput = field(personIdField);
             if (selected && idInput) {
                 idInput.value = '';

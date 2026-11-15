@@ -295,18 +295,9 @@ function selectedv(string $key, string $value): string { global $formData; retur
                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
                 <?php if ($currentStep === 1): ?>
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
-                        <div class="inline-fields">
-                            <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
-                            <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
-                        </div>
-                        <div class="inline-fields">
-                            <label>Last Name * <input type="text" name="applicant_last" autocomplete="family-name" value="<?= oldv('applicant_last') ?>" required></label>
-                            <label>Suffix <span class="field-hint">(optional)</span> <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= oldv('applicant_suffix') ?>"></label>
-                        </div>
-                        <label>Date of Birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
-                        <input type="hidden" name="applicant_person_id" value="<?= oldv('applicant_person_id') ?>">
-                        <input type="hidden" name="selected_father_name" value="<?= oldv('selected_father_name') ?>">
-                        <input type="hidden" name="selected_mother_maiden_name" value="<?= oldv('selected_mother_maiden_name') ?>">
+                        <p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p>
+                        <h3>Already registered with the parish?</h3>
+                        <p class="field-hint">Enter your reference number and date of birth.</p>
                         <div class="public-person-lookup" data-public-person-lookup
                              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
@@ -315,6 +306,18 @@ function selectedv(string $key, string $value): string { global $formData; retur
                             <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
                             <div data-person-results aria-live="polite"></div>
                         </div>
+                        <label>Date of Birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
+                        <div class="inline-fields">
+                            <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
+                            <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
+                        </div>
+                        <div class="inline-fields">
+                            <label>Last Name * <input type="text" name="applicant_last" autocomplete="family-name" value="<?= oldv('applicant_last') ?>" required></label>
+                            <label>Suffix <span class="field-hint">(optional)</span> <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= oldv('applicant_suffix') ?>"></label>
+                        </div>
+                        <input type="hidden" name="applicant_person_id" value="<?= oldv('applicant_person_id') ?>">
+                        <input type="hidden" name="selected_father_name" value="<?= oldv('selected_father_name') ?>">
+                        <input type="hidden" name="selected_mother_maiden_name" value="<?= oldv('selected_mother_maiden_name') ?>">
                     </fieldset>
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>
