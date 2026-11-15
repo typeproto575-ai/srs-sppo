@@ -97,6 +97,24 @@ function fa(string $key, array $data): array {
     return is_array($val) ? $val : [];
 }
 
+function compose_godparent_names(array $data, string $prefix): array {
+    return array_values(array_filter(
+        array_map(static fn($name) => is_scalar($name) ? trim((string) $name) : '', fa($prefix . '_full_name', $data)),
+        static fn($name) => $name !== ''
+    ));
+}
+
+function validate_godparent_names(array $data, string $prefix, string $label): array {
+    $errors = [];
+    foreach (fa($prefix . '_full_name', $data) as $name) {
+        if (!is_scalar($name) || trim((string) $name) === '') continue;
+        if (($error = validate_full_name(trim((string) $name))) !== null) {
+            $errors[] = $label . ': ' . $error;
+        }
+    }
+    return $errors;
+}
+
 // =====================================================================
 // POST HANDLING â€” Navigation and Final Submit
 // =====================================================================
@@ -132,12 +150,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $errors = array_merge(
                     $errors,
-                    validate_person_name_rows($_POST, 'godfather', 'Godfather'),
-                    validate_person_name_rows($_POST, 'godmother', 'Godmother')
+                    validate_godparent_names($_POST, 'godfather', 'Godfather'),
+                    validate_godparent_names($_POST, 'godmother', 'Godmother')
                 );
                 if (
-                    compose_person_name_rows($_POST, 'godfather') === []
-                    && compose_person_name_rows($_POST, 'godmother') === []
+                    compose_godparent_names($_POST, 'godfather') === []
+                    && compose_godparent_names($_POST, 'godmother') === []
                 ) {
                     $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
                 }
@@ -209,8 +227,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $isSecretary     = (current_user()['role'] ?? '') === 'secretary';
             $channel         = $isSecretary ? 'onsite' : 'online';
 
-            $godfatherNames      = compose_person_name_rows($formData, 'godfather');
-            $godmotherNames      = compose_person_name_rows($formData, 'godmother');
+            $godfatherNames      = compose_godparent_names($formData, 'godfather');
+            $godmotherNames      = compose_godparent_names($formData, 'godmother');
             $childPersonId = null;
 
             if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
@@ -248,8 +266,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $errors = array_merge(
                 $errors,
-                validate_person_name_rows($formData, 'godfather', 'Godfather'),
-                validate_person_name_rows($formData, 'godmother', 'Godmother')
+                validate_godparent_names($formData, 'godfather', 'Godfather'),
+                validate_godparent_names($formData, 'godmother', 'Godmother')
             );
             if ($godfatherNames === [] && $godmotherNames === []) {
                 $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
@@ -412,7 +430,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 1 of 4 — Child Information</legend>
-            <p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p>
+            <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
             <h3>Already registered with the parish?</h3>
             <p class="field-hint">Enter your reference number and date of birth.</p>
             <div class="public-person-lookup" data-public-person-lookup
@@ -477,16 +495,18 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <?= person_name_fields('mother', "Mother's maiden name", $formData, false, null, 'leave blank if not on record; a guardian is then required') ?>
             <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             <?php
-            $godfatherRows = max(1, person_name_row_count($formData, 'godfather'));
-            $godmotherRows = max(1, person_name_row_count($formData, 'godmother'));
+            $godfatherRows = max(1, count(fa('godfather_full_name', $formData)));
+            $godmotherRows = max(1, count(fa('godmother_full_name', $formData)));
             ?>
             <fieldset>
                 <legend>Godfathers (Ninong)</legend>
-                <p class="field-hint">Up to 8 godfathers. Leave a row blank if none; for each person, enter first and last name. Middle name and suffix are optional.</p>
+                <p class="field-hint">Up to 8 godfathers. Enter each person's full name; leave a row blank if none.</p>
                 <div data-repeat-group="godfather" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godfatherRows; $i++): ?>
                         <div class="godparent-row">
-                            <?= person_name_fields('godfather', 'Godfather', $formData, false, $i, 'at least one godfather or godmother is required') ?>
+                            <label>Godfather's Full Name
+                                <input type="text" name="godfather_full_name[<?= $i ?>]" value="<?= e(fa('godfather_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                            </label>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
                     <?php endfor; ?>
@@ -495,11 +515,13 @@ if ($currentStep === STEP_COUNT + 1): ?>
             </fieldset>
             <fieldset>
                 <legend>Godmothers (Ninang)</legend>
-                <p class="field-hint">Up to 8 godmothers. Leave a row blank if none; for each person, enter first and last name. Middle name and suffix are optional.</p>
+                <p class="field-hint">Up to 8 godmothers. Enter each person's full name; leave a row blank if none.</p>
                 <div data-repeat-group="godmother" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godmotherRows; $i++): ?>
                         <div class="godparent-row">
-                            <?= person_name_fields('godmother', 'Godmother', $formData, false, $i, 'at least one godfather or godmother is required') ?>
+                            <label>Godmother's Full Name
+                                <input type="text" name="godmother_full_name[<?= $i ?>]" value="<?= e(fa('godmother_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                            </label>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
                     <?php endfor; ?>
@@ -578,8 +600,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <tr><th>Father's Name</th><td><?= e(compose_person_name($formData, 'father')) ?></td></tr>
                 <tr><th>Mother's Maiden Name</th><td><?= e(compose_person_name($formData, 'mother')) ?></td></tr>
                 <tr><th>Parent/Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
-                <tr><th>Godfathers</th><td><?= $reviewNames(compose_person_name_rows($formData, 'godfather')) ?></td></tr>
-                <tr><th>Godmothers</th><td><?= $reviewNames(compose_person_name_rows($formData, 'godmother')) ?></td></tr>
+                <tr><th>Godfathers</th><td><?= $reviewNames(compose_godparent_names($formData, 'godfather')) ?></td></tr>
+                <tr><th>Godmothers</th><td><?= $reviewNames(compose_godparent_names($formData, 'godmother')) ?></td></tr>
                 <tr><th>Contact Number</th><td><?= e(fd('contact_number', $formData)) ?></td></tr>
                 <tr><th>Email</th><td><?= e(fd('email', $formData)) ?></td></tr>
                 <tr><th>Preferred Date</th><td><?= e((string) ($formData['preferred_date'] ?? '')) ?></td></tr>

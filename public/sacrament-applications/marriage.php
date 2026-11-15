@@ -441,7 +441,7 @@ require __DIR__ . '/../../includes/submission-success.php';
 <?= csrf_field() ?>
 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
 <?php if ($currentStep === 1): ?>
-<fieldset><legend>Phase 1 of 5 — Wedding Details</legend><p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p><div class="inline-fields"><label>Target Wedding Date * <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required></label><label>Time <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>"></label></div><label>Venue * <select name="preferred_wedding_venue" required><option value="">-- Select --</option><option value="church" <?= msel('preferred_wedding_venue','church') ?>>St. Patrick's Parish Church</option><option value="other" <?= msel('preferred_wedding_venue','other') ?>>Other</option></select></label><label data-show-if="preferred_wedding_venue=other">Other venue name * <input type="text" name="preferred_wedding_venue_other" maxlength="150" value="<?= mv('preferred_wedding_venue_other') ?>" placeholder="Enter the church or venue name"></label></fieldset>
+<fieldset><legend>Phase 1 of 5 — Wedding Details</legend><p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p><div class="inline-fields"><label>Target Wedding Date * <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required></label><label>Time <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>"></label></div><label>Venue * <select name="preferred_wedding_venue" required><option value="">-- Select --</option><option value="church" <?= msel('preferred_wedding_venue','church') ?>>St. Patrick's Parish Church</option><option value="other" <?= msel('preferred_wedding_venue','other') ?>>Other</option></select></label><label data-show-if="preferred_wedding_venue=other">Other venue name * <input type="text" name="preferred_wedding_venue_other" maxlength="150" value="<?= mv('preferred_wedding_venue_other') ?>" placeholder="Enter the church or venue name"></label></fieldset>
 <?php elseif ($currentStep === 2): ?>
 <fieldset><legend>Phase 2 of 5 — Groom's Information</legend>
 <div class="inline-fields">
@@ -498,7 +498,7 @@ require __DIR__ . '/../../includes/submission-success.php';
         var label = previous && previous.closest('label');
         if (!status || !previous || !label) return;
         function syncPreviousMarriage() {
-            var show = status.value === 'widowed' || status.value === 'annulled';
+            var show = status.value === 'married' || status.value === 'widowed' || status.value === 'annulled';
             label.hidden = !show;
             label.style.display = show ? '' : 'none';
             if (!show) previous.value = 'no';

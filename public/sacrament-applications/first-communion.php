@@ -295,7 +295,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
                 <?php if ($currentStep === 1): ?>
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
-                        <p class="field-hint">Your answers are kept only while this window stays open. Nothing is sent to the parish until you press Submit.</p>
+                        <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
                         <h3>Already registered with the parish?</h3>
                         <p class="field-hint">Enter your reference number and date of birth.</p>
                         <div class="public-person-lookup" data-public-person-lookup

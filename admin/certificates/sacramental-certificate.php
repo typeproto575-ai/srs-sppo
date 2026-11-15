@@ -115,7 +115,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $y = 57 + $dy;
     foreach ($rows as [$label, $value]) {
         $out[] = sc_svg_text($label, 12, $y, 2.05, 25, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'max' => true]);
-        $out[] = sc_svg_text((string) $value, 38, $y, 2.65, 50, ['fill' => '#000', 'max' => true]);
+        $out[] = sc_svg_text((string) ($value === '—' ? '' : $value), 38, $y, 2.65, 50, ['fill' => '#000', 'max' => true]);
         $out[] = sc_svg_rule(37.5, $y + .7, 52, $ink, .15);
         $y += 6.1;
     }

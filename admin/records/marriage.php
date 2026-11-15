@@ -503,7 +503,7 @@ $groomId = (int) ($editRecord['person_id'] ?? ($_POST['groom_person_id'] ?? 0));
 $brideId = (int) ($editRecord['spouse_person_id'] ?? ($_POST['bride_person_id'] ?? 0));
 if (!$groomIdentity && $groomId > 0) $groomIdentity = marriage_load_person_identity($pdo, $groomId);
 if (!$brideIdentity && $brideId > 0) $brideIdentity = marriage_load_person_identity($pdo, $brideId);
-
+$marriageDate = trim((string) ($_POST['marriage_date'] ?? ($editRecord['marriage_date'] ?? '')));
 $prerequisiteWarnings = [];
 if ($groomId > 0) {
     $prerequisiteWarnings = array_merge(
