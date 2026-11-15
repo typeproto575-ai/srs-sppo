@@ -19,6 +19,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+foreach (['pending_person_request_lookup', 'verified_person_request_lookup'] as $lookupKey) {
+    $lookup = $_SESSION[$lookupKey] ?? null;
+    if (is_array($lookup) && !preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', (string) ($lookup['reference'] ?? ''))) {
+        unset($_SESSION[$lookupKey]);
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $attempts = $_SESSION['person_request_lookup_attempts'] ?? [];
     $now = time();
@@ -61,34 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($_SESSION['pending_person_request_lookup']);
                 $searched = true;
             }
-        } elseif ($action === 'send_code'
-            && (preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', $reference)
-                || preg_match('/^(?:SA|CR)-\d{4}-\d{4,}$/', $reference))
-            && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        } elseif ($action === 'send_code' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             unset($_SESSION['pending_person_request_lookup'], $_SESSION['verified_person_request_lookup']);
-            $personStmt = preg_match('/^SPPO-P-/', $reference)
-                ? $pdo->prepare('SELECT id FROM persons WHERE public_reference = ? LIMIT 1')
-                : $pdo->prepare(
-                    "SELECT CASE
-                                WHEN LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.bride.email'))) = LOWER(?)
-                                     AND spouse_person_id IS NOT NULL
-                                THEN spouse_person_id ELSE person_id
-                            END AS id
-                     FROM sacrament_applications
-                     WHERE request_no = ?
-                       AND (LOWER(applicant_email) = LOWER(?)
-                            OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(details, '$.bride.email'))) = LOWER(?))
-                     UNION
-                     SELECT person_id AS id FROM certificate_requests
-                     WHERE request_no = ? AND LOWER(requester_email) = LOWER(?)
-                     LIMIT 1"
-                );
-            if (preg_match('/^SPPO-P-/', $reference)) {
+            $personId = false;
+            if (preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', $reference)) {
+                $personStmt = $pdo->prepare('SELECT id FROM persons WHERE public_reference = ? LIMIT 1');
                 $personStmt->execute([$reference]);
-            } else {
-                $personStmt->execute([$email, $reference, $email, $email, $reference, $email]);
+                $personId = $personStmt->fetchColumn();
             }
-            $personId = $personStmt->fetchColumn();
             $hasMatchingRequest = false;
             if ($personId !== false) {
                 $appCheck = $pdo->prepare(
