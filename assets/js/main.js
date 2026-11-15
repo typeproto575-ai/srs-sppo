@@ -184,8 +184,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (button.hasAttribute('data-preserve-submit')) return;
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
-            if (button.tagName === 'INPUT') button.value = 'Submitting…';
-            else button.textContent = 'Submitting…';
+            if (button.tagName === 'INPUT') button.value = 'Please wait…';
+            else button.textContent = 'Please wait…';
         });
     });
 

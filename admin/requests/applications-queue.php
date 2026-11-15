@@ -848,7 +848,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <div class="application-requirement-form">
                                         <strong><?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?></strong>
                                         <p>Status: <?= e(application_queue_label($currentRequirementStatus)) ?></p>
-                                        <p>Note: <?= e((string) ($requirement['note'] ?? '')) ?></p>
                                     </div>
                                 <?php else: ?>
                                 <form method="post" class="application-requirement-form">
@@ -864,9 +863,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                                 <option value="<?= e($requirementStatus) ?>" <?= $currentRequirementStatus === $requirementStatus ? 'selected' : '' ?>><?= e(application_queue_label($requirementStatus)) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                    </label>
-                                    <label>Message to applicant (shown on the tracking page)
-                                        <input type="text" name="requirement_note" maxlength="500" value="<?= e((string) ($requirement['note'] ?? '')) ?>">
                                     </label>
                                     <button type="submit" class="btn btn-small" aria-label="Save <?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?> checklist item">Save requirement</button>
                                 </form>
