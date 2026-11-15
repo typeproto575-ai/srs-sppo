@@ -893,11 +893,11 @@ function record_public_submission(PDO $pdo, array $emails, string $formType, ?st
 function marriage_party_eligibility_error(string $maritalStatus, string $previousMarriage): ?string
 {
     if ($maritalStatus === 'married') {
-        return 'Based on the marital status you entered, this application cannot continue online. Please contact the Parish Office.';
+        return 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.';
     }
 
     if (in_array($previousMarriage, ['church', 'civil'], true) && $maritalStatus === 'single') {
-        return 'Based on the marital status you entered, this application cannot continue online. Please contact the Parish Office.';
+        return 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.';
     }
 
     return null;

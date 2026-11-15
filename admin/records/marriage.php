@@ -98,6 +98,17 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
             }
         }
         $_POST['marriage_date'] = (string) ($application['preferred_date'] ?? '');
+        $venue = (string) ($applicationDetails['preferred_wedding_venue'] ?? '');
+        $_POST['place'] = $venue === 'church'
+            ? "St. Patrick's Parish Church"
+            : trim((string) ($applicationDetails['preferred_wedding_venue_other'] ?? ''));
+        $sponsors = array_slice(array_values(array_filter((array) ($applicationDetails['sponsors'] ?? []), 'is_string')), 0, 2);
+        foreach ($sponsors as $i => $sponsorName) {
+            $parts = structured_name_parts($sponsorName);
+            foreach (['first', 'middle', 'last', 'suffix'] as $pi => $part) {
+                $_POST['witness_' . $part][$i] = $parts[$pi];
+            }
+        }
         $_POST['remarks'] = 'Encoded from application ' . $application['request_no'];
     } elseif ($application) {
         $errors[] = 'Application ' . $application['request_no'] . ' must be approved or scheduled before it can be encoded into the register.';

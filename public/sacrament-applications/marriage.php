@@ -492,22 +492,39 @@ require __DIR__ . '/../../includes/submission-success.php';
 
 <script>
 (function () {
+    var notes = {
+        widowed: 'Please bring the official PSA Death Certificate of your deceased spouse to the Parish Office.',
+        annulled: 'Please bring your finalized Church Decree of Nullity and Annotated PSA Marriage Certificate to the Parish Office.',
+        married: 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.'
+    };
+    var nextButton = document.querySelector('button[name="_action"][value="next"]');
     ['groom', 'bride'].forEach(function (party) {
         var status = document.querySelector('[name="' + party + '_marital_status"]');
         var previous = document.querySelector('[name="' + party + '_previous_marriage"]');
         var label = previous && previous.closest('label');
         if (!status || !previous || !label) return;
-        function syncPreviousMarriage() {
-            var show = status.value === 'married' || status.value === 'widowed' || status.value === 'annulled';
+        var note = document.createElement('div');
+        note.setAttribute('role', 'note');
+        note.style.display = 'none';
+        (status.closest('.inline-fields') || label.parentNode).insertAdjacentElement('afterend', note);
+        function sync() {
+            var value = status.value;
+            var show = value === 'widowed' || value === 'annulled';
             label.hidden = !show;
             label.style.display = show ? '' : 'none';
             if (!show) previous.value = 'no';
+            var text = notes[value] || '';
+            note.textContent = text;
+            note.className = value === 'married' ? 'alert alert-error' : 'alert alert-info';
+            note.style.display = text ? '' : 'none';
+            if (nextButton) nextButton.disabled = value === 'married';
         }
-        status.addEventListener('change', syncPreviousMarriage);
-        syncPreviousMarriage();
+        status.addEventListener('change', sync);
+        sync();
     });
 })();
 </script>
+
 
 <?php
 // Render one row per previously submitted non-blank sponsor (validation
