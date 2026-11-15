@@ -420,9 +420,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php endforeach; ?>
     </ol>
     <?php if (!empty($errors)): ?>
-        <div class="error-panel">
-            <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
-        </div>
+        <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
@@ -482,9 +480,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php endforeach; ?>
     </ol>
     <?php if (!empty($errors)): ?>
-        <div class="error-panel">
-            <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
-        </div>
+        <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
@@ -545,9 +541,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php endforeach; ?>
     </ol>
     <?php if (!empty($errors)): ?>
-        <div class="error-panel">
-            <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
-        </div>
+        <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">
@@ -584,9 +578,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <?php endforeach; ?>
     </ol>
     <?php if (!empty($errors)): ?>
-        <div class="error-panel">
-            <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
-        </div>
+        <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
     <form method="POST" action="">

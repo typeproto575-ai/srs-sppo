@@ -513,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </label>
                 <p class="field-hint">It’s okay if you don’t know which parish baptized the applicant. The parish office can help verify the record. Bring a copy of the applicant's Baptismal Certificate when asked. Don't have one yet? <a href="<?= e($basePath . '/public/certificate-request.php?type=baptism') ?>" target="_blank" rel="noopener noreferrer">Request a Baptismal Certificate</a>.</p>
             </fieldset>
-            <p class="alert alert-info" role="note">Please bring a recently issued Baptismal Certificate marked “For Confirmation Purposes” (issued within the last 6 months) to the Parish Office.</p>
+            <p class="alert alert-info" role="note">Reminder: bring the Baptismal Certificate listed in the preparation checklist, marked “For Confirmation Purposes” and issued within the last 6 months.</p>
             <fieldset>
                 <legend>Confirmation Sponsor</legend>
                 <p class="field-hint">One sponsor is required. A second sponsor is optional.</p>

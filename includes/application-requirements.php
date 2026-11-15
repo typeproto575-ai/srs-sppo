@@ -28,7 +28,7 @@ function sacrament_application_requirements(string $type): array
         'confirmation' => [
             'before' => [
                 'The candidate’s PSA birth certificate or birth certificate from the local civil registrar.',
-                'A Baptismal Certificate from the parish where the candidate was baptized.',
+                'A Baptismal Certificate from the parish where the candidate was baptized, marked “For Confirmation Purposes” and issued within the last 6 months.',
                 'The proposed sponsor’s name and details, if available; the Parish Office confirms sponsor qualifications and any supporting documents.',
             ],
             'after' => [
