@@ -238,23 +238,21 @@ function funeral_certification_lines(
         }
     }
 
-    $issue = 'Issued';
-    $issueDate = $formatDate($issuedOn);
-    if ($issueDate !== '') {
-        $issue .= ' on ' . $issueDate;
-    }
+    $issue = 'Issued this ' . $formatDate($issuedOn)
+        . " at St. Patrick's Parish Office, Dingalan, Aurora";
     $requesterName = trim($requesterName);
     if ($requesterName !== '') {
-        $issue .= ' at the request of ' . $requesterName;
+        $issue .= ', upon request of ' . $requesterName;
     }
     $purpose = trim($purpose);
     if ($purpose !== '') {
-        $issue .= ' for the purpose of ' . $purpose;
+        $issue .= ' for ' . $purpose . ' purposes';
     }
 
     return [
         $first . '.',
         $service . '.',
-        implode(', ', $register) . '. ' . $issue . '.',
+        implode(', ', $register) . '.',
+        $issue . '.',
     ];
 }

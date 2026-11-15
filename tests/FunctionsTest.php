@@ -836,7 +836,8 @@ final class FunctionsTest extends TestCase
         self::assertSame([
             'This is to certify that, according to the Liber Defunctorum of this parish, Ramon Elias Santos, 76 years old, Widowed, spouse of Lucia Santos, son of Pedro Santos and Ana Cruz, died on March 4, 2026 of pneumonia.',
             'A Funeral Mass was held on March 5, 2026 at 9:30 AM, officiated by Rev. Tomas, and the remains were laid to rest on March 6, 2026 at St. Patrick\'s Cemetery.',
-            'This is recorded in the Liber Defunctorum, Book 4, Page 18, Line 6. Issued on March 7, 2026 at the request of Maria Santos for the purpose of SSS claim.',
+            'This is recorded in the Liber Defunctorum, Book 4, Page 18, Line 6.',
+            'Issued this March 7, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora, upon request of Maria Santos for SSS claim purposes.',
         ], funeral_certification_lines([
             'date_of_death' => '2026-03-04',
             'age_at_death' => 76,
@@ -874,13 +875,32 @@ final class FunctionsTest extends TestCase
         self::assertSame([
             'This is to certify that, according to the Liber Defunctorum of this parish, Jane Doe died on March 4, 2026.',
             'A Funeral Mass was held.',
-            'This is recorded in the Liber Defunctorum. Issued on March 5, 2026 for the purpose of Insurance.',
+            'This is recorded in the Liber Defunctorum.',
+            'Issued this March 5, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora for Insurance purposes.',
         ], $lines);
         self::assertStringNotContainsString('—', implode(' ', $lines));
         self::assertStringNotContainsString('[]', implode(' ', $lines));
         self::assertStringNotContainsString('years old', implode(' ', $lines));
         self::assertStringNotContainsString('officiated by', implode(' ', $lines));
         self::assertStringNotContainsString('laid to rest', implode(' ', $lines));
+    }
+
+    public function testFuneralCertificationLinesOmitRequesterAndPurposeWhenEmpty(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'service_type' => 'mass',
+        ], [
+            'first_name' => 'Jane',
+            'last_name' => 'Doe',
+        ], '', '', '2026-03-05');
+
+        self::assertSame(
+            'Issued this March 5, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora.',
+            $lines[3]
+        );
+        self::assertStringNotContainsString('upon request', $lines[3]);
+        self::assertStringNotContainsString('purposes', $lines[3]);
     }
 
     public function testFuneralCertificationLinesDistinguishMassAndBlessing(): void
@@ -918,7 +938,7 @@ final class FunctionsTest extends TestCase
 
         self::assertStringContainsString('<b>Jane</b>', $lines[0]);
         self::assertStringContainsString('<script>alert(1)</script>', $lines[0]);
-        self::assertStringContainsString('Other <em>claim</em>', $lines[2]);
+        self::assertStringContainsString('Other <em>claim</em>', $lines[3]);
     }
 
 }
