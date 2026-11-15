@@ -1072,12 +1072,15 @@ function person_name_fields(
     string $label,
     array $values,
     bool $required = true,
-    ?int $rowIndex = null
+    ?int $rowIndex = null,
+    ?string $hint = null
 ): string {
     $isList = $rowIndex !== null;
-    $optionalHint = $required
-        ? ' <span class="field-hint">(required; enter First Name or Last Name; other parts are optional)</span>'
-        : ' <span class="field-hint">(optional)</span>';
+    $optionalHint = $hint !== null
+        ? ' <span class="field-hint">(' . e($hint) . ')</span>'
+        : ($required
+            ? ' <span class="field-hint">(required; enter First Name or Last Name; other parts are optional)</span>'
+            : ' <span class="field-hint">(optional)</span>');
     $markup = '<div class="structured-name-fields" role="group" aria-label="' . e($label) . '"><p><strong>' . e($label) . '</strong>' . $optionalHint . '</p>';
 
     foreach ([['first', 'middle'], ['last', 'suffix']] as $group) {

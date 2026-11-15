@@ -470,8 +470,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 2 of 4 — Family Information</legend>
-            <?= person_name_fields('father', "Father's name", $formData, false) ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, false) ?>
+            <?= person_name_fields('father', "Father's name", $formData, false, null, 'leave blank if not on record; a guardian is then required') ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, false, null, 'leave blank if not on record; a guardian is then required') ?>
             <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             <?php
             $godfatherRows = max(1, person_name_row_count($formData, 'godfather'));
@@ -483,7 +483,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <div data-repeat-group="godfather" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godfatherRows; $i++): ?>
                         <div class="godparent-row">
-                            <?= person_name_fields('godfather', 'Godfather', $formData, false, $i) ?>
+                            <?= person_name_fields('godfather', 'Godfather', $formData, false, $i, 'at least one godfather or godmother is required') ?>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
                     <?php endfor; ?>
@@ -496,7 +496,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <div data-repeat-group="godmother" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godmotherRows; $i++): ?>
                         <div class="godparent-row">
-                            <?= person_name_fields('godmother', 'Godmother', $formData, false, $i) ?>
+                            <?= person_name_fields('godmother', 'Godmother', $formData, false, $i, 'at least one godfather or godmother is required') ?>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
                     <?php endfor; ?>
