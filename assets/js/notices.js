@@ -2,7 +2,8 @@
    and hides them after a time limit. Presentation only. */
 (function () {
     'use strict';
-    var SELECTOR = '.public-page .alert-error, .public-page .alert-success, .public-page .alert-warning';
+    var SELECTOR = '.public-page .alert-error, .public-page .alert-success, .public-page .alert-warning, '
+        + '.admin-content .alert-success, .admin-content .alert-error';
 
     function enhance(notice) {
         if (!notice || notice.getAttribute('data-toast') === '1' || notice.getAttribute('role') === 'note') return;
@@ -93,5 +94,35 @@
     document.querySelectorAll('.na-toggle input[type="checkbox"]').forEach(apply);
     document.addEventListener('change', function (event) {
         if (event.target.matches && event.target.matches('.na-toggle input[type="checkbox"]')) apply(event.target);
+    });
+})();
+
+/* Name fields capitalise themselves when you leave them ("juan dela cruz" becomes
+   "Juan Dela Cruz"). Mixed-case words such as "McDonald" are left as typed.
+   The server applies the same rule, so this only makes the form show it early. */
+(function () {
+    'use strict';
+    var ROMAN = /^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i;
+
+    function formatName(value, isSuffix) {
+        value = value.replace(/\s+/g, ' ').trim();
+        if (value === '' || value.toUpperCase() === 'N/A') return value;
+        return value.split(' ').map(function (word) {
+            if (!/\p{L}/u.test(word)) return word;
+            if (isSuffix && ROMAN.test(word)) return word.toUpperCase();
+            if (word !== word.toLowerCase() && word !== word.toUpperCase()) return word;
+            return word.toLowerCase().replace(/(^|[-'’.])(\p{L})/gu, function (match, lead, letter) {
+                return lead + letter.toUpperCase();
+            });
+        }).join(' ');
+    }
+
+    document.addEventListener('focusout', function (event) {
+        var input = event.target;
+        if (!input || !input.matches || !input.matches('.structured-name-fields input[type="text"]')) return;
+        if (input.readOnly || input.disabled) return;
+        var part = (input.name || '').replace(/\[\]$/, '').split('_').pop();
+        var formatted = formatName(input.value, part === 'suffix');
+        if (formatted !== input.value) input.value = formatted;
     });
 })();

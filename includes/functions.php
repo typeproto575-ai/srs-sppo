@@ -968,6 +968,39 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * Capitalise one part of a person's name ("juan dela cruz" becomes "Juan Dela Cruz").
+ * Words typed with mixed capitals ("McDonald", "DeLeon") are left exactly as typed,
+ * and Roman-numeral suffixes ("iii") become upper case.
+ */
+function format_name_part(string $value, bool $isSuffix = false): string
+{
+    $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+    if ($value === '' || strcasecmp($value, 'N/A') === 0) {
+        return $value;
+    }
+    $words = explode(' ', $value);
+    foreach ($words as $i => $word) {
+        if (!preg_match('/\p{L}/u', $word)) {
+            continue;
+        }
+        if ($isSuffix && preg_match('/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i', $word)) {
+            $words[$i] = mb_strtoupper($word);
+            continue;
+        }
+        if ($word !== mb_strtolower($word) && $word !== mb_strtoupper($word)) {
+            continue; // already mixed case: keep as typed
+        }
+        $words[$i] = (string) preg_replace_callback(
+            '/(^|[-\'’.])(\p{L})/u',
+            static fn(array $m): string => $m[1] . mb_strtoupper($m[2]),
+            mb_strtolower($word)
+        );
+    }
+
+    return implode(' ', $words);
+}
+
 function compose_person_name(array $values, string $prefix): string
 {
     if (($values[$prefix . '_na'] ?? '') === '1') {
@@ -977,7 +1010,7 @@ function compose_person_name(array $values, string $prefix): string
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
         if (is_scalar($value) && trim((string) $value) !== '') {
-            $parts[] = trim((string) $value);
+            $parts[] = format_name_part((string) $value, $part === 'suffix');
         }
     }
 

@@ -237,8 +237,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
             ]);
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "First Communion pre-application submitted for {$name}");
-            notify($pdo, 'application_new', 'New sacrament pre-application', "First Communion pre-application for {$name} ({$requestNo})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
+                notify($pdo, 'application_new', 'New sacrament pre-application', "First Communion pre-application for {$name} ({$requestNo})", '/admin/requests/applications-queue.php');
                 record_public_submission($pdo, [$email], 'application_first_communion');
             }
             $pdo->commit();

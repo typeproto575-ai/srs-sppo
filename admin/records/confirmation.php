@@ -305,7 +305,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             $pdo->commit();
             if ($applicationRequestNo !== null) {
                 try {
-                    notify_sacrament_application_status($pdo, 'completed', 'confirmation', $applicationRequestNo, "Confirmation encoded into register (record #{$recordId}).");
+                    notify_sacrament_application_status($pdo, 'completed', 'confirmation', $applicationRequestNo);
                 } catch (Throwable $e) {
                     error_log('Confirmation application completion notification failed: ' . $e->getMessage());
                 }

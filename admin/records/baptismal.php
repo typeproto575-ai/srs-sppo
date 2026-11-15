@@ -448,7 +448,7 @@ $shiftedCount = 0;
             $pdo->commit();
             if ($completedApplicationRequestNo !== null) {
                 try {
-                    notify_sacrament_application_status($pdo, 'completed', 'baptism', $completedApplicationRequestNo, "Baptism encoded into register (record #{$recordId}).");
+                    notify_sacrament_application_status($pdo, 'completed', 'baptism', $completedApplicationRequestNo);
                 } catch (Throwable $e) {
                     error_log('Baptism application completion notification failed: ' . $e->getMessage());
                 }

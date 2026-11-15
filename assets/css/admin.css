@@ -1704,6 +1704,71 @@ textarea {
     color: var(--admin-ink);
 }
 
+.dashboard-search,
+.dashboard-work {
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-section-heading {
+    margin-bottom: 0.75rem;
+}
+
+.dashboard-section-heading h2 {
+    margin: 0;
+    color: var(--admin-ink);
+    font-size: 1.15rem;
+}
+
+.dashboard-section-heading p {
+    margin: 0.2rem 0 0;
+    color: var(--admin-muted);
+    font-size: 0.88rem;
+}
+
+.dashboard-search .search-form {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+.dashboard-search .search-form input[type="search"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.dashboard-search .field-hint {
+    margin-top: 0.5rem;
+}
+
+.dashboard-search .search-form .btn {
+    flex: 0 0 auto;
+}
+
+.dashboard-work .stat-cards {
+    margin-top: 0;
+}
+
+.dashboard-work .stat-card {
+    min-width: 0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.dashboard-work .stat-card:hover {
+    border-color: var(--admin-green);
+    box-shadow: 0 8px 20px rgba(20, 32, 26, 0.09);
+    transform: translateY(-1px);
+}
+
+.dashboard-work .stat-card:focus-visible {
+    outline: 3px solid var(--admin-focus, #286344);
+    outline-offset: 3px;
+}
+
+.dashboard-work .stat-card .stat-label {
+    overflow-wrap: anywhere;
+}
+
 .dashboard-subtitle {
     margin: 0.35rem 0 0;
     color: var(--admin-muted);
@@ -1758,6 +1823,7 @@ textarea {
     font-size: 1.6rem;
     font-weight: 800;
     line-height: 1.1;
+    font-variant-numeric: tabular-nums;
     color: var(--admin-ink);
 }
 
@@ -1770,6 +1836,26 @@ textarea {
 
 .registry-summary {
     padding: 1.15rem;
+}
+
+@media (max-width: 560px) {
+    .dashboard-search .search-form {
+        flex-direction: column;
+    }
+
+    .dashboard-search .search-form .btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-work .stat-card {
+        transition: none;
+    }
+
+    .dashboard-work .stat-card:hover {
+        transform: none;
+    }
 }
 
 .registry-summary h2 {
@@ -1824,6 +1910,7 @@ textarea {
     font-size: 1.8rem;
     font-weight: 800;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
 }
 
 .registry-card-action {

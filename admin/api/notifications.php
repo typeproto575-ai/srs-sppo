@@ -6,7 +6,7 @@
  * GET  → JSON snapshot for the bell:
  *        { unread_count, upcoming_events_count, items: [ {kind, id, type,
  *          title, message, link, is_read, created_at} ] }
- *        unread_count = unread notifications only.
+ *        unread_count = unread actionable notifications only.
  *        upcoming_events_count = informational today/tomorrow reminders only.
  *        items = upcoming events (live-queried, most urgent first)
  *                followed by the 10 newest unread notifications.
@@ -60,15 +60,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  */
 function notifications_snapshot(PDO $pdo): array
 {
-    // Unread count (stored notifications only).
-    $unread = (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE channel = 'inapp' AND is_read = 0")->fetchColumn();
+    // Older versions created bell alerts for staff's own status changes.
+    // Keep those records in the archive, but don't treat them as new work.
+    $actionableWhere = "channel = 'inapp' AND is_read = 0
+        AND type NOT IN ('request_under_review', 'request_approved', 'request_rejected', 'request_ready', 'certificate_picked_up')
+        AND (LEFT(type, 12) <> 'application_' OR type = 'application_new')";
+    $unread = (int) $pdo->query("SELECT COUNT(*) FROM notifications WHERE {$actionableWhere}")->fetchColumn();
 
-    // The header bell is an actionable inbox, so read in-app notifications
-    // stay in the archive but are omitted here.
+    // Read items and staff-generated status history stay in the archive but
+    // are omitted from this actionable inbox.
     $rows = $pdo->query(
         "SELECT id, type, title, message, link, is_read, created_at
          FROM notifications
-         WHERE channel = 'inapp' AND is_read = 0
+         WHERE {$actionableWhere}
             ORDER BY created_at DESC
          LIMIT 10"
     )->fetchAll();

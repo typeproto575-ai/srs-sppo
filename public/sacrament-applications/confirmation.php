@@ -377,8 +377,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $trackingNumber = $personReference;
                 log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Confirmation pre-application submitted for {$applicantName}");
-                notify($pdo, 'application_new', 'New sacrament pre-application', "Confirmation pre-application for {$applicantName} ({$requestNo})", '/admin/requests/applications-queue.php');
                 if ($channel === 'online') {
+                    notify($pdo, 'application_new', 'New sacrament pre-application', "Confirmation pre-application for {$applicantName} ({$requestNo})", '/admin/requests/applications-queue.php');
                     record_public_submission($pdo, [$email], 'application_confirmation');
                 }
 

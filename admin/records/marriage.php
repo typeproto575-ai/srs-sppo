@@ -485,8 +485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                         $pdo,
                         'completed',
                         'marriage',
-                        $applicationRequestNo,
-                        "Marriage encoded into register (record #{$recordId})."
+                        $applicationRequestNo
                     );
                 } catch (Throwable $e) {
                     error_log('Marriage application completion notification failed: ' . $e->getMessage());

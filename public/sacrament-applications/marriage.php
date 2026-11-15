@@ -377,8 +377,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             ]);
             $applicationId = (int) $pdo->lastInsertId();
             log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, 'Holy Matrimony pre-application submitted for ' . $groomName . ' & ' . $brideName);
-            notify($pdo, 'application_new', 'New sacrament pre-application', "Holy Matrimony pre-application ({$requestNo})", '/admin/requests/applications-queue.php');
             if ($channel === 'online') {
+                notify($pdo, 'application_new', 'New sacrament pre-application', "Holy Matrimony pre-application ({$requestNo})", '/admin/requests/applications-queue.php');
                 record_public_submission($pdo, [$groomEmail, $brideEmail], 'application_marriage');
             }
             $pdo->commit();

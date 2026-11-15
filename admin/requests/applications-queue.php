@@ -60,6 +60,11 @@ function application_queue_label(string $value): string
     $labels = [
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
+        'birth_place' => 'Place of Birth',
+        'sponsor_names' => 'Confirmation Sponsor(s)',
+        'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Confirmed',
+        'guardian_relationship' => 'Guardian Relationship',
+        'parent_guardian_name' => 'Parent / Guardian',
     ];
 
     if (isset($labels[$value])) {
@@ -74,6 +79,17 @@ function application_queue_render_detail_value(mixed $value): void
     if (is_array($value)) {
         if ($value === []) {
             echo '—';
+            return;
+        }
+
+        // Godparents and similar role/name lists: one compact line per person.
+        if (array_is_list($value) && count(array_filter($value, static fn($item): bool => is_array($item) && isset($item['role'], $item['full_name']))) === count($value)) {
+            echo '<ol class="application-detail-compact">';
+            foreach ($value as $item) {
+                echo '<li><span class="detail-role">' . e(application_queue_label((string) $item['role'])) . '</span> '
+                    . e((string) $item['full_name']) . '</li>';
+            }
+            echo '</ol>';
             return;
         }
 
@@ -779,7 +795,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php else: ?>
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
                             <?php endif; ?>
-                                                <?php if ($prerequisiteWarnings !== []): ?>
+                        </dl>
+                    </section>
+
+                    <?php if ($prerequisiteWarnings !== []): ?>
                         <aside class="alert alert-warning" role="note">
                             <strong>Prerequisite review:</strong>
                             <ul><?php foreach ($prerequisiteWarnings as $warning): ?><li><?= e($warning) ?></li><?php endforeach; ?></ul>
@@ -933,10 +952,28 @@ document.addEventListener('click', (event) => {
     const review = document.getElementById(button.getAttribute('aria-controls') || '');
     if (!(review instanceof HTMLDetailsElement)) return;
     review.open = !review.open;
+    if (review.open) {
+        // Only one application is open at a time: close any other review.
+        document.querySelectorAll('.application-queue-review[open]').forEach((other) => {
+            if (other === review) return;
+            other.open = false;
+            const otherRow = other.closest('.application-queue-detail-row');
+            if (otherRow instanceof HTMLTableRowElement) otherRow.hidden = true;
+            const otherToggle = document.querySelector('[data-application-review-toggle][aria-controls="' + other.id + '"]');
+            if (otherToggle instanceof HTMLButtonElement) {
+                otherToggle.setAttribute('aria-expanded', 'false');
+                otherToggle.textContent = 'Review';
+            }
+        });
+    }
     const detailRow = review.closest('.application-queue-detail-row');
     if (detailRow instanceof HTMLTableRowElement) detailRow.hidden = !review.open;
     button.setAttribute('aria-expanded', review.open ? 'true' : 'false');
     button.textContent = review.open ? 'Close review' : 'Review';
+    if (review.open) {
+        const row = button.closest('tr');
+        if (row) row.scrollIntoView({ block: 'nearest' });
+    }
 });
 document.querySelectorAll('form.application-requirement-form').forEach((form) => {
     const button = form.querySelector('button[type="submit"]');

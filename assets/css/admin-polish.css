@@ -1,0 +1,344 @@
+/* ==========================================================================
+   SRS-SPPO — UI polish layer (admin site)
+   Loaded AFTER admin.css. Presentation only: no markup or logic depends on it.
+   To undo everything, remove the <link> to admin-polish.css in includes/admin-header.php.
+   ========================================================================== */
+
+/* ---- Applications queue: the open review is a flat record sheet ----------
+   Each section has a label in a narrow left gutter and its content on the
+   right, separated by thin lines. No boxes or cards. */
+.table-scroll:has(.application-queue-table) { container-type: inline-size; }
+
+.application-queue-review {
+    position: sticky;
+    left: 0;
+    box-sizing: border-box;
+    width: calc(100cqw - 1.5rem);
+    max-width: calc(100cqw - 1.5rem);
+}
+
+.application-queue-review .application-review-card {
+    display: block;
+    padding: .5rem 1rem 1rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Header: reference and status on one line, underlined */
+.application-queue-review .application-review-card > header {
+    padding: .25rem 0 1rem;
+    border-bottom: 2px solid var(--admin-ink, #1f3d2b);
+}
+.application-queue-review .application-review-card > p { margin: .75rem 0 0; }
+.application-queue-review .application-review-card > aside { margin: 1rem 0 0; }
+
+/* Sections: label gutter + content */
+.application-queue-review .application-review-card > section,
+.application-queue-review .application-review-card > .application-review-actions {
+    display: grid;
+    grid-template-columns: 9.5rem minmax(0, 1fr);
+    column-gap: 1.25rem;
+    row-gap: .6rem;
+    align-items: start;
+    padding: .9rem 0;
+    border: 0;
+    border-bottom: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-review-card > .application-review-actions { border-bottom: 0; }
+
+.application-queue-review .application-review-card > section > h3,
+.application-queue-review .application-review-card > .application-review-actions::before {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-review-card > section > :not(h3),
+.application-queue-review .application-review-card > .application-review-actions > * { grid-column: 2; }
+.application-queue-review .application-review-card > .application-review-actions::before { content: "Next step"; }
+
+/* Submitted details: plain label / value rows in two columns */
+.application-queue-review .application-details-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    column-gap: 2rem;
+    margin: 0;
+    border: 0;
+    background: transparent;
+}
+.application-queue-review .application-details-list > div {
+    display: grid;
+    grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+    gap: .6rem;
+    align-items: start;
+    padding: .4rem 0;
+    border: 0;
+    border-bottom: 1px solid rgba(31, 61, 43, .1);
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-details-list dt { min-width: 0; white-space: normal; word-break: break-word; overflow-wrap: anywhere; hyphens: auto; margin: 0; font-size: .8rem; font-weight: 700; color: var(--admin-muted, #5f6b62); }
+.application-queue-review .application-details-list dd { min-width: 0; overflow-wrap: anywhere; margin: 0; font-size: .92rem; }
+
+.application-detail-values { margin: 0; padding: 0; list-style: none; }
+.application-detail-values li { padding: .1rem 0; }
+.application-detail-values ul { margin: 0; padding-left: 0; list-style: none; }
+
+/* Godparents / sponsors: one line per person, in columns, full width */
+.application-queue-review .application-details-list > div:has(.application-detail-compact) { grid-column: 1 / -1; }
+.application-detail-compact {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    columns: 2 16rem;
+    column-gap: 2rem;
+}
+.application-detail-compact li {
+    break-inside: avoid;
+    padding: .12rem 0;
+    font-size: .92rem;
+}
+.application-detail-compact .detail-role {
+    display: inline-block;
+    min-width: 5.5rem;
+    margin-right: .4rem;
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--admin-muted, #5f6b62);
+}
+
+/* Compact controls inside the review sheet */
+.application-queue-review select,
+.application-queue-review input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 2.4rem;
+    padding: .35rem .6rem;
+    font-size: .9rem;
+}
+.application-queue-review .application-review-card .btn { min-height: 2.4rem; }
+.application-queue-review .application-requirement-form .btn { white-space: nowrap; }
+
+/* Requirements: one line per document, with a status dot */
+.application-queue-review .application-requirements-list { display: block; border: 0; background: transparent; }
+.application-queue-review .application-requirement-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 13rem) auto;
+    gap: .75rem;
+    align-items: center;
+    padding: .55rem 0;
+    border: 0;
+    border-bottom: 1px solid rgba(31, 61, 43, .1);
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-requirement-form:last-child { border-bottom: 0; }
+.application-queue-review .application-requirement-form strong { font-size: .92rem; font-weight: 600; }
+.application-queue-review .application-requirement-form strong::before {
+    content: "";
+    display: inline-block;
+    width: .6rem;
+    height: .6rem;
+    margin-right: .6rem;
+    border-radius: 50%;
+    background: #b9b3a2;
+}
+.application-queue-review .application-requirement-form:has(option[value="received"]:checked) strong::before { background: #d9a22b; }
+.application-queue-review .application-requirement-form:has(option[value="verified"]:checked) strong::before { background: #2f7d4a; }
+.application-queue-review .application-requirement-form p { margin: 0; font-size: .85rem; color: var(--admin-muted, #5f6b62); }
+.application-queue-review .application-requirement-form label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-requirement-form select { flex: 1; min-width: 0; }
+
+/* Person matching: no frame */
+.application-queue-review .application-person-match-grid { display: grid; grid-template-columns: minmax(0, 32rem); gap: 1rem; }
+.application-queue-review .person-match-form { padding: 0; border: 0; border-radius: 0; background: transparent; }
+
+/* Next step: one aligned row. Label on the left, controls share one baseline. */
+.application-queue-review .application-review-card > .application-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+}
+.application-queue-review .application-review-card > .application-review-actions::before {
+    flex: 0 0 9.5rem;
+    align-self: flex-start;
+    padding-top: .35rem;
+}
+.application-queue-review .application-review-actions > * { margin: 0; }
+.application-queue-review .application-review-actions .btn,
+.application-queue-review .application-review-actions select {
+    min-height: 2.4rem;
+    box-sizing: border-box;
+}
+.application-queue-review .application-review-actions .btn { display: inline-flex; align-items: center; }
+.application-queue-review .application-review-actions .application-status-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+    margin: 0;
+}
+.application-queue-review .application-review-actions .application-status-form > label {
+    display: grid;
+    gap: .3rem;
+    flex: 0 1 15rem;
+    margin: 0;
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-review-actions .application-status-form select { width: 100%; }
+.application-queue-review .application-review-actions .field-hint { align-self: center; }
+
+/* Narrow screens: label above content */
+@container (max-width: 900px) {
+    .application-queue-review .application-review-card > section,
+    .application-queue-review .application-review-card > .application-review-actions { grid-template-columns: minmax(0, 1fr); }
+    .application-queue-review .application-review-card > .application-review-actions::before { flex-basis: 100%; }
+    .application-queue-review .application-review-card > section > h3,
+    .application-queue-review .application-review-card > .application-review-actions::before { grid-row: auto; margin-bottom: .5rem; }
+    .application-queue-review .application-review-card > section > :not(h3),
+    .application-queue-review .application-review-card > .application-review-actions > *,
+    .application-queue-review .application-review-card > section > h3 { grid-column: 1; }
+    .application-queue-review .application-requirement-form { grid-template-columns: minmax(0, 1fr) auto; }
+    .application-queue-review .application-requirement-form strong { grid-column: 1 / -1; }
+}
+
+/* ---- Search and filter bars (Funerals and similar pages) ---------------- */
+.record-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+    margin: 0 0 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 12px;
+    background: var(--admin-panel, #fff);
+}
+
+.record-filters > label {
+    display: grid;
+    gap: .3rem;
+    font-size: .85rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+
+.record-filters > label:first-child { flex: 1 1 20rem; }
+.record-filters select { min-width: 6rem; }
+.record-filters .btn { align-self: flex-end; }
+
+/* ---- Tables: tighter columns, actions stay visible ---------------------- */
+.admin-table th,
+.admin-table td { padding: .65rem .7rem; }
+
+.admin-table td:last-child,
+.admin-table th:last-child { white-space: nowrap; }
+
+.admin-table td .btn-small {
+    padding: .3rem .65rem;
+    font-size: .82rem;
+}
+.admin-table td .btn-small + .btn-small { margin-left: .3rem; }
+
+/* ---- Form fields in admin ---------------------------------------------- */
+.admin-content input:not([type="checkbox"]):not([type="radio"]),
+.admin-content select,
+.admin-content textarea {
+    border-radius: 8px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.admin-content input:not([type="checkbox"]):not([type="radio"]):focus,
+.admin-content select:focus,
+.admin-content textarea:focus {
+    outline: none;
+    border-color: #2f5e3f;
+    box-shadow: 0 0 0 3px rgba(47, 94, 63, .18);
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+.admin-content .btn {
+    border-radius: 8px;
+    transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.admin-content .btn:hover { box-shadow: 0 4px 12px rgba(31, 61, 43, .18); }
+.admin-content .btn:active { transform: translateY(1px); }
+
+/* ---- Page headings ------------------------------------------------------ */
+.page-heading { margin-bottom: .6rem; }
+.page-heading h1 { letter-spacing: -.01em; }
+
+/* ---- Keyboard focus and motion ----------------------------------------- */
+.admin-content a:focus-visible,
+.admin-content button:focus-visible {
+    outline: 3px solid var(--admin-amber, #c9962b);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-content * { transition: none !important; animation: none !important; }
+}
+
+/* ---- Notices float over the page, same as the public site ---------------
+   Success and error messages only. Warnings stay inline because many are
+   permanent information (for example prerequisite reviews). */
+.admin-content .alert-success,
+.admin-content .alert-error {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    z-index: 1000;
+    width: min(92vw, 640px);
+    margin: 0;
+    padding-right: 2.75rem;
+    transform: translateX(-50%);
+    box-shadow: 0 12px 32px rgba(22, 36, 29, .32);
+    animation: a-toast-in .25s ease-out;
+}
+.admin-content .is-dismissed { display: none !important; }
+
+.admin-content .toast-close {
+    position: absolute;
+    top: .35rem;
+    right: .45rem;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.admin-content .toast-close:hover { background: rgba(0, 0, 0, .08); }
+
+@keyframes a-toast-in {
+    from { opacity: 0; transform: translate(-50%, -12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}

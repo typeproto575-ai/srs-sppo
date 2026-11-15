@@ -345,8 +345,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $applicationId = (int) $pdo->lastInsertId();
 
                         log_activity($pdo, null, 'sacrament_application_submitted', 'sacrament_applications', $applicationId, "Baptismal pre-application submitted for {$childName}");
-                        notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$requestNo})", '/admin/requests/applications-queue.php');
                         if ($channel === 'online') {
+                            notify($pdo, 'application_new', 'New sacrament pre-application', "Baptismal pre-application for {$childName} ({$requestNo})", '/admin/requests/applications-queue.php');
                             record_public_submission($pdo, [$email], 'application_baptismal');
                         }
                         $pdo->commit();

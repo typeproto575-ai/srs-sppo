@@ -60,6 +60,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
     <!-- Main stylesheets for the admin/priest interface -->
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $styleVersion ?>">
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css?v=<?= (int) $adminStyleVersion ?>">
+        <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin-polish.css?v=<?= (int) (file_exists(__DIR__ . '/../assets/css/admin-polish.css') ? filemtime(__DIR__ . '/../assets/css/admin-polish.css') : time()) ?>">
     <?= $extraHead ?> <!-- Any page-specific head content (e.g. FullCalendar) -->
 </head>
 <body>

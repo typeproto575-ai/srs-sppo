@@ -449,6 +449,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
 
                 if ($inserted) {
                     if ($channel === 'online') {
+                        notify(
+                            $pdo,
+                            'request_new',
+                            'New certificate request',
+                            $readableType . ' certificate request (' . $requestNo . ') is ready for review.',
+                            '/admin/requests/certificate-detail.php?id=' . (int) $requestId
+                        );
                         try {
                             mail_certificate_request_received(
                                 $values['requester_email'],

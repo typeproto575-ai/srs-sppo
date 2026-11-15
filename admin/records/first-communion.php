@@ -266,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             }
             $pdo->commit();
             if ($application) {
-                notify_sacrament_application_status($pdo, 'completed', 'first_communion', (string) $application['request_no'], "First Communion encoded into register (record #{$recordId}).");
+                notify_sacrament_application_status($pdo, 'completed', 'first_communion', (string) $application['request_no']);
             }
             redirect_to('/admin/records/first-communion.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
