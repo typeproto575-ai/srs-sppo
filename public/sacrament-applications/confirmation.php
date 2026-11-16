@@ -452,13 +452,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <legend>Phase 1 of 4 — Applicant Information</legend>
             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
             <div class="public-person-lookup" data-public-person-lookup
+                 data-lookup-context="preapplication"
                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                  data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                  data-birth-field="applicant_birthdate" data-birth-place-field="applicant_birthplace" data-person-id-field="applicant_person_id"
                  data-father-inputs="father_first,father_middle,father_last,father_suffix"
                  data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
                 <h3 class="lookup-title">Already registered with the parish?</h3>
-                <p class="field-hint">If you are already in the parish records, enter your reference number here (with your date of birth below), or fill in your name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                <p class="field-hint">Enter your person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
             <h3 class="form-subheading">Applicant’s details</h3>

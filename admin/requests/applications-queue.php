@@ -82,6 +82,26 @@ function application_queue_render_detail_value(mixed $value): void
             return;
         }
 
+        $isParticipantList = array_is_list($value);
+        foreach ($value as $item) {
+            if (!is_array($item)
+                || count($item) !== 2
+                || !is_scalar($item['role'] ?? null)
+                || !is_scalar($item['full_name'] ?? null)) {
+                $isParticipantList = false;
+                break;
+            }
+        }
+        if ($isParticipantList) {
+            echo '<ol class="application-detail-compact">';
+            foreach ($value as $item) {
+                echo '<li><span class="detail-role">' . e(application_queue_label((string) $item['role'])) . '</span> '
+                    . e((string) $item['full_name']) . '</li>';
+            }
+            echo '</ol>';
+            return;
+        }
+
         $isList = array_is_list($value);
         echo '<ul class="application-detail-values">';
         foreach ($value as $key => $nestedValue) {
@@ -1190,10 +1210,28 @@ document.addEventListener('click', (event) => {
     const review = document.getElementById(button.getAttribute('aria-controls') || '');
     if (!(review instanceof HTMLDetailsElement)) return;
     review.open = !review.open;
+    if (review.open) {
+        document.querySelectorAll('.application-queue-review[open]').forEach((other) => {
+            if (other === review) return;
+            other.open = false;
+            const otherRow = other.closest('.application-queue-detail-row');
+            if (otherRow instanceof HTMLTableRowElement) otherRow.hidden = true;
+            document.querySelectorAll('[data-application-review-toggle]').forEach((otherToggle) => {
+                if (!(otherToggle instanceof HTMLButtonElement)
+                    || otherToggle.getAttribute('aria-controls') !== other.id) return;
+                otherToggle.setAttribute('aria-expanded', 'false');
+                otherToggle.textContent = 'Review';
+            });
+        });
+    }
     const detailRow = review.closest('.application-queue-detail-row');
     if (detailRow instanceof HTMLTableRowElement) detailRow.hidden = !review.open;
     button.setAttribute('aria-expanded', review.open ? 'true' : 'false');
     button.textContent = review.open ? 'Close review' : 'Review';
+    if (review.open) {
+        const row = button.closest('tr');
+        if (row) row.scrollIntoView({ block: 'nearest' });
+    }
 });
 document.querySelectorAll('form.application-requirement-form').forEach((form) => {
     const button = form.querySelector('button[type="submit"]');

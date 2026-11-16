@@ -2119,7 +2119,7 @@ function notify_sacrament_application_status(
 function cert_request_transition_valid(string $from, string $to): bool
 {
     static $map = [
-        'new'                       => ['matched', 'rejected'],
+        'new'                       => ['matched', 'rejected', 'cancelled'],
         'matched'                   => ['for_signature', 'rejected'],
         'for_signature'             => ['ready', 'rejected'],
         'ready'                     => ['released', 'rejected'],
@@ -2855,6 +2855,7 @@ function status_label(string $kind, string $value): string
             'ready' => 'Ready for pickup',
             'released' => 'Given to the requester',
             'rejected' => 'Declined',
+            'cancelled' => 'Closed — no follow-up',
             'pending' => 'Needs action',
         ],
         'application' => [

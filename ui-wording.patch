@@ -1,0 +1,239 @@
+diff --git a/assets/js/main.js b/assets/js/main.js
+index c94ea50..35ba36d 100644
+--- a/assets/js/main.js
++++ b/assets/js/main.js
+@@ -2098,12 +2098,12 @@ document.addEventListener('DOMContentLoaded', function () {
+         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
+ 
+         var referenceLabel = document.createElement('label');
+-        referenceLabel.textContent = 'Person reference (optional, e.g. SPPO-P-...)';
++        referenceLabel.textContent = 'Reference number (optional)';
+         var referenceInput = document.createElement('input');
+         referenceInput.type = 'text';
+         referenceInput.autocomplete = 'off';
+         referenceInput.placeholder = 'SPPO-P-...';
+-        referenceInput.setAttribute('aria-label', 'Person reference (optional, e.g. SPPO-P-...)');
++        referenceInput.setAttribute('aria-label', 'Reference number (optional)');
+         referenceLabel.appendChild(referenceInput);
+         widget.insertBefore(referenceLabel, resultsBox);
+ 
+@@ -2218,7 +2218,7 @@ document.addEventListener('DOMContentLoaded', function () {
+                 return;
+             }
+             if (!reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
+-                resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
++                resultsBox.textContent = 'Enter the full name and date of birth to search the parish records.';
+                 return;
+             }
+ 
+@@ -2245,7 +2245,7 @@ document.addEventListener('DOMContentLoaded', function () {
+                     resultsBox.replaceChildren();
+                     if (!payload.results || !payload.results.length) {
+                         resultsBox.textContent = reference
+-                            ? 'No profile matched that reference and birth date. Check them, or search by name and birth date instead.'
++                            ? 'No profile matched that reference number and date of birth. Check them, or search by name and date of birth instead.'
+                             : 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
+                         return;
+                     }
+diff --git a/includes/public-requirements-notice.php b/includes/public-requirements-notice.php
+index 5df2d53..16c847b 100644
+--- a/includes/public-requirements-notice.php
++++ b/includes/public-requirements-notice.php
+@@ -10,7 +10,7 @@ $applicationType = isset($applicationType) && is_string($applicationType) ? $app
+ $applicationRequirements = sacrament_application_requirements($applicationType);
+ ?>
+ <section class="online-intake-notice requirements-notice" aria-label="Requirements to prepare">
+-    <strong>Before: documents and details to prepare</strong>
++    <strong>Documents and details to prepare</strong>
+     <p>The Parish Office will confirm which requirements apply, accepted documents, copies, and schedules. Do not upload or send documents with this online form.</p>
+     <ul>
+         <?php foreach ($applicationRequirements['before'] as $requirement): ?>
+diff --git a/public/certificate-request.php b/public/certificate-request.php
+index 7e22ecd..d955695 100644
+--- a/public/certificate-request.php
++++ b/public/certificate-request.php
+@@ -543,7 +543,7 @@ require_once __DIR__ . '/../includes/header.php';
+ 
+         <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
+         <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
+-            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Before: prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Before: choose a certificate type and review what to prepare' ?></strong>
++            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Choose a certificate type and review what to prepare' ?></strong>
+             <ul id="certificate-preparation-list" aria-live="polite">
+                 <?php if ($selectedPreparation): ?>
+                     <?php foreach ($selectedPreparation as $item): ?><li><?= e($item) ?></li><?php endforeach; ?>
+@@ -555,17 +555,18 @@ require_once __DIR__ . '/../includes/header.php';
+         </section>
+ 
+         <h2 class="form-stage-heading">Certificate details</h2>
+-        <p class="field-hint">Already registered with the parish? Enter your reference number and date of birth.</p>
+         <div class="public-person-lookup" data-public-person-lookup
+              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+              data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
+              data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
+              data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
+-            <p class="field-hint">Search by person reference and date of birth, or by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
++            <h3 class="lookup-title">Already registered with the parish?</h3>
++            <p class="field-hint">Enter your reference number here (with the date of birth below), or fill in the full name and date of birth below to search. Selecting a match fills in the known details. No match? Just continue with the form.</p>
+             <div data-person-results aria-live="polite"></div>
+         </div>
+         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
+ 
++        <h3 class="form-subheading">Person on the certificate</h3>
+         <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+         <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
+ 
+@@ -670,8 +671,8 @@ require_once __DIR__ . '/../includes/header.php';
+                 document.getElementById('spouse_name').required = isMarriage;
+                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
+                 preparationHeading.textContent = typeSelect.value
+-                    ? 'Before: prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
+-                    : 'Before: choose a certificate type and review what to prepare';
++                    ? 'Prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
++                    : 'Choose a certificate type and review what to prepare';
+                 preparationList.replaceChildren();
+                 var details = preparationDetails[typeSelect.value] || [
+                     'Select a certificate type to see the details that can help the Parish Office find the record.'
+diff --git a/public/sacrament-applications/baptismal.php b/public/sacrament-applications/baptismal.php
+index 498288f..9303f08 100644
+--- a/public/sacrament-applications/baptismal.php
++++ b/public/sacrament-applications/baptismal.php
+@@ -424,24 +424,24 @@ if ($currentStep === STEP_COUNT + 1): ?>
+             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
+         </div>
+     <?php endif; ?>
+-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
++    <h2 class="form-stage-heading">Pre-application form</h2>
+     <form method="POST" action="">
+         <?= csrf_field() ?>
+         <input type="hidden" name="_action" value="next">
+         <fieldset>
+             <legend>Phase 1 of 4 — Child Information</legend>
+             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
+-            <h3>Already registered with the parish?</h3>
+-            <p class="field-hint">Enter your reference number and date of birth.</p>
+             <div class="public-person-lookup" data-public-person-lookup
+                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                  data-name-inputs="child_first,child_middle,child_last,child_suffix"
+                  data-birth-field="child_birthdate" data-person-id-field="child_person_id"
+                  data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+-                <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
++                <h3 class="lookup-title">Already registered with the parish?</h3>
++                <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                 <div data-person-results aria-live="polite"></div>
+             </div>
+-            <label>Date of Birth
++            <h3 class="form-subheading">Child’s details</h3>
++            <label>Date of birth *
+                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
+             </label>
+             <div class="inline-fields">
+@@ -485,7 +485,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
+             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
+         </div>
+     <?php endif; ?>
+-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
++    <h2 class="form-stage-heading">Pre-application form</h2>
+     <form method="POST" action="">
+         <?= csrf_field() ?>
+         <input type="hidden" name="_action" value="next">
+@@ -548,7 +548,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
+             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
+         </div>
+     <?php endif; ?>
+-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
++    <h2 class="form-stage-heading">Pre-application form</h2>
+     <form method="POST" action="">
+         <?= csrf_field() ?>
+         <input type="hidden" name="_action" value="next">
+@@ -587,7 +587,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
+             <ul><?= implode('', array_map(fn($e) => "<li>{$e}</li>", $errors)) ?></ul>
+         </div>
+     <?php endif; ?>
+-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
++    <h2 class="form-stage-heading">Pre-application form</h2>
+     <form method="POST" action="">
+         <?= csrf_field() ?>
+         <input type="hidden" name="_action" value="final_submit">
+diff --git a/public/sacrament-applications/confirmation.php b/public/sacrament-applications/confirmation.php
+index 3453942..2c135fe 100644
+--- a/public/sacrament-applications/confirmation.php
++++ b/public/sacrament-applications/confirmation.php
+@@ -350,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+     <?php if (!empty($errors)): ?>
+         <div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
+     <?php endif; ?>
+-    <h2 class="form-stage-heading">During: complete the pre-application</h2>
++    <h2 class="form-stage-heading">Pre-application form</h2>
+     <form method="post">
+         <?= csrf_field() ?>
+         <input type="hidden" name="_wizard_action" value="<?= $currentStep === CONF_STEP_VERIFY ? 'final_submit' : 'next' ?>">
+@@ -358,18 +358,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+         <fieldset>
+             <legend>Phase 1 of 4 — Applicant Information</legend>
+             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
+-            <h3>Already registered with the parish?</h3>
+-            <p class="field-hint">Enter your reference number and date of birth.</p>
+             <div class="public-person-lookup" data-public-person-lookup
+                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                  data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
+                  data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
+                  data-father-inputs="father_first,father_middle,father_last,father_suffix"
+                  data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
+-                <p class="field-hint">Search by the applicant’s name and date of birth. If a parish profile matches, its recorded biographical details will fill automatically; you only need to complete the confirmation-specific details. If you already have a person reference, enter it with the birth date.</p>
++                <h3 class="lookup-title">Already registered with the parish?</h3>
++                <p class="field-hint">If you are already in the parish records, enter your reference number here (with your date of birth below), or fill in your name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                 <div data-person-results aria-live="polite"></div>
+             </div>
+-            <label>Birthdate *
++            <h3 class="form-subheading">Applicant’s details</h3>
++            <label>Date of birth *
+                 <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
+             </label>
+             <div class="inline-fields">
+diff --git a/public/sacrament-applications/first-communion.php b/public/sacrament-applications/first-communion.php
+index 00fa150..3b94db4 100644
+--- a/public/sacrament-applications/first-communion.php
++++ b/public/sacrament-applications/first-communion.php
+@@ -289,24 +289,24 @@ function selectedv(string $key, string $value): string { global $formData; retur
+                     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
+                 <?php endforeach; ?>
+             </ol>
+-            <h2 class="form-stage-heading">During: complete the pre-application</h2>
++            <h2 class="form-stage-heading">Pre-application form</h2>
+             <form method="post">
+                 <?= csrf_field() ?>
+                 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
+                 <?php if ($currentStep === 1): ?>
+                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
+                         <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
+-                        <h3>Already registered with the parish?</h3>
+-                        <p class="field-hint">Enter your reference number and date of birth.</p>
+                         <div class="public-person-lookup" data-public-person-lookup
+                              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
+                              data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
+                              data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
+-                            <p class="field-hint">Search the parish person index by the child’s name and date of birth. A match will fill parent details on the next step; you can also continue without a match. If you already have a person reference, enter it with the birth date.</p>
++                            <h3 class="lookup-title">Already registered with the parish?</h3>
++                            <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                             <div data-person-results aria-live="polite"></div>
+                         </div>
+-                        <label>Date of Birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
++                        <h3 class="form-subheading">Child’s details</h3>
++                        <label>Date of birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
+                         <div class="inline-fields">
+                             <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
+                             <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
+diff --git a/public/sacrament-applications/marriage.php b/public/sacrament-applications/marriage.php
+index 441b60d..3fbf7c3 100644
+--- a/public/sacrament-applications/marriage.php
++++ b/public/sacrament-applications/marriage.php
+@@ -436,7 +436,7 @@ require __DIR__ . '/../../includes/submission-success.php';
+     <li class="<?= $state ?>"<?= $step === $currentStep ? ' aria-current="step"' : '' ?>><span><?= $step ?></span> <?= e($label) ?></li>
+ <?php endforeach; ?>
+ </ol>
+-<h2 class="form-stage-heading">During: complete the pre-application</h2>
++<h2 class="form-stage-heading">Pre-application form</h2>
+ <form method="post">
+ <?= csrf_field() ?>
+ <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">

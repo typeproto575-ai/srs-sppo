@@ -430,12 +430,13 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <legend>Phase 1 of 4 — Child Information</legend>
             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
             <div class="public-person-lookup" data-public-person-lookup
+                 data-lookup-context="preapplication"
                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                  data-name-inputs="child_first,child_middle,child_last,child_suffix"
                  data-birth-field="child_birthdate" data-person-id-field="child_person_id"
                  data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
                 <h3 class="lookup-title">Already registered with the parish?</h3>
-                <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                <p class="field-hint">Enter the child’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
             <h3 class="form-subheading">Child’s details</h3>

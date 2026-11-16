@@ -2092,18 +2092,20 @@ document.addEventListener('DOMContentLoaded', function () {
         var form = widget.closest('form');
         var resultsBox = widget.querySelector('[data-person-results]');
         var endpoint = widget.getAttribute('data-endpoint');
+        var lookupContext = widget.getAttribute('data-lookup-context') || '';
+        var referenceOnly = lookupContext === 'preapplication';
         var nameInputs = (widget.getAttribute('data-name-inputs') || '').split(',').filter(Boolean);
         var birthField = widget.getAttribute('data-birth-field');
         var personIdField = widget.getAttribute('data-person-id-field');
         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
 
         var referenceLabel = document.createElement('label');
-        referenceLabel.textContent = 'Reference number (optional)';
+        referenceLabel.textContent = referenceOnly ? 'Person reference number (optional)' : 'Reference number (optional)';
         var referenceInput = document.createElement('input');
         referenceInput.type = 'text';
         referenceInput.autocomplete = 'off';
         referenceInput.placeholder = 'SPPO-P-...';
-        referenceInput.setAttribute('aria-label', 'Reference number (optional)');
+        referenceInput.setAttribute('aria-label', referenceLabel.textContent);
         referenceLabel.appendChild(referenceInput);
         widget.insertBefore(referenceLabel, resultsBox);
 
@@ -2145,6 +2147,59 @@ document.addEventListener('DOMContentLoaded', function () {
             return [person.first_name, person.middle_name, person.last_name, person.suffix].filter(Boolean).join(' ');
         }
 
+        function renderRecordHistory(records) {
+            var section = document.createElement('section');
+            section.className = 'person-record-history';
+            var heading = document.createElement('h4');
+            heading.textContent = 'Sacrament records on file';
+            section.appendChild(heading);
+
+            if (!records.length) {
+                var empty = document.createElement('p');
+                empty.textContent = 'No linked sacrament records were found for this profile.';
+                section.appendChild(empty);
+                resultsBox.appendChild(section);
+                return;
+            }
+
+            var labels = {
+                baptism: 'Baptism',
+                first_communion: 'First Communion',
+                confirmation: 'Confirmation',
+                marriage: 'Marriage'
+            };
+            var list = document.createElement('ul');
+            records.forEach(function (record) {
+                var item = document.createElement('li');
+                var details = document.createElement('span');
+                var parts = [labels[record.type] || 'Sacrament'];
+                if (record.event_date) parts.push(record.event_date);
+                if (record.place) parts.push(record.place);
+                if (record.source === 'this_parish') parts.push('This parish');
+                if (record.source === 'other_parish') parts.push('Another parish');
+
+                var registerParts = [];
+                if (record.book_no) registerParts.push('Book ' + record.book_no);
+                if (record.page_no) registerParts.push('Page ' + record.page_no);
+                if (record.line_no) registerParts.push('Line ' + record.line_no);
+                if (record.entry_no) registerParts.push('Entry ' + record.entry_no);
+                if (registerParts.length) parts.push(registerParts.join(', '));
+
+                details.textContent = parts.join(' · ');
+                item.appendChild(details);
+
+                var status = document.createElement('span');
+                status.className = 'person-record-verification';
+                status.textContent = record.is_verified
+                    ? 'Verified against parish register'
+                    : 'Not yet verified against parish register';
+                item.appendChild(status);
+                list.appendChild(item);
+            });
+            section.appendChild(list);
+            resultsBox.appendChild(section);
+        }
+
         function fillParent(person, side) {
             var fullName = side === 'father' ? person.father_name : person.mother_maiden_name;
             var inputNames = (widget.getAttribute('data-' + side + '-inputs') || '').split(',').filter(Boolean);
@@ -2180,7 +2235,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        function renderExistingSelection(message) {
+        function renderExistingSelection(message, records) {
             resultsBox.replaceChildren();
             var confirmation = document.createElement('p');
             confirmation.className = 'person-lookup-selection';
@@ -2189,6 +2244,7 @@ document.addEventListener('DOMContentLoaded', function () {
             selectionClear.hidden = false;
             confirmation.appendChild(selectionClear);
             resultsBox.appendChild(confirmation);
+            if (referenceOnly) renderRecordHistory(Array.isArray(records) ? records : []);
         }
 
         selectionClear.addEventListener('click', function () {
@@ -2199,7 +2255,9 @@ document.addEventListener('DOMContentLoaded', function () {
             setPublicIdentityReadOnly(false);
             selectionClear.hidden = true;
             resultsBox.replaceChildren();
-            resultsBox.textContent = 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
+            resultsBox.textContent = referenceOnly
+                ? 'Profile link cleared. Enter a person reference to search again.'
+                : 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
         });
 
         if (idInput && idInput.value) {
@@ -2213,11 +2271,15 @@ document.addEventListener('DOMContentLoaded', function () {
             var fullName = nameInputs.map(value).filter(Boolean).join(' ');
             var birthDate = value(birthField);
             resultsBox.replaceChildren();
-            if (reference && !birthDate) {
+            if (referenceOnly && !reference) {
+                resultsBox.textContent = 'Enter a person reference to find the profile and linked sacrament records.';
+                return;
+            }
+            if (reference && !birthDate && !referenceOnly) {
                 resultsBox.textContent = 'Now enter your date of birth to find your profile.';
                 return;
             }
-            if (!reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
+            if (!referenceOnly && !reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
                 resultsBox.textContent = 'Enter the full name and date of birth to search the parish records.';
                 return;
             }
@@ -2228,7 +2290,11 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.appendChild(status);
             var url = new URL(endpoint, window.location.href);
             url.searchParams.set('person_lookup', '1');
-            url.searchParams.set('birth_date', birthDate);
+            if (referenceOnly) {
+                url.searchParams.set('lookup_context', lookupContext);
+            } else {
+                url.searchParams.set('birth_date', birthDate);
+            }
             if (reference) {
                 url.searchParams.set('reference', reference);
             } else {
@@ -2245,7 +2311,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
                         resultsBox.textContent = reference
-                            ? 'No profile matched that reference number and date of birth. Check them, or search by name and date of birth instead.'
+                            ? (referenceOnly
+                                ? 'No profile matched that reference number. Check it, or continue with the form manually.'
+                                : 'No profile matched that reference number and date of birth. Check them, or search by name and date of birth instead.')
                             : 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
                         return;
                     }
@@ -2278,7 +2346,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             }
                             selected = true;
                             setPublicIdentityReadOnly(true);
-                            renderExistingSelection('Found: ' + personName(person) + ', born ' + (person.birth_date || '') + '. Not you? ');
+                            renderExistingSelection('Found: ' + personName(person) + ', born ' + (person.birth_date || '') + '. Not you? ', person.sacrament_records);
                         });
                         resultsBox.appendChild(button);
                     });
@@ -2302,7 +2370,7 @@ document.addEventListener('DOMContentLoaded', function () {
             searchTimer = window.setTimeout(runSearch, 350);
         }
 
-        nameInputs.concat([birthField]).concat([referenceInput]).forEach(function (name) {
+        (referenceOnly ? [referenceInput] : nameInputs.concat([birthField]).concat([referenceInput])).forEach(function (name) {
             var input = typeof name === 'string' ? field(name) : name;
             if (!input) return;
             input.addEventListener('input', scheduleSearch);

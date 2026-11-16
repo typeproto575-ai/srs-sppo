@@ -54,8 +54,11 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 9. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
    example, `https://parish.example.org` or
    `https://example.org/srs-sppo`). It can be set in the server environment or
-   in server-only `config/local.php`. A non-local host automatically enables
-   HTTPS enforcement.
+   in server-only `config/local.php`. Include the app subdirectory when the
+   site is installed below the domain root (for example,
+   `https://example.org/srs-sppo`). A non-local host automatically enables
+   HTTPS enforcement. Email tracking links use the detected app path, falling
+   back to the configured URL path when the web root maps directly to the app.
 10. Email delivery is disabled unless explicitly configured. Public person-
    reference lookup requires an enabled email service to send its one-time
    access code. To use Gmail SMTP, enable 2-Step Verification on the sending

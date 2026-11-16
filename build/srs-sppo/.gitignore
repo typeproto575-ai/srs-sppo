@@ -1,0 +1,35 @@
+# Uploaded / generated files (keep folder guard files)
+/storage/*
+!/storage/index.php
+!/storage/.htaccess
+
+# Tool artifacts
+.freebuff/
+
+# Dev/debug scripts (kept locally; never deployed via git archive)
+/devtools/
+
+# Database dumps (machine-local safety backups)
+/database/backups/
+
+# Local database credentials
+/config/local.php
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Logs
+*.log
+
+# PHPStan analysis cache
+.phpstan.cache/
+
+# Local credentials, generated output, and installed dependencies
+/users.txt
+/users_details.txt
+/output.txt
+/.phpunit.cache/
+/vendor/
+/includes/vendor/

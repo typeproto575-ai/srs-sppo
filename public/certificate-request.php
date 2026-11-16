@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/public-person-lookup.php';
 
 $basePath = $basePath ?? base_path();
 $pageTitle = (current_user()['role'] ?? '') === 'secretary'
@@ -29,10 +30,23 @@ if (($_GET['person_lookup'] ?? '') === '1') {
     $_SESSION['public_person_lookup_attempts'] = $attempts;
 
     $reference = strtoupper(trim(is_string($_GET['reference'] ?? null) ? $_GET['reference'] : ''));
+    $preapplicationLookup = ($_GET['lookup_context'] ?? '') === 'preapplication';
     $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
     $date = DateTime::createFromFormat('Y-m-d', $birthDate);
     $validBirthDate = $date && $date->format('Y-m-d') === $birthDate;
-    if ($reference !== '') {
+    if ($preapplicationLookup) {
+        if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Enter a valid person reference to search.']);
+            exit;
+        }
+
+        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+                FROM persons
+                WHERE public_reference = ? AND is_deceased = 0
+                LIMIT 1';
+        $params = [$reference];
+    } elseif ($reference !== '') {
         if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1 || !$validBirthDate) {
             http_response_code(400);
             echo json_encode(['error' => 'Enter a valid person reference and date of birth to search.']);
@@ -77,7 +91,7 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         $stmt->execute($params);
         $results = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
-            $results[] = [
+            $result = [
                 'id' => (int) $person['id'],
                 'first_name' => $person['first_name'],
                 'middle_name' => $person['middle_name'] ?? '',
@@ -88,6 +102,12 @@ if (($_GET['person_lookup'] ?? '') === '1') {
                 'father_name' => $person['father_name'] ?? '',
                 'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
             ];
+            if ($preapplicationLookup) {
+                $result['sacrament_records'] = public_person_lookup_record_summary(
+                    sd_get_person_records($pdo, (int) $person['id'])
+                );
+            }
+            $results[] = $result;
         }
         echo json_encode(['results' => $results], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
@@ -351,24 +371,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 $requestId = null;
                 $requestNo = '';
                 $personReference = '';
-                $inputPersonId = $selectedPersonId;
+                $requestPersonId = $walkInRecord ? $selectedPersonId : null;
                 try {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
                             $pdo->beginTransaction();
-                            [$subjectFirst, $subjectMiddle, $subjectLast, $subjectSuffix] = structured_name_parts($values['subject_name']);
-                            $personProfile = public_person_reference($pdo, $inputPersonId, [
-                                'first_name' => $subjectFirst,
-                                'middle_name' => $subjectMiddle,
-                                'last_name' => $subjectLast,
-                                'suffix' => $subjectSuffix,
-                                'birth_date' => $values['birth_date'],
-                                'father_name' => $values['father_name'],
-                                'mother_maiden_name' => $values['mother_maiden_name'],
-                            ]);
-                            $selectedPersonId = $personProfile['person_id'];
-                            $personReference = $personProfile['reference'];
                             if ($walkInRecord) {
                                 $stmt = $pdo->prepare(
                                     "INSERT INTO certificate_requests
@@ -379,13 +387,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                      VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW(), 'matched')"
                                 );
                             } else {
+                                $retentionEligibility = $channel === 'online' ? 'NOW()' : 'NULL';
                                 $stmt = $pdo->prepare(
                                     "INSERT INTO certificate_requests
                                         (request_no, channel, sacrament_type, subject_name, subject_details,
                                          requester_name, requester_relationship, requester_relationship_other,
                                          requester_email, requester_contact_number, purpose, purpose_other,
-                                         privacy_consent_at, person_id, status)
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')"
+                                         privacy_consent_at, person_id, status, retention_eligible_at)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new', {$retentionEligibility})"
                                 );
                             }
                             $insertParams = [$requestNo];
@@ -404,7 +413,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $requesterContact,
                                 $purposeValue,
                                 $purposeOther,
-                                $selectedPersonId,
+                                $requestPersonId,
                             );
                             if ($walkInRecord) {
                                 array_push($insertParams, $walkInRecordId, (int) current_user()['id']);
@@ -475,9 +484,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                         redirect_to('/admin/requests/queue.php?added=' . rawurlencode($requestNo));
                         exit;
                     }
-                    $_SESSION['certificate_success'] = $personReference;
+                    $_SESSION['certificate_success'] = $requestNo;
                     $_SESSION['certificate_success_request_no'] = $requestNo;
-                    $trackingNumber = $personReference;
+                    $trackingNumber = $requestNo;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
                     exit;
                 }
@@ -493,12 +502,12 @@ require_once __DIR__ . '/../includes/header.php';
     <h1>Thank you</h1>
     <?php if ($trackingNumber): ?>
         <?php
-        $successHeading = 'Keep this reference number';
+        $successHeading = 'Keep this request number';
         $successIsApplication = false;
         $successRequestNumber = $requestNumber ?? '';
-        $successPersonReferences = [['name' => '', 'reference' => $trackingNumber]];
+        $successPersonReferences = [];
         $successRequiredDocuments = [
-            'Bring your person reference. If the secretary gave you a claim stub or payment slip, bring it too.',
+            'Keep your request number. If the secretary gave you a claim stub or payment slip, bring it too.',
             'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];

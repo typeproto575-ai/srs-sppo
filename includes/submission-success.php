@@ -49,6 +49,12 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <div>
+                    <?php if ($successPersonReferences === [] && $successRequestNumber !== ''): ?>
+                        <p class="field-hint">Your request number</p>
+                        <p class="submission-tracking"><?= e($successRequestNumber) ?></p>
+                        <button type="button" class="btn btn-secondary btn-small" data-copy-request-number="<?= e($successRequestNumber) ?>">Copy request number</button>
+                        <p class="submission-reference-reminder">Keep this number to track your request.</p>
+                    <?php endif; ?>
                     <?php foreach ($successPersonReferences as $personReference): ?>
                         <?php if (!is_array($personReference) || !is_string($personReference['reference'] ?? null)) continue; ?>
                         <p class="field-hint"><?= is_string($personReference['name'] ?? null) && $personReference['name'] !== '' ? 'Person reference for ' . e($personReference['name']) : 'Your person reference' ?></p>
@@ -60,7 +66,7 @@ $basePath       = $basePath ?? base_path();
                     <?php endforeach; ?>
                 </div>
             </div>
-            <?php if ($successRequestNumber !== ''): ?>
+            <?php if ($successRequestNumber !== '' && $successPersonReferences !== []): ?>
                 <p class="submission-request-number">Request no.: <span><?= e($successRequestNumber) ?></span></p>
             <?php endif; ?>
             <p><a class="btn" href="<?= e($basePath . '/public/track-request.php') ?>">Track my requests</a></p>
@@ -77,7 +83,7 @@ $basePath       = $basePath ?? base_path();
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>
                     <li>If asked to proceed, handle payment at the Parish Office.</li>
-                    <li>The Parish Office may email you when there is an update. Use your person reference and the email address you used to view linked requests, or contact the office through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger. When the certificate is ready, collect it in person; the secretary verifies the request and recorded payment. An authorized representative must bring a signed authorization letter.</li>
+                    <li>The Parish Office may email you when there is an update. Use your person reference or request number and the email address you used to view requests, or contact the office through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger. When the certificate is ready, collect it in person; the secretary verifies the request and recorded payment. An authorized representative must bring a signed authorization letter.</li>
                     <?php endif; ?>
                 </ol>
             </div>
@@ -99,9 +105,9 @@ $basePath       = $basePath ?? base_path();
         (function () {
             // Copy: modern clipboard API first, textarea fallback for older
             // mobile browsers inside the parish (no external library).
-            document.querySelectorAll('[data-copy-person-reference]').forEach(function (btn) {
+            document.querySelectorAll('[data-copy-person-reference], [data-copy-request-number]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
-                    var text = btn.dataset.copyPersonReference;
+                    var text = btn.dataset.copyPersonReference || btn.dataset.copyRequestNumber;
                     function done(ok) {
                         var originalLabel = btn.dataset.originalLabel;
                         btn.textContent = ok ? 'Copied!' : 'Copy failed';

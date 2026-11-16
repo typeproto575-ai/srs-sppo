@@ -2367,6 +2367,42 @@ textarea:focus-visible {
     cursor: default;
 }
 
+.person-record-history {
+    margin-top: 0.35rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--color-rule);
+    border-radius: 0.45rem;
+    background: #fffdf8;
+}
+
+.person-record-history h4 {
+    margin: 0 0 0.55rem;
+    color: var(--color-ledger-dark);
+    font-size: 0.95rem;
+}
+
+.person-record-history p,
+.person-record-history ul {
+    margin: 0;
+}
+
+.person-record-history ul {
+    display: grid;
+    gap: 0.55rem;
+    padding-left: 1.2rem;
+}
+
+.person-record-history li {
+    padding-left: 0.15rem;
+}
+
+.person-record-verification {
+    display: block;
+    margin-top: 0.15rem;
+    color: #59645d;
+    font-size: 0.82rem;
+}
+
 .tracking-result h2 {
     margin-top: 0;
 }

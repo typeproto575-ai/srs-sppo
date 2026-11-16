@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    failOnRisky="true"
+    failOnWarning="true"
+    cacheDirectory=".phpunit.cache"
+>
+    <testsuites>
+        <testsuite name="SRS-SPPO unit tests">
+            <file>tests/FunctionsTest.php</file>
+            <file>tests/BackupTest.php</file>
+        </testsuite>
+        <testsuite name="SRS-SPPO database integration tests">
+            <file>tests/DatabaseIntegrationTest.php</file>
+        </testsuite>
+    </testsuites>
+</phpunit>

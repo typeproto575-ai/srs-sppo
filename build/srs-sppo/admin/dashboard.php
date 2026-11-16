@@ -1,0 +1,191 @@
+﻿<?php
+/**
+ * =====================================================================
+ * SRS-SPPO ADMIN DASHBOARD
+ * =====================================================================
+ * Purpose: Landing page after login for the secretary. Search-first home:
+ *   - name search box (top) -> person profile
+ *   - quick stats: pending requests, new applications, ready, in progress
+ *   - sacrament registry counts
+ * Uses the shared admin-header/admin-footer for layout so the sidebar
+ * and top bar stay consistent with every other admin page.
+ * =====================================================================
+ */
+
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
+require_role('secretary');
+
+$basePath = $basePath ?? base_path();
+$pageTitle = 'Admin Dashboard';
+
+notify_newly_age_eligible_persons($pdo);
+
+// ---- Search (GET q) -------------------------------------------------------
+$q = trim((string) ($_GET['q'] ?? ''));
+$searchResults = [];
+if ($q !== '') {
+    $searchResults = sd_search_persons($pdo, $q);
+}
+
+if (!defined('CERT_PENDING_STATUSES')) {
+    define('CERT_PENDING_STATUSES', ['new', 'matched', 'for_signature']);
+}
+$pendingPlaceholders = implode(',', array_fill(0, count(CERT_PENDING_STATUSES), '?'));
+$pendingStmt = $pdo->prepare("SELECT COUNT(*) c FROM certificate_requests WHERE status IN ($pendingPlaceholders)");
+$pendingStmt->execute(CERT_PENDING_STATUSES);
+$pendingCount = (int) $pendingStmt->fetch()['c'];
+
+$applicationsPendingCount = (int) $pdo->query(
+    "SELECT COUNT(*) c FROM sacrament_applications WHERE status = 'new'"
+)->fetch()['c'];
+
+$readyForPickupCount = (int) $pdo->query(
+    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'ready'"
+)->fetch()['c'];
+
+$underReviewCount = (int) $pdo->query(
+    "SELECT COUNT(*) c FROM sacrament_applications
+     WHERE status IN ('reviewing','requirements_pending','approved','scheduled')"
+)->fetch()['c'];
+
+// ---- Registry counts (via sacrament-data.php, no raw SQL here) --------------
+$registryCounts = sd_count_records_by_type($pdo);
+
+require_once __DIR__ . '/../includes/admin-header.php';
+?>
+
+<section class="dashboard-shell">
+    <div class="dashboard-hero">
+        <div>
+            <p class="dashboard-kicker">SECRETARY DASHBOARD</p>
+            <h1>Welcome back, <?= e(current_user()['full_name'] ?: 'Secretary') ?></h1>
+            <p class="dashboard-subtitle">Search a person first, then review pending requests and registry counts below.</p>
+        </div>
+        <div class="dashboard-actions">
+            <a href="<?= e($basePath) ?>/admin/requests/queue.php" class="btn btn-primary">Review Requests</a>
+        </div>
+    </div>
+
+    <!-- Search form at the very top -->
+    <section class="dashboard-search" aria-labelledby="dashboard-search-heading">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-search-heading">Find a parishioner</h2>
+            <p>Search the master person index, then open the profile to review linked sacramental history.</p>
+        </div>
+        <form method="get" action="<?= e($basePath) ?>/admin/dashboard.php" class="search-form"
+              data-dashboard-person-search data-endpoint="<?= e($basePath) ?>/admin/api/dashboard-person-search.php"
+              data-profile-url="<?= e($basePath) ?>/admin/system/person-profile.php"
+              data-records-url="<?= e($basePath) ?>/admin/records/index.php"
+              data-requests-url="<?= e($basePath) ?>/admin/requests/queue.php">
+            <input id="dashboard-person-search" type="search" name="q" value="<?= e($q) ?>"
+                   placeholder="Search by name or birth year (e.g., dela Cruz 1985)…" autocomplete="off"
+                   aria-label="Search parishioners by name or birth year"
+                   aria-controls="dashboard-search-results">
+            <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+        <p class="field-hint">For a completed register entry, use Records. For a certificate copy request, use Certificate Requests.</p>
+    </section>
+
+    <section id="dashboard-search-results" class="search-results" aria-live="polite"<?= $q === '' ? ' hidden' : '' ?>>
+        <?php if ($q !== ''): ?>
+            <h2>Search results for "<?= e($q) ?>"</h2>
+            <?php if (empty($searchResults)): ?>
+                <p class="field-hint">No master person profile matched. Try another name part or birth year. For a register-entry search, open <a href="<?= e($basePath) ?>/admin/records/index.php">Records</a>; for a certificate copy request, open <a href="<?= e($basePath) ?>/admin/requests/queue.php">Certificate Requests</a>.</p>
+            <?php else: ?>
+                <div class="table-scroll">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Birth date</th>
+                                <th>Birth place</th>
+                                <th>Baptism</th>
+                                <th>First Communion</th>
+                                <th>Confirmation</th>
+                                <th>Marriage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($searchResults as $p): ?>
+                                <tr>
+                                    <td><a href="<?= e($basePath) ?>/admin/system/person-profile.php?id=<?= (int) $p['id'] ?>"><?= e($p['full_name']) ?></a></td>
+                                    <td><?= e($p['birth_date'] ? date('M j, Y', strtotime($p['birth_date'])) : '—') ?></td>
+                                    <td><?= e($p['birth_place'] ?: '—') ?></td>
+                                    <td><?= !empty($p['has_baptism']) ? '✓' : '—' ?></td>
+                                    <td><?= !empty($p['has_first_communion']) ? '✓' : '—' ?></td>
+                                    <td><?= !empty($p['has_confirmation']) ? '✓' : '—' ?></td>
+                                    <td><?= !empty($p['has_marriage']) ? '✓' : '—' ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    </section>
+
+    <section class="dashboard-work" aria-labelledby="dashboard-work-heading">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-work-heading">Request overview</h2>
+            <p>Select a count to open the corresponding filtered queue.</p>
+        </div>
+        <div class="stat-cards dashboard-metrics">
+            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/queue.php?status=pending">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                <p class="stat-number"><?= (int) $pendingCount ?></p>
+                <p class="stat-label">Certificates needing action</p>
+            </a>
+            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=new">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+                <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
+                <p class="stat-label">New pre-applications</p>
+            </a>
+            <a class="stat-card stat-tone-blue" href="<?= e($basePath) ?>/admin/requests/queue.php?status=ready">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+                <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
+                <p class="stat-label">Ready for pickup</p>
+            </a>
+            <a class="stat-card stat-tone-green" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=in_progress">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+                <p class="stat-number"><?= (int) $underReviewCount ?></p>
+                <p class="stat-label">Pre-applications in progress</p>
+            </a>
+        </div>
+    </section>
+
+    <div class="registry-summary">
+        <h2>Sacramental records on file</h2>
+        <p class="registry-summary-note">Select a sacrament to open its records.</p>
+        <div class="registry-grid">
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=baptismal" aria-label="View Baptism records, <?= (int) ($registryCounts['baptism'] ?? 0) ?> on file">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
+                <h3>Baptism</h3>
+                <span class="registry-count"><?= (int) ($registryCounts['baptism'] ?? 0) ?></span>
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=confirmation" aria-label="View Confirmation records, <?= (int) ($registryCounts['confirmation'] ?? 0) ?> on file">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                <h3>Confirmation</h3>
+                <span class="registry-count"><?= (int) ($registryCounts['confirmation'] ?? 0) ?></span>
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=first_communion" aria-label="View First Communion records, <?= (int) ($registryCounts['first_communion'] ?? 0) ?> on file">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v4a6 6 0 0 0-12 0z"/><path d="M12 13v6M8 21h8"/></svg></span>
+                <h3>First Communion</h3>
+                <span class="registry-count"><?= (int) ($registryCounts['first_communion'] ?? 0) ?></span>
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+            <a class="registry-card" href="<?= e($basePath) ?>/admin/records/index.php?type=marriage" aria-label="View Marriage records, <?= (int) ($registryCounts['marriage'] ?? 0) ?> on file">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="13" r="6"/><circle cx="15" cy="13" r="6"/></svg></span>
+                <h3>Marriage</h3>
+                <span class="registry-count"><?= (int) ($registryCounts['marriage'] ?? 0) ?></span>
+                <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+            </a>
+        </div>
+    </div><!-- /.registry-summary -->
+</section>
+
+<?php require_once __DIR__ . '/../includes/admin-footer.php'; ?>

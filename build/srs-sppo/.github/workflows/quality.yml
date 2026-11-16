@@ -1,0 +1,48 @@
+name: SRS-SPPO Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: ramsey/composer-install@v3
+      - name: Initialize isolated test database
+        env:
+          SRS_TEST_DB_NAME: srs_sppo_test_db
+          SRS_TEST_DB_HOST: 127.0.0.1
+          SRS_TEST_DB_USER: root
+          SRS_TEST_DB_PASS: root
+        run: php scripts/setup-test-db.php
+      - name: Run PHPUnit
+        env:
+          SRS_TEST_DB_DSN: mysql:host=127.0.0.1;dbname=srs_sppo_test_db;charset=utf8mb4
+          SRS_TEST_DB_NAME: srs_sppo_test_db
+          SRS_TEST_DB_USER: root
+          SRS_TEST_DB_PASS: root
+        run: vendor/bin/phpunit --testdox
+      - name: Run project quality gate
+        run: php scripts/quality-check.php
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse

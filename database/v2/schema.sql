@@ -183,7 +183,8 @@ CREATE TABLE sacrament_applications (
 
 -- ---------------------------------------------------------------------
 -- 6. certificate_requests : one table for the whole certificate life cycle
---    new -> matched -> for_signature -> ready -> released  (or rejected)
+--    new -> matched -> for_signature -> ready -> released
+--       (or rejected, or cancelled with personal details anonymized)
 --    "for_signature" = printed, waiting for the priest's physical
 --    signature. Pickup verification (Stage 2) is the claimant_* columns.
 -- ---------------------------------------------------------------------
@@ -210,7 +211,7 @@ CREATE TABLE certificate_requests (
   matched_by                 INT UNSIGNED NULL,
   matched_at                 DATETIME NULL,
   -- life cycle
-  status                     ENUM('new','matched','for_signature','ready','released','rejected') NOT NULL DEFAULT 'new',
+  status                     ENUM('new','matched','for_signature','ready','released','rejected','cancelled') NOT NULL DEFAULT 'new',
   certificate_no             VARCHAR(30) NULL,
   printed_by                 INT UNSIGNED NULL,
   printed_at                 DATETIME NULL,
@@ -228,11 +229,13 @@ CREATE TABLE certificate_requests (
   notes                      TEXT NULL,
   rejection_reason           TEXT NULL,
   anonymized_at              DATETIME NULL,
+  retention_eligible_at      DATETIME NULL,
   created_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_cr_status (status),
   INDEX idx_cr_subject (subject_name),
   INDEX idx_cr_person (person_id),
+  INDEX idx_cr_retention (status, channel, retention_eligible_at, anonymized_at),
   CONSTRAINT fk_cr_person   FOREIGN KEY (person_id)   REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_cr_record   FOREIGN KEY (record_id)   REFERENCES sacrament_records(id) ON DELETE SET NULL,
   CONSTRAINT fk_cr_matched  FOREIGN KEY (matched_by)  REFERENCES users(id)             ON DELETE SET NULL,

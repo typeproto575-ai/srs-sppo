@@ -93,6 +93,9 @@ The person-registry sequence documents the original rollout:
     each master person profile. Public applicants use the same person
     reference across linked sacrament applications and certificate requests;
     each request retains its own internal ID and status.
+12. `050_funeral_records.sql` creates the staff-only funeral register table.
+    Existing installations must apply it before using Funeral Records or
+    opening person profiles, which display linked funeral information.
 
 The protected upgrade page handles the supported compatibility updates for
 public page settings (007), request review fields (012), and retention support
@@ -105,6 +108,15 @@ reviewed before applying migration 047; the protected upgrade page does not
 apply it.
 Existing V2 databases using the sacrament pre-application queue must also
 apply migration 048 before deploying the staff assignment controls.
+Migration `051_certificate_request_retention.sql` adds the closed certificate
+request status and retention eligibility timestamp. Back up the database
+before applying it. Existing requests remain ineligible because their
+`retention_eligible_at` value is left `NULL`; new online certificate requests
+are opted into the 30-day follow-up and 90-day closure workflow. The
+certificate-request queue shows staff a follow-up reminder after 30 days. At
+90 days, staff can explicitly close and anonymize eligible unmatched requests;
+the action also redacts related email-notification recipients, preserves the
+request number/status/audit trail, and does not delete person or register rows.
 
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a

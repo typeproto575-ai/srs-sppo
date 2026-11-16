@@ -156,18 +156,48 @@ function mail_request_display_name(string $kind): string
 function mail_reference_block_html(string $personReference, string $requestNumber, string $trackingUrl): string
 {
     $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $displayReference = $personReference !== '' ? $personReference : $requestNumber;
+    $referenceLabel = $personReference !== '' ? 'Reference number' : 'Request number';
     $requestNumberHtml = $requestNumber !== ''
+        && $personReference !== ''
         ? '<p style="margin:0 0 16px;color:#52605a;font-size:13px">Request no.: ' . $escape($requestNumber) . '</p>'
         : '';
 
     return '<div style="margin:20px 0;padding:20px;border:1px solid #c8dfce;border-radius:8px;background:#f3faf3">'
-        . '<p style="margin:0 0 6px;color:#315b3b;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">Reference number</p>'
-        . '<p style="margin:0 0 10px;color:#193e26;font-family:monospace;font-size:30px;font-weight:bold;letter-spacing:1px">' . $escape($personReference) . '</p>'
-        . '<p style="margin:0;color:#315b3b;font-size:14px;font-weight:bold">Keep this number. It works for every sacrament and request.</p>'
+        . '<p style="margin:0 0 6px;color:#315b3b;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">' . $escape($referenceLabel) . '</p>'
+        . '<p style="margin:0 0 10px;color:#193e26;font-family:monospace;font-size:30px;font-weight:bold;letter-spacing:1px">' . $escape($displayReference) . '</p>'
+        . '<p style="margin:0;color:#315b3b;font-size:14px;font-weight:bold">Keep this number to track your request.</p>'
         . '</div>'
         . $requestNumberHtml
         . '<p style="margin:0 0 20px"><a href="' . $escape($trackingUrl) . '" style="display:inline-block;padding:11px 18px;border-radius:6px;background:#245b36;color:#fff;text-decoration:none;font-weight:bold">Track my requests</a></p>'
-        . '<p>To view linked requests, enter this reference and the email address used on the request.</p>';
+        . '<p>Enter this number and the email address used on the request.</p>';
+}
+
+function mail_public_url(string $path, ?string $basePath = null): string
+{
+    $siteUrl = defined('MAIL_SITE_URL') && trim((string) MAIL_SITE_URL) !== ''
+        ? (string) MAIL_SITE_URL
+        : (string) SRS_APP_URL;
+    $parts = parse_url($siteUrl);
+    if (!is_array($parts) || empty($parts['host'])) {
+        throw new RuntimeException('The public mail site URL is invalid.');
+    }
+
+    $scheme = defined('SRS_FORCE_HTTPS') && SRS_FORCE_HTTPS
+        ? 'https'
+        : (string) ($parts['scheme'] ?? 'https');
+    $authority = $parts['host'];
+    if (isset($parts['port']) && !(($scheme === 'https' && (int) $parts['port'] === 80)
+        || ($scheme === 'http' && (int) $parts['port'] === 443))) {
+        $authority .= ':' . (int) $parts['port'];
+    }
+    $basePath = $basePath ?? base_path();
+    if ($basePath === '') {
+        $basePath = (string) ($parts['path'] ?? '');
+    }
+    $basePath = $basePath === '' ? '' : '/' . trim($basePath, '/');
+
+    return $scheme . '://' . $authority . $basePath . '/' . ltrim($path, '/');
 }
 
 function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, string $requestNumber = ''): bool
@@ -175,7 +205,7 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     $displayKind = mail_request_display_name($kind);
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
     $requestNumberText = $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '';
     $referenceText = "REFERENCE NUMBER:\r\n" . $trackingNumber . "\r\n"
         . "Keep this number. It works for every sacrament and request.\r\n"
@@ -205,7 +235,7 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
 {
     $displayKind = mail_request_display_name($kind);
     $referenceLabel = str_starts_with($trackingNumber, 'SPPO-P-') ? 'person reference' : 'reference number';
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
     $officeNote = trim((string) $officeNote);
@@ -264,16 +294,18 @@ function mail_certificate_request_received(
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
     $selfPickupRequirement = $requesterIsSubject
         ? "- A valid ID with a name matching the person on the certificate.\r\n"
         : '';
     $intro = "The parish office received your request for a " . $certificateType . " certificate.";
-    $referenceText = "REFERENCE NUMBER:\r\n" . $personReference . "\r\n"
-        . "Keep this number. It works for every sacrament and request.\r\n"
-        . ($requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '')
+    $displayReference = $personReference !== '' ? $personReference : $requestNumber;
+    $referenceLabel = $personReference !== '' ? 'REFERENCE NUMBER' : 'REQUEST NUMBER';
+    $referenceText = $referenceLabel . ":\r\n" . $displayReference . "\r\n"
+        . "Keep this number to track your request.\r\n"
+        . ($personReference !== '' && $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '')
         . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
-        . "Enter this reference and the email address used on the request.\r\n\r\n";
+        . "Enter this number and the email address used on the request.\r\n\r\n";
     $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
@@ -289,5 +321,5 @@ function mail_certificate_request_received(
         . mail_reference_block_html($personReference, $requestNumber, $trackingUrl)
         . '<p>' . nl2br($escape($content)) . '</p>';
 
-    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $personReference, $htmlBody);
+    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $displayReference, $htmlBody);
 }

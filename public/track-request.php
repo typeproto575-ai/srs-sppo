@@ -21,7 +21,9 @@ if (session_status() === PHP_SESSION_NONE) {
 
 foreach (['pending_person_request_lookup', 'verified_person_request_lookup'] as $lookupKey) {
     $lookup = $_SESSION[$lookupKey] ?? null;
-    if (is_array($lookup) && !preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', (string) ($lookup['reference'] ?? ''))) {
+    $lookupReference = is_array($lookup) ? (string) ($lookup['reference'] ?? '') : '';
+    if (is_array($lookup)
+        && !preg_match('/^(SPPO-P-[A-Z0-9]{16,32}|CR-\d{4}-\d{4,})$/', $lookupReference)) {
         unset($_SESSION[$lookupKey]);
     }
 }
@@ -63,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reference' => $reference,
                     'email' => $email,
                     'person_id' => (int) ($pending['person_id'] ?? 0),
+                    'request_no' => (string) ($pending['request_no'] ?? ''),
                     'expires_at' => $now + 900,
                 ];
                 unset($_SESSION['pending_person_request_lookup']);
@@ -71,10 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'send_code' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             unset($_SESSION['pending_person_request_lookup'], $_SESSION['verified_person_request_lookup']);
             $personId = false;
+            $requestNo = '';
             if (preg_match('/^SPPO-P-[A-Z0-9]{16,32}$/', $reference)) {
                 $personStmt = $pdo->prepare('SELECT id FROM persons WHERE public_reference = ? LIMIT 1');
                 $personStmt->execute([$reference]);
                 $personId = $personStmt->fetchColumn();
+            } elseif (preg_match('/^CR-\d{4}-\d{4,}$/', $reference)) {
+                $requestStmt = $pdo->prepare(
+                    'SELECT request_no FROM certificate_requests
+                     WHERE request_no = ? AND LOWER(requester_email) = LOWER(?) AND anonymized_at IS NULL
+                     LIMIT 1'
+                );
+                $requestStmt->execute([$reference, $email]);
+                $requestNo = (string) ($requestStmt->fetchColumn() ?: '');
             }
             $hasMatchingRequest = false;
             if ($personId !== false) {
@@ -92,6 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $certCheck->execute([(int) $personId, $email]);
                 $hasMatchingRequest = (bool) $appCheck->fetchColumn() || (bool) $certCheck->fetchColumn();
+            } elseif ($requestNo !== '') {
+                $hasMatchingRequest = true;
             }
             if ($hasMatchingRequest) {
                 $code = (string) random_int(100000, 999999);
@@ -106,7 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['pending_person_request_lookup'] = [
                         'reference' => $reference,
                         'email' => $email,
-                        'person_id' => (int) $personId,
+                        'person_id' => $personId === false ? 0 : (int) $personId,
+                        'request_no' => $requestNo,
                         'code_hash' => hash('sha256', $code),
                         'expires_at' => $now + 600,
                         'attempts' => 0,
@@ -121,13 +136,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reference' => $reference,
                     'email' => $email,
                     'person_id' => 0,
+                    'request_no' => '',
                     'code_hash' => hash('sha256', bin2hex(random_bytes(16))),
                     'expires_at' => $now + 600,
                     'attempts' => 0,
                 ];
             }
         } else {
-            $errors[] = 'Enter a valid person reference and the email address used for a linked request.';
+            $errors[] = 'Enter a valid person reference or certificate request number and the email address used on the request.';
         }
         $_SESSION['person_request_lookup_attempts'] = $attempts;
     }
@@ -137,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reference = (string) ($verified['reference'] ?? '');
         $email = (string) ($verified['email'] ?? '');
         $personId = (int) ($verified['person_id'] ?? 0);
+        $requestNo = (string) ($verified['request_no'] ?? '');
         $searched = true;
         if ($personId > 0) {
             $referenceStmt = $pdo->prepare('SELECT public_reference FROM persons WHERE id = ? LIMIT 1');
@@ -159,6 +176,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $certificateStmt->execute([(int) $personId]);
             $certificates = $certificateStmt->fetchAll(PDO::FETCH_ASSOC);
+        } elseif ($requestNo !== '') {
+            $certificateStmt = $pdo->prepare(
+                'SELECT request_no, sacrament_type, status, created_at, rejection_reason
+                 FROM certificate_requests
+                 WHERE request_no = ? AND LOWER(requester_email) = LOWER(?) AND anonymized_at IS NULL
+                 LIMIT 1'
+            );
+            $certificateStmt->execute([$requestNo, $email]);
+            $certificates = $certificateStmt->fetchAll(PDO::FETCH_ASSOC);
         }
     }
 }
@@ -175,6 +201,7 @@ $statusLabels = [
     'for_signature' => 'Pending Priest Signature',
     'ready' => 'Ready for Pickup',
     'released' => 'Released',
+    'cancelled' => 'Closed — no follow-up',
 ];
 $sacramentLabels = [
     'baptism' => 'Baptism',
@@ -186,15 +213,15 @@ $sacramentLabels = [
 require_once __DIR__ . '/../includes/header.php';
 ?>
 <section class="card">
-    <h1>View Requests Linked to Your Person Reference</h1>
-    <p>Use your person reference to view applications and certificate requests linked to your profile. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
+    <h1>View My Requests</h1>
+    <p>Use your person reference or certificate request number to find your request. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
     <?php if (!$searched && !isset($_SESSION['pending_person_request_lookup'])): ?>
         <form method="post" class="stacked-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="send_code">
-            <label for="person_reference">Reference number</label>
-            <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-...">
-            <p class="field-hint">You received this when you submitted. It works for every sacrament and request.</p>
+            <label for="person_reference">Person reference or request number</label>
+            <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-... or CR-...">
+            <p class="field-hint">Use the number shown after you submitted your request.</p>
             <label for="email">Email address used on the request</label>
             <input id="email" name="email" type="email" autocomplete="email" required maxlength="150" value="<?= e($email) ?>">
             <button type="submit" class="btn">Email me an access code</button>
@@ -226,7 +253,7 @@ require_once __DIR__ . '/../includes/header.php';
         <?php if ($verifiedPersonReference !== ''): ?>
             <p class="tracker-person-reference"><span>Reference number</span><strong><?= e($verifiedPersonReference) ?></strong></p>
         <?php endif; ?>
-        <p>If a request needs additional documents, contact the Parish Office using this same person reference. Do not submit a duplicate application.</p>
+        <p>If a request needs additional documents, contact the Parish Office using its reference or request number. Do not submit a duplicate application.</p>
         <?php foreach ([
             'Applications' => ['type' => 'application', 'items' => $applications],
             'Certificate requests' => ['type' => 'certificate', 'items' => $certificates],

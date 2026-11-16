@@ -7,6 +7,8 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
 require_once __DIR__ . '/../admin/certificates/sacramental-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
+require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/public-person-lookup.php';
 require_once __DIR__ . '/../includes/record-search.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 require_once __DIR__ . '/../includes/funeral-data.php';
@@ -100,9 +102,91 @@ final class FunctionsTest extends TestCase
         self::assertTrue(cert_request_transition_valid('ready', 'released'));
         self::assertTrue(cert_request_transition_valid('ready_for_pickup', 'released'));
         self::assertTrue(cert_request_transition_valid('new', 'rejected'));
+        self::assertTrue(cert_request_transition_valid('new', 'cancelled'));
+        self::assertFalse(cert_request_transition_valid('matched', 'cancelled'));
         self::assertFalse(cert_request_transition_valid('new', 'for_signature'));
         self::assertFalse(cert_request_transition_valid('released', 'ready'));
     }
+
+    public function testCertificateRequestReceiptCanUseRequestNumberWithoutPersonReference(): void
+    {
+        $referenceBlock = mail_reference_block_html('', 'CR-2026-0042', '/public/track-request.php');
+
+        self::assertStringContainsString('Request number', $referenceBlock);
+        self::assertStringContainsString('CR-2026-0042', $referenceBlock);
+        self::assertStringNotContainsString('SPPO-P-', $referenceBlock);
+    }
+
+    public function testMailPublicUrlIncludesTheInstallationSubdirectory(): void
+    {
+        $trackingUrl = mail_public_url('/public/track-request.php', '/srs-sppo');
+        $siteParts = parse_url(MAIL_SITE_URL);
+
+        self::assertIsArray($siteParts);
+        self::assertSame(
+            SRS_FORCE_HTTPS ? 'https' : ($siteParts['scheme'] ?? 'https'),
+            parse_url($trackingUrl, PHP_URL_SCHEME)
+        );
+        self::assertSame($siteParts['host'], parse_url($trackingUrl, PHP_URL_HOST));
+        self::assertSame('/srs-sppo/public/track-request.php', parse_url($trackingUrl, PHP_URL_PATH));
+    }
+
+    public function testPublicPersonLookupReturnsOnlySafeSacramentRecordDetails(): void
+    {
+        $summary = public_person_lookup_record_summary([
+            'baptism' => [
+                'id' => 19,
+                'sacrament_type' => 'baptism',
+                'event_date' => '2008-04-12',
+                'place' => 'St. Patrick Parish',
+                'source' => 'this_parish',
+                'entry_no' => '12',
+                'book_no' => '3',
+                'page_no' => '21',
+                'line_no' => '4',
+                'book_verified_at' => '2024-01-02 03:04:05',
+                'remarks' => 'internal note',
+                'details' => ['private' => 'value'],
+            ],
+            'first_communion' => null,
+            'confirmation' => null,
+            'marriages' => [[
+                'id' => 24,
+                'sacrament_type' => 'marriage',
+                'event_date' => '2020-06-08',
+                'place' => 'St. Patrick Parish',
+                'source' => 'other_parish',
+                'partner_name' => 'Other Person',
+                'book_verified_at' => null,
+            ]],
+        ]);
+
+        self::assertSame([
+            [
+                'type' => 'baptism',
+                'event_date' => '2008-04-12',
+                'place' => 'St. Patrick Parish',
+                'source' => 'this_parish',
+                'entry_no' => '12',
+                'book_no' => '3',
+                'page_no' => '21',
+                'line_no' => '4',
+                'is_verified' => true,
+            ],
+            [
+                'type' => 'marriage',
+                'event_date' => '2020-06-08',
+                'place' => 'St. Patrick Parish',
+                'source' => 'other_parish',
+                'entry_no' => null,
+                'book_no' => null,
+                'page_no' => null,
+                'line_no' => null,
+                'is_verified' => false,
+            ],
+        ], $summary);
+    }
+
     public function testCertificatePaymentGate(): void
     {
         self::assertFalse(cert_request_payment_gate([

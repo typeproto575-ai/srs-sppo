@@ -313,12 +313,13 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
                         <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
                         <div class="public-person-lookup" data-public-person-lookup
+                             data-lookup-context="preapplication"
                              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                              data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
                              data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
                             <h3 class="lookup-title">Already registered with the parish?</h3>
-                            <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                            <p class="field-hint">Enter the child’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
                             <div data-person-results aria-live="polite"></div>
                         </div>
                         <h3 class="form-subheading">Child’s details</h3>

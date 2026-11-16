@@ -63,7 +63,7 @@ require_once __DIR__ . '/../includes/header.php';
             <h2 class="legal-clause__title">Why We Use Your Data</h2>
             <ol class="legal-subclauses">
                 <li>To receive an online pre-application or an onsite request/application and issue a reference number.</li>
-                <li>To review and verify submitted details against the parish register during staff review. Public pages never reveal whether a register record exists.</li>
+                <li>To review and verify submitted details against the parish register during staff review. On a sacrament pre-application, entering a valid person reference displays the matching profile's biographical details and a summary of linked sacrament records for reference; other public searches do not disclose whether a register record exists.</li>
                 <li>To contact you about status, missing information, and pickup.</li>
                 <li>To keep parish sacramental records.</li>
                 <li>To record payment manually as a status after payment is handled outside this system. The system never takes or processes money.</li>
@@ -97,7 +97,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause" id="security">
             <h2 class="legal-clause__title">How We Protect It</h2>
-            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
+            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Keep your person reference private: anyone who enters it on a sacrament pre-application can view the matching profile's biographical details and a summary of linked sacrament records. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
             <p>If a breach puts your data at risk of serious harm, we will notify you and the National Privacy Commission as the law requires.</p>
         </section>
 
