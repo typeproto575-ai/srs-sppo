@@ -180,7 +180,7 @@ SELECT 2000 + n.person_no, 'baptism', 1000 + n.person_no, 'this_parish',
        CONCAT('DEMO-MANY-B-', LPAD(n.person_no, 3, '0')),
        'DEMO-MANY-B', LPAD(CEIL(n.person_no / 20), 2, '0'),
        LPAD(MOD(n.person_no - 1, 20) + 1, 2, '0'),
-       'legitimate', NULL, JSON_OBJECT('parents_residence', p.address),
+       'canonical', NULL, JSON_OBJECT('parents_residence', p.address),
        'DEMO ONLY: fictional large-register demonstration entry.'
 FROM (
   SELECT t.digit * 10 + u.digit + 1 AS person_no,

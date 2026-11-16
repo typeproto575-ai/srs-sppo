@@ -230,7 +230,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div><dt>Entry / Book / Page / Line</dt><dd><?= e($registerReference !== '' ? $registerReference : 'Not recorded') ?></dd></div>
                 <div><dt>Source</dt><dd><?= e(record_view_label((string) ($record['source'] ?? ''))) ?></dd></div>
                 <?php if ($record['sacrament_type'] === 'baptism'): ?>
-                    <div><dt>Parents' union</dt><dd><?= e(record_view_label((string) ($record['parents_union_type'] ?? 'Not recorded'))) ?></dd></div>
+                    <div><dt>Parents' union</dt><dd><?= e(parents_union_type_label($record['parents_union_type'] ?? null)) ?></dd></div>
+                    <?php if (!empty($record['parents_marriage_parish'])): ?>
+                        <div><dt>Parish of parents' marriage</dt><dd><?= e((string) $record['parents_marriage_parish']) ?></dd></div>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <div><dt>Book verification</dt><dd><?= !empty($record['book_verified_at']) ? 'Verified on ' . e($record['book_verified_at']) : 'Not verified' ?></dd></div>
                 <div><dt>Created</dt><dd><?= e(record_view_value($record['created_at'] ?? null)) ?></dd></div>

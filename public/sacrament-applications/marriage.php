@@ -300,7 +300,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 ['name' => $brideName, 'reference' => $brideProfile['reference']],
             ];
             $sponsorNames = compose_person_name_rows($_POST, 'sponsor');
-            if (!is_array($sponsorNames)) { $sponsorNames = []; }
             $details = [
                 'groom' => [
                     'full_name' => $groomName,
@@ -532,11 +531,12 @@ require __DIR__ . '/../../includes/submission-success.php';
 // Render one row per previously submitted non-blank sponsor (validation
 // re-render), otherwise a single blank row — max(1, non-blank count),
 // clamped to 4. New rows are cloned client-side — see main.js, section 9.
-$sponsorNameList = array_slice(compose_person_name_rows($formData, 'sponsor'), 0, 4);
+$sponsorNameRowsByIndex = compose_person_name_rows_by_index($formData, 'sponsor');
+$sponsorNameList = array_slice(array_values($sponsorNameRowsByIndex), 0, 4);
 $sponsorRows = range(0, min(3, max(1, person_name_row_count($formData, 'sponsor')) - 1));
 ?>
 <?php if ($currentStep === 4): ?>
-<fieldset><legend>Principal Sponsors</legend><p class="field-hint">For each sponsor, enter first and last name. Middle name and suffix are optional.</p><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><?= person_name_fields('sponsor', 'Sponsor', $formData, false, $i) ?><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
+<fieldset><legend>Principal Sponsors</legend><p class="field-hint">Enter each sponsor’s full name; leave a row blank if not yet known.</p><div data-repeat-group="sponsor" data-repeat-max="4"><?php foreach ($sponsorRows as $i => $rowName): ?><div class="godparent-row"><label>Sponsor's full name <input type="text" name="sponsor_full_name[]" value="<?= e($sponsorNameRowsByIndex[$i] ?? '') ?>" autocomplete="name"></label><button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button></div><?php endforeach; ?></div><button type="button" class="btn btn-secondary repeat-add" data-repeat-add="sponsor">Add another sponsor</button></fieldset>
 <?php elseif ($currentStep === 5): ?>
 <fieldset><legend>Phase 5 of 5 — Review Your Pre-Application</legend>
 <table class="review-table">

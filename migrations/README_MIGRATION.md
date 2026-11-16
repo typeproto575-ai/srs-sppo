@@ -118,6 +118,12 @@ certificate-request queue shows staff a follow-up reminder after 30 days. At
 the action also redacts related email-notification recipients, preserves the
 request number/status/audit trail, and does not delete person or register rows.
 
+Migration `053_baptism_parent_union_details.sql` updates the unified baptism
+register's parents' union classifications, maps existing `legitimate` and
+`natural` values to `canonical` and `unmarried`, and adds the optional
+`parents_marriage_parish` column. Back up and review the target database before
+applying this manual migration.
+
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a
 fresh installation.

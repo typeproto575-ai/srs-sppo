@@ -15,6 +15,62 @@ require_once __DIR__ . '/../includes/funeral-data.php';
 
 final class FunctionsTest extends TestCase
 {
+    public function testParentsUnionTypesNormalizeLegacyValuesAndPreserveCurrentValues(): void
+    {
+        self::assertSame('canonical', normalize_parents_union_type(' legitimate '));
+        self::assertSame('unmarried', normalize_parents_union_type('natural'));
+        self::assertSame('civil', normalize_parents_union_type('civil'));
+        self::assertSame('common_law', normalize_parents_union_type('common_law'));
+        self::assertSame('', normalize_parents_union_type(''));
+        self::assertSame([
+            '' => '-- Not specified --',
+            'canonical' => 'Canonical Marriage (Catholic Church)',
+            'civil' => 'Civil Marriage Only',
+            'common_law' => 'Living Together / Common-Law',
+            'unmarried' => 'Single Parent / Unmarried',
+        ], parents_union_type_options());
+        self::assertSame(
+            'Canonical Marriage (Catholic Church)',
+            parents_union_type_label('legitimate')
+        );
+        self::assertSame('Not recorded', parents_union_type_label(null));
+    }
+
+    public function testPlaceOfBirthNormalizesUnknownPlaceholdersAndIdentifiesMissingValues(): void
+    {
+        foreach (['n/a', ' NA ', 'N.A.', 'none', 'Unknown', '-'] as $placeholder) {
+            self::assertSame('N/A', normalize_place_of_birth($placeholder));
+            self::assertTrue(is_unknown_place_of_birth($placeholder));
+        }
+
+        self::assertSame('', normalize_place_of_birth(" \t "));
+        self::assertTrue(is_unknown_place_of_birth(null));
+        self::assertSame('Dingalan, Aurora', normalize_place_of_birth(' Dingalan, Aurora '));
+        self::assertFalse(is_unknown_place_of_birth('Dingalan, Aurora'));
+    }
+
+    public function testFirstCommunionFormationValidationFollowsTheSelectedPathway(): void
+    {
+        self::assertNull(first_communion_formation_input_error('school_based', 'grade_3', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'grade_3', ''));
+        self::assertNotNull(first_communion_formation_input_error('school_based', '', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_applicable', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_enrolled', '2026-2027'));
+
+        self::assertNull(first_communion_formation_input_error('parish_based', 'not_enrolled', ''));
+        self::assertNull(first_communion_formation_input_error('parish_based', 'grade_3', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('parish_based', 'grade_3', 'N/A'));
+        self::assertNotNull(first_communion_formation_input_error('parish_based', '', ''));
+
+        self::assertNull(first_communion_formation_input_error('individual_catchup', '', 'invalid'));
+        self::assertNull(first_communion_formation_input_error('individual_catchup', 'N/A', '2026-2027'));
+        self::assertNull(first_communion_formation_input_error('individual_catchup', 'not_applicable', '2026-2027'));
+        self::assertSame(
+            'Out-of-School Youth (OSY)',
+            first_communion_grade_options()['not_enrolled']
+        );
+    }
+
     public function testReportPeriodValidationAcceptsValidValuesAndFallsBackForInvalidValues(): void
     {
         $currentDate = new DateTimeImmutable('2026-11-14');
@@ -636,6 +692,18 @@ final class FunctionsTest extends TestCase
         self::assertSame([1 => 'Juan Pablo Dela Cruz Jr.'], compose_person_name_rows_by_index($names, 'witness'));
     }
 
+    public function testFullNameParticipantRowsComposeValidateAndPreserveIndexes(): void
+    {
+        $names = ['witness_full_name' => ['', 'Juan Dela Cruz', 'J. Santos']];
+
+        self::assertSame([1 => 'Juan Dela Cruz', 2 => 'J. Santos'], compose_person_name_rows_by_index($names, 'witness'));
+        self::assertSame(['Juan Dela Cruz', 'J. Santos'], compose_person_name_rows($names, 'witness'));
+        self::assertSame(
+            ['Witness: Please spell out every name in full — initials (e.g. "J.", "D") are not allowed.'],
+            validate_person_name_rows($names, 'witness', 'Witness')
+        );
+    }
+
     public function testPublicRecordLookupAcceptsOneOrBothParents(): void
     {
         self::assertNull(record_lookup_parent_search_error('', 'Maria Santos'));
@@ -755,6 +823,35 @@ final class FunctionsTest extends TestCase
         self::assertTrue(event_times_overlap('09:00:00', '10:00:00', '09:30:00', '10:30:00'));
         self::assertFalse(event_times_overlap('09:00:00', '10:00:00', '10:00:00', '11:00:00'));
     }
+
+    public function testConfirmedApplicationScheduleValidation(): void
+    {
+        $today = new DateTimeImmutable('2026-11-16');
+
+        self::assertNull(application_schedule_input_error('2026-11-16', '', '', $today));
+        self::assertNull(application_schedule_input_error('2026-11-17', '09:00', '10:00', $today));
+        self::assertSame(
+            'Enter a valid confirmed date.',
+            application_schedule_input_error('2026-02-30', '', '', $today)
+        );
+        self::assertSame(
+            'The confirmed date cannot be in the past.',
+            application_schedule_input_error('2026-11-15', '', '', $today)
+        );
+        self::assertSame(
+            'Enter a valid start time.',
+            application_schedule_input_error('2026-11-17', '24:00', '', $today)
+        );
+        self::assertSame(
+            'Enter a start time before an end time.',
+            application_schedule_input_error('2026-11-17', '', '10:00', $today)
+        );
+        self::assertSame(
+            'The end time must be after the start time.',
+            application_schedule_input_error('2026-11-17', '10:00', '09:00', $today)
+        );
+    }
+
     public function testStatusLabel(): void
     {
         self::assertSame("Waiting for priest's signature", status_label('certificate', 'for_signature'));
@@ -826,6 +923,30 @@ final class FunctionsTest extends TestCase
         self::assertSame(['catechism_completion'], application_outstanding_requirement_keys($json));
         self::assertSame([], application_outstanding_requirement_keys(null));
         self::assertSame([], application_outstanding_requirement_keys('not json'));
+    }
+
+    public function testSacramentFormationIntakeAcceptsBatchAndCatchUpChoices(): void
+    {
+        self::assertNull(sacrament_formation_input_error('batch', 'grade_3', '2026-2027'));
+        self::assertNull(sacrament_formation_input_error('individual_catchup', 'grade_6', '2026-2027'));
+        self::assertNull(sacrament_formation_input_error('not_sure', 'not_enrolled', '2026-2027'));
+        self::assertNull(sacrament_formation_input_error('individual_catchup', 'not_enrolled', 'N/A'));
+    }
+
+    public function testSacramentFormationIntakeRejectsInvalidGradeOrSchoolYear(): void
+    {
+        self::assertSame(
+            'Choose a valid current grade level.',
+            sacrament_formation_input_error('batch', 'grade_13', '2026-2027')
+        );
+        self::assertSame(
+            'Enter the school year as two consecutive years, for example 2026-2027.',
+            sacrament_formation_input_error('batch', 'grade_3', '2026-2028')
+        );
+        self::assertSame(
+            'A school year is required for a group request, for example 2026-2027.',
+            sacrament_formation_input_error('batch', 'grade_3', '')
+        );
     }
 
     public function testFuneralValidationAcceptsAValidRecord(): void

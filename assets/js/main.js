@@ -1550,22 +1550,72 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---- Show a field only while another field has a given value ---------
     // <label data-show-if="purpose=other"> is shown (and submitted) only while
     // the control named "purpose" in the same form has the value "other".
+    // Set data-show-if-required="false" to keep the conditional field optional.
     // Without JavaScript the field simply stays visible.
     document.querySelectorAll('[data-show-if]').forEach(function (el) {
         var parts = el.getAttribute('data-show-if').split('=');
         var form = el.closest('form');
         var control = form && form.elements[parts[0]];
         if (!control) return;
+        var requiredWhenShown = el.getAttribute('data-show-if-required') !== 'false';
         function sync() {
             var show = control.value === parts[1];
             el.hidden = !show;
             el.querySelectorAll('input, select, textarea').forEach(function (i) {
                 i.disabled = !show;
-                i.required = show;
+                i.required = show && requiredWhenShown;
             });
         }
         control.addEventListener('change', sync);
         sync();
+    });
+
+    // ---- First Communion formation pathway fields -----------------------
+    document.querySelectorAll('[data-formation-pathway]').forEach(function (pathway) {
+        var form = pathway.closest('form');
+        var grade = form && form.elements.school_grade;
+        var gradeMarker = form && form.querySelector('[data-grade-required-marker]');
+        var schoolYearContainer = form && form.querySelector('[data-school-year-container]');
+        var schoolYearLabel = form && form.querySelector('[data-school-year-label]');
+        var schoolYearMarker = form && form.querySelector('[data-school-year-required-marker]');
+        var schoolYear = form && form.elements.school_year;
+        if (!grade || !schoolYearContainer || !schoolYear) return;
+
+        var activeSchoolYear = pathway.getAttribute('data-active-school-year') || '';
+        var gradePrompt = grade.querySelector('option[value=""]');
+        var outOfSchoolOption = grade.querySelector('option[value="not_enrolled"]');
+
+        function syncFormationFields() {
+            var selectedPath = pathway.value;
+            var schoolBased = selectedPath === 'school_based' || selectedPath === 'batch';
+            var individual = selectedPath === 'individual_catchup';
+            var gradeRequired = !individual && ['school_based', 'batch', 'parish_based', 'not_sure'].indexOf(selectedPath) !== -1;
+
+            grade.required = gradeRequired;
+            if (gradeMarker) gradeMarker.hidden = !gradeRequired;
+            if (gradePrompt) {
+                gradePrompt.textContent = individual ? '-- Select if applicable --' : '-- Select --';
+            }
+            if (individual && !grade.value) grade.value = 'not_applicable';
+            if (gradeRequired && grade.value === 'not_applicable') grade.value = '';
+            if (outOfSchoolOption) {
+                outOfSchoolOption.disabled = schoolBased;
+                if (schoolBased && grade.value === 'not_enrolled') grade.value = '';
+            }
+
+            schoolYearContainer.hidden = individual;
+            schoolYear.disabled = individual;
+            schoolYear.required = schoolBased;
+            schoolYear.placeholder = schoolBased ? '2026-2027' : activeSchoolYear;
+            if (individual) schoolYear.value = '';
+            if (schoolYearLabel) {
+                schoolYearLabel.textContent = 'School year';
+            }
+            if (schoolYearMarker) schoolYearMarker.hidden = !schoolBased;
+        }
+
+        pathway.addEventListener('change', syncFormationFields);
+        syncFormationFields();
     });
 
     // ---- 9) Repeatable "Add another" rows (sponsor/witness sets) ------

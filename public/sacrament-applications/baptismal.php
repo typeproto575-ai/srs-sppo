@@ -131,14 +131,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($currentStep === STEP_APP_DETAILS) {
                 $childName       = compose_person_name($_POST, 'child');
                 $childBirthdate  = $_POST['child_birthdate'] ?? '';
-                $childBirthplace = fd('child_birthplace',      $_POST);
+                $childBirthplace = fd('child_birthplace', $_POST);
+                $_POST['child_birthplace'] = $childBirthplace;
 
                 if (fd('child_first', $_POST) === '') $errors[] = "Child's first name is required.";
                 if (fd('child_last', $_POST) === '') $errors[] = "Child's last name is required.";
                 if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
                 if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
                 if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
-                if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
+                if (is_unknown_place_of_birth($childBirthplace)) {
+                    $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
+                }
+                if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
             }
 
             if ($currentStep === STEP_FAMILY_REQS) {
@@ -216,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($errors)) {
             $childName       = compose_person_name($formData, 'child');
             $childBirthdate  = $formData['child_birthdate'] ?? '';
-            $childBirthplace = fd('child_birthplace',      $formData);
+            $childBirthplace = fd('child_birthplace', $formData);
             $fatherName      = compose_person_name($formData, 'father');
             $motherMaidenName = compose_person_name($formData, 'mother');
             $parentGuardian  = compose_person_name($formData, 'parent_guardian');
@@ -236,7 +240,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
             if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
             if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
-            if ($childBirthplace === '') $errors[] = "Child's birthplace is required.";
+            if (is_unknown_place_of_birth($childBirthplace)) {
+                $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
+            }
+            if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
             if ($parentGuardian === '')  $errors[] = 'Parent/Guardian name is required.';
             if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
                 $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
@@ -462,8 +469,12 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
-            <label>Place of Birth * <span class="field-hint">(If unknown, enter N/A)</span>
-                <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
+            <label>Place of Birth *
+                <input type="text" name="child_birthplace" maxlength="150"
+                       placeholder="City / Municipality, Province (as shown on PSA Birth Certificate)"
+                       pattern="(?!(?:\s*)(?:[nN]/[aA]|[nN][aA]|[nN]\.[aA]\.|[nN][oO][nN][eE]|[uU][nN][kK][nN][oO][wW][nN]|-)\s*$).+"
+                       title="Enter the city or municipality and province shown on the PSA/LCR Birth Certificate. Placeholder values are not accepted."
+                       value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
         </fieldset>
         <div class="form-actions">

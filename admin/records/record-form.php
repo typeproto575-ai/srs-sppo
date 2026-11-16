@@ -413,7 +413,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $motherMaiden = trim((string) ($_POST['mother_maiden_name'] ?? ''));
             $address = trim((string) ($_POST['address'] ?? ''));
 
-            $parentsUnion = trim((string) ($_POST['parents_union_type'] ?? ''));
+            $parentsUnion = normalize_parents_union_type(trim((string) ($_POST['parents_union_type'] ?? '')));
+            $parentsMarriageParish = trim((string) ($_POST['parents_marriage_parish'] ?? ''));
             $fatherBirthplace = trim((string) ($_POST['father_birthplace'] ?? ''));
             $motherBirthplace = trim((string) ($_POST['mother_birthplace'] ?? ''));
             $parentsOrigin = trim((string) ($_POST['parents_origin'] ?? ''));
@@ -521,6 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ];
                     if ($isBaptism) {
                         $recordData['parents_union_type'] = $parentsUnion;
+                        $recordData['parents_marriage_parish'] = $parentsMarriageParish;
                     }
                     if ($editId > 0) {
                         $recordData['id'] = $editId;
@@ -915,7 +917,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="confirm_new" value="1">
-                <?php foreach (['first_name','middle_name','last_name','suffix','sex','birth_date','birth_place','father_name','mother_maiden_name','address','event_date','place','minister_name','source','parents_union_type','entry_no','book_no','page_no','line_no','father_birthplace','mother_birthplace','parents_origin','parents_residence','proxy_name','remarks'] as $f): ?>
+                <?php foreach (['first_name','middle_name','last_name','suffix','sex','birth_date','birth_place','father_name','mother_maiden_name','address','event_date','place','minister_name','source','parents_union_type','parents_marriage_parish','entry_no','book_no','page_no','line_no','father_birthplace','mother_birthplace','parents_origin','parents_residence','proxy_name','remarks'] as $f): ?>
                     <input type="hidden" name="<?= e($f) ?>" value="<?= e((string) ($_POST[$f] ?? '')) ?>">
                 <?php endforeach; ?>
                 <button type="submit" class="btn btn-small">No, this is a different person</button>
@@ -972,13 +974,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <label><input type="radio" name="source" value="other_parish"<?= $src === 'other_parish' ? ' checked' : '' ?>> Other parish</label>
                 </div>
                 <?php if ($isBaptism): ?>
-                    <div class="field"><label class="field-label">Parents' marital status</label>
-                        <select name="parents_union_type">
-                            <option value=""<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === '') ? ' selected' : '' ?>>— not specified —</option>
-                            <option value="legitimate"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'legitimate') ? ' selected' : '' ?>>Church married</option>
-                            <option value="civil"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'civil') ? ' selected' : '' ?>>Civilly married</option>
-                            <option value="natural"<?= (($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? '')) === 'natural') ? ' selected' : '' ?>>Unmarried</option>
+                    <?php $selectedParentsUnion = normalize_parents_union_type((string) ($_POST['parents_union_type'] ?? ($prefill['parents_union_type'] ?? ''))); ?>
+                    <div class="field"><label class="field-label">Parents' Union Type</label>
+                        <select name="parents_union_type" data-conditional-source>
+                            <?php foreach (parents_union_type_options() as $value => $label): ?>
+                                <option value="<?= e($value) ?>"<?= $selectedParentsUnion === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+                            <?php endforeach; ?>
                         </select>
+                    </div>
+                    <div class="field" data-show-if="parents_union_type=canonical" data-show-if-required="false">
+                        <label class="field-label">Parish of Parents' Marriage (optional)</label>
+                        <input type="text" name="parents_marriage_parish" maxlength="255" value="<?= e((string) ($_POST['parents_marriage_parish'] ?? ($prefill['parents_marriage_parish'] ?? ''))) ?>">
                     </div>
                 <?php endif; ?>
                 <?php if ($type === 'first_communion'): ?>

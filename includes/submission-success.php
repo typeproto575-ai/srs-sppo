@@ -15,6 +15,7 @@
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
  *   $successIsApplication - (optional) show sacrament-application next steps
+ *   $successFormationGuidance - (optional) formation group guidance
  *   $successRequestNumber - (optional) the internal request/ticket number
  *   $basePath        - falls back to base_path()
  *
@@ -33,6 +34,9 @@ if (empty($trackingNumber)) {
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
 $successIsApplication = $successIsApplication ?? false;
+$successFormationGuidance = isset($successFormationGuidance) && is_string($successFormationGuidance)
+    ? trim($successFormationGuidance)
+    : '';
 $successRequiredDocuments = isset($successRequiredDocuments) && is_array($successRequiredDocuments)
     ? $successRequiredDocuments
     : [];
@@ -76,6 +80,9 @@ $basePath       = $basePath ?? base_path();
                 <ol>
                     <?php if ($successIsApplication): ?>
                     <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. Use your person reference and the email address you used to view requests linked to that profile. You may also contact the office or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
+                    <?php if ($successFormationGuidance !== ''): ?>
+                    <li><?= e($successFormationGuidance) ?></li>
+                    <?php endif; ?>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>

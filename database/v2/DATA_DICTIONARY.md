@@ -84,7 +84,8 @@ One row per sacrament event. The physical logbook stays canonical, so book/page/
 | event_date | DATE | no | |
 | place, minister_name | VARCHAR(150) | yes | |
 | entry_no, book_no, page_no, line_no | VARCHAR(20) | yes | Logbook coordinates |
-| parents_union_type | ENUM('legitimate','civil','natural') | yes | Baptism only. Staff-facing "parents' marital status" |
+| parents_union_type | ENUM('canonical','civil','common_law','unmarried') | yes | Baptism only. Staff-facing classification of the parents' union |
+| parents_marriage_parish | VARCHAR(255) | yes | Parish where the parents' canonical marriage was celebrated; recorded only when applicable |
 | legitimacy | ENUM('legitimate','illegitimate') | yes | Baptism only. **INTERNAL. Never display, email or print.** New entries store NULL; it is not derived from `parents_union_type`. Kept only for legacy logbook notation |
 | details | JSON | yes | See section 4.1 |
 | remarks | TEXT | yes | |

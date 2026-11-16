@@ -51,8 +51,8 @@ require_once __DIR__ . '/../includes/header.php';
             <ol class="legal-subclauses">
                 <li><span class="legal-term">Requester details:</span> name, email address, contact number, and relationship to the person concerned, when applicable. Some onsite requests may also include a mailing address.</li>
                 <li><span class="legal-term">Record details:</span> the name, birthdate, birthplace, parents' names and sacrament dates needed for staff to review the request against the parish register.</li>
-                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include current address, religion, marital status, previous marriage, baptism and Confirmation status, and the names of parents, godparents, or sponsors.</li>
-                <li><span class="legal-term">Children's data:</span> a child's name, birthdate, parent or guardian details, and information needed for sacrament preparation. A parent or legal guardian must submit the application and consent for a child.</li>
+                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include current address, religion, marital status, previous marriage, baptism and Confirmation status, proposed sponsors, and a student's grade, school year, and requested formation pathway.</li>
+                <li><span class="legal-term">Children's data:</span> a child's name, birthdate, parent or guardian details, and information needed for sacrament preparation. A parent or legal guardian must submit the application and provide the required privacy consent. Pastoral formation commitments and readiness are followed up by the Parish Office after review.</li>
                 <li><span class="legal-term">Technical data:</span> IP address and the time of requests, kept in an audit log for security and to prevent misuse.</li>
             </ol>
             <p>Religion, age, and civil status are <span class="legal-term">sensitive personal information</span> under Section 3(l) of the Act. We collect them only when needed to review a sacrament application.</p>

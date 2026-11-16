@@ -115,6 +115,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
             <ul class="sidebar-menu">
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?> title="Certificate Requests" data-compact="CR"><span class="sidebar-link-glyph" aria-hidden="true">CR</span><span class="sidebar-link-label">Certificate Requests</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?> title="Sacrament Pre-Applications" data-compact="PA"><span class="sidebar-link-glyph" aria-hidden="true">PA</span><span class="sidebar-link-label">Sacrament Pre-Applications</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/requests/sacrament-batches.php"<?= $isActive('/admin/requests/sacrament-batches.php') ?> title="Sacrament Groups" data-compact="SG"><span class="sidebar-link-glyph" aria-hidden="true">SG</span><span class="sidebar-link-label">Sacrament Groups</span></a></li>
             </ul>
         </details>
 

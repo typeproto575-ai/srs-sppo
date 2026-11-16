@@ -207,6 +207,9 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     $documentHeading = mail_request_documents_heading($kind);
     $trackingUrl = mail_public_url('/public/track-request.php');
     $requestNumberText = $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '';
+    $formationGuidance = in_array($kind, ['First Communion Application', 'Confirmation Application'], true)
+        ? "For First Communion and Confirmation, the Parish Office uses the submitted grade and school year to review group placement or an individual catch-up path. The office assigns the group and date; this form does not reserve one.\r\n\r\n"
+        : '';
     $referenceText = "REFERENCE NUMBER:\r\n" . $trackingNumber . "\r\n"
         . "Keep this number. It works for every sacrament and request.\r\n"
         . $requestNumberText . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
@@ -214,6 +217,7 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     if (mail_is_sacrament_application($kind)) {
         $intro = "The Parish Office received your " . $displayKind . " for review.\r\n\r\n";
         $content = $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . $formationGuidance
             . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this pre-application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
@@ -249,13 +253,18 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
             . "Payment is made outside this website; the office never takes payment online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once your payment is recorded.";
     }
     if (mail_is_sacrament_application($kind)) {
+        $scheduleGuidance = strcasecmp($humaneStatus, 'Scheduled') === 0
+            ? ($officeNote !== ''
+                ? 'Your confirmed schedule is listed in the Parish Office note above. If you cannot attend, contact the Parish Office promptly to discuss another date.'
+                : 'The Parish Office has marked your pre-application as Scheduled. Please contact the Parish Office to confirm the date and time.')
+            : 'The Parish Office will contact you about any documents, preparation, approval, and scheduling. The pre-application does not itself confirm approval or reserve a sacrament date.';
         $body = "Dear Parishioner,\r\n\r\n"
             . "This is an update on your " . $displayKind . " ({$referenceLabel}: " . $trackingNumber . ").\r\n"
             . "View linked requests at " . $trackingUrl . " using this reference and the email address on the request.\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n\r\n"
             . $officeNoteText
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
-            . "The Parish Office will contact you about any documents, preparation, approval, and scheduling. The pre-application does not itself confirm approval or reserve a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . $scheduleGuidance . " Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"

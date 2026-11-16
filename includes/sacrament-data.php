@@ -18,14 +18,15 @@
  */
 
 if (!defined('SD_TYPES')) {
-    define('SD_TYPES', ['baptism', 'first_communion', 'confirmation', 'marriage']);
+    define('SD_TYPES', ['baptism', 'first_communion', 'confirmation', 'marriage', 'funeral']);
     define('SD_ROLES', ['godfather', 'godmother', 'sponsor', 'principal_sponsor', 'witness']);
     define('SD_SOURCES', ['this_parish', 'other_parish']);
     // Explicit column list on purpose: `legitimacy` is NOT in it.
     define('SD_RECORD_COLUMNS',
         'r.id, r.sacrament_type, r.person_id, r.spouse_person_id, r.source, r.event_date, r.place, '
         . 'r.minister_name, r.entry_no, r.book_no, r.page_no, r.line_no, r.parents_union_type, '
-        . 'r.details, r.remarks, r.book_verified_by, r.book_verified_at, r.encoded_by, r.created_at, r.updated_at');
+        . 'r.parents_marriage_parish, r.details, r.remarks, r.book_verified_by, r.book_verified_at, '
+        . 'r.encoded_by, r.created_at, r.updated_at');
 }
 
 /** Trim a value; empty string becomes NULL. */
@@ -49,6 +50,7 @@ function sd_type_label(string $type): string
         'first_communion' => 'First Communion',
         'confirmation' => 'Confirmation',
         'marriage' => 'Marriage',
+        'funeral' => 'Funeral / Death',
     ];
     return $labels[$type] ?? $type;
 }
@@ -238,7 +240,7 @@ function sd_record_audit_snapshot(PDO $pdo, int $recordId): array
     $recordFields = [
         'sacrament_type', 'person_id', 'spouse_person_id', 'source', 'event_date',
         'place', 'minister_name', 'entry_no', 'book_no', 'page_no', 'line_no',
-        'parents_union_type', 'details', 'remarks',
+        'parents_union_type', 'parents_marriage_parish', 'details', 'remarks',
     ];
     return [
         'record' => array_intersect_key($record, array_flip($recordFields)),
@@ -667,7 +669,8 @@ function sd_log_person_edit(
  *
  * $data keys: id (update when present), sacrament_type, person_id, spouse_person_id (marriage only),
  *   source, event_date, place, minister_name, entry_no, book_no, page_no, line_no,
- *   parents_union_type (baptism only), details (array), remarks.
+ *   parents_union_type (baptism only), parents_marriage_parish (baptism only),
+ *   details (array), remarks.
  *   `legitimacy` is ignored on purpose.
  * $participants: list of ['role' =>, 'full_name' =>, 'residence' =>, 'sort_order' =>].
  *   null = leave participants as they are (update). An array replaces all of them.
@@ -679,6 +682,21 @@ function sd_log_person_edit(
 function sd_save_record(PDO $pdo, array $data, ?array $participants = null, ?int $userId = null): int
 {
     $id = !empty($data['id']) ? (int) $data['id'] : null;
+    $sacramentType = $data['sacrament_type'] ?? '';
+    // Canon 877 §1: Officiating Minister required for baptism
+    if ($sacramentType === 'baptism' && (empty($data['minister_name']) || $data['minister_name'] === '')) {
+        throw new InvalidArgumentException('Officiating Minister\'s full name is required for baptism records.');
+    }
+    // Canon 873: At least one sponsor (godfather or godmother) required for baptism
+    if ($sacramentType === 'baptism') {
+        $hasGodfather = !empty($data['participants']) && array_key_exists('godfather', $data['participants'])
+            && !empty($data['participants']['godfather']['full_name'] ?? '');
+        $hasGodmother = !empty($data['participants']) && array_key_exists('godmother', $data['participants'])
+            && !empty($data['participants']['godmother']['full_name'] ?? '');
+        if (!$hasGodfather && !$hasGodmother) {
+            throw new InvalidArgumentException('At least one godparent (godfather or godmother) is required for baptism records.');
+        }
+    }
     $existing = null;
     if ($id !== null) {
         $stmt = $pdo->prepare('SELECT sacrament_type FROM sacrament_records WHERE id = ?');
@@ -722,8 +740,21 @@ function sd_save_record(PDO $pdo, array $data, ?array $participants = null, ?int
     $union = sd_clean($data['parents_union_type'] ?? null);
     if ($type !== 'baptism') {
         $union = null;
-    } elseif ($union !== null && !in_array($union, ['legitimate', 'civil', 'natural'], true)) {
-        throw new InvalidArgumentException('Invalid parents union type.');
+    } elseif ($union !== null) {
+        $union = normalize_parents_union_type((string) $union);
+        if (!in_array($union, ['canonical', 'civil', 'common_law', 'unmarried'], true)) {
+            throw new InvalidArgumentException('Invalid parents union type.');
+        }
+    }
+    $parentsMarriageParishInput = sd_clean($data['parents_marriage_parish'] ?? null);
+    if ($type === 'baptism' && $union !== 'canonical' && $parentsMarriageParishInput !== null) {
+        throw new InvalidArgumentException("The parents' marriage parish applies only to a canonical Catholic marriage.");
+    }
+    $parentsMarriageParish = $type === 'baptism' && $union === 'canonical'
+        ? $parentsMarriageParishInput
+        : null;
+    if ($parentsMarriageParish !== null && mb_strlen((string) $parentsMarriageParish) > 255) {
+        throw new InvalidArgumentException("Parents' marriage parish must be 255 characters or fewer.");
     }
     $details = $data['details'] ?? null;
     if (is_string($details)) {
@@ -755,21 +786,24 @@ function sd_save_record(PDO $pdo, array $data, ?array $participants = null, ?int
         if ($id === null) {
             $stmt = $pdo->prepare('INSERT INTO sacrament_records (sacrament_type, person_id, spouse_person_id, source, '
                 . 'event_date, place, minister_name, entry_no, book_no, page_no, line_no, parents_union_type, '
-                . 'details, remarks, encoded_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+                . 'parents_marriage_parish, details, remarks, encoded_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
             $stmt->execute([$type, $personId, $spouseId, $source, $eventDate, sd_clean($data['place'] ?? null),
                 sd_clean($data['minister_name'] ?? null), sd_clean($data['entry_no'] ?? null),
                 sd_clean($data['book_no'] ?? null), sd_clean($data['page_no'] ?? null),
-                sd_clean($data['line_no'] ?? null), $union, $detailsJson, sd_clean($data['remarks'] ?? null), $userId]);
+                sd_clean($data['line_no'] ?? null), $union, $parentsMarriageParish, $detailsJson,
+                sd_clean($data['remarks'] ?? null), $userId]);
             $id = (int) $pdo->lastInsertId();
         } else {
             $stmt = $pdo->prepare('UPDATE sacrament_records SET person_id = ?, spouse_person_id = ?, source = ?, '
                 . 'event_date = ?, place = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?, line_no = ?, '
-                . 'parents_union_type = ?, details = ?, remarks = ?, book_verified_by = NULL, book_verified_at = NULL '
+                . 'parents_union_type = ?, parents_marriage_parish = ?, details = ?, remarks = ?, '
+                . 'book_verified_by = NULL, book_verified_at = NULL '
                 . 'WHERE id = ?');
             $stmt->execute([$personId, $spouseId, $source, $eventDate, sd_clean($data['place'] ?? null),
                 sd_clean($data['minister_name'] ?? null), sd_clean($data['entry_no'] ?? null),
                 sd_clean($data['book_no'] ?? null), sd_clean($data['page_no'] ?? null),
-                sd_clean($data['line_no'] ?? null), $union, $detailsJson, sd_clean($data['remarks'] ?? null), $id]);
+                sd_clean($data['line_no'] ?? null), $union, $parentsMarriageParish, $detailsJson,
+                sd_clean($data['remarks'] ?? null), $id]);
         }
         if ($participants !== null) {
             $pdo->prepare('DELETE FROM sacrament_participants WHERE record_id = ?')->execute([$id]);

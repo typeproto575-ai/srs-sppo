@@ -127,12 +127,6 @@ $personHistoryStmt = $pdo->prepare(
 $personHistoryStmt->execute(['persons', $personId, 'person.updated']);
 $personHistory = $personHistoryStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$unionLabels = [
-    'legitimate' => 'Church married',
-    'civil' => 'Civilly married',
-    'natural' => 'Unmarried',
-];
-
 $warnings = [];
 if ($recs['first_communion'] === null) {
     $warnings['first_communion'] = sd_prerequisite_warnings($pdo, $personId, 'first_communion');
@@ -414,7 +408,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <span class="person-profile-badge"><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></span>
                     <span class="person-profile-badge<?= !empty($record['book_verified_at']) ? ' is-verified' : ' is-unverified' ?>"><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></span>
                     <?php if ($type === 'baptism' && !empty($record['parents_union_type'])): ?>
-                        <span class="person-profile-badge person-profile-badge--neutral">Parents: <?= e($unionLabels[$record['parents_union_type']] ?? $record['parents_union_type']) ?></span>
+                        <span class="person-profile-badge person-profile-badge--neutral">Parents: <?= e(parents_union_type_label((string) $record['parents_union_type'])) ?></span>
                     <?php endif; ?>
                 </div>
                 <section class="person-profile-observanda" aria-label="<?= e(sd_type_label($type)) ?> Observanda">
@@ -453,7 +447,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </div>
                 <?php endif; ?>
                 <div class="person-profile-record__actions">
-                    <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $type, 'person_id' => (int) $personId])) ?>">Add record</a>
+                    <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query([
+                        'type' => $type,
+                        'person_id' => (int) $personId,
+                        'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
+                    ])) ?>">Add record</a>
                 </div>
             <?php endif; ?>
         </article>
@@ -518,7 +516,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
             <p class="person-profile-empty">No marriage record is linked to this profile yet.</p>
             <div class="person-profile-record__actions">
-                <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => 'marriage', 'person_id' => (int) $personId])) ?>">Add record</a>
+                <a class="btn btn-small" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query([
+                    'type' => 'marriage',
+                    'person_id' => (int) $personId,
+                    'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
+                ])) ?>">Add record</a>
             </div>
         </article>
     <?php endif; ?>

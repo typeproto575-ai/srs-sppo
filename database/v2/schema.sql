@@ -1,10 +1,10 @@
 -- =====================================================================
 -- SRS-SPPO: Schedule and Record System of Saint Patrick's Parish Office
--- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  12 tables
+-- NEW SCHEMA v2  |  MySQL / MariaDB (XAMPP)  |  13 tables
 --
--- This single file replaces the old 33-table schema and all 54 migrations.
--- There is no migration runner and no in-app upgrader. To reset a LOCAL
--- test database, run:   DROP DATABASE srs_sppo_db;   then run this file.
+-- This file builds a fresh database. Existing databases must use the
+-- applicable numbered migration files; there is no in-app upgrader. To reset
+-- a LOCAL test database, run:   DROP DATABASE srs_sppo_db;   then run this file.
 --
 -- Design rules
 --   1. Identity (name, birth, parents, address, contact) lives ONLY in
@@ -101,7 +101,8 @@ CREATE TABLE sacrament_records (
   book_no            VARCHAR(20)  NULL,
   page_no            VARCHAR(20)  NULL,
   line_no            VARCHAR(20)  NULL,
-  parents_union_type ENUM('legitimate','civil','natural') NULL,   -- baptism only (Church / Civil / Natural union)
+  parents_union_type ENUM('canonical','civil','common_law','unmarried') NULL,
+  parents_marriage_parish VARCHAR(255) NULL,
   legitimacy         ENUM('legitimate','illegitimate') NULL,      -- baptism only. INTERNAL, NEVER DISPLAYED OR PRINTED
   details            JSON NULL,
   remarks            TEXT NULL,
@@ -136,7 +137,22 @@ CREATE TABLE sacrament_participants (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 5. sacrament_applications : online or walk-in application to RECEIVE a
+-- 5. sacrament_batches : shared First Communion / Confirmation groups
+-- ---------------------------------------------------------------------
+CREATE TABLE sacrament_batches (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  sacrament_type  ENUM('first_communion','confirmation') NOT NULL,
+  grade_level     VARCHAR(32) NOT NULL,
+  school_year     CHAR(9) NOT NULL,
+  batch_name      VARCHAR(150) NOT NULL,
+  created_by      INT UNSIGNED NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_sb_type_year_grade (sacrament_type, school_year, grade_level),
+  CONSTRAINT fk_sb_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 6. sacrament_applications : online or walk-in application to RECEIVE a
 --    sacrament. Unverified intake. Public intake creates/reuses the master
 --    person profile so requests share one public reference; staff still verify
 --    the intake before approval and link the resulting register record.
@@ -149,6 +165,7 @@ CREATE TABLE sacrament_applications (
   channel            ENUM('online','onsite') NOT NULL DEFAULT 'onsite',
   sacrament_type     ENUM('baptism','first_communion','confirmation','marriage') NOT NULL,
   person_id          INT UNSIGNED NULL,                   -- subject profile (marriage: the groom)
+  batch_id           INT UNSIGNED NULL,                   -- shared First Communion / Confirmation group
   spouse_person_id   INT UNSIGNED NULL,                   -- marriage: the bride
   applicant_name     VARCHAR(150) NOT NULL,
   applicant_email    VARCHAR(150) NOT NULL,
@@ -173,7 +190,9 @@ CREATE TABLE sacrament_applications (
   INDEX idx_sa_type (sacrament_type, preferred_date),
   INDEX idx_sa_name (applicant_name),
   INDEX idx_sa_assigned (assigned_to),
+  INDEX idx_sa_batch (batch_id),
   CONSTRAINT fk_sa_person    FOREIGN KEY (person_id)        REFERENCES persons(id)           ON DELETE SET NULL,
+  CONSTRAINT fk_sa_batch     FOREIGN KEY (batch_id)         REFERENCES sacrament_batches(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_spouse    FOREIGN KEY (spouse_person_id) REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_sa_record    FOREIGN KEY (record_id)        REFERENCES sacrament_records(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_paid_by   FOREIGN KEY (paid_by)          REFERENCES users(id)             ON DELETE SET NULL,
@@ -182,7 +201,7 @@ CREATE TABLE sacrament_applications (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 6. certificate_requests : one table for the whole certificate life cycle
+-- 7. certificate_requests : one table for the whole certificate life cycle
 --    new -> matched -> for_signature -> ready -> released
 --       (or rejected, or cancelled with personal details anonymized)
 --    "for_signature" = printed, waiting for the priest's physical
@@ -245,7 +264,7 @@ CREATE TABLE certificate_requests (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 7. schedule_events : parish calendar (public view shows public_details only)
+-- 8. schedule_events : parish calendar (public view shows public_details only)
 -- ---------------------------------------------------------------------
 CREATE TABLE schedule_events (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -256,16 +275,19 @@ CREATE TABLE schedule_events (
   start_time      TIME NULL,
   end_time        TIME NULL,
   application_id  INT UNSIGNED NULL,
+  batch_id        INT UNSIGNED NULL,
   notes           TEXT NULL,                           -- internal only
   created_by      INT UNSIGNED NULL,
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_se_date (event_date),
+  UNIQUE INDEX uq_se_batch (batch_id),
   CONSTRAINT fk_se_application FOREIGN KEY (application_id) REFERENCES sacrament_applications(id) ON DELETE SET NULL,
+  CONSTRAINT fk_se_batch       FOREIGN KEY (batch_id)       REFERENCES sacrament_batches(id) ON DELETE SET NULL,
   CONSTRAINT fk_se_creator     FOREIGN KEY (created_by)     REFERENCES users(id)                 ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 8. announcements : public landing page notices
+-- 9. announcements : public landing page notices
 -- ---------------------------------------------------------------------
 CREATE TABLE announcements (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -280,7 +302,7 @@ CREATE TABLE announcements (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 9. settings : key/value (site text, parish name, eligibility ages,
+-- 10. settings : key/value (site text, parish name, eligibility ages,
 --     priest approval email, retention periods ...)
 -- ---------------------------------------------------------------------
 CREATE TABLE settings (
@@ -292,7 +314,7 @@ CREATE TABLE settings (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 10. notifications : in-app admin notices AND the email delivery log
+-- 11. notifications : in-app admin notices AND the email delivery log
 --     channel = 'inapp' uses title/message/link/is_read.
 --     channel = 'email' uses recipient/delivery_status/error_message.
 -- ---------------------------------------------------------------------
@@ -316,7 +338,7 @@ CREATE TABLE notifications (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 11. audit_logs : who did what, including reprints and handovers
+-- 12. audit_logs : who did what, including reprints and handovers
 -- ---------------------------------------------------------------------
 CREATE TABLE audit_logs (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -336,7 +358,7 @@ CREATE TABLE audit_logs (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
--- 12. funeral_records : staff-only Liber Defunctorum, separate from sacraments
+-- 13. funeral_records : staff-only Liber Defunctorum, separate from sacraments
 -- ---------------------------------------------------------------------
 CREATE TABLE funeral_records (
   id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

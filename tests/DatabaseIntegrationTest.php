@@ -425,6 +425,45 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
+    public function testBaptismParentUnionAndMarriageParishPersistThroughSharedRecordSave(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Maria',
+                'last_name' => 'Parents',
+                'birth_date' => '2024-02-14',
+            ]);
+
+            $recordId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2024-03-10',
+                'parents_union_type' => 'legitimate',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+            ], [], $userId);
+            $record = sd_get_record($this->pdo, $recordId);
+            self::assertNotNull($record);
+            self::assertSame('canonical', $record['parents_union_type']);
+            self::assertSame('Saint Joseph Parish', $record['parents_marriage_parish']);
+
+            sd_save_record($this->pdo, [
+                'id' => $recordId,
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2024-03-10',
+                'parents_union_type' => 'civil',
+            ], null, $userId);
+            $record = sd_get_record($this->pdo, $recordId);
+            self::assertNotNull($record);
+            self::assertSame('civil', $record['parents_union_type']);
+            self::assertNull($record['parents_marriage_parish']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
     public function testScheduleEventsPersistAndFlagOverlappingTimes(): void
     {
         $this->pdo->beginTransaction();

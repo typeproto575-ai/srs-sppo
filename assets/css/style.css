@@ -250,7 +250,8 @@ input:focus, select:focus, textarea:focus {
     gap: 1rem;
 }
 .certificate-wizard-panel[hidden],
-.certificate-wizard-actions [hidden] {
+.certificate-wizard-actions [hidden],
+[data-school-year-container][hidden] {
     display: none !important;
 }
 .certificate-wizard-progress {

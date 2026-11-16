@@ -21,6 +21,10 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Calendar';
 $errors  = [];
 $success = null;
+if (is_string($_SESSION['calendar_error'] ?? null)) {
+    $errors[] = $_SESSION['calendar_error'];
+    unset($_SESSION['calendar_error']);
+}
 
 // --- Edit (?edit=ID opens the shared dialog pre-filled) ---------------------
 $editEvent = null;
@@ -30,6 +34,12 @@ if (isset($_GET['edit'])) {
     $editEvent = $stmt->fetch();
     if (!$editEvent) {
         redirect_to('/admin/schedule/calendar.php');
+        exit;
+    }
+    if (!empty($editEvent['batch_id'])) {
+        redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+            'batch_id' => (int) $editEvent['batch_id'],
+        ]));
         exit;
     }
 }
@@ -106,6 +116,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     require_role('secretary');
 
     $editId   = (int) ($_POST['edit_id'] ?? 0);
+    if ($editId > 0) {
+        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck->execute([$editId]);
+        $linkedBatchId = $batchCheck->fetchColumn();
+        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+            redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+                'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
+    }
     $updType  = $_POST['event_type'] ?? '';
     $updTitle = trim($_POST['title'] ?? '');
     $updDate  = $_POST['event_date'] ?? '';
@@ -160,6 +181,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_event']) && cs
     require_role('secretary');
     $id = (int) ($_POST['event_id'] ?? 0);
     if ($id) {
+        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck->execute([$id]);
+        $linkedBatchId = $batchCheck->fetchColumn();
+        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+            redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+                'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
         $stmt = $pdo->prepare("DELETE FROM schedule_events WHERE id = ?");
         $stmt->execute([$id]);
         log_activity($pdo, current_user()['id'], 'schedule_event_deleted', 'schedule_events', $id, null);
