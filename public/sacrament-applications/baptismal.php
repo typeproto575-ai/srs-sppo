@@ -461,10 +461,9 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
-            <label>Place of Birth *
+            <label>Place of Birth * <span class="field-hint">(If unknown, enter N/A)</span>
                 <input type="text" name="child_birthplace" value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
-            <label class="checkbox-label na-toggle"><input type="checkbox" data-na-target="child_birthplace"> Not available / unknown (N/A)</label>
         </fieldset>
         <div class="form-actions">
             <button type="submit" class="btn">Next</button>
@@ -488,8 +487,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 2 of 4 — Family Information</legend>
-            <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name or tick Not applicable', false, true) ?>
+            <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', false) ?>
             <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
             <?php
             $godfatherRows = max(1, count(fa('godfather_full_name', $formData)));

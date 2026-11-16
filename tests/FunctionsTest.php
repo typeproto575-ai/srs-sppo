@@ -450,6 +450,25 @@ final class FunctionsTest extends TestCase
         ], 'applicant', 'Applicant'));
     }
 
+    public function testParentNameCanUseNATextWhenUnknown(): void
+    {
+        $unknownName = [
+            'father_first' => 'N/A',
+            'father_middle' => '',
+            'father_last' => '',
+            'father_suffix' => '',
+        ];
+
+        self::assertNull(validate_parent_name_or_na($unknownName, 'father', "Father's name"));
+        self::assertSame('N/A', compose_person_name($unknownName, 'father'));
+        self::assertNotNull(validate_parent_name_or_na([
+            'father_first' => 'N/A',
+            'father_middle' => '',
+            'father_last' => 'Santos',
+            'father_suffix' => '',
+        ], 'father', "Father's name"));
+    }
+
     public function testRecordListNameUsesStructuredMiddleName(): void
     {
         self::assertSame(

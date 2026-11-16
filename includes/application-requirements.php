@@ -17,7 +17,7 @@ function sacrament_application_requirements(string $type): array
         'first_communion' => [
             'before' => [
                 'The candidate’s PSA birth certificate or birth certificate from the local civil registrar.',
-                'A Baptismal Certificate from the parish where the candidate was baptized.',
+                'If no verified Baptism record is already on file, bring a Baptismal Certificate from the parish where the candidate was baptized.',
             ],
             'after' => [
                 'The Parish Office reviews the pre-application and confirms the candidate’s preparation and schedule.',

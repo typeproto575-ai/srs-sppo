@@ -481,13 +481,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= $wv('applicant_suffix') ?>">
                 </label>
             </div>
-            <label>Place of birth * <span class="field-hint">(City/Municipality, Province)</span>
+            <label>Place of birth * <span class="field-hint">(City/Municipality, Province; enter N/A if unknown)</span>
                 <input type="text" name="applicant_birthplace" autocomplete="off" value="<?= $wv('applicant_birthplace') ?>" required>
             </label>
-            <label class="checkbox-label na-toggle"><input type="checkbox" data-na-target="applicant_birthplace"> Not available / unknown (N/A)</label>
             <input type="hidden" name="applicant_person_id" value="<?= $wv('applicant_person_id') ?>">
-            <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: first name and maiden last name, or tick Not applicable', false, true) ?>
+            <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter first name and maiden last name, or enter N/A if unknown', false) ?>
             <p class="field-hint">Parents are recorded as they appear on the birth certificate. A guardian is never entered as a parent.</p>
             <?= person_name_fields('parent_guardian', 'Guardian / authorized representative', $formData, false, null, 'optional; only if the parents are unavailable') ?>
             <label>Relationship to applicant <span class="field-hint">(optional)</span>

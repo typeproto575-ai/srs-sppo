@@ -64,7 +64,7 @@ function application_queue_label(string $value): string
         'sponsor_names' => 'Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Confirmed',
         'guardian_relationship' => 'Guardian Relationship',
-        'parent_guardian_name' => 'Parent / Guardian',
+        'parent_guardian_name' => 'Guardian / Authorized Representative',
     ];
 
     if (isset($labels[$value])) {
@@ -79,17 +79,6 @@ function application_queue_render_detail_value(mixed $value): void
     if (is_array($value)) {
         if ($value === []) {
             echo '—';
-            return;
-        }
-
-        // Godparents and similar role/name lists: one compact line per person.
-        if (array_is_list($value) && count(array_filter($value, static fn($item): bool => is_array($item) && isset($item['role'], $item['full_name']))) === count($value)) {
-            echo '<ol class="application-detail-compact">';
-            foreach ($value as $item) {
-                echo '<li><span class="detail-role">' . e(application_queue_label((string) $item['role'])) . '</span> '
-                    . e((string) $item['full_name']) . '</li>';
-            }
-            echo '</ol>';
             return;
         }
 
@@ -125,6 +114,65 @@ function application_queue_details(array $application): array
 {
     $details = json_decode((string) ($application['details'] ?? ''), true);
     return is_array($details) ? $details : [];
+}
+
+function application_queue_has_verified_baptism_record(PDO $pdo, int $personId): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT 1
+         FROM sacrament_records
+         WHERE person_id = ? AND sacrament_type = 'baptism'
+           AND book_verified_at IS NOT NULL
+         LIMIT 1"
+    );
+    $stmt->execute([$personId]);
+    return $stmt->fetchColumn() !== false;
+}
+
+function application_queue_exact_baptism_matches(PDO $pdo, string $fullName, string $birthDate): array
+{
+    if ($fullName === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birthDate)) {
+        return [];
+    }
+
+    $year = (int) substr($birthDate, 0, 4);
+    $month = (int) substr($birthDate, 5, 2);
+    $day = (int) substr($birthDate, 8, 2);
+    if (!checkdate($month, $day, $year)) {
+        return [];
+    }
+
+    [$firstName, $middleName, $lastName, $suffix] = structured_name_parts($fullName);
+    if ($firstName === '' || $lastName === '') {
+        return [];
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
+                p.father_name, p.mother_maiden_name, p.address,
+                r.id AS baptism_record_id, r.source, r.event_date AS baptism_event_date,
+                r.entry_no, r.book_no, r.page_no, r.line_no, r.book_verified_at
+         FROM persons p
+         INNER JOIN sacrament_records r
+            ON r.person_id = p.id AND r.sacrament_type = 'baptism'
+         WHERE p.is_deceased = 0
+           AND p.first_name = ?
+           AND COALESCE(p.middle_name, '') = ?
+           AND p.last_name = ?
+           AND COALESCE(p.suffix, '') = ?
+           AND p.birth_date = ?
+           AND r.id = (
+               SELECT r2.id
+               FROM sacrament_records r2
+               WHERE r2.person_id = p.id AND r2.sacrament_type = 'baptism'
+               ORDER BY (r2.book_verified_at IS NOT NULL) DESC, r2.event_date DESC, r2.id DESC
+               LIMIT 1
+           )
+         ORDER BY p.id
+         LIMIT 2"
+    );
+    $stmt->execute([$firstName, $middleName, $lastName, $suffix, $birthDate]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function application_queue_person_match(array $application, array $details, string $role): array
@@ -362,6 +410,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update->execute([$newStatus, (int) $applicationId]);
             if ($newStatus === 'approved') {
                 $outstandingKeys = application_outstanding_requirement_keys((string) ($application['requirements'] ?? ''));
+                if ($application['sacrament_type'] === 'first_communion'
+                    && (int) ($application['person_id'] ?? 0) > 0
+                    && application_queue_has_verified_baptism_record($pdo, (int) $application['person_id'])) {
+                    $outstandingKeys = array_values(array_diff($outstandingKeys, ['origin_baptismal_certificate']));
+                }
                 if ($outstandingKeys !== []) {
                     $outstandingLabels = array_map(
                         static fn(string $key): string => application_queue_requirement_label((string) $application['sacrament_type'], $key),
@@ -390,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (string) $application['sacrament_type'],
                 (string) $application['request_no']
             );
-            $_SESSION['application_queue_success'] = 'Application status updated.';
+            $_SESSION['application_queue_success'] = 'Application status updated to ' . status_label('application', $newStatus) . '.';
         } else {
             $pdo->rollBack();
             $_SESSION['application_queue_error'] = 'The requested action is invalid.';
@@ -582,14 +635,17 @@ if ($matchSearchApplicationId > 0) {
 }
 
 $recordRowsByPerson = [];
+$baptismRecordRowsByPerson = [];
 $allLinkedIds = $linkedPersonIds;
 if ($allLinkedIds !== []) {
     $recordPlaceholders = implode(', ', array_fill(0, count($allLinkedIds), '?'));
     $recordStmt = $pdo->prepare(
-        "SELECT sacrament_type, person_id, spouse_person_id
+        "SELECT id, sacrament_type, person_id, spouse_person_id, source, event_date,
+                entry_no, book_no, page_no, line_no, book_verified_at
          FROM sacrament_records
          WHERE person_id IN ({$recordPlaceholders})
-            OR spouse_person_id IN ({$recordPlaceholders})"
+            OR spouse_person_id IN ({$recordPlaceholders})
+         ORDER BY event_date DESC, id DESC"
     );
     $recordStmt->execute(array_merge($allLinkedIds, $allLinkedIds));
     foreach ($recordStmt->fetchAll(PDO::FETCH_ASSOC) as $record) {
@@ -597,8 +653,33 @@ if ($allLinkedIds !== []) {
             $recordPersonId = (int) ($record[$recordPersonColumn] ?? 0);
             if ($recordPersonId > 0) {
                 $recordRowsByPerson[$recordPersonId][] = $record['sacrament_type'];
+                if ($record['sacrament_type'] === 'baptism'
+                    && (int) $record['person_id'] === $recordPersonId) {
+                    $baptismRecordRowsByPerson[$recordPersonId][] = $record;
+                }
             }
         }
+    }
+}
+
+$automaticBaptismMatchesByApplication = [];
+foreach ($applications as $application) {
+    if ($application['sacrament_type'] !== 'first_communion' || !empty($application['person_id'])) {
+        continue;
+    }
+    $applicationId = (int) $application['id'];
+    $personMatch = application_queue_person_match(
+        $application,
+        application_queue_details($application),
+        'applicant'
+    );
+    $baptismMatches = application_queue_exact_baptism_matches(
+        $pdo,
+        $personMatch['name'],
+        $personMatch['birth_date']
+    );
+    if ($baptismMatches !== []) {
+        $automaticBaptismMatchesByApplication[$applicationId] = $baptismMatches;
     }
 }
 
@@ -682,21 +763,89 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     ]);
                 $validNextStatuses = application_queue_next_statuses((string) $app['status']);
                 $prerequisiteWarnings = [];
+                $prerequisiteChecks = [];
+                $hasParishBaptismRecord = false;
+                $hasVerifiedBaptismRecord = false;
                 foreach ($matches as $match) {
                     $personId = (int) ($match['person_id'] ?? 0);
                     $label = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
                     if ($personId < 1) {
                         if (in_array($app['sacrament_type'], ['first_communion', 'confirmation', 'marriage'], true)) {
-                            $prerequisiteWarnings[] = "{$label}: link a parishioner profile, then verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
+                            if ($app['sacrament_type'] === 'first_communion') {
+                                $baptismMatches = $automaticBaptismMatchesByApplication[(int) $app['id']] ?? [];
+                                if (count($baptismMatches) === 1) {
+                                    $suggestedRecord = $baptismMatches[0];
+                                    $recordReference = implode(' / ', array_values(array_filter(
+                                        [
+                                            $suggestedRecord['entry_no'] ?? null,
+                                            $suggestedRecord['book_no'] ?? null,
+                                            $suggestedRecord['page_no'] ?? null,
+                                            $suggestedRecord['line_no'] ?? null,
+                                        ],
+                                        static fn($value): bool => $value !== null && trim((string) $value) !== ''
+                                    )));
+                                    $prerequisiteChecks[] = "{$label}: a unique exact Baptism-record match was found"
+                                        . ($recordReference !== '' ? " (register reference {$recordReference})" : '')
+                                        . '. Confirm and link the profile below.';
+                                    $prerequisiteWarnings[] = "{$label}: confirm the suggested identity and link the profile before proceeding.";
+                                } elseif (count($baptismMatches) > 1) {
+                                    $prerequisiteWarnings[] = "{$label}: multiple exact profiles have Baptism records; review the matches below and link the correct profile.";
+                                } else {
+                                    $prerequisiteWarnings[] = "{$label}: link a parishioner profile, then verify the Baptism record or check the origin-parish certificate before proceeding.";
+                                }
+                            } else {
+                                $prerequisiteWarnings[] = "{$label}: link a parishioner profile, then verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
+                            }
                         }
                         continue;
                     }
                     $personRecords = $recordRowsByPerson[$personId] ?? [];
                     $profile = $linkedPersons[$personId] ?? [];
+                    $baptismRecords = $baptismRecordRowsByPerson[$personId] ?? [];
+                    $hasParishBaptismRecord = $baptismRecords !== [];
+                    $baptismRecord = null;
+                    foreach ($baptismRecords as $candidateRecord) {
+                        if ($baptismRecord === null) {
+                            $baptismRecord = $candidateRecord;
+                        }
+                        if (!empty($candidateRecord['book_verified_at'])) {
+                            $baptismRecord = $candidateRecord;
+                            break;
+                        }
+                    }
+                    $hasVerifiedBaptismRecord = $hasVerifiedBaptismRecord
+                        || ($baptismRecord !== null && !empty($baptismRecord['book_verified_at']));
                     $hasBaptism = in_array('baptism', $personRecords, true)
                         || ($profile['baptismal_status'] ?? null) === 'baptized_catholic';
-                    if ($app['sacrament_type'] === 'first_communion' && !$hasBaptism) {
-                        $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
+                    if ($app['sacrament_type'] === 'first_communion' && $hasParishBaptismRecord) {
+                        $registerReference = implode(' / ', array_values(array_filter(
+                            [
+                                $baptismRecord['entry_no'] ?? null,
+                                $baptismRecord['book_no'] ?? null,
+                                $baptismRecord['page_no'] ?? null,
+                                $baptismRecord['line_no'] ?? null,
+                            ],
+                            static fn($value): bool => $value !== null && trim((string) $value) !== ''
+                        )));
+                        $recordDate = !empty($baptismRecord['event_date'])
+                            ? date('M j, Y', strtotime((string) $baptismRecord['event_date']))
+                            : 'date not recorded';
+                        $verificationStatus = !empty($baptismRecord['book_verified_at'])
+                            ? 'verified by the Parish Office'
+                            : 'verification pending';
+                        $recordSource = ($baptismRecord['source'] ?? '') === 'other_parish'
+                            ? 'another parish'
+                            : 'this parish';
+                        $prerequisiteChecks[] = "{$label}: Baptism record found in the parish system (source: {$recordSource}) — "
+                            . ($registerReference !== '' ? "register reference {$registerReference}" : 'no register reference recorded')
+                            . ", {$recordDate}; {$verificationStatus}.";
+                        if (!$hasVerifiedBaptismRecord) {
+                            $prerequisiteWarnings[] = "{$label}: the Baptism record is on file but has not been verified by the Parish Office before proceeding.";
+                        }
+                    } elseif ($app['sacrament_type'] === 'first_communion') {
+                        $prerequisiteWarnings[] = ($profile['baptismal_status'] ?? null) === 'baptized_catholic'
+                            ? "{$label}: the profile indicates Catholic baptism, but no parish Baptism record is linked; verify the register or check the origin-parish certificate before proceeding."
+                            : "{$label}: no parish Baptism record is linked; verify the register or check the origin-parish certificate before proceeding.";
                     } elseif ($app['sacrament_type'] === 'confirmation') {
                         if (!$hasBaptism) {
                             $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
@@ -722,6 +871,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <td>
                         <?= e(implode(' · ', $subjectNames)) ?>
                         <span class="application-queue-submitter">Submitted by <?= e($app['applicant_name']) ?></span>
+                        <?php if ($app['sacrament_type'] === 'first_communion'):
+                            $baptismMatches = $automaticBaptismMatchesByApplication[(int) $app['id']] ?? [];
+                            $baptismCheckLabel = $hasVerifiedBaptismRecord
+                                ? 'Baptism record found and verified'
+                                : ($hasParishBaptismRecord
+                                    ? 'Baptism record found; verification pending'
+                                    : (count($baptismMatches) === 1
+                                        ? 'Unique Baptism record match suggested'
+                                        : (count($baptismMatches) > 1
+                                            ? 'Multiple Baptism record matches need review'
+                                            : 'No Baptism record matched in the parish system')));
+                        ?>
+                            <span class="application-queue-submitter"><?= e($baptismCheckLabel) ?></span>
+                        <?php endif; ?>
                     </td>
                     <td>
                         <?= e(application_queue_label($app['channel'])) ?><br>
@@ -795,9 +958,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php else: ?>
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
                             <?php endif; ?>
-                        </dl>
+                                    </dl>
                     </section>
-
+                                                <?php if ($prerequisiteChecks !== []): ?>
+                        <aside class="alert alert-success" role="note">
+                            <strong>Parish records:</strong>
+                            <ul><?php foreach ($prerequisiteChecks as $check): ?><li><?= e($check) ?></li><?php endforeach; ?></ul>
+                        </aside>
+                    <?php endif; ?>
                     <?php if ($prerequisiteWarnings !== []): ?>
                         <aside class="alert alert-warning" role="note">
                             <strong>Prerequisite review:</strong>
@@ -815,6 +983,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 $matchLabel = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
                                 $matchPersonId = $match['person_id'];
                                 $matchLinkedPerson = !empty($matchPersonId) ? ($linkedPersons[(int) $matchPersonId] ?? null) : null;
+                                $baptismMatches = $match['role'] === 'applicant' && $app['sacrament_type'] === 'first_communion'
+                                    ? ($automaticBaptismMatchesByApplication[(int) $app['id']] ?? [])
+                                    : [];
                                 if (in_array($app['status'], ['completed', 'rejected'], true)):
                             ?>
                                 <section class="person-match-form" aria-label="<?= e($matchLabel) ?> profile">
@@ -845,9 +1016,71 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 $matchReturnParams = $applicationReturnParams;
                                 $matchReturnQuery = $applicationReturnQuery;
                                 $matchSearchResults = $matchSearchApplicationId === $matchApplicationId && $matchSearchRole === $matchRole;
-                                require __DIR__ . '/../../includes/person-match-widget.php';
-                            endif;
-                            endforeach; ?>
+                                if (!$matchPersonId && count($baptismMatches) === 1):
+                                    $suggestedPerson = $baptismMatches[0];
+                                    $suggestedName = implode(' ', array_filter([
+                                        $suggestedPerson['first_name'],
+                                        $suggestedPerson['middle_name'],
+                                        $suggestedPerson['last_name'],
+                                        $suggestedPerson['suffix'],
+                                    ]));
+                                    $suggestedReference = implode(' / ', array_values(array_filter(
+                                        [
+                                            $suggestedPerson['entry_no'] ?? null,
+                                            $suggestedPerson['book_no'] ?? null,
+                                            $suggestedPerson['page_no'] ?? null,
+                                            $suggestedPerson['line_no'] ?? null,
+                                        ],
+                                        static fn($value): bool => $value !== null && trim((string) $value) !== ''
+                                    )));
+                                ?>
+                                    <aside class="alert alert-success" role="note">
+                                        <strong>Unique Baptism record match</strong>
+                                        <p><?= e($suggestedName) ?> · <?= e($suggestedPerson['birth_date'] ?? 'Date of birth not recorded') ?></p>
+                                        <p>
+                                            <?= e(($suggestedPerson['source'] ?? '') === 'other_parish' ? 'Origin-parish record' : 'Parish record') ?>
+                                            · <?= e($suggestedPerson['baptism_event_date'] ?? 'Baptism date not recorded') ?>
+                                            · <?= e($suggestedReference !== '' ? 'Register ' . $suggestedReference : 'No register reference recorded') ?>
+                                            · <?= !empty($suggestedPerson['book_verified_at']) ? 'verified' : 'verification pending' ?>
+                                        </p>
+                                        <form method="post" action="<?= e($basePath . '/admin/requests/applications-queue.php') ?>">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="action" value="link_person">
+                                            <input type="hidden" name="application_id" value="<?= $matchApplicationId ?>">
+                                            <input type="hidden" name="person_role" value="applicant">
+                                            <input type="hidden" name="person_id" value="<?= (int) $suggestedPerson['id'] ?>">
+                                            <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                            <button type="submit" class="btn btn-small">Confirm and link this profile</button>
+                                        </form>
+                                    </aside>
+                                <?php elseif (!$matchPersonId && count($baptismMatches) > 1): ?>
+                                    <aside class="alert alert-warning" role="note">
+                                        <strong>Multiple exact Baptism record matches</strong>
+                                        <ul>
+                                            <?php foreach ($baptismMatches as $suggestedPerson): ?>
+                                                <li>
+                                                    <?= e(implode(' ', array_filter([
+                                                        $suggestedPerson['first_name'],
+                                                        $suggestedPerson['middle_name'],
+                                                        $suggestedPerson['last_name'],
+                                                        $suggestedPerson['suffix'],
+                                                    ]))) ?>
+                                                    · <?= e($suggestedPerson['birth_date'] ?? 'Date of birth not recorded') ?>
+                                                    · <?= e(implode(' / ', array_values(array_filter([
+                                                        $suggestedPerson['entry_no'] ?? null,
+                                                        $suggestedPerson['book_no'] ?? null,
+                                                        $suggestedPerson['page_no'] ?? null,
+                                                        $suggestedPerson['line_no'] ?? null,
+                                                    ], static fn($value): bool => $value !== null && trim((string) $value) !== '')))) ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                        <span>Review the identity and link the correct profile manually.</span>
+                                    </aside>
+                                <?php endif; ?>
+                                <?php require __DIR__ . '/../../includes/person-match-widget.php'; ?>
+                            <?php endif; ?>
+                            <?php endforeach; ?>
                         </div>
                     </section>
 
@@ -858,6 +1091,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 $requirement = $requirements[$requirementKey] ?? [];
                                 $requirement = is_array($requirement) ? $requirement : [];
                                 if (($requirement['status'] ?? '') === 'not_applicable') { continue; }
+                                if ($app['sacrament_type'] === 'first_communion'
+                                    && $requirementKey === 'origin_baptismal_certificate'
+                                    && $hasVerifiedBaptismRecord) {
+                                    continue;
+                                }
                                 $currentRequirementStatus = (string) ($requirement['status'] ?? 'not_received');
                                 if (!in_array($currentRequirementStatus, $requirementStatuses, true)) {
                                     $currentRequirementStatus = 'not_received';
@@ -952,28 +1190,10 @@ document.addEventListener('click', (event) => {
     const review = document.getElementById(button.getAttribute('aria-controls') || '');
     if (!(review instanceof HTMLDetailsElement)) return;
     review.open = !review.open;
-    if (review.open) {
-        // Only one application is open at a time: close any other review.
-        document.querySelectorAll('.application-queue-review[open]').forEach((other) => {
-            if (other === review) return;
-            other.open = false;
-            const otherRow = other.closest('.application-queue-detail-row');
-            if (otherRow instanceof HTMLTableRowElement) otherRow.hidden = true;
-            const otherToggle = document.querySelector('[data-application-review-toggle][aria-controls="' + other.id + '"]');
-            if (otherToggle instanceof HTMLButtonElement) {
-                otherToggle.setAttribute('aria-expanded', 'false');
-                otherToggle.textContent = 'Review';
-            }
-        });
-    }
     const detailRow = review.closest('.application-queue-detail-row');
     if (detailRow instanceof HTMLTableRowElement) detailRow.hidden = !review.open;
     button.setAttribute('aria-expanded', review.open ? 'true' : 'false');
     button.textContent = review.open ? 'Close review' : 'Review';
-    if (review.open) {
-        const row = button.closest('tr');
-        if (row) row.scrollIntoView({ block: 'nearest' });
-    }
 });
 document.querySelectorAll('form.application-requirement-form').forEach((form) => {
     const button = form.querySelector('button[type="submit"]');

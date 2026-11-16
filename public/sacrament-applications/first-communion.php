@@ -9,6 +9,7 @@ $basePath = base_path();
 $pageTitle = 'First Holy Communion Pre-Application';
 $errors = [];
 $trackingNumber = null;
+$hasVerifiedBaptismRecord = false;
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -193,6 +194,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                 'mother_maiden_name' => $mother,
             ]);
             $personId = $personProfile['person_id'];
+            $baptismRecordStmt = $pdo->prepare(
+                "SELECT 1
+                 FROM sacrament_records
+                 WHERE person_id = ? AND sacrament_type = 'baptism'
+                   AND book_verified_at IS NOT NULL
+                 LIMIT 1"
+            );
+            $baptismRecordStmt->execute([$personId]);
+            $hasVerifiedBaptismRecord = $baptismRecordStmt->fetchColumn() !== false;
             public_assert_no_open_sacrament_application(
                 $pdo,
                 'first_communion',
@@ -213,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
             ];
             $requirements = [
                 'origin_baptismal_certificate' => [
-                    'status' => $baptizedHere === 'this_parish' ? 'not_applicable' : 'not_received',
+                    'status' => $hasVerifiedBaptismRecord ? 'not_applicable' : 'not_received',
                     'note' => '',
                 ],
                 'first_reconciliation' => ['status' => 'not_received', 'note' => ''],
@@ -278,6 +288,12 @@ function selectedv(string $key, string $value): string { global $formData; retur
         $successIsApplication = true;
         $successRequestNumber = $requestNo;
         $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
+        if ($hasVerifiedBaptismRecord) {
+            $successRequiredDocuments = array_values(array_filter(
+                $successRequiredDocuments,
+                static fn(string $document): bool => !str_contains($document, 'Baptismal Certificate')
+            ));
+        }
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
     <?php else: ?>
@@ -321,8 +337,8 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     </fieldset>
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>
-                        <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
-                        <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name or tick Not applicable', false, true) ?>
+                        <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?>
+                        <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', false) ?>
                         <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
                         <div class="inline-fields"><label>Contact Number <span class="field-hint">(optional; email is used for updates)</span><input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>"></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
                     </fieldset>

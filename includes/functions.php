@@ -968,11 +968,6 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
-/**
- * Capitalise one part of a person's name ("juan dela cruz" becomes "Juan Dela Cruz").
- * Words typed with mixed capitals ("McDonald", "DeLeon") are left exactly as typed,
- * and Roman-numeral suffixes ("iii") become upper case.
- */
 function format_name_part(string $value, bool $isSuffix = false): string
 {
     $value = trim((string) preg_replace('/\s+/u', ' ', $value));
@@ -989,7 +984,7 @@ function format_name_part(string $value, bool $isSuffix = false): string
             continue;
         }
         if ($word !== mb_strtolower($word) && $word !== mb_strtoupper($word)) {
-            continue; // already mixed case: keep as typed
+            continue;
         }
         $words[$i] = (string) preg_replace_callback(
             '/(^|[-\'’.])(\p{L})/u',
@@ -1003,15 +998,19 @@ function format_name_part(string $value, bool $isSuffix = false): string
 
 function compose_person_name(array $values, string $prefix): string
 {
-    if (($values[$prefix . '_na'] ?? '') === '1') {
-        return 'N/A';
-    }
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
         if (is_scalar($value) && trim((string) $value) !== '') {
             $parts[] = format_name_part((string) $value, $part === 'suffix');
         }
+    }
+    $providedParts = array_filter($parts, static fn(string $part): bool => $part !== '');
+    if (
+        $providedParts !== []
+        && count(array_filter($providedParts, static fn(string $part): bool => strcasecmp($part, 'N/A') === 0)) === count($providedParts)
+    ) {
+        return 'N/A';
     }
 
     return implode(' ', $parts);
@@ -1061,19 +1060,33 @@ function person_name_row_count(array $values, string $prefix): int
     return $count;
 }
 
-/**
- * A parent's name that must be answered: either a name or the "Not applicable"
- * tick box (for example, a father who is not listed on the birth certificate).
- */
 function validate_parent_name_or_na(array $values, string $prefix, string $label): ?string
 {
-    if (($values[$prefix . '_na'] ?? '') === '1') {
-        return null;
+    $parts = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $value = $values[$prefix . '_' . $part] ?? '';
+        $parts[$part] = is_scalar($value) ? trim((string) $value) : '';
     }
-    $first = is_scalar($values[$prefix . '_first'] ?? null) ? trim((string) $values[$prefix . '_first']) : '';
-    $last = is_scalar($values[$prefix . '_last'] ?? null) ? trim((string) $values[$prefix . '_last']) : '';
-    if ($first === '' || $last === '') {
-        return "{$label}: enter the first and last name, or tick Not applicable.";
+    $providedParts = array_filter($parts, static fn(string $part): bool => $part !== '');
+    if ($providedParts === []) {
+        return "{$label}: enter the first and last name, or enter N/A if unknown.";
+    }
+
+    $hasNa = count(array_filter(
+        $providedParts,
+        static fn(string $part): bool => strcasecmp($part, 'N/A') === 0
+    )) > 0;
+    if ($hasNa) {
+        $hasOtherValue = count(array_filter(
+            $providedParts,
+            static fn(string $part): bool => strcasecmp($part, 'N/A') !== 0
+        )) > 0;
+
+        return $hasOtherValue ? "{$label}: enter a name or enter N/A by itself if unknown." : null;
+    }
+
+    if ($parts['first'] === '' || $parts['last'] === '') {
+        return "{$label}: enter the first and last name, or enter N/A if unknown.";
     }
 
     return validate_full_name(compose_person_name($values, $prefix));
@@ -1081,9 +1094,6 @@ function validate_parent_name_or_na(array $values, string $prefix, string $label
 
 function validate_person_name_fields(array $values, string $prefix, string $label, bool $required = true): ?string
 {
-    if (($values[$prefix . '_na'] ?? '') === '1') {
-        return null;
-    }
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
@@ -1136,11 +1146,9 @@ function person_name_fields(
     bool $required = true,
     ?int $rowIndex = null,
     ?string $hint = null,
-    bool $withSuffix = true,
-    bool $allowNa = false
+    bool $withSuffix = true
 ): string {
     $isList = $rowIndex !== null;
-    $naChecked = $allowNa && (($values[$prefix . '_na'] ?? '') === '1');
     $optionalHint = $hint !== null
         ? ' <span class="field-hint">(' . e($hint) . ')</span>'
         : ($required
@@ -1185,15 +1193,9 @@ function person_name_fields(
 
             $markup .= '<label' . $forAttribute . '>' . e($partLabel) . $hint
                 . '<input type="text"' . $idAttribute . ' name="' . e($inputName) . '" autocomplete="' . $autocomplete
-                . '" value="' . e($value) . '"' . ($naChecked ? ' disabled' : '') . '></label>';
+                . '" value="' . e($value) . '"></label>';
         }
         $markup .= '</div>';
-    }
-
-    if ($allowNa) {
-        $markup .= '<input type="hidden" name="' . e($prefix) . '_na" value="0">'
-            . '<label class="checkbox-label na-toggle"><input type="checkbox" name="' . e($prefix) . '_na" value="1"'
-            . ($naChecked ? ' checked' : '') . '> Not applicable (not listed on the birth certificate or not known)</label>';
     }
 
     return $markup . '</div>';

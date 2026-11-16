@@ -274,7 +274,7 @@ function mail_certificate_request_received(
         . ($requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '')
         . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
         . "Enter this reference and the email address used on the request.\r\n\r\n";
-    $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded. Keep any claim stub or payment slip the secretary gives you.\r\n\r\n"
+    $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
         . $selfPickupRequirement

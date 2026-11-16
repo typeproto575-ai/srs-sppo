@@ -658,8 +658,8 @@ require_once __DIR__ . '/../includes/header.php';
         <strong>After submission: review, payment, and pickup</strong>
         <ol>
             <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
-            <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you.</li>
-            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring. An authorized representative must bring a signed authorization letter from the person named on the certificate.</li>
+            <li>If asked to proceed, handle payment at the Parish Office.</li>
+            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
             <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
         </ol>
         <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
