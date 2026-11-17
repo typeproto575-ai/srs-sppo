@@ -1,10 +1,319 @@
-SET FOREIGN_KEY_CHECKS=0 
--- SRS-SPPO v2 ANIME DEMO SEED v2  
--- Explicit column names matching database/v2/schema.sql  
--- Every INSERT lists columns explicitly to avoid positional mismatches  
--- legitimacy is always NULL on sacrament_records: new entries never store it  
--- No money amounts: payment is manual paid_at / paid_by stamp  
--- Identity lives only in persons: no identity fields copied to other tables  
-USE srs_sppo_db  
-SET NAMES utf8mb4 
-INSERT INTO persons (id, first_name, middle_name, last_name, suffix, sex, birth_date, birth_place, father_name, mother_maiden_name, father_person_id, mother_person_id, address, contact_number, observanda, email, public_reference, baptismal_status, is_deceased, death_date, created_at, updated_at) VALUES (1, 'Tatsuo', NULL, 'Kirishima', NULL, 'male', '1945-03-15', 'Tokyo', 'Kenji Kirishima', 'Miyako Kirishima', NULL, NULL, 'Kanto Region', '0901111111', NULL, 'tatsuo@example.com', NULL, 0, NULL, NOW(), NOW()) 
+-- Fictional staging dataset for the current unified-person V2 schema.
+-- Import only after schema.sql into a new, empty database selected in phpMyAdmin.
+-- Names and scenarios are original examples, not real parish records.
+-- This file is additive and creates no staff account or default password.
+SET NAMES utf8mb4;
+
+INSERT INTO persons
+    (id, first_name, last_name, sex, birth_date, birth_place, father_name,
+     mother_maiden_name, father_person_id, mother_person_id, address,
+     contact_number, email, baptismal_status, public_reference)
+VALUES
+    (1, 'Haruto', 'Akiyama', 'male', '1982-03-14', 'Sakura Ward',
+     'Fumio Akiyama', 'Keiko Mori', NULL, NULL, 'Demo District',
+     '+81-90-5555-0101', 'haruto@example.com', 'baptized_catholic', 'SPPO-P-CD7DCCAAED444719'),
+    (2, 'Emi', 'Takahashi', 'female', '1984-07-22', 'River Town',
+     'Hiroshi Takahashi', 'Natsumi Ito', NULL, NULL, 'Demo District',
+     '+81-90-5555-0102', 'emi@example.com', 'baptized_catholic', 'SPPO-P-9E1DC6BFD4BD4C60'),
+    (5, 'Sora', 'Nakamura', 'female', '1994-02-11', 'Maple City',
+     'Akira Nakamura', 'Yoko Sato', NULL, NULL, 'North Demo Ward',
+     '+81-90-5555-0105', 'sora@example.com', 'baptized_catholic', 'SPPO-P-0F535F55A53A42EB'),
+    (6, 'Renji', 'Kato', 'male', '1993-09-03', 'Harbor Town',
+     'Takeshi Kato', 'Mika Endo', NULL, NULL, 'Harbor Demo Ward',
+     '+81-90-5555-0106', 'renji@example.com', 'baptized_catholic', 'SPPO-P-6D18E5E7FA7048B7');
+
+INSERT INTO persons
+    (id, first_name, last_name, sex, birth_date, birth_place, father_name,
+     mother_maiden_name, father_person_id, mother_person_id, address,
+     email, baptismal_status, public_reference)
+VALUES
+    (3, 'Ren', 'Akiyama', 'male', '2012-05-08', 'Sakura Ward',
+     'Haruto Akiyama', 'Emi Takahashi', 1, 2, 'Demo District',
+     'ren@example.com', 'baptized_catholic', 'SPPO-P-14B0CD7D1EEA4C3C'),
+    (4, 'Yui', 'Akiyama', 'female', '2015-11-19', 'Sakura Ward',
+     'Haruto Akiyama', 'Emi Takahashi', 1, 2, 'Demo District',
+     'yui@example.com', 'baptized_catholic', 'SPPO-P-2EB62BA0BF81474D'),
+    (7, 'Miu', 'Akiyama', 'female', '2020-06-02', 'Sakura Ward',
+     'Haruto Akiyama', 'Emi Takahashi', 1, 2, 'Demo District',
+     'miu@example.com', 'baptized_catholic', 'SPPO-P-8907F69DD4D9492B');
+
+INSERT INTO persons
+    (id, first_name, last_name, sex, birth_date, birth_place, father_name,
+     mother_maiden_name, father_person_id, mother_person_id, address,
+     email, baptismal_status, public_reference)
+VALUES
+    (8, 'Ramon', 'Dela Cruz', 'male', '1984-05-17', 'Dingalan, Aurora',
+     'Isidro Dela Cruz', 'Remedios Santos', NULL, NULL,
+     'Poblacion Demo, Dingalan, Aurora', 'ramon.delacruz@example.com', 'baptized_catholic', 'SPPO-P-C14EABE0E45B4432'),
+    (9, 'Elena', 'Santos', 'female', '1986-09-02', 'Baler, Aurora',
+     'Ernesto Santos', 'Leonora Cruz', NULL, NULL,
+     'Poblacion Demo, Dingalan, Aurora', 'elena.santos@example.com', 'baptized_catholic', 'SPPO-P-069565015CCD4877'),
+    (10, 'Lara', 'Dela Cruz', 'female', '2011-06-26', 'Dingalan, Aurora',
+     'Ramon Dela Cruz', 'Elena Santos', 8, 9,
+     'Poblacion Demo, Dingalan, Aurora', 'lara.delacruz@example.com', 'baptized_catholic', 'SPPO-P-0720EACE1CC34A2A'),
+    (11, 'Miguel', 'Dela Cruz', 'male', '2014-12-10', 'Dingalan, Aurora',
+     'Ramon Dela Cruz', 'Elena Santos', 8, 9,
+     'Poblacion Demo, Dingalan, Aurora', 'miguel.delacruz@example.com', 'baptized_catholic', 'SPPO-P-7153ABFF7B094851'),
+    (12, 'Paolo', 'Ramirez', 'male', '1989-02-11', 'San Luis, Aurora',
+     'Rogelio Ramirez', 'Carmen Bautista', NULL, NULL,
+     'Demo Sitio, San Luis, Aurora', 'paolo.ramirez@example.com', 'baptized_catholic', 'SPPO-P-4E4C7DC880844EAB'),
+    (13, 'Maricel', 'Flores', 'female', '1990-04-05', 'Dingalan, Aurora',
+     'Arturo Flores', 'Lilia Mendoza', NULL, NULL,
+     'Demo Sitio, Dingalan, Aurora', 'maricel.flores@example.com', 'baptized_catholic', 'SPPO-P-67ED236EF8C845E7'),
+    (14, 'Jessa', 'Ramirez', 'female', '2016-01-19', 'Dingalan, Aurora',
+     'Paolo Ramirez', 'Maricel Flores', 12, 13,
+     'Demo Sitio, Dingalan, Aurora', 'jessa.ramirez@example.com', 'baptized_catholic', 'SPPO-P-ED39D2F73F43494F'),
+    (15, 'Adrian', 'Ramirez', 'male', '2018-03-03', 'Dingalan, Aurora',
+     'Paolo Ramirez', 'Maricel Flores', 12, 13,
+     'Demo Sitio, Dingalan, Aurora', 'adrian.ramirez@example.com', 'baptized_catholic', 'SPPO-P-3D78FFBA204A4E6A'),
+    (16, 'Teresa', 'Manalo', 'female', '1995-08-08', 'Baler, Aurora',
+     'Orlando Manalo', 'Alice Bautista', NULL, NULL,
+     'Demo Sitio, Baler, Aurora', 'teresa.manalo@example.com', 'baptized_catholic', 'SPPO-P-59907C27AD7547A3'),
+    (17, 'Daniel', 'Villanueva', 'male', '1993-07-14', 'Dingalan, Aurora',
+     'Gregorio Villanueva', 'Eliza Ramos', NULL, NULL,
+     'Demo Sitio, Dingalan, Aurora', 'daniel.villanueva@example.com', 'baptized_catholic', 'SPPO-P-8FA2AB7FDF194727'),
+    (18, 'Nicole', 'Villanueva', 'female', '2022-10-17', 'Dingalan, Aurora',
+     'Daniel Villanueva', 'Teresa Manalo', 17, 16,
+     'Demo Sitio, Dingalan, Aurora', 'nicole.villanueva@example.com', 'baptized_catholic', 'SPPO-P-F8DC086D17C4491C'),
+    (19, 'Joshua', 'Ramos', 'male', '2008-07-29', 'Dingalan, Aurora',
+     'Nilo Ramos', 'Florenda Reyes', NULL, NULL,
+     'Demo District, Dingalan, Aurora', 'joshua.ramos@example.com', 'baptized_catholic', 'SPPO-P-7ABDE7DE4599435B'),
+    (20, 'Camille', 'Ramos', 'female', '2010-03-19', 'Dingalan, Aurora',
+     'Nilo Ramos', 'Florenda Reyes', NULL, NULL,
+     'Demo District, Dingalan, Aurora', 'camille.ramos@example.com', 'baptized_catholic', 'SPPO-P-A85B91B53C814B70'),
+    (21, 'Lourdes', 'Garcia', 'female', '1958-02-14', 'Dingalan, Aurora',
+     'Felipe Garcia', 'Pilar Mendoza', NULL, NULL,
+     'Demo District, Dingalan, Aurora', 'lourdes.garcia@example.com', 'baptized_catholic', 'SPPO-P-BB3950F47BB2450B'),
+    (22, 'Emilio', 'Garcia', 'male', '1956-11-09', 'Dingalan, Aurora',
+     'Vicente Garcia', 'Rosario Dizon', NULL, NULL,
+     'Demo District, Dingalan, Aurora', 'emilio.garcia@example.com', 'baptized_catholic', 'SPPO-P-88FA67D696AB4D4B'),
+    (23, 'Rosanna', 'Garcia', 'female', '1982-05-23', 'Dingalan, Aurora',
+     'Emilio Garcia', 'Lourdes Garcia', 22, 21,
+     'Demo District, Dingalan, Aurora', 'rosanna.garcia@example.com', 'baptized_catholic', 'SPPO-P-A687A69F6AFF4C17'),
+    (24, 'Mateo', 'Garcia', 'male', '1985-09-21', 'Dingalan, Aurora',
+     'Emilio Garcia', 'Lourdes Garcia', 22, 21,
+     'Demo District, Dingalan, Aurora', 'mateo.garcia@example.com', 'baptized_catholic', 'SPPO-P-BF76C8E4421C4D55'),
+    (25, 'Pia', 'Garcia', 'female', '1990-06-04', 'Dingalan, Aurora',
+     'Emilio Garcia', 'Lourdes Garcia', 22, 21,
+     'Demo District, Dingalan, Aurora', 'pia.garcia@example.com', 'baptized_catholic', 'SPPO-P-0DF2D45AD56D4792'),
+    (26, 'Rafael', 'Ortega', 'male', '1987-02-17', 'Baler, Aurora',
+     'Manuel Ortega', 'Cecilia Lim', NULL, NULL,
+     'Demo Sitio, Baler, Aurora', 'rafael.ortega@example.com', 'baptized_catholic', 'SPPO-P-87B259A3106142CA'),
+    (27, 'Teresa', 'Ortega', 'female', '2016-09-09', 'Dingalan, Aurora',
+     'Rafael Ortega', 'Pia Garcia', 26, 25,
+     'Demo District, Dingalan, Aurora', 'teresa.ortega@example.com', 'baptized_catholic', 'SPPO-P-A1E00C13FA4A47D1');
+
+INSERT INTO sacrament_records
+    (id, sacrament_type, person_id, spouse_person_id, source, event_date,
+     place, minister_name, entry_no, book_no, page_no, line_no,
+     parents_union_type, legitimacy, details)
+VALUES
+    (1, 'baptism', 1, NULL, 'this_parish', '1982-04-04',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-1982-014', '1', '12', '4',
+     'canonical', NULL, '{"parents_residence":"Demo District"}'),
+    (2, 'first_communion', 1, NULL, 'this_parish', '1990-05-20',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'FC-1990-008', '1', '8', '2',
+     NULL, NULL, '{"domicile":"Demo District"}'),
+    (3, 'confirmation', 1, NULL, 'this_parish', '1995-10-08',
+     'St. Patrick Parish', 'Bishop Elias Navarro', 'C-1995-021', '2', '5', '7',
+     NULL, NULL, NULL),
+    (4, 'baptism', 2, NULL, 'this_parish', '1984-08-12',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-1984-031', '1', '18', '6',
+     'canonical', NULL, '{"parents_residence":"River Town"}'),
+    (5, 'first_communion', 2, NULL, 'this_parish', '1992-05-24',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'FC-1992-013', '1', '11', '3',
+     NULL, NULL, '{"domicile":"River Town"}'),
+    (6, 'confirmation', 2, NULL, 'this_parish', '1997-09-14',
+     'St. Patrick Parish', 'Bishop Elias Navarro', 'C-1997-026', '2', '9', '1',
+     NULL, NULL, NULL),
+    (7, 'marriage', 1, 2, 'this_parish', '2008-05-17',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'M-2008-006', '3', '2', '6',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2008-006"}'),
+    (8, 'baptism', 3, NULL, 'this_parish', '2012-06-10',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'B-2012-019', '4', '3', '5',
+     'canonical', NULL, '{"parents_residence":"Demo District"}'),
+    (9, 'baptism', 4, NULL, 'this_parish', '2015-12-13',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'B-2015-044', '4', '15', '2',
+     'canonical', NULL, '{"parents_residence":"Demo District"}'),
+    (10, 'baptism', 5, NULL, 'other_parish', '1994-03-20',
+     'Maple City Parish', 'Fr. Kenji Watanabe', 'EXT-1994-011', 'A', '4', '3',
+     'canonical', NULL, '{"origin_parish":"Maple City Parish"}'),
+    (11, 'baptism', 6, NULL, 'this_parish', '1993-10-10',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-1993-037', '2', '14', '8',
+     'canonical', NULL, '{"parents_residence":"Harbor Town"}'),
+    (12, 'marriage', 6, 5, 'this_parish', '2021-06-12',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'M-2021-004', '5', '2', '3',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2021-004"}');
+
+INSERT INTO sacrament_records
+    (id, sacrament_type, person_id, spouse_person_id, source, event_date,
+     place, minister_name, entry_no, book_no, page_no, line_no,
+     parents_union_type, legitimacy, details)
+VALUES
+    (13, 'baptism', 8, NULL, 'this_parish', '1984-06-03',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1984-021', '1', '24', '2',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (14, 'first_communion', 8, NULL, 'this_parish', '1992-05-24',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'FC-1992-014', '2', '8', '4',
+     NULL, NULL, '{"domicile":"Dingalan, Aurora"}'),
+    (15, 'confirmation', 8, NULL, 'this_parish', '1997-09-07',
+     'St. Patrick Parish', 'Bishop Miguel Santos', 'C-1997-018', '2', '16', '3',
+     NULL, NULL, NULL),
+    (16, 'baptism', 9, NULL, 'this_parish', '1986-09-28',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1986-039', '1', '31', '5',
+     'canonical', NULL, '{"parents_residence":"Baler, Aurora"}'),
+    (17, 'marriage', 8, 9, 'this_parish', '2010-05-15',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'M-2010-007', '4', '5', '2',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2010-007"}'),
+    (18, 'baptism', 10, NULL, 'this_parish', '2011-07-17',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-2011-029', '4', '12', '1',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (19, 'first_communion', 10, NULL, 'this_parish', '2019-05-26',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'FC-2019-016', '5', '3', '4',
+     NULL, NULL, '{"domicile":"Dingalan, Aurora"}'),
+    (20, 'baptism', 11, NULL, 'this_parish', '2014-12-28',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-2014-047', '4', '28', '6',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (21, 'baptism', 12, NULL, 'this_parish', '1989-03-12',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1989-016', '1', '44', '3',
+     'canonical', NULL, '{"parents_residence":"San Luis, Aurora"}'),
+    (22, 'marriage', 12, 13, 'this_parish', '2014-06-21',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'M-2014-011', '4', '18', '5',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2014-011"}'),
+    (23, 'baptism', 14, NULL, 'this_parish', '2016-02-14',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-2016-006', '5', '4', '3',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (24, 'baptism', 15, NULL, 'this_parish', '2018-04-08',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-2018-013', '5', '10', '2',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (25, 'baptism', 16, NULL, 'other_parish', '1995-09-17',
+     'Baler Parish', 'Fr. Rodrigo Cruz', 'EXT-1995-031', 'B', '11', '4',
+     'canonical', NULL, '{"origin_parish":"Baler Parish"}'),
+    (26, 'baptism', 17, NULL, 'this_parish', '1993-08-22',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1993-034', '2', '11', '6',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (27, 'marriage', 17, 16, 'this_parish', '2021-02-13',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'M-2021-009', '5', '7', '3',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2021-009"}'),
+    (28, 'baptism', 18, NULL, 'this_parish', '2022-11-13',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'B-2022-026', '6', '3', '2',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (29, 'baptism', 19, NULL, 'this_parish', '2008-08-17',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'B-2008-032', '3', '12', '5',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (30, 'first_communion', 19, NULL, 'this_parish', '2016-05-22',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'FC-2016-014', '4', '5', '2',
+     NULL, NULL, '{"domicile":"Dingalan, Aurora"}'),
+    (31, 'confirmation', 19, NULL, 'this_parish', '2021-10-24',
+     'St. Patrick Parish', 'Bishop Miguel Santos', 'C-2021-027', '6', '6', '5',
+     NULL, NULL, NULL),
+    (32, 'baptism', 20, NULL, 'this_parish', '2010-04-11',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'B-2010-015', '3', '20', '1',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (33, 'first_communion', 20, NULL, 'this_parish', '2018-05-27',
+     'St. Patrick Parish', 'Fr. Tomas Villanueva', 'FC-2018-012', '5', '2', '4',
+     NULL, NULL, '{"domicile":"Dingalan, Aurora"}'),
+    (34, 'confirmation', 20, NULL, 'this_parish', '2023-10-22',
+     'St. Patrick Parish', 'Bishop Miguel Santos', 'C-2023-021', '6', '15', '3',
+     NULL, NULL, NULL),
+    (35, 'baptism', 21, NULL, 'this_parish', '1958-03-30',
+     'St. Patrick Parish', 'Fr. Lucas Mendoza', 'B-1958-018', '1', '52', '4',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (36, 'baptism', 22, NULL, 'this_parish', '1956-12-02',
+     'St. Patrick Parish', 'Fr. Lucas Mendoza', 'B-1956-009', '1', '47', '2',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (37, 'marriage', 22, 21, 'this_parish', '1978-04-29',
+     'St. Patrick Parish', 'Fr. Lucas Mendoza', 'M-1978-004', '3', '9', '1',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-1978-004"}'),
+    (38, 'baptism', 23, NULL, 'this_parish', '1982-06-13',
+     'St. Patrick Parish', 'Fr. Lucas Mendoza', 'B-1982-022', '1', '60', '3',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (39, 'baptism', 24, NULL, 'this_parish', '1985-10-19',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1985-046', '1', '72', '6',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (40, 'baptism', 25, NULL, 'this_parish', '1990-07-08',
+     'St. Patrick Parish', 'Fr. Antonio Reyes', 'B-1990-029', '2', '5', '1',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}'),
+    (41, 'baptism', 26, NULL, 'other_parish', '1987-04-12',
+     'Baler Parish', 'Fr. Rodrigo Cruz', 'EXT-1987-017', 'A', '19', '3',
+     'canonical', NULL, '{"origin_parish":"Baler Parish"}'),
+    (42, 'marriage', 26, 25, 'this_parish', '2014-12-06',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'M-2014-023', '4', '27', '2',
+     NULL, NULL,
+     '{"groom":{"civil_status":"single"},"bride":{"civil_status":"single"},"license_ref":"DEMO-2014-023"}'),
+    (43, 'baptism', 27, NULL, 'this_parish', '2016-10-16',
+     'St. Patrick Parish', 'Fr. Mateo Reyes', 'B-2016-043', '5', '8', '6',
+     'canonical', NULL, '{"parents_residence":"Dingalan, Aurora"}');
+
+INSERT INTO sacrament_participants (record_id, role, full_name, residence, sort_order)
+VALUES
+    (1, 'godfather', 'Kenta Mori', 'Sakura Ward', 1),
+    (1, 'godmother', 'Aiko Fujita', 'Sakura Ward', 2),
+    (7, 'principal_sponsor', 'Naoki Sato', 'Demo District', 1),
+    (12, 'witness', 'Mina Kobayashi', 'Harbor Demo Ward', 1);
+
+INSERT INTO sacrament_batches (sacrament_type, grade_level, school_year, batch_name)
+VALUES
+    ('first_communion', '3', '2026-2027', 'Demo First Communion Group'),
+    ('confirmation', '6', '2026-2027', 'Demo Confirmation Group');
+
+INSERT INTO sacrament_applications
+    (request_no, channel, sacrament_type, person_id, spouse_person_id,
+     applicant_name, applicant_email, applicant_contact, preferred_date,
+     preferred_time, status, details, requirements, privacy_consent_at)
+VALUES
+    ('SA-DEMO-001', 'online', 'baptism', 7, NULL,
+     'Haruto Akiyama', 'haruto@example.com', '+81-90-5555-0101',
+     '2026-12-06', '10:00:00', 'new',
+     '{"child_name":"Miu Akiyama","child_birth_date":"2020-06-02","father_name":"Haruto Akiyama","mother_maiden_name":"Emi Takahashi"}',
+     '{"psa_birth_certificate":{"status":"not_received","note":""}}',
+     '2026-11-01 09:00:00'),
+    ('SA-DEMO-002', 'online', 'marriage', 5, 6,
+     'Sora Nakamura', 'sora@example.com', '+81-90-5555-0105',
+     '2027-03-20', '14:00:00', 'reviewing',
+     '{"groom":{"full_name":"Renji Kato","baptism_status":"this_parish"},"bride":{"full_name":"Sora Nakamura","baptism_status":"other_parish"},"venue":"St. Patrick Parish"}',
+     '{"psa_cenomar":{"status":"not_received","note":""},"origin_baptismal_certificate":{"status":"received","note":"Demo copy"},"transfer_letter":{"status":"not_received","note":""}}',
+     '2026-11-02 10:30:00'),
+    ('SA-DEMO-003', 'online', 'first_communion', 3, NULL,
+     'Haruto Akiyama', 'haruto@example.com', '+81-90-5555-0101',
+     '2027-05-23', '09:00:00', 'requirements_pending',
+     '{"candidate_name":"Ren Akiyama","baptism_status":"this_parish","catechism_batch":"2026-2027"}',
+     '{"origin_baptismal_certificate":{"status":"not_applicable","note":"Baptized in this parish"},"catechism_completion":{"status":"not_received","note":""}}',
+     '2026-11-03 11:15:00');
+
+INSERT INTO certificate_requests
+    (request_no, channel, sacrament_type, subject_name, subject_details,
+     requester_name, requester_relationship, requester_email,
+     requester_contact_number, purpose, privacy_consent_at, person_id,
+     record_id, status)
+VALUES
+    ('CR-DEMO-001', 'online', 'baptism', 'Haruto Akiyama',
+     '{"birth_date":"1982-03-14","father_name":"Fumio Akiyama","mother_maiden_name":"Keiko Mori"}',
+     'Haruto Akiyama', 'self', 'haruto@example.com', '+81-90-5555-0101',
+     'personal', '2026-11-04 08:45:00', 1, 1, 'new');
+
+INSERT INTO schedule_events
+    (event_type, title, public_details, event_date, start_time, end_time)
+VALUES
+    ('baptism', 'Demo Baptism Celebration',
+     'Fictional staging calendar entry for system testing.', '2026-12-06', '10:00:00', '11:00:00'),
+    ('wedding', 'Demo Wedding Celebration',
+     'Fictional staging calendar entry for system testing.', '2027-03-20', '14:00:00', '15:00:00');
+
+INSERT INTO announcements (title, content, event_date, is_published)
+VALUES
+    ('STAGING DEMO: Fictional sample records',
+     'This is a staging demonstration with original fictional sample data. Do not treat these names or events as parish records. Do not submit real requests here.',
+     '2026-11-17', 1);
+
+INSERT INTO settings (setting_key, setting_value)
+VALUES
+    ('parish_name', 'SRS-SPPO Staging Demo'),
+    ('first_communion_min_age', '8'),
+    ('confirmation_min_age', '12');

@@ -53,6 +53,8 @@ SELECT CASE sr.sacrament_type
        CONCAT_WS(' ', spouse.first_name, spouse.middle_name, spouse.last_name, spouse.suffix) AS spouse_name,
        sr.event_date, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
        sr.person_id, sr.spouse_person_id,
+       p.public_reference AS record_person_reference,
+       spouse.public_reference AS spouse_person_reference,
        p.first_name AS record_first_name,
        p.middle_name AS record_middle_name,
        p.last_name AS record_last_name,
@@ -100,11 +102,11 @@ if ($search !== '') {
                 $nameTokenParams[] = $middleInitial;
             }
         }
-        $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
+        $where[] = '(record_name LIKE ? OR spouse_name LIKE ? OR record_person_reference LIKE ? OR spouse_person_reference LIKE ? OR CAST(id AS CHAR) LIKE ? OR book_no LIKE ? OR page_no LIKE ? OR line_no LIKE ?'
             . ($nameTokenConditions ? ' OR (' . implode(' AND ', $nameTokenConditions) . ')' : '')
             . ')';
         $fullSearchLike = '%' . addcslashes($search, '\\_%') . '%';
-        array_push($params, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike);
+        array_push($params, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike, $fullSearchLike);
         array_push($params, ...$nameTokenParams);
     }
 }
@@ -237,7 +239,7 @@ $editorTypeByRecordType = [
 </details>
             </div>
         </div>
-        <p class="field-hint">Search names (words can be in any order), record IDs, or an exact register reference such as <code>b12 p1 l4</code>. You can also search one field, such as <code>p1</code> or <code>l4</code>; then open the register-specific editor to verify the physical logbook reference.</p>
+        <p class="field-hint">Search names (words can be in any order), public person references, record IDs, or an exact register reference such as <code>b12 p1 l4</code>. You can also search one field, such as <code>p1</code> or <code>l4</code>; then open the register-specific editor to verify the physical logbook reference.</p>
 
         <div class="record-type-chips">
 <?php foreach (['' => 'All', 'baptismal' => 'Baptism', 'confirmation' => 'Confirmation', 'first_communion' => 'First Communion', 'marriage' => 'Marriage'] as $chipValue => $chipLabel): ?>
@@ -252,7 +254,7 @@ $editorTypeByRecordType = [
                 <?php if ($toYear !== null): ?><input type="hidden" name="to" value="<?= (int) $toYear ?>"><?php endif; ?>
                 <?php if ($perPage !== 25): ?><input type="hidden" name="per_page" value="<?= (int) $perPage ?>"><?php endif; ?>
                 <?php if ($sort !== 'date_desc'): ?><input type="hidden" name="sort" value="<?= e($sort) ?>"><?php endif; ?>
-                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Name, record ID, or register reference (e.g. b12 p1 l4)">
+                <input autocomplete="off" type="search" name="q" value="<?= e($search) ?>" placeholder="Name, person reference, record ID, or register reference">
                 <button type="submit" class="btn btn-small">Search</button>
                 <?php if ($search !== ''): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['q' => null, 'page' => null])) ?>">Clear</a><?php endif; ?>
             </form>
@@ -350,7 +352,15 @@ $editorTypeByRecordType = [
                             <td><?= e($record['book_no'] ?: '—') ?></td>
                             <td><?= e($record['page_no'] ?: '—') ?></td>
                             <td><?= e($record['line_no'] ?: '—') ?></td>
-                            <td><strong><?php if (!empty($record['person_id'])): ?><a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $record['person_id']) ?>"><?= e($recordDisplayName) ?></a><?php else: ?><?= e($recordDisplayName) ?><?php endif; ?></strong></td>
+                            <td>
+                                <strong><?php if (!empty($record['person_id'])): ?><a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $record['person_id']) ?>"><?= e($recordDisplayName) ?></a><?php else: ?><?= e($recordDisplayName) ?><?php endif; ?></strong>
+                                <?php if ($record['record_type'] === 'marriage'): ?>
+                                    <br><small class="field-hint">Groom public person reference: <code><?= e($record['record_person_reference'] ?: 'Not assigned') ?></code></small>
+                                    <br><small class="field-hint">Bride public person reference: <code><?= e($record['spouse_person_reference'] ?: 'Not assigned') ?></code></small>
+                                <?php else: ?>
+                                    <br><small class="field-hint">Public person reference: <code><?= e($record['record_person_reference'] ?: 'Not assigned') ?></code></small>
+                                <?php endif; ?>
+                            </td>
                             <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
                             <?php

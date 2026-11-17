@@ -1577,17 +1577,14 @@ document.addEventListener('DOMContentLoaded', function () {
         var gradeMarker = form && form.querySelector('[data-grade-required-marker]');
         var schoolYearContainer = form && form.querySelector('[data-school-year-container]');
         var schoolYearLabel = form && form.querySelector('[data-school-year-label]');
-        var schoolYearMarker = form && form.querySelector('[data-school-year-required-marker]');
         var schoolYear = form && form.elements.school_year;
         if (!grade || !schoolYearContainer || !schoolYear) return;
 
         var activeSchoolYear = pathway.getAttribute('data-active-school-year') || '';
         var gradePrompt = grade.querySelector('option[value=""]');
-        var outOfSchoolOption = grade.querySelector('option[value="not_enrolled"]');
 
         function syncFormationFields() {
             var selectedPath = pathway.value;
-            var schoolBased = selectedPath === 'school_based' || selectedPath === 'batch';
             var individual = selectedPath === 'individual_catchup';
             var gradeRequired = !individual && ['school_based', 'batch', 'parish_based', 'not_sure'].indexOf(selectedPath) !== -1;
 
@@ -1596,22 +1593,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (gradePrompt) {
                 gradePrompt.textContent = individual ? '-- Select if applicable --' : '-- Select --';
             }
-            if (individual && !grade.value) grade.value = 'not_applicable';
-            if (gradeRequired && grade.value === 'not_applicable') grade.value = '';
-            if (outOfSchoolOption) {
-                outOfSchoolOption.disabled = schoolBased;
-                if (schoolBased && grade.value === 'not_enrolled') grade.value = '';
-            }
-
             schoolYearContainer.hidden = individual;
             schoolYear.disabled = individual;
-            schoolYear.required = schoolBased;
-            schoolYear.placeholder = schoolBased ? '2026-2027' : activeSchoolYear;
+            schoolYear.placeholder = activeSchoolYear;
             if (individual) schoolYear.value = '';
             if (schoolYearLabel) {
-                schoolYearLabel.textContent = 'School year';
+                schoolYearLabel.textContent = 'Target sacrament year';
             }
-            if (schoolYearMarker) schoolYearMarker.hidden = !schoolBased;
         }
 
         pathway.addEventListener('change', syncFormationFields);
@@ -2280,7 +2268,8 @@ document.addEventListener('DOMContentLoaded', function () {
             identityInputNames().forEach(function (name) {
                 var input = field(name);
                 if (!input) return;
-                input.readOnly = readOnly;
+                var value = input.value.trim();
+                input.readOnly = readOnly && value !== '' && value.toUpperCase() !== 'N/A';
                 input.classList.toggle('person-profile-readonly', input.readOnly);
             });
         }
@@ -2289,7 +2278,7 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.replaceChildren();
             var confirmation = document.createElement('p');
             confirmation.className = 'person-lookup-selection';
-            confirmation.textContent = message || 'A parish profile is selected. Recorded biographical details are read-only; clear the selection to change profiles.';
+            confirmation.textContent = message || 'A parish profile is selected. Recorded details are locked; blank or N/A details can be completed.';
             referenceInput.readOnly = true;
             selectionClear.hidden = false;
             confirmation.appendChild(selectionClear);
@@ -2426,5 +2415,182 @@ document.addEventListener('DOMContentLoaded', function () {
             input.addEventListener('input', scheduleSearch);
             input.addEventListener('change', scheduleSearch);
         });
+    });
+
+    document.querySelectorAll('[data-parish-schedule-picker]').forEach(function (picker) {
+        var dateInput = picker.querySelector('[data-schedule-date]');
+        var slotSelect = picker.querySelector('[data-schedule-slot]');
+        var startInput = picker.querySelector('[data-schedule-start]');
+        var endInput = picker.querySelector('[data-schedule-end]');
+        var status = picker.querySelector('[data-schedule-status]');
+        var eventList = picker.querySelector('[data-schedule-events]');
+        var eventEmpty = picker.querySelector('[data-schedule-event-empty]');
+        var eventListPanel = picker.querySelector('[data-schedule-event-panel]');
+        var slotList = picker.querySelector('[data-schedule-slot-list]');
+        var requestNumber = 0;
+        var previewOnly = picker.dataset.previewOnly === '1';
+        if (!dateInput || !slotSelect || (!startInput && !previewOnly) || !status) return;
+
+        function appendOption(label, value, selected) {
+            var option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            option.selected = selected;
+            slotSelect.appendChild(option);
+        }
+
+        function timeLabel(value) {
+            if (!value) return '';
+            var parts = value.split(':');
+            var hour = Number(parts[0]);
+            var minute = parts[1] || '00';
+            return (hour % 12 || 12) + ':' + minute + ' ' + (hour < 12 ? 'AM' : 'PM');
+        }
+
+        function clearSelection() {
+            if (startInput) startInput.value = '';
+            if (endInput) endInput.value = '';
+        }
+
+        function renderEvents(events) {
+            if (!eventList || !eventListPanel) return;
+            eventList.replaceChildren();
+            eventListPanel.hidden = false;
+            if (!events.length) {
+                if (eventEmpty) eventEmpty.hidden = false;
+                return;
+            }
+            if (eventEmpty) eventEmpty.hidden = true;
+            events.forEach(function (event) {
+                var item = document.createElement('li');
+                var title = document.createElement('strong');
+                title.textContent = event.label;
+                item.appendChild(title);
+                item.appendChild(document.createTextNode(' · ' + event.time));
+                eventList.appendChild(item);
+            });
+        }
+
+        function loadAvailability() {
+            var date = dateInput.value;
+            var requestId = ++requestNumber;
+            slotSelect.replaceChildren();
+            clearSelection();
+            if (!date) {
+                appendOption('Choose a date first', '', true);
+                slotSelect.disabled = true;
+                slotSelect.required = !previewOnly && picker.dataset.requireSlotOnDate !== '1';
+                status.textContent = 'Choose a date to view existing parish schedules and available times.';
+                if (eventList) eventList.replaceChildren();
+                if (eventListPanel) eventListPanel.hidden = true;
+                if (slotList) slotList.replaceChildren();
+                return;
+            }
+
+            appendOption('Loading available times…', '', true);
+            slotSelect.disabled = true;
+            slotSelect.required = !previewOnly && (picker.dataset.requireSlotOnDate !== '1' || date !== '');
+            status.textContent = 'Checking parish schedules for this date…';
+
+            var endpoint = new URL(picker.dataset.availabilityUrl, window.location.href);
+            endpoint.searchParams.set('date', date);
+            if (picker.dataset.excludeEventId) {
+                endpoint.searchParams.set('exclude_event_id', picker.dataset.excludeEventId);
+            }
+            if (picker.dataset.excludeFuneralRecordId) {
+                endpoint.searchParams.set('exclude_funeral_record_id', picker.dataset.excludeFuneralRecordId);
+            }
+
+            fetch(endpoint.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (response) {
+                    return response.json().then(function (payload) {
+                        if (!response.ok) throw new Error(payload.error || 'Schedule availability could not be loaded.');
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    if (requestId !== requestNumber) return;
+                    slotSelect.replaceChildren();
+                    appendOption(payload.slots.length ? 'Select an available 60-minute time' : 'No available times', '', true);
+
+                    var currentDate = picker.dataset.currentDate || '';
+                    var currentStart = picker.dataset.currentStart || '';
+                    var currentEnd = picker.dataset.currentEnd || '';
+                    var currentValue = currentStart ? currentStart + '|' + currentEnd : '';
+                    var currentSlot = payload.slots.find(function (slot) {
+                        return slot.start_time === currentStart;
+                    });
+                    if (date === currentDate && currentStart && !currentEnd && currentSlot) {
+                        currentValue = currentStart + '|' + currentSlot.end_time;
+                    }
+                    var currentIncluded = false;
+                    payload.slots.forEach(function (slot) {
+                        var value = slot.start_time + '|' + slot.end_time;
+                        var isCurrent = date === currentDate && value === currentValue;
+                        currentIncluded = currentIncluded || isCurrent;
+                        appendOption(slot.label, value, isCurrent);
+                    });
+                    if (slotList) {
+                        slotList.replaceChildren();
+                        if (!payload.slots.length) {
+                            var noSlots = document.createElement('li');
+                            noSlots.textContent = 'No available times for this date.';
+                            slotList.appendChild(noSlots);
+                        } else {
+                            payload.slots.forEach(function (slot) {
+                                var availableTime = document.createElement('li');
+                                availableTime.textContent = slot.label;
+                                slotList.appendChild(availableTime);
+                            });
+                        }
+                    }
+                    if (date === currentDate && currentStart && currentEnd && !currentIncluded) {
+                        var currentLabel = 'Current schedule: ' + timeLabel(currentStart)
+                            + '–' + timeLabel(currentEnd);
+                        appendOption(currentLabel, currentValue, true);
+                    }
+                    slotSelect.disabled = payload.slots.length === 0;
+                    renderEvents(payload.events || []);
+                    status.textContent = payload.slots.length
+                        ? payload.slots.length + ' available 60-minute schedule' + (payload.slots.length === 1 ? '' : 's')
+                            + ' between 8:00 AM and 5:00 PM. Existing parish and death schedules are listed below.'
+                        : 'No 60-minute times are available between 8:00 AM and 5:00 PM. Choose another date.';
+                    if (!previewOnly && date === currentDate && currentStart) {
+                        slotSelect.value = currentValue;
+                        if (slotSelect.value === currentValue) {
+                            startInput.value = currentStart;
+                            if (endInput) {
+                                endInput.value = currentEnd || (currentSlot ? currentSlot.end_time : '');
+                            }
+                        }
+                    }
+                })
+                .catch(function (error) {
+                    if (requestId !== requestNumber) return;
+                    slotSelect.replaceChildren();
+                    appendOption('Availability could not be loaded', '', true);
+                    slotSelect.disabled = true;
+                    status.textContent = error.message || 'Schedule availability could not be loaded.';
+                    if (eventList) eventList.replaceChildren();
+                    if (eventListPanel) eventListPanel.hidden = true;
+                    if (slotList) slotList.replaceChildren();
+                });
+        }
+
+        slotSelect.addEventListener('change', function () {
+            if (previewOnly) {
+                var selectedOption = slotSelect.options[slotSelect.selectedIndex];
+                status.textContent = slotSelect.value && selectedOption
+                    ? 'Tentative selection: ' + selectedOption.textContent + '. This does not reserve or book the time.'
+                    : 'Choose a date to view parish schedules and open times.';
+                return;
+            }
+            if (!startInput) return;
+            var parts = slotSelect.value.split('|');
+            startInput.value = parts[0] || '';
+            if (endInput) endInput.value = parts[1] || '';
+        });
+        dateInput.addEventListener('change', loadAvailability);
+        loadAvailability();
     });
 });

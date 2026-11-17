@@ -38,7 +38,7 @@ The system consists of two primary operational interfaces:
 
 ### 3. Business Logic & Interface Rules
 - **Requester Relationship Dropdown:**
-  - Support choices: `Self`, `Parent`, `Sibling`, `Child`, `Authorized Representative`.
+  - Support choices: `Self`, `Spouse`, `Father`, `Mother`, `Son`, `Daughter`, `Grandparent`, `Grandchild`, `Authorized Representative`.
   - When `Self` is selected, auto-fill applicant fields from the user's profile and flag that a Valid ID matching the record is required upon pickup.
 - **External / Out-of-Parish Applicants:**
   - Handle parishioners who completed prior sacraments at external/other parishes (e.g., baptized in another province).

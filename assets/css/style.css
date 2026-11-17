@@ -2573,6 +2573,13 @@ textarea:focus-visible {
     border-radius: 11px;
 }
 
+.public-page .submission-success-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-top: 1rem;
+}
+
 .public-home .portal-hero {
     border-bottom: 1px solid rgba(255,255,255,.12);
 }

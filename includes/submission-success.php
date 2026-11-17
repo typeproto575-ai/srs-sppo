@@ -106,6 +106,13 @@ $basePath       = $basePath ?? base_path();
                 </section>
             <?php endif; ?>
 
+            <?php if ($successIsApplication): ?>
+                <div class="submission-success-actions">
+                    <a href="<?= e($basePath . '/public/services.php#sacrament-applications') ?>" class="btn btn-secondary">View Sacrament Applications</a>
+                    <a href="<?= e($basePath . '/public/index.php') ?>" class="btn btn-secondary">Back to Home</a>
+                </div>
+            <?php endif; ?>
+
             <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online.</p>
         </div>
         <script>

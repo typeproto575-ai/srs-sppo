@@ -125,12 +125,14 @@ $values = [
     'page_no' => (string) ($editRecord['page_no'] ?? ''),
     'line_no' => (string) ($editRecord['line_no'] ?? ''),
     'contact_number' => (string) ($editRecord['contact_number'] ?? ''),
+    'contact_email' => (string) ($editRecord['contact_email'] ?? ''),
 ];
 if ($isPost) {
     foreach ([
         'date_of_death', 'date_of_burial', 'age_at_death', 'civil_status', 'spouse_name',
         'parents_name', 'cause_of_death', 'place_of_burial', 'service_type', 'service_date',
         'service_time', 'minister_name', 'book_no', 'page_no', 'line_no', 'contact_number',
+        'contact_email',
     ] as $field) {
         $values[$field] = funeral_input_string($_POST[$field] ?? '');
     }
@@ -164,6 +166,11 @@ $personBirthDate = $createMode
     : (is_array($selectedPerson) && !empty($selectedPerson['birth_date'])
         ? (string) $selectedPerson['birth_date']
         : null);
+$existingServiceDate = (string) ($editRecord['service_date'] ?? '');
+$existingServiceTime = substr((string) ($editRecord['service_time'] ?? ''), 0, 5);
+$serviceScheduleUnchanged = $isEdit
+    && $values['service_date'] === $existingServiceDate
+    && $values['service_time'] === $existingServiceTime;
 
 if ($isPost) {
     if (!csrf_verify()) {
@@ -178,6 +185,7 @@ if ($isPost) {
             'page_no' => 'page number',
             'line_no' => 'line number',
             'contact_number' => 'contact number',
+            'contact_email' => 'family contact email address',
             'new_first_name' => 'new person first name',
             'new_middle_name' => 'new person middle name',
             'new_last_name' => 'new person last name',
@@ -222,11 +230,18 @@ if ($isPost) {
             $duplicateCheck->execute([$personId, $editId]);
             $duplicateFuneralId = (int) ($duplicateCheck->fetchColumn() ?: 0);
             if ($duplicateFuneralId > 0) {
-                $errors[] = 'This person already has a funeral record.';
+                $errors[] = 'This person already has a death record.';
             }
         }
 
         $errors = array_merge($errors, funeral_validate($_POST, $personBirthDate));
+        if (($values['service_date'] === '') !== ($values['service_time'] === '')
+            && !$serviceScheduleUnchanged) {
+            $errors[] = 'Choose both a service date and an available service time.';
+        }
+        if (($emailError = funeral_contact_email_error($values['contact_email'])) !== null) {
+            $errors[] = $emailError;
+        }
 
         $lengthLimits = [
             'spouse_name' => 150,
@@ -259,6 +274,7 @@ if ($isPost) {
         }
 
         if ($errors === []) {
+            $scheduleEmailDue = funeral_schedule_notification_due($isEdit ? $editRecord : null, $values);
             $targetPersonId = $personId;
             try {
                 $pdo->beginTransaction();
@@ -272,7 +288,7 @@ if ($isPost) {
                     $editLock->execute([$editId]);
                     $lockedPersonId = $editLock->fetchColumn();
                     if ($lockedPersonId === false) {
-                        throw new RuntimeException('The funeral record no longer exists.');
+                        throw new RuntimeException('The death record no longer exists.');
                     }
                     $oldPersonId = (int) $lockedPersonId;
                 }
@@ -284,8 +300,25 @@ if ($isPost) {
                 $duplicateFuneralId = (int) ($duplicateStmt->fetchColumn() ?: 0);
                 if ($duplicateFuneralId > 0) {
                     $pdo->rollBack();
-                    $errors[] = 'This person already has a funeral record.';
+                    $errors[] = 'This person already has a death record.';
                 } else {
+                    if ($values['service_date'] !== '' && !$serviceScheduleUnchanged) {
+                        $serviceEndTime = date(
+                            'H:i',
+                            strtotime('1970-01-01 ' . $values['service_time'] . ':00') + 60 * 60
+                        );
+                        if (!parish_schedule_slot_is_available(
+                            $pdo,
+                            $values['service_date'],
+                            $values['service_time'],
+                            $serviceEndTime,
+                            0,
+                            $editId
+                        )) {
+                            throw new InvalidArgumentException('That 60-minute service time is no longer available. Choose an open time from the schedule list.');
+                        }
+                    }
+
                     $nullable = static fn(string $key): ?string => $values[$key] === '' ? null : $values[$key];
                     $age = $values['age_at_death'] === '' ? null : (int) $values['age_at_death'];
                     $sacramentsJson = json_encode(
@@ -311,6 +344,7 @@ if ($isPost) {
                         $nullable('page_no'),
                         $nullable('line_no'),
                         $nullable('contact_number'),
+                        $nullable('contact_email'),
                     ];
 
                     if ($isEdit) {
@@ -320,7 +354,7 @@ if ($isPost) {
                                  civil_status = ?, spouse_name = ?, parents_name = ?, sacraments_received = ?,
                                  cause_of_death = ?, place_of_burial = ?, service_type = ?, service_date = ?,
                                  service_time = ?, minister_name = ?, book_no = ?, page_no = ?, line_no = ?,
-                                 contact_number = ?
+                                 contact_number = ?, contact_email = ?
                              WHERE id = ?'
                         );
                         $update->execute(array_merge($recordValues, [$editId]));
@@ -335,8 +369,8 @@ if ($isPost) {
                                 (person_id, date_of_death, date_of_burial, age_at_death, civil_status,
                                  spouse_name, parents_name, sacraments_received, cause_of_death, place_of_burial,
                                  service_type, service_date, service_time, minister_name, book_no, page_no,
-                                 line_no, contact_number, encoded_by)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                                 line_no, contact_number, contact_email, encoded_by)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                         );
                         $insert->execute(array_merge($recordValues, [(int) current_user()['id']]));
                         $recordId = (int) $pdo->lastInsertId();
@@ -354,7 +388,42 @@ if ($isPost) {
                         'Funeral record ' . ($isEdit ? 'updated' : 'created') . " for person #{$targetPersonId}."
                     );
                     $pdo->commit();
-                    redirect_to('/admin/funerals/index.php?' . ($isEdit ? 'updated=1' : 'added=1'));
+
+                    $scheduleEmailStatus = null;
+                    if ($scheduleEmailDue) {
+                        $nameParts = $createMode
+                            ? [$newPerson['first_name'], $newPerson['middle_name'], $newPerson['last_name'], $newPerson['suffix']]
+                            : [
+                                $selectedPerson['first_name'] ?? '',
+                                $selectedPerson['middle_name'] ?? '',
+                                $selectedPerson['last_name'] ?? '',
+                                $selectedPerson['suffix'] ?? '',
+                            ];
+                        $notificationPersonName = trim(implode(' ', array_filter(
+                            $nameParts,
+                            static fn(string $part): bool => trim($part) !== ''
+                        )));
+                        try {
+                            $scheduleEmailStatus = mail_death_record_schedule_update(
+                                $values['contact_email'],
+                                $notificationPersonName,
+                                $values['service_type'],
+                                $values['service_date'],
+                                $values['service_time'],
+                                $pdo,
+                                $recordId
+                            ) ? 'sent' : 'failed';
+                        } catch (InvalidArgumentException $e) {
+                            error_log('Death record schedule email failed: ' . $e->getMessage());
+                            $scheduleEmailStatus = 'failed';
+                        }
+                    }
+
+                    $redirectQuery = $isEdit ? 'updated=1' : 'added=1';
+                    if ($scheduleEmailStatus !== null) {
+                        $redirectQuery .= '&schedule_email=' . $scheduleEmailStatus;
+                    }
+                    redirect_to('/admin/funerals/index.php?' . $redirectQuery);
                     exit;
                 }
             } catch (InvalidArgumentException $e) {
@@ -371,21 +440,21 @@ if ($isPost) {
                     $duplicateLookup->execute([$targetPersonId]);
                     $duplicateFuneralId = (int) ($duplicateLookup->fetchColumn() ?: 0);
                     if ($duplicateFuneralId > 0 && $duplicateFuneralId !== $editId) {
-                        $errors[] = 'This person already has a funeral record.';
+                        $errors[] = 'This person already has a death record.';
                     } else {
                         error_log('Funeral record save failed: ' . $e->getMessage());
-                        $errors[] = 'Could not save this funeral record. Check the server error log.';
+                        $errors[] = 'Could not save this death record. Check the server error log.';
                     }
                 } else {
                     error_log('Funeral record save failed: ' . $e->getMessage());
-                    $errors[] = 'Could not save this funeral record. Check the server error log.';
+                    $errors[] = 'Could not save this death record. Check the server error log.';
                 }
             } catch (Throwable $e) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
                 error_log('Funeral record save failed: ' . $e->getMessage());
-                $errors[] = 'Could not save this funeral record. Check the server error log.';
+                $errors[] = 'Could not save this death record. Check the server error log.';
             }
         }
     }
@@ -441,31 +510,31 @@ foreach ([
     }
 }
 
-$pageTitle = $isEdit ? 'Edit Funeral Record' : 'New Funeral Record';
+$pageTitle = $isEdit ? 'Edit Death Record' : 'New Death Record';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <div class="page-heading">
     <div>
         <p class="hero-eyebrow">Liber Defunctorum</p>
-        <h1><?= $isEdit ? 'Edit Funeral Record #' . $editId : 'New Funeral Record' ?></h1>
+        <h1><?= $isEdit ? 'Edit Death Record #' . $editId : 'New Death Record' ?></h1>
     </div>
-    <?php if ($isEdit): ?>
-        <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . $editId) ?>">Print certification</a>
-    <?php endif; ?>
-    <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Back to Funeral Records</a>
+    <div class="page-heading-actions">
+        <a class="btn btn-secondary" href="#death-service-schedule">Go to service schedule</a>
+        <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Back to Death Records</a>
+    </div>
 </div>
 
 <?php if ($errors !== []): ?>
     <div class="alert alert-error" role="alert">
         <ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul>
         <?php if ($duplicateFuneralId > 0): ?>
-            <p><a href="<?= e($basePath . '/admin/funerals/form.php?id=' . $duplicateFuneralId) ?>">Open existing funeral record #<?= $duplicateFuneralId ?></a></p>
+            <p><a href="<?= e($basePath . '/admin/funerals/form.php?id=' . $duplicateFuneralId) ?>">Open existing death record #<?= $duplicateFuneralId ?></a></p>
         <?php endif; ?>
     </div>
 <?php endif; ?>
 
 <?php if ($isEdit && isset($_GET['updated'])): ?>
-    <div class="alert alert-success"><p>Funeral record updated.</p></div>
+    <div class="alert alert-success"><p>Death record updated.</p></div>
 <?php endif; ?>
 
 <form method="post" class="form-grid" data-funeral-form>
@@ -599,7 +668,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
     </section>
 
-    <section class="panel-card">
+    <section class="panel-card" id="death-service-schedule">
         <h2>Service and Register</h2>
         <fieldset>
             <legend>Blessing or Mass *</legend>
@@ -611,12 +680,31 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php endforeach; ?>
         </fieldset>
         <div class="form-grid view-grid">
-            <label>Service Date
-                <input type="date" name="service_date" value="<?= e($values['service_date']) ?>">
-            </label>
-            <label>Service Time
-                <input type="time" name="service_time" value="<?= e($values['service_time']) ?>" step="60">
-            </label>
+            <div
+                class="parish-schedule-picker"
+                data-parish-schedule-picker
+                data-require-slot-on-date="1"
+                data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
+                data-exclude-funeral-record-id="<?= $editId ?>"
+                data-current-date="<?= e($existingServiceDate) ?>"
+                data-current-start="<?= e($existingServiceTime) ?>"
+            >
+                <label>Service Date
+                    <input type="date" name="service_date" value="<?= e($values['service_date']) ?>" data-schedule-date>
+                </label>
+                <label>Available 60-minute service time
+                    <select data-schedule-slot disabled>
+                        <option value="">Choose a date first</option>
+                    </select>
+                </label>
+                <input type="hidden" name="service_time" value="<?= e($values['service_time']) ?>" data-schedule-start>
+                <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
+                <div data-schedule-event-panel hidden>
+                    <strong>Schedules already booked that day</strong>
+                    <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
+                    <ul class="parish-schedule-picker__events" data-schedule-events></ul>
+                </div>
+            </div>
             <label>Minister
                 <input type="text" name="minister_name" maxlength="150" value="<?= e($values['minister_name']) ?>">
             </label>
@@ -632,11 +720,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label>Contact Number
                 <input type="tel" name="contact_number" maxlength="30" value="<?= e($values['contact_number']) ?>">
             </label>
+            <label>Family Contact Email (optional)
+                <input type="email" name="contact_email" maxlength="254" value="<?= e($values['contact_email']) ?>">
+            </label>
         </div>
+        <p class="field-hint">Choose an open 60-minute time between 8:00 AM and 5:00 PM. Existing parish, sacrament, and death schedules are shown for the selected date. If provided, the family email receives the confirmed schedule or any changes.</p>
     </section>
 
     <div>
-        <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Changes' : 'Save Funeral Record' ?></button>
+        <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Changes' : 'Save Death Record' ?></button>
         <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Cancel</a>
     </div>
 </form>

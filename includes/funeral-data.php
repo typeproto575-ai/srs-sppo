@@ -126,133 +126,32 @@ function funeral_calculated_age(?string $birth, string $death): ?int
     return $birthDate->diff($deathDate)->y;
 }
 
-function funeral_certification_lines(
-    array $record,
-    array $person,
-    string $purpose,
-    string $requesterName,
-    string $issuedOn
-): array {
-    $value = static function (array $source, string $key): string {
-        $raw = $source[$key] ?? '';
-        return is_scalar($raw) ? trim((string) $raw) : '';
-    };
-    $formatDate = static function (mixed $raw): string {
-        $date = funeral_parse_date($raw);
-        return $date?->format('F j, Y') ?? '';
-    };
-
-    $name = $value($person, 'full_name');
-    if ($name === '') {
-        $name = implode(' ', array_filter(array_map(
-            static fn(string $part): string => trim($part),
-            [
-                $value($person, 'first_name'),
-                $value($person, 'middle_name'),
-                $value($person, 'last_name'),
-                $value($person, 'suffix'),
-            ]
-        ), static fn(string $part): bool => $part !== ''));
+function funeral_contact_email_error(string $email): ?string
+{
+    if ($email === '') {
+        return null;
     }
 
-    $descriptors = [];
-    $age = $value($record, 'age_at_death');
-    if ($age !== '') {
-        $descriptors[] = $age . ' years old';
+    return strlen($email) <= 254 && filter_var($email, FILTER_VALIDATE_EMAIL)
+        ? null
+        : 'Enter a valid family contact email address.';
+}
+
+function funeral_schedule_notification_due(?array $existing, array $values): bool
+{
+    $email = funeral_input_string($values['contact_email'] ?? '');
+    $serviceDate = funeral_input_string($values['service_date'] ?? '');
+    if ($serviceDate === '' || $email === '' || funeral_contact_email_error($email) !== null) {
+        return false;
     }
-    $civilStatus = $value($record, 'civil_status');
-    if ($civilStatus !== '') {
-        $descriptors[] = ucfirst(strtolower($civilStatus));
-    }
-    $spouse = $value($record, 'spouse_name');
-    if ($spouse !== '') {
-        $descriptors[] = 'spouse of ' . $spouse;
-    }
-    $parents = $value($record, 'parents_name');
-    if ($parents !== '') {
-        $relation = match (strtolower($value($person, 'sex'))) {
-            'male' => 'son',
-            'female' => 'daughter',
-            default => 'child',
-        };
-        $descriptors[] = $relation . ' of ' . $parents;
+    if ($existing === null) {
+        return true;
     }
 
-    $subject = $name;
-    if ($descriptors !== []) {
-        $subject .= ($subject !== '' ? ', ' : '') . implode(', ', $descriptors);
-    }
-    $deathDate = $formatDate($record['date_of_death'] ?? null);
-    $first = 'This is to certify that, according to the Liber Defunctorum of this parish, ' . $subject;
-    $deathClause = $descriptors !== [] ? ', died' : ' died';
-    $first .= $deathClause . ($deathDate !== '' ? ' on ' . $deathDate : '');
-    $cause = $value($record, 'cause_of_death');
-    if ($cause !== '') {
-        $first .= ' of ' . $cause;
-    }
-
-    $serviceType = strtolower($value($record, 'service_type'));
-    $serviceName = $serviceType === 'blessing' ? 'Blessing' : 'Mass';
-    $service = 'A Funeral ' . $serviceName . ' was held';
-    $serviceDate = $formatDate($record['service_date'] ?? null);
-    if ($serviceDate !== '') {
-        $service .= ' on ' . $serviceDate;
-    }
-    $serviceTime = $value($record, 'service_time');
-    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/D', $serviceTime)) {
-        $time = DateTimeImmutable::createFromFormat(
-            '!H:i:s',
-            strlen($serviceTime) === 5 ? $serviceTime . ':00' : $serviceTime
-        );
-        if ($time !== false) {
-            $service .= ' at ' . $time->format('g:i A');
-        }
-    }
-    $minister = $value($record, 'minister_name');
-    if ($minister !== '') {
-        $service .= ', officiated by ' . $minister;
-    }
-
-    $burialDetails = [];
-    $burialDate = $formatDate($record['date_of_burial'] ?? null);
-    if ($burialDate !== '') {
-        $burialDetails[] = 'on ' . $burialDate;
-    }
-    $burialPlace = $value($record, 'place_of_burial');
-    if ($burialPlace !== '') {
-        $burialDetails[] = 'at ' . $burialPlace;
-    }
-    if ($burialDetails !== []) {
-        $service .= ', and the remains were laid to rest ' . implode(' ', $burialDetails);
-    }
-
-    $register = ['This is recorded in the Liber Defunctorum'];
-    foreach ([
-        'book_no' => 'Book',
-        'page_no' => 'Page',
-        'line_no' => 'Line',
-    ] as $key => $label) {
-        $entryValue = $value($record, $key);
-        if ($entryValue !== '') {
-            $register[] = $label . ' ' . $entryValue;
-        }
-    }
-
-    $issue = 'Issued this ' . $formatDate($issuedOn)
-        . " at St. Patrick's Parish Office, Dingalan, Aurora";
-    $requesterName = trim($requesterName);
-    if ($requesterName !== '') {
-        $issue .= ', upon request of ' . $requesterName;
-    }
-    $purpose = trim($purpose);
-    if ($purpose !== '') {
-        $issue .= ' for ' . $purpose . ' purposes';
-    }
-
-    return [
-        $first . '.',
-        $service . '.',
-        implode(', ', $register) . '.',
-        $issue . '.',
-    ];
+    return $serviceDate !== funeral_input_string($existing['service_date'] ?? '')
+        || substr(funeral_input_string($values['service_time'] ?? ''), 0, 5)
+            !== substr(funeral_input_string($existing['service_time'] ?? ''), 0, 5)
+        || funeral_input_string($values['service_type'] ?? '')
+            !== funeral_input_string($existing['service_type'] ?? '')
+        || strcasecmp($email, funeral_input_string($existing['contact_email'] ?? '')) !== 0;
 }

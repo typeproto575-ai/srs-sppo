@@ -681,7 +681,7 @@ CREATE TABLE audit_logs (
 -- =====================================================================
 -- 9. PUBLIC SUBMISSION RATE LIMITS (abuse guard for the no-login forms)
 -- One row per successful public submission; powers the rolling 24h caps
--- of 5 per email address and 20 per client IP enforced in
+-- of 10 per email address and 40 per client IP enforced in
 -- includes/functions.php (see migrations/018_add_submission_rate_limits.sql).
 -- Rows are disposable -- safe to purge whenever.
 -- =====================================================================

@@ -60,11 +60,14 @@ function application_queue_label(string $value): string
     $labels = [
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
+        'late_baptism' => 'Late Baptism (age 7+)',
         'birth_place' => 'Place of Birth',
+        'baptism_parish' => 'Baptism Parish/Church and Location',
         'sponsor_names' => 'Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Confirmed',
         'guardian_relationship' => 'Guardian Relationship',
-        'parent_guardian_name' => 'Parent / Guardian',
+        'guardian_authorization_confirmed' => 'Guardian Authority Confirmed',
+        'parent_guardian_name' => 'Guardian',
     ];
 
     if (isset($labels[$value])) {

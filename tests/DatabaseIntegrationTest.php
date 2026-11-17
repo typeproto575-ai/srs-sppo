@@ -92,6 +92,77 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
+    public function testPublicReferenceCanCompleteMissingProfileDetailsWithoutChangingKnownValues(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $person = public_person_reference($this->pdo, null, [
+                'first_name' => 'N/A',
+                'last_name' => 'Santos',
+                'birth_date' => '2001-02-03',
+            ]);
+            $this->pdo->prepare(
+                "UPDATE persons
+                 SET middle_name = 'N/A', birth_place = 'N/A',
+                     father_name = 'N/A', mother_maiden_name = 'N/A'
+                 WHERE id = ?"
+            )->execute([$person['person_id']]);
+
+            $selectedPersonId = public_selected_person_id(
+                $this->pdo,
+                $person['person_id'],
+                'Maria',
+                'Teresa',
+                'Santos',
+                '',
+                '2001-02-03'
+            );
+            self::assertSame($person['person_id'], $selectedPersonId);
+
+            public_person_reference($this->pdo, $selectedPersonId, [
+                'first_name' => 'Maria',
+                'middle_name' => 'Teresa',
+                'last_name' => 'Santos',
+                'suffix' => '',
+                'birth_date' => '2001-02-03',
+                'birth_place' => 'Dingalan',
+                'father_name' => 'Juan Santos',
+                'mother_maiden_name' => 'Rosa Cruz',
+            ]);
+
+            $profile = $this->pdo->prepare(
+                'SELECT first_name, middle_name, last_name, birth_place, father_name, mother_maiden_name
+                 FROM persons WHERE id = ?'
+            );
+            $profile->execute([$person['person_id']]);
+            self::assertSame([
+                'first_name' => 'Maria',
+                'middle_name' => 'Teresa',
+                'last_name' => 'Santos',
+                'birth_place' => 'Dingalan',
+                'father_name' => 'Juan Santos',
+                'mother_maiden_name' => 'Rosa Cruz',
+            ], $profile->fetch());
+
+            try {
+                public_selected_person_id(
+                    $this->pdo,
+                    $person['person_id'],
+                    'Maria',
+                    'Teresa',
+                    'Different',
+                    '',
+                    '2001-02-03'
+                );
+                self::fail('A known profile name must not be changed through reference lookup.');
+            } catch (InvalidArgumentException $exception) {
+                self::assertSame('The selected person no longer matches these details. Search again.', $exception->getMessage());
+            }
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
     public function testPublicSubmissionCannotDuplicateAnOpenApplicationForTheSamePersonAndSacrament(): void
     {
         $this->pdo->beginTransaction();

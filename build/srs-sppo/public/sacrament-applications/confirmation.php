@@ -42,6 +42,7 @@ $currentStep = (int) ($app['current_step'] ?? 1);
 if ($currentStep < 1 || $currentStep > CONF_STEP_COUNT) { $currentStep = 1; $app['current_step'] = 1; }
 if (!is_array($app['form_data'] ?? null)) { $app['form_data'] = []; }
 $formData = &$app['form_data'];
+unset($formData['mother_na']);
 if (($_GET['start'] ?? '') === 'profile') {
     if ((current_user()['role'] ?? '') !== 'secretary') {
         http_response_code(403);
@@ -77,8 +78,17 @@ if (!function_exists('conf_baptism_error')) {
         if ($answer === 'not_baptized') {
             return 'A candidate must be baptized in the Catholic Church before receiving Confirmation. Please visit the Parish Office to inquire about Baptism or RCIA.';
         }
-        if (!in_array($answer, ['this_parish', 'elsewhere', 'not_sure'], true)) {
+        if (!in_array($answer, ['this_parish', 'elsewhere'], true)) {
             return 'Please answer where the applicant was baptized.';
+        }
+        if ($answer === 'elsewhere') {
+            $parish = cfd('baptism_parish', $d);
+            if ($parish === '') {
+                return 'Enter the name and location of the parish or church where the applicant was baptized.';
+            }
+            if (mb_strlen($parish) > 255) {
+                return 'The baptism parish/church and location must be 255 characters or fewer.';
+            }
         }
         return null;
     }
@@ -134,7 +144,7 @@ if (!function_exists('conf_parent_errors')) {
     {
         return array_values(array_filter([
             validate_parent_name_or_na($d, 'father', "Father's name"),
-            validate_parent_name_or_na($d, 'mother', "Mother's maiden name"),
+            validate_parent_name_or_na($d, 'mother', "Mother's maiden name", false),
         ]));
     }
 }
@@ -166,12 +176,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'applicant_birthdate', 'applicant_birthplace', 'applicant_person_id',
                 'father_first', 'father_middle', 'father_last', 'father_suffix',
                 'mother_first', 'mother_middle', 'mother_last', 'mother_suffix',
-                'father_na', 'mother_na',
+                'father_na',
                 'parent_guardian_first', 'parent_guardian_middle', 'parent_guardian_last', 'parent_guardian_suffix',
                 'guardian_relationship',
             ],
             CONF_STEP_BAPTISM => [
-                'baptized_here',
+                'baptized_here', 'baptism_parish',
                 'sponsor1_first', 'sponsor1_middle', 'sponsor1_last', 'sponsor1_suffix',
                 'sponsor2_first', 'sponsor2_middle', 'sponsor2_last', 'sponsor2_suffix',
                 'sponsor_eligibility',
@@ -195,7 +205,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
                 if ($formData['applicant_birthdate'] === '') $errors[] = "Applicant's birthdate is required.";
                 if (cfd('applicant_birthplace', $formData) === '') $errors[] = "Applicant's place of birth is required.";
-                if ($formData['applicant_birthdate'] !== '' && is_future_date($formData['applicant_birthdate'])) $errors[] = "Applicant's birthdate cannot be in the future.";
+                if ($formData['applicant_birthdate'] !== ''
+                    && ($e = sacrament_age_submission_error($pdo, 'confirmation', $formData['applicant_birthdate'])) !== null) {
+                    $errors[] = $e;
+                }
                 $errors = array_merge($errors, conf_parent_errors($formData));
                 $guardianName = compose_person_name($formData, 'parent_guardian');
                 if ($guardianName !== '' && ($e = validate_full_name($guardianName)) !== null) $errors[] = $e;
@@ -206,8 +219,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors = array_merge($errors, conf_sponsor_errors($formData));
                 }
             } elseif ($currentStep === CONF_STEP_CONTACT) {
-                if ($formData['contact_number'] !== '' && !is_valid_phone_number($formData['contact_number'])) {
-                    $errors[] = 'Please enter a valid Philippine mobile number when provided, such as 09171234567 or +639171234567.';
+                if (trim($formData['contact_number']) === '') {
+                    $errors[] = 'Please enter a contact number.';
+                } elseif (!is_valid_phone_number($formData['contact_number'])) {
+                    $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
                 }
                 if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
                 if ($formData['privacy_consent'] !== '1') $errors[] = 'Please agree to the Privacy Notice before continuing.';
@@ -239,11 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
         if ($applicantBirthdate === '') $errors[] = "Applicant's birthdate is required.";
         if (cfd('applicant_birthplace', $formData) === '') $errors[] = "Applicant's place of birth is required.";
-        if ($applicantBirthdate !== '' && is_future_date($applicantBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
+        if ($applicantBirthdate !== ''
+            && ($e = sacrament_age_submission_error($pdo, 'confirmation', $applicantBirthdate)) !== null) {
+            $errors[] = $e;
+        }
         $errors = array_merge($errors, conf_parent_errors($formData));
         if ($parentGuardian !== '' && ($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
-        if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
-            $errors[] = 'Please enter a valid Philippine mobile number when provided, such as 09171234567 or +639171234567.';
+        if ($contactNumber === '') {
+            $errors[] = 'Please enter a contact number.';
+        } elseif (!is_valid_phone_number($contactNumber)) {
+            $errors[] = 'Please enter a valid Philippine mobile number, such as 09171234567 or +639171234567.';
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Please enter a valid email address.';
         if (($e = conf_baptism_error($formData)) !== null) {
@@ -340,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'parent_guardian_name' => $parentGuardian,
                         'guardian_relationship' => cfd('guardian_relationship', $formData),
                         'baptized_here' => $baptizedHere,
+                        'baptism_parish' => $baptizedHere === 'elsewhere' ? cfd('baptism_parish', $formData) : '',
                         'sponsor_names' => array_values(array_filter([
                             compose_person_name($formData, 'sponsor1'),
                             compose_person_name($formData, 'sponsor2'),
@@ -452,19 +473,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <legend>Phase 1 of 4 — Applicant Information</legend>
             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
             <div class="public-person-lookup" data-public-person-lookup
+                 data-lookup-context="preapplication"
                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                  data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                  data-birth-field="applicant_birthdate" data-birth-place-field="applicant_birthplace" data-person-id-field="applicant_person_id"
                  data-father-inputs="father_first,father_middle,father_last,father_suffix"
                  data-mother-inputs="mother_first,mother_middle,mother_last,mother_suffix">
                 <h3 class="lookup-title">Already registered with the parish?</h3>
-                <p class="field-hint">If you are already in the parish records, enter your reference number here (with your date of birth below), or fill in your name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                <p class="field-hint">Enter your person reference to fill in recorded details. Blank or “N/A” details can be completed below; recorded details stay locked. Keep the reference private. Without a reference, fill in the form manually.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
             <h3 class="form-subheading">Applicant’s details</h3>
-            <label>Date of birth *
-                <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
-            </label>
             <div class="inline-fields">
                 <label>First Name *
                     <input type="text" name="applicant_first" autocomplete="given-name" value="<?= $wv('applicant_first') ?>" required>
@@ -481,13 +500,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= $wv('applicant_suffix') ?>">
                 </label>
             </div>
+            <label>Date of birth * <span class="field-hint">A reference fills this from parish records when available; the date is needed for eligibility checks.</span>
+                <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
+            </label>
             <label>Place of birth * <span class="field-hint">(City/Municipality, Province)</span>
                 <input type="text" name="applicant_birthplace" autocomplete="off" value="<?= $wv('applicant_birthplace') ?>" required>
             </label>
             <label class="checkbox-label na-toggle"><input type="checkbox" data-na-target="applicant_birthplace"> Not available / unknown (N/A)</label>
             <input type="hidden" name="applicant_person_id" value="<?= $wv('applicant_person_id') ?>">
             <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: first name and maiden last name, or tick Not applicable', false, true) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter first name and maiden last name', false, false) ?>
             <p class="field-hint">Parents are recorded as they appear on the birth certificate. A guardian is never entered as a parent.</p>
             <?= person_name_fields('parent_guardian', 'Guardian / authorized representative', $formData, false, null, 'optional; only if the parents are unavailable') ?>
             <label>Relationship to applicant <span class="field-hint">(optional)</span>
@@ -507,11 +529,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="">-- Select --</option>
                         <option value="this_parish" <?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'selected' : '' ?>>At this parish</option>
                         <option value="elsewhere" <?= ($formData['baptized_here'] ?? '') === 'elsewhere' ? 'selected' : '' ?>>At another parish or church</option>
-                        <option value="not_sure" <?= ($formData['baptized_here'] ?? '') === 'not_sure' ? 'selected' : '' ?>>I’m not sure — I need help checking</option>
                         <option value="not_baptized" <?= ($formData['baptized_here'] ?? '') === 'not_baptized' ? 'selected' : '' ?>>Not yet baptized in the Catholic Church</option>
                     </select>
                 </label>
-                <p class="field-hint">It’s okay if you don’t know which parish baptized the applicant. The parish office can help verify the record. Bring a copy of the applicant's Baptismal Certificate when asked. Don't have one yet? <a href="<?= e($basePath . '/public/certificate-request.php?type=baptism') ?>" target="_blank" rel="noopener noreferrer">Request a Baptismal Certificate</a>.</p>
+                <label data-show-if="baptized_here=elsewhere">Parish/church name and location *
+                    <input type="text" name="baptism_parish" maxlength="255" autocomplete="organization" placeholder="Parish/church, city or municipality, province" value="<?= $wv('baptism_parish') ?>">
+                </label>
+                <p class="field-hint">If the applicant was baptized elsewhere, provide the parish/church name and location so the office can verify the record. If you cannot identify it, contact the Parish Office before submitting. Bring a copy of the applicant's Baptismal Certificate when asked. Don't have one yet? <a href="<?= e($basePath . '/public/certificate-request.php?type=baptism') ?>" target="_blank" rel="noopener noreferrer">Request a Baptismal Certificate</a>.</p>
             </fieldset>
             <p class="alert alert-info" role="note">Reminder: bring the Baptismal Certificate listed in the preparation checklist, marked “For Confirmation Purposes” and issued within the last 6 months.</p>
             <fieldset>
@@ -527,8 +551,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php elseif ($currentStep === CONF_STEP_CONTACT): ?>
             <fieldset>
                 <legend>Phase 3 of 4 — Contact &amp; Consent</legend>
-                <label>Contact Number <span class="field-hint">(optional; email is used for updates)</span>
-                    <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>">
+                <label>Contact Number *
+                    <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>" required>
                 </label>
                 <label>Email Address *
                     <input type="email" name="email" autocomplete="email" value="<?= $wv('email') ?>" required>
@@ -548,7 +572,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <tr><th>Father</th><td><?= e(compose_person_name($formData, 'father')) ?: '—' ?></td></tr>
                     <tr><th>Guardian / representative</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?: '—' ?></td></tr>
                     <tr><th>Sponsor</th><td><?= e(implode('; ', array_filter([compose_person_name($formData, 'sponsor1'), compose_person_name($formData, 'sponsor2')]))) ?></td></tr>
-                    <tr><th>Baptized at</th><td><?= ($formData['baptized_here'] ?? '') === 'this_parish' ? 'At this parish' : (($formData['baptized_here'] ?? '') === 'elsewhere' ? 'At another parish or church' : 'Not sure — please help us check') ?></td></tr>
+                    <tr><th>Baptized at</th><td><?= e(match ((string) ($formData['baptized_here'] ?? '')) { 'this_parish' => 'At this parish', 'elsewhere' => 'At another parish or church', 'not_baptized' => 'Not yet baptized in the Catholic Church', default => 'Not selected' }) ?></td></tr>
+                    <?php if (($formData['baptized_here'] ?? '') === 'elsewhere'): ?><tr><th>Baptism parish/church and location</th><td><?= $wv('baptism_parish') ?></td></tr><?php endif; ?>
                     <tr><th>Contact number</th><td><?= $wv('contact_number') ?></td></tr>
                     <tr><th>Email</th><td><?= $wv('email') ?></td></tr>
                 </table>
@@ -557,7 +582,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <strong>Age guidance:</strong> The applicant is <?= (int) $ageAssessment['age'] ?> years old.
                         The minimum age is <?= (int) $ageAssessment['range']['min_age'] ?> years;
                         assessment: <strong><?= e($ageAssessment['status']) ?></strong>.
-                        This is advisory only and does not prevent submission; the Parish Secretary will review the application.
+                        Applicants below the minimum age cannot continue. The Parish Secretary will verify the age record.
                     </p>
                 <?php endif; ?>
                 <label class="checkbox-label">

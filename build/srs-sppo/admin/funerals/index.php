@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_role('secretary');
 
 $basePath = base_path();
-$pageTitle = 'Funeral Records';
+$pageTitle = 'Death Records';
 $search = trim((string) ($_GET['q'] ?? ''));
 $perPage = (int) ($_GET['per_page'] ?? 25);
 if (!in_array($perPage, [10, 25, 50], true)) {
@@ -73,18 +73,26 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 <div class="page-heading">
     <div>
         <p class="hero-eyebrow">Liber Defunctorum</p>
-        <h1>Funeral Records</h1>
+        <h1>Death Records</h1>
     </div>
-    <a class="btn btn-primary" href="<?= e($basePath . '/admin/funerals/form.php') ?>">Add Funeral Record</a>
+    <a class="btn btn-primary" href="<?= e($basePath . '/admin/funerals/form.php') ?>">Add Death Record</a>
 </div>
 
 <?php if (isset($_GET['added'])): ?>
-    <div class="alert alert-success"><p>Funeral record saved.</p></div>
+    <div class="alert alert-success">
+        <p>Death record saved.
+            <?php if (($_GET['schedule_email'] ?? '') === 'sent'): ?> The funeral schedule confirmation email was sent.<?php elseif (($_GET['schedule_email'] ?? '') === 'failed'): ?> The record was saved, but the schedule email could not be sent. Check the email log.<?php endif; ?>
+        </p>
+    </div>
 <?php elseif (isset($_GET['updated'])): ?>
-    <div class="alert alert-success"><p>Funeral record updated.</p></div>
+    <div class="alert alert-success">
+        <p>Death record updated.
+            <?php if (($_GET['schedule_email'] ?? '') === 'sent'): ?> The funeral schedule confirmation email was sent.<?php elseif (($_GET['schedule_email'] ?? '') === 'failed'): ?> The record was saved, but the schedule email could not be sent. Check the email log.<?php endif; ?>
+        </p>
+    </div>
 <?php endif; ?>
 
-<p class="field-hint">Staff-only death register. Each person can have one funeral record.</p>
+<p class="field-hint">Staff-only death register. Each person can have one death record.</p>
 <form method="get" class="record-filters">
     <label>Search by name or Book / Page / Line
         <input type="search" name="q" value="<?= e($search) ?>" placeholder="Name, book, page, or line">
@@ -119,7 +127,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </thead>
         <tbody>
             <?php if ($records === []): ?>
-                <tr><td colspan="7">No funeral records found.</td></tr>
+                <tr><td colspan="7">No death records found.</td></tr>
             <?php else: ?>
                 <?php foreach ($records as $record): ?>
                     <?php
@@ -144,7 +152,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($bookReference) ?></td>
                         <td>
                             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $record['id']) ?>">Edit</a>
-                            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . (int) $record['id']) ?>">Print certification</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -154,7 +161,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 </div>
 
 <?php if ($totalPages > 1): ?>
-    <nav class="pagination" aria-label="Funeral record pages">
+    <nav class="pagination" aria-label="Death record pages">
         <?php if ($page > 1): ?>
             <a href="<?= e(funeral_index_url(['page' => $page - 1])) ?>">Previous</a>
         <?php endif; ?>

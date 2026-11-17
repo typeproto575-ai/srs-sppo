@@ -31,6 +31,10 @@ if (!isset($_SESSION['first_communion_app']) || !is_array($_SESSION['first_commu
 }
 $wizard = &$_SESSION['first_communion_app'];
 $formData = &$wizard['form_data'];
+unset($formData['mother_na']);
+if (($formData['formation_path'] ?? '') === 'batch') {
+    $formData['formation_path'] = 'parish_based';
+}
 if (($_GET['start'] ?? '') === 'profile') {
     if ((current_user()['role'] ?? '') !== 'secretary') {
         http_response_code(403);
@@ -70,6 +74,9 @@ if ($isWizardNavigation && csrf_verify()) {
             $formData[$key] = (string) $value;
         }
     }
+    if ($currentStep === 1 && ($formData['formation_path'] ?? '') === 'individual_catchup') {
+        $formData['school_year'] = '';
+    }
     public_prefill_person_parents($formData);
     if ($currentStep === 4) {
         foreach (['confession_completed', 'parental_consent', 'privacy_consent'] as $checkbox) {
@@ -90,17 +97,31 @@ if ($isWizardNavigation && csrf_verify()) {
             if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
             if ($value('applicant_birthdate') === '') $errors[] = "Applicant's birthdate is required.";
             if ($value('applicant_birthdate') !== '' && is_future_date($value('applicant_birthdate'))) $errors[] = "Applicant's birthdate cannot be in the future.";
+            if (($e = first_communion_formation_input_error(
+                $value('formation_path'),
+                $value('school_grade'),
+                $value('school_year')
+            )) !== null) $errors[] = $e;
         } elseif ($currentStep === 2) {
             $parentName = compose_person_name($_POST, 'parent_guardian');
-            if ($parentName === '') $errors[] = 'Parent/Guardian name is required.';
+            if ($parentName === '') $errors[] = 'Guardian name is required.';
             if (($e = validate_full_name($parentName)) !== null) $errors[] = $e;
             foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-                if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
+                if (($e = validate_parent_name_or_na($_POST, $prefix, $label, $prefix !== 'mother')) !== null) $errors[] = $e;
             }
-            if ($value('contact_number') !== '' && !is_valid_phone_number($value('contact_number'))) $errors[] = 'Enter a valid contact number when provided.';
+            if ($value('contact_number') === '') $errors[] = 'Enter a contact number.';
+            elseif (!is_valid_phone_number($value('contact_number'))) $errors[] = 'Enter a valid contact number (e.g. 09171234567 or +639171234567).';
             if (!filter_var($value('email'), FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
         } elseif ($currentStep === 3) {
-            if (!in_array($value('baptized_here'), ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
+            if ($value('baptized_here') === 'not_baptized') {
+                $errors[] = 'A candidate must be baptized in the Catholic Church before receiving First Communion. Please contact the Parish Office about Baptism or OCIA.';
+            } elseif (!in_array($value('baptized_here'), ['this_parish', 'elsewhere'], true)) {
+                $errors[] = 'Please answer where the applicant was baptized.';
+            } elseif ($value('baptized_here') === 'elsewhere' && $value('baptism_parish') === '') {
+                $errors[] = 'Enter the name and location of the parish or church where the applicant was baptized.';
+            } elseif ($value('baptized_here') === 'elsewhere' && mb_strlen($value('baptism_parish')) > 255) {
+                $errors[] = 'The baptism parish/church and location must be 255 characters or fewer.';
+            }
         } elseif ($currentStep === 4) {
             if (($formData['parental_consent'] ?? '') !== '1') $errors[] = 'Parent/Guardian consent is required.';
             if (($formData['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before continuing.';
@@ -137,6 +158,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     $contact = trim($_POST['contact_number'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $baptizedHere = $_POST['baptized_here'] ?? '';
+    $baptismParish = trim((string) ($_POST['baptism_parish'] ?? ''));
+    $formationPath = trim((string) ($formData['formation_path'] ?? ''));
+    $schoolGrade = trim((string) ($formData['school_grade'] ?? ''));
+    $schoolYearInput = trim((string) ($formData['school_year'] ?? ''));
+    $schoolYear = $formationPath === 'individual_catchup' || $schoolYearInput === ''
+        ? null
+        : $schoolYearInput;
     $confession = ($_POST['confession_completed'] ?? '') === '1' ? 1 : 0;
     $consent = ($_POST['parental_consent'] ?? '') === '1' ? 1 : 0;
     $personId = null;
@@ -149,11 +177,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
     if ($parent === '') $errors[] = 'Parent/Guardian name is required.';
     if (($e = validate_full_name($parent)) !== null) $errors[] = $e;
     foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
-        if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
+        if (($e = validate_parent_name_or_na($_POST, $prefix, $label, $prefix !== 'mother')) !== null) $errors[] = $e;
     }
-    if ($contact !== '' && !is_valid_phone_number($contact)) $errors[] = 'Enter a valid contact number when provided.';
+    if ($contact === '') $errors[] = 'Enter a contact number.';
+    elseif (!is_valid_phone_number($contact)) $errors[] = 'Enter a valid contact number (e.g. 09171234567 or +639171234567).';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email address is required.';
-    if (!in_array($baptizedHere, ['this_parish', 'elsewhere', 'not_sure'], true)) $errors[] = 'Please answer where the applicant was baptized.';
+    if ($baptizedHere === 'not_baptized') {
+        $errors[] = 'A candidate must be baptized in the Catholic Church before receiving First Communion. Please contact the Parish Office about Baptism or OCIA.';
+    } elseif (!in_array($baptizedHere, ['this_parish', 'elsewhere'], true)) {
+        $errors[] = 'Please answer where the applicant was baptized.';
+    } elseif ($baptizedHere === 'elsewhere' && $baptismParish === '') {
+        $errors[] = 'Enter the name and location of the parish or church where the applicant was baptized.';
+    } elseif ($baptizedHere === 'elsewhere' && mb_strlen($baptismParish) > 255) {
+        $errors[] = 'The baptism parish/church and location must be 255 characters or fewer.';
+    }
+    if (($e = first_communion_formation_input_error($formationPath, $schoolGrade, $schoolYearInput)) !== null) $errors[] = $e;
     if (!$consent) $errors[] = 'Parent/Guardian consent is required.';
     if (($_POST['privacy_consent'] ?? '') !== '1') $errors[] = 'You must accept the Privacy Notice before submitting.';
     if (!empty($formData['applicant_person_id'])) {
@@ -208,6 +246,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && csrf_verify
                 'mother_maiden_name' => $mother,
                 'parent_guardian_name' => $parent,
                 'baptized_here' => $baptizedHere,
+                'baptism_parish' => $baptizedHere === 'elsewhere' ? $baptismParish : '',
+                'formation_path' => $formationPath,
+                'school_grade' => $schoolGrade,
+                'school_year' => $schoolYear,
                 'confession_completed' => (bool) $confession,
                 'parental_consent' => (bool) $consent,
             ];
@@ -275,6 +317,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
         <?php
         $successHeading = 'Your pre-application has been submitted';
         $successIsApplication = true;
+        $successFormationGuidance = 'The Parish Office will review the submitted grade, school year, and requested pathway, then assign a group or individual catch-up path. First Reconciliation and parent/guardian commitment are follow-up preparation steps; this submission does not confirm a group or date.';
         $successRequestNumber = $requestNo;
         $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
@@ -296,16 +339,16 @@ function selectedv(string $key, string $value): string { global $formData; retur
                     <fieldset><legend>Phase 1 of 5 — Child's Information</legend>
                         <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
                         <div class="public-person-lookup" data-public-person-lookup
+                             data-lookup-context="preapplication"
                              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                              data-name-inputs="applicant_first,applicant_middle,applicant_last,applicant_suffix"
                              data-birth-field="applicant_birthdate" data-person-id-field="applicant_person_id"
                              data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
                             <h3 class="lookup-title">Already registered with the parish?</h3>
-                            <p class="field-hint">If the child is already in the parish records, enter the reference number here (with the date of birth below), or fill in the child’s name and date of birth below to search. A match fills in the known details. No match? Just continue with the form.</p>
+                            <p class="field-hint">Enter the child’s person reference to fill in recorded details. Keep the reference private. Without a reference, fill in the form manually.</p>
                             <div data-person-results aria-live="polite"></div>
                         </div>
                         <h3 class="form-subheading">Child’s details</h3>
-                        <label>Date of birth * <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required></label>
                         <div class="inline-fields">
                             <label>First Name * <input type="text" name="applicant_first" autocomplete="given-name" value="<?= oldv('applicant_first') ?>" required></label>
                             <label>Middle Name <span class="field-hint">(optional)</span> <input type="text" name="applicant_middle" autocomplete="additional-name" value="<?= oldv('applicant_middle') ?>"></label>
@@ -314,6 +357,46 @@ function selectedv(string $key, string $value): string { global $formData; retur
                             <label>Last Name * <input type="text" name="applicant_last" autocomplete="family-name" value="<?= oldv('applicant_last') ?>" required></label>
                             <label>Suffix <span class="field-hint">(optional)</span> <input type="text" name="applicant_suffix" autocomplete="honorific-suffix" value="<?= oldv('applicant_suffix') ?>"></label>
                         </div>
+                        <label>Date of birth * <span class="field-hint">A reference fills this from parish records when available; the date is needed for eligibility checks.</span>
+                            <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required>
+                        </label>
+                        <h3 class="form-subheading">School and preparation</h3>
+                        <?php
+                        $formationPath = (string) ($formData['formation_path'] ?? '');
+                        $isIndividualPath = $formationPath === 'individual_catchup';
+                        $isSchoolBasedPath = $formationPath === 'school_based';
+                        $hasFormationPath = in_array($formationPath, ['school_based', 'parish_based', 'individual_catchup', 'not_sure'], true);
+                        $initialSchoolYear = (int) date('Y');
+                        if ((int) date('n') < 6) $initialSchoolYear--;
+                        $activeSchoolYear = $initialSchoolYear . '-' . ($initialSchoolYear + 1);
+                        ?>
+                        <label>Formation pathway * <select name="formation_path" data-formation-pathway data-active-school-year="<?= e($activeSchoolYear) ?>" required>
+                            <option value="">-- Select --</option>
+                            <option value="school_based" <?= selectedv('formation_path', 'school_based') ?>>School-based group (school batch / parochial school)</option>
+                            <option value="parish_based" <?= selectedv('formation_path', 'parish_based') ?>>Parish-based / Sunday Catechism group</option>
+                            <option value="individual_catchup" <?= selectedv('formation_path', 'individual_catchup') ?>>Individual catch-up / adult / special preparation</option>
+                            <option value="not_sure" <?= selectedv('formation_path', 'not_sure') ?>>Not sure — please advise</option>
+                        </select></label>
+                        <p class="field-hint">The Parish Office assigns the actual group after reviewing the pre-application. Grade and school year help organize groups; neither alone determines eligibility or a sacrament date.</p>
+                        <div class="inline-fields">
+                            <label>Current grade level <span data-grade-required-marker<?= !$hasFormationPath || $isIndividualPath ? ' hidden' : '' ?>>*</span>
+                                <select name="school_grade" data-formation-grade<?= $hasFormationPath && !$isIndividualPath ? ' required' : '' ?>>
+                                    <option value=""><?= $isIndividualPath ? '-- Select if applicable --' : '-- Select --' ?></option>
+                                    <?php foreach (first_communion_grade_options() as $gradeValue => $gradeLabel): ?>
+                                        <option value="<?= e($gradeValue) ?>" <?= selectedv('school_grade', $gradeValue) ?>><?= e($gradeLabel) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                            <label data-school-year-container<?= $isIndividualPath ? ' hidden' : '' ?>>
+                                <span data-school-year-label><?= $isSchoolBasedPath ? 'School year' : 'School year (optional; format: 2026-2027)' ?></span>
+                                <span data-school-year-required-marker<?= !$isSchoolBasedPath ? ' hidden' : '' ?>>*</span>
+                                <input type="text" name="school_year" data-formation-school-year
+                                       pattern="\d{4}-\d{4}" maxlength="9"
+                                       placeholder="<?= e($activeSchoolYear) ?>"
+                                       value="<?= $isIndividualPath ? '' : oldv('school_year') ?>"
+                                       <?= $isSchoolBasedPath ? 'required' : '' ?><?= $isIndividualPath ? ' disabled' : '' ?>>
+                            </label>
+                        </div>
                         <input type="hidden" name="applicant_person_id" value="<?= oldv('applicant_person_id') ?>">
                         <input type="hidden" name="selected_father_name" value="<?= oldv('selected_father_name') ?>">
                         <input type="hidden" name="selected_mother_maiden_name" value="<?= oldv('selected_mother_maiden_name') ?>">
@@ -321,14 +404,17 @@ function selectedv(string $key, string $value): string { global $formData; retur
                 <?php elseif ($currentStep === 2): ?>
                     <fieldset><legend>Phase 2 of 5 — Family &amp; Contact</legend>
                         <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name or tick Not applicable', true, true) ?>
-                        <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name or tick Not applicable', false, true) ?>
+                        <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the first and maiden last name', false, false) ?>
                         <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
-                        <div class="inline-fields"><label>Contact Number <span class="field-hint">(optional; email is used for updates)</span><input type="tel" name="contact_number" value="<?= oldv('contact_number') ?>"></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
+                        <div class="inline-fields"><label>Contact Number * <input type="tel" name="contact_number" autocomplete="tel" value="<?= oldv('contact_number') ?>" required></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
                     </fieldset>
                 <?php elseif ($currentStep === 3): ?>
                     <fieldset><legend>Phase 3 of 5 — Sacramental Record</legend>
-                        <label>Where was the applicant baptized? * <select name="baptized_here" required><option value="">-- Select --</option><option value="this_parish" <?= selectedv('baptized_here', 'this_parish') ?>>This parish</option><option value="elsewhere" <?= selectedv('baptized_here', 'elsewhere') ?>>Another parish/church</option><option value="not_sure" <?= selectedv('baptized_here', 'not_sure') ?>>Not sure — please help us check</option></select></label>
-                        <p class="field-hint">If you do not know where the applicant was baptized, the parish office can help check.</p>
+                        <label>Where was the applicant baptized? * <select name="baptized_here" required><option value="">-- Select --</option><option value="this_parish" <?= selectedv('baptized_here', 'this_parish') ?>>This parish</option><option value="elsewhere" <?= selectedv('baptized_here', 'elsewhere') ?>>Another parish/church</option><option value="not_baptized" <?= selectedv('baptized_here', 'not_baptized') ?>>Not yet baptized in the Catholic Church</option></select></label>
+                        <label data-show-if="baptized_here=elsewhere">Parish/church name and location *
+                            <input type="text" name="baptism_parish" maxlength="255" autocomplete="organization" placeholder="Parish/church, city or municipality, province" value="<?= oldv('baptism_parish') ?>">
+                        </label>
+                        <p class="field-hint">If the applicant was baptized elsewhere, provide the parish/church name and location. If you cannot identify it, contact the Parish Office before submitting.</p>
                     </fieldset>
                 <?php elseif ($currentStep === 4): ?>
                     <fieldset><legend>Phase 4 of 5 — Parent / Guardian Consent</legend>
@@ -341,10 +427,14 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <table class="review-table">
                             <tr><th>Full name</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                             <tr><th>Date of birth</th><td><?= oldv('applicant_birthdate') ?></td></tr>
+                            <tr><th>Formation pathway</th><td><?= e(match ((string) ($formData['formation_path'] ?? '')) { 'school_based' => 'School-based group (school batch / parochial school)', 'parish_based' => 'Parish-based / Sunday Catechism group', 'individual_catchup' => 'Individual catch-up / adult / special preparation', default => 'Not sure — please advise' }) ?></td></tr>
+                            <tr><th>Current grade</th><td><?= e(first_communion_grade_options()[(string) ($formData['school_grade'] ?? '')] ?? '') ?></td></tr>
+                            <tr><th>School year</th><td><?= oldv('school_year') !== '' ? oldv('school_year') : '—' ?></td></tr>
                             <tr><th>Parents</th><td><?= e(compose_person_name($formData, 'father')) ?> · <?= e(compose_person_name($formData, 'mother')) ?></td></tr>
                             <tr><th>Parent / Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
                             <tr><th>Contact</th><td><?= oldv('contact_number') ?> · <?= oldv('email') ?></td></tr>
-                            <tr><th>Baptized at</th><td><?= e((string) ($formData['baptized_here'] ?? '')) ?></td></tr>
+                            <tr><th>Baptized at</th><td><?= e(match ((string) ($formData['baptized_here'] ?? '')) { 'this_parish' => 'This parish', 'elsewhere' => 'Another parish/church', 'not_baptized' => 'Not yet baptized in the Catholic Church', default => 'Not selected' }) ?></td></tr>
+                            <?php if (($formData['baptized_here'] ?? '') === 'elsewhere'): ?><tr><th>Baptism parish/church and location</th><td><?= oldv('baptism_parish') ?></td></tr><?php endif; ?>
                         </table>
                         <?php if ($ageAssessment !== null): ?>
                             <p class="alert alert-info" role="note">

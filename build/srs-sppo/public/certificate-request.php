@@ -29,10 +29,23 @@ if (($_GET['person_lookup'] ?? '') === '1') {
     $_SESSION['public_person_lookup_attempts'] = $attempts;
 
     $reference = strtoupper(trim(is_string($_GET['reference'] ?? null) ? $_GET['reference'] : ''));
+    $preapplicationLookup = ($_GET['lookup_context'] ?? '') === 'preapplication';
     $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
     $date = DateTime::createFromFormat('Y-m-d', $birthDate);
     $validBirthDate = $date && $date->format('Y-m-d') === $birthDate;
-    if ($reference !== '') {
+    if ($preapplicationLookup) {
+        if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Enter a valid person reference to search.']);
+            exit;
+        }
+
+        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+                FROM persons
+                WHERE public_reference = ? AND is_deceased = 0
+                LIMIT 1';
+        $params = [$reference];
+    } elseif ($reference !== '') {
         if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1 || !$validBirthDate) {
             http_response_code(400);
             echo json_encode(['error' => 'Enter a valid person reference and date of birth to search.']);
@@ -109,6 +122,7 @@ if ($submitted && is_string($_SESSION['certificate_success'] ?? null)) {
 
 $values = [
     'certificate_type' => '',
+    'has_confirmation_transaction' => '',
     'subject_name' => '',
     'person_id' => '',
     'spouse_name' => '',
@@ -239,10 +253,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         }
 
         $purposeLabels = ['School', 'Employment', 'Passport', 'Marriage', 'Personal records', 'Other'];
-        $relationships = ['self', 'parent', 'sibling', 'child', 'other'];
+        $relationships = ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'grandparent', 'grandchild', 'other'];
 
         if (!isset($certificateTypes[$values['certificate_type']])) {
             $errors[] = 'Choose a certificate type.';
+        }
+        if (($e = confirmation_certificate_transaction_error(
+            $values['certificate_type'],
+            $values['has_confirmation_transaction']
+        )) !== null) {
+            $errors[] = $e;
         }
         if ($values['subject_name'] === '') {
             $errors[] = 'Enter the full name on the certificate.';
@@ -272,7 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if ($values['requester_email'] === '' || !filter_var($values['requester_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Enter a valid email address.';
         }
-        if ($values['requester_contact_number'] !== '' && strlen($values['requester_contact_number']) > 30) {
+        if ($values['requester_contact_number'] === '') {
+            $errors[] = 'Enter a contact number.';
+        } elseif (strlen($values['requester_contact_number']) > 30) {
             $errors[] = 'The contact number must be 30 characters or fewer.';
         }
         if (!in_array($values['purpose'], $purposeLabels, true)) {
@@ -331,6 +353,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 }
                 if ($values['event_date'] !== '') {
                     $details['event_date'] = $values['event_date'];
+                }
+                if ($values['certificate_type'] === 'confirmation') {
+                    $details['has_confirmation_transaction'] = $values['has_confirmation_transaction'];
                 }
                 if ($values['certificate_type'] === 'marriage') {
                     if ($values['spouse_name'] !== '') {
@@ -548,6 +573,15 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endforeach; ?>
         </select>
 
+        <div id="confirmation-transaction" <?= $values['certificate_type'] === 'confirmation' ? '' : 'hidden' ?>>
+            <label for="has_confirmation_transaction">Do you already have an existing Confirmation certificate request or transaction with the Parish Office? *</label>
+            <select id="has_confirmation_transaction" name="has_confirmation_transaction" <?= $values['certificate_type'] === 'confirmation' ? 'required' : '' ?>>
+                <option value="">-- Select --</option>
+                <option value="yes" <?= $values['has_confirmation_transaction'] === 'yes' ? 'selected' : '' ?>>Yes</option>
+                <option value="no" <?= $values['has_confirmation_transaction'] === 'no' ? 'selected' : '' ?>>No</option>
+            </select>
+        </div>
+
         <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
         <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
             <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Choose a certificate type and review what to prepare' ?></strong>
@@ -606,9 +640,13 @@ require_once __DIR__ . '/../includes/header.php';
         <select id="requester_relationship" name="requester_relationship" required>
             <option value="" <?= $values['requester_relationship'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="self" <?= $values['requester_relationship'] === 'self' ? 'selected' : '' ?>>Self</option>
-            <option value="parent" <?= $values['requester_relationship'] === 'parent' ? 'selected' : '' ?>>Parent</option>
-            <option value="sibling" <?= $values['requester_relationship'] === 'sibling' ? 'selected' : '' ?>>Sibling</option>
-            <option value="child" <?= $values['requester_relationship'] === 'child' ? 'selected' : '' ?>>Child</option>
+            <option value="spouse" <?= $values['requester_relationship'] === 'spouse' ? 'selected' : '' ?>>Spouse</option>
+            <option value="father" <?= $values['requester_relationship'] === 'father' ? 'selected' : '' ?>>Father</option>
+            <option value="mother" <?= $values['requester_relationship'] === 'mother' ? 'selected' : '' ?>>Mother</option>
+            <option value="son" <?= $values['requester_relationship'] === 'son' ? 'selected' : '' ?>>Son</option>
+            <option value="daughter" <?= $values['requester_relationship'] === 'daughter' ? 'selected' : '' ?>>Daughter</option>
+            <option value="grandparent" <?= $values['requester_relationship'] === 'grandparent' ? 'selected' : '' ?>>Grandparent</option>
+            <option value="grandchild" <?= $values['requester_relationship'] === 'grandchild' ? 'selected' : '' ?>>Grandchild</option>
             <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Authorized Representative</option>
         </select>
         <p class="field-hint" data-self-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>If you selected Self, bring a valid ID with a name matching the person on the certificate when collecting it.</p>
@@ -617,8 +655,9 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
 
-        <label for="requester_contact_number">Contact number (optional)</label>
-        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>">
+        <label for="requester_contact_number">Contact number *</label>
+        <input type="tel" id="requester_contact_number" name="requester_contact_number" autocomplete="tel" maxlength="30" required value="<?= e($values['requester_contact_number']) ?>">
+        <p class="field-hint">Use a Philippine mobile number, such as 09171234567 or +639171234567.</p>
         </div>
 
         <div data-certificate-phase="purpose">
@@ -668,13 +707,19 @@ require_once __DIR__ . '/../includes/header.php';
         (function () {
             var typeSelect = document.getElementById('certificate_type');
             var marriageOnly = document.getElementById('marriage-only');
+            var confirmationTransaction = document.getElementById('confirmation-transaction');
+            var confirmationTransactionField = document.getElementById('has_confirmation_transaction');
             var subjectLabel = document.querySelector('label[for="subject_name"]');
             var preparationHeading = document.getElementById('certificate-preparation-heading');
             var preparationList = document.getElementById('certificate-preparation-list');
             var preparationDetails = <?= json_encode($certificatePreparation, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
             function updateType() {
                 var isMarriage = typeSelect.value === 'marriage';
+                var isConfirmation = typeSelect.value === 'confirmation';
                 marriageOnly.hidden = !isMarriage;
+                confirmationTransaction.hidden = !isConfirmation;
+                confirmationTransactionField.required = isConfirmation;
+                if (!isConfirmation) confirmationTransactionField.value = '';
                 document.getElementById('spouse_name').required = isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
                 preparationHeading.textContent = typeSelect.value

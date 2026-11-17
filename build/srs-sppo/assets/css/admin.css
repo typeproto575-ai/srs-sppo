@@ -588,6 +588,12 @@ textarea {
     margin-bottom: 1rem;
 }
 
+.page-heading-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .page-heading h1,
 .admin-page-header h1,
 .admin-content > h1 {
@@ -908,6 +914,35 @@ textarea {
 .application-review-card section {
     display: grid;
     gap: 0.65rem;
+}
+
+.parish-schedule-picker {
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.85rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-panel-weak);
+}
+
+.application-schedule-form .parish-schedule-picker,
+.sacrament-group-schedule-form .parish-schedule-picker {
+    grid-column: 1 / -1;
+    flex: 1 1 100%;
+}
+
+.parish-schedule-picker label {
+    margin: 0;
+}
+
+.parish-schedule-picker__events {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--admin-muted);
+}
+
+.parish-schedule-picker__events li + li {
+    margin-top: 0.25rem;
 }
 
 .application-person-match-grid,

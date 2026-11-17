@@ -78,6 +78,7 @@ $historyStmt->execute(['sacrament_records', $recordId]);
 $recordHistory = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $personLabels = [];
+$personsById = [];
 $personIds = array_values(array_unique(array_filter([
     (int) ($record['person_id'] ?? 0),
     (int) ($record['spouse_person_id'] ?? 0),
@@ -85,11 +86,34 @@ $personIds = array_values(array_unique(array_filter([
 foreach ($personIds as $index => $personId) {
     $person = sd_get_person($pdo, $personId);
     if ($person) {
+        $personsById[$personId] = $person;
         $personLabels[] = [
             'label' => $index === 0 ? ($definition['sacrament_type'] === 'marriage' ? 'Groom' : 'Recipient') : 'Spouse',
             'person' => $person,
         ];
     }
+}
+$marriageAgeReview = null;
+if (($record['sacrament_type'] ?? '') === 'marriage') {
+    $ageReferenceDate = is_scalar($record['event_date'] ?? null) ? (string) $record['event_date'] : '';
+    $hasRecordAgeDate = parish_schedule_date_is_valid($ageReferenceDate);
+    if (!$hasRecordAgeDate) {
+        $ageReferenceDate = date('Y-m-d');
+    }
+    $groom = $personsById[(int) ($record['person_id'] ?? 0)] ?? [];
+    $bride = $personsById[(int) ($record['spouse_person_id'] ?? 0)] ?? [];
+    $marriageAgeReview = [
+        'as_of' => $ageReferenceDate,
+        'date_source' => $hasRecordAgeDate ? 'Marriage record date' : 'Today (record date unavailable)',
+        'groom' => marriage_party_age_eligibility(
+            is_string($groom['birth_date'] ?? null) ? $groom['birth_date'] : null,
+            $ageReferenceDate
+        ),
+        'bride' => marriage_party_age_eligibility(
+            is_string($bride['birth_date'] ?? null) ? $bride['birth_date'] : null,
+            $ageReferenceDate
+        ),
+    ];
 }
 
 $relatedRecords = [];
@@ -240,6 +264,27 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div><dt>Updated</dt><dd><?= e(record_view_value($record['updated_at'] ?? null)) ?></dd></div>
             </dl>
 
+            <?php if ($marriageAgeReview !== null): ?>
+                <section class="marriage-age-review" aria-label="Marriage age eligibility review">
+                    <h3>Age Eligibility Review</h3>
+                    <p class="field-hint">Calculated as of <?= e(date('M j, Y', strtotime($marriageAgeReview['as_of']))) ?> · <?= e($marriageAgeReview['date_source']) ?>.</p>
+                    <dl class="application-details-list">
+                        <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $partyKey => $partyLabel):
+                            $partyReview = $marriageAgeReview[$partyKey];
+                            ?>
+                            <div class="alert alert-<?= e($partyReview['tone']) ?>">
+                                <dt><?= e($partyLabel) ?></dt>
+                                <dd>
+                                    <strong><?= $partyReview['age'] === null ? 'Age not available' : e((string) $partyReview['age'] . ' years old') ?></strong>
+                                    <br><?= e($partyReview['label']) ?>
+                                </dd>
+                            </div>
+                        <?php endforeach; ?>
+                    </dl>
+                    <p class="field-hint">Age screening only: verify required consent or advice at the marriage-license stage. This does not replace checking canonical requirements and supporting documents.</p>
+                </section>
+            <?php endif; ?>
+
             <?php if (!empty($record['details'])): ?>
                 <h3 class="record-detail-group-title">Additional details</h3>
                 <dl class="record-detail-list">
@@ -300,6 +345,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <div class="record-person-link">
                             <span class="field-hint"><?= e($link['label']) ?></span>
                             <strong><?= e(sd_full_name($link['person'])) ?><?= !empty($link['person']['birth_date']) ? ' — born ' . e($link['person']['birth_date']) : '' ?></strong>
+                            <small class="field-hint">Public person reference: <code><?= e($link['person']['public_reference'] ?: 'Not assigned') ?></code></small>
                             <a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $link['person']['id']) ?>">View person profile</a>
                         </div>
                     <?php endforeach; ?>

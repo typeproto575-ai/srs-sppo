@@ -282,7 +282,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <div class="person-profile-section__heading">
             <div>
                 <p class="person-profile-section__eyebrow">Liber Defunctorum</p>
-                <h2 id="funeral-record-heading">Funeral record</h2>
+                <h2 id="funeral-record-heading">Death record</h2>
             </div>
         </div>
         <div class="person-profile-details">
@@ -304,8 +304,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
         </div>
         <div class="person-profile-record__actions">
-            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $funeralRecord['id']) ?>">Open funeral record</a>
-            <a class="btn btn-primary btn-small" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . (int) $funeralRecord['id']) ?>">Print certification</a>
+            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $funeralRecord['id']) ?>">Open death record</a>
         </div>
     </section>
 <?php endif; ?>

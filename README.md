@@ -189,6 +189,14 @@ staff account, notifications, or audit entries.
 The seed uses fixed IDs and is **not repeatable**. Never import it into a
 database that already contains records. It does not truncate or clear tables.
 
+For an isolated staging install with original Japanese-inspired fictional
+profiles, use `database/v2/anime_demo_seed_v2.sql` after `database/v2/schema.sql`
+on a new, empty database. It adds a visible staging disclaimer, sample records
+for all four sacraments, and sample requests without creating a staff account
+or clearing existing data. The seed has fixed IDs and is not repeatable. It
+does not select a database, so choose the staging database in phpMyAdmin before
+importing it. Never use it on the live parish database.
+
 To remove only rows recognizable from the previous full V2 demo seed, back up
 the database and review `database/cleanup_public_demo.sql` first. On a hosted
 database, change the script's `USE` statement to the database name from the
@@ -197,6 +205,13 @@ The cleanup uses fixed seed fingerprints, preserves non-matching records and
 all users, and does not truncate tables. It can leave a seed row behind if that
 row no longer matches its original fingerprint or is still referenced by other
 data.
+
+On shared hosting such as InfinityFree, create the staging database in the
+hosting panel, select it in phpMyAdmin, and import a copy of `database/v2/schema.sql`
+with its `CREATE DATABASE` and `USE srs_sppo_db` statements removed. Shared
+hosts assign prefixed database names and do not allow the application to create
+databases. Keep the host's database credentials in a server-only
+`config/local.php`; never upload the local copy.
 
 ## Folder structure
 

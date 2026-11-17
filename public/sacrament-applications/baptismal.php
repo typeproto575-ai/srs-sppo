@@ -272,12 +272,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $godmotherNames      = compose_godparent_names($formData, 'godmother');
             $childPersonId = null;
 
-            if (fd('child_first', $formData) === '') $errors[] = "Applicant's first name is required.";
-            if (fd('child_last', $formData) === '') $errors[] = "Applicant's last name is required.";
+            if (fd('child_first', $formData) === '') $errors[] = "First name is required.";
+            if (fd('child_last', $formData) === '') $errors[] = "Last name is required.";
             if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
             $applicantAge = baptism_application_age($childBirthdate);
             if ($childBirthdate === '') {
-                $errors[] = "Applicant's birthdate is required.";
+                $errors[] = "Birthdate is required.";
             } elseif ($applicantAge === null) {
                 $errors[] = "Enter a valid date of birth.";
             }
@@ -510,7 +510,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             </div>
             <h3 class="form-subheading">Applicant’s details</h3>
             <div class="inline-fields">
-                <label>Applicant's First Name *
+                <label>First Name *
                     <input type="text" name="child_first" autocomplete="given-name" value="<?= e(fd('child_first', $formData)) ?>" required>
                 </label>
                 <label>Middle Name <span class="field-hint">(optional)</span>

@@ -141,6 +141,8 @@ if ($filterStatus === 'pending') {
 } elseif ($filterStatus !== '' && in_array($filterStatus, $allowedRequestStatuses, true)) {
     $where[] = 'cr.status = ?';
     $params[] = $filterStatus;
+} else {
+    $where[] = "cr.status <> 'rejected'";
 }
 if ($filterChannel !== '' && in_array($filterChannel, ['online', 'onsite'], true)) {
     $where[] = 'cr.channel = ?';

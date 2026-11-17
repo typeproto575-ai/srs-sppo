@@ -110,6 +110,54 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
     return true;
 }
 
+function mail_death_record_schedule_update(
+    string $toEmail,
+    string $personName,
+    string $serviceType,
+    string $serviceDate,
+    string $serviceTime,
+    ?PDO $pdo = null,
+    ?int $recordId = null
+): bool {
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $serviceDate);
+    if (!$date || $date->format('Y-m-d') !== $serviceDate) {
+        throw new InvalidArgumentException('A valid service date is required for a schedule email.');
+    }
+    if (!in_array($serviceType, ['mass', 'blessing'], true)) {
+        throw new InvalidArgumentException('A valid funeral service type is required for a schedule email.');
+    }
+
+    $time = trim($serviceTime);
+    $timeLabel = 'Time to be confirmed';
+    if ($time !== '') {
+        $parsedTime = DateTimeImmutable::createFromFormat('!H:i', substr($time, 0, 5));
+        if (!$parsedTime || $parsedTime->format('H:i') !== substr($time, 0, 5)) {
+            throw new InvalidArgumentException('A valid service time is required for a schedule email.');
+        }
+        $timeLabel = $parsedTime->format('g:i A');
+    }
+
+    $serviceLabel = $serviceType === 'mass' ? 'Funeral Mass' : 'Funeral Blessing';
+    $personName = trim($personName) !== '' ? trim($personName) : 'your family member';
+    $body = "Dear Family Contact,\r\n\r\n"
+        . "The Parish Office confirmed the following funeral service schedule for {$personName}:\r\n\r\n"
+        . $serviceLabel . "\r\n"
+        . $date->format('F j, Y') . "\r\n"
+        . $timeLabel . "\r\n\r\n"
+        . "If you need to discuss this schedule, please contact the Parish Office.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+
+    return send_mail(
+        $toEmail,
+        'Funeral service schedule confirmed',
+        $body,
+        $pdo,
+        'death_record_schedule',
+        'funeral_record',
+        $recordId
+    );
+}
+
 function mail_request_documents(string $kind): array
 {
     return match ($kind) {

@@ -42,6 +42,12 @@ if (isset($_GET['edit'])) {
         ]));
         exit;
     }
+    if (!empty($editEvent['application_id'])) {
+        redirect_to('/admin/requests/applications-queue.php?' . http_build_query([
+            'open_application_id' => (int) $editEvent['application_id'],
+        ]));
+        exit;
+    }
 }
 $isEdit = $editEvent !== null;
 
@@ -69,35 +75,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_e
     if (!in_array($postedEventType, ['mass', 'wedding', 'baptism', 'other'], true)) $errors[] = 'Event type is required.';
     if ($title === '')     $errors[] = 'Title is required.';
     if ($eventDate === '') $errors[] = 'Event date is required.';
+    if ($eventDate !== '' && !parish_schedule_date_is_valid($eventDate)) $errors[] = 'Enter a valid event date.';
     if ($startTime && $endTime && $endTime <= $startTime) $errors[] = 'End time must be after the start time.';
+    if ($endTime && !$startTime) $errors[] = 'Enter a start time before an end time.';
     if (mb_strlen($publicDetails, 'UTF-8') > 1000) $errors[] = 'Public details must be 1,000 characters or fewer.';
 
     if (empty($errors)) {
-        // Flag (never block): check same-date events for an actual TIME
-        // overlap BEFORE the insert so the success message can warn about a
-        // booking conflict that the secretary must confirm manually. Same
-        // day, different time (e.g. a 9am mass and a 2pm wedding) is fine.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ?");
-        $occupyStmt->execute([$eventDate]);
-        $hadConflict = false;
-        foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($startTime, $endTime, $existing['start_time'], $existing['end_time'])) {
-                $hadConflict = true;
-                break;
-            }
+        if (parish_schedule_has_conflict($pdo, $eventDate, $startTime, $endTime)) {
+            $errors[] = 'This time overlaps an existing parish or death service schedule. Choose another time.';
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO schedule_events (event_type, title, public_details, event_date, start_time, end_time, notes, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([$postedEventType, $title, $publicDetails !== '' ? $publicDetails : null, $eventDate, $startTime, $endTime, $notes, current_user()['id']]);
+            $eventId = (int) $pdo->lastInsertId();
+
+            log_activity($pdo, current_user()['id'], 'schedule_event_added', 'schedule_events', $eventId, "Added event: {$title} on {$eventDate}");
+
+            redirect_to('/admin/schedule/calendar.php?added=1');
+            exit;
         }
-
-        $stmt = $pdo->prepare(
-            "INSERT INTO schedule_events (event_type, title, public_details, event_date, start_time, end_time, notes, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        );
-        $stmt->execute([$postedEventType, $title, $publicDetails !== '' ? $publicDetails : null, $eventDate, $startTime, $endTime, $notes, current_user()['id']]);
-        $eventId = (int) $pdo->lastInsertId();
-
-        log_activity($pdo, current_user()['id'], 'schedule_event_added', 'schedule_events', $eventId, "Added event: {$title} on {$eventDate}");
-
-        redirect_to('/admin/schedule/calendar.php?added=1' . ($hadConflict ? '&conflict=1' : ''));
-        exit;
     }
 }
 
@@ -117,12 +115,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
     $editId   = (int) ($_POST['edit_id'] ?? 0);
     if ($editId > 0) {
-        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck = $pdo->prepare('SELECT batch_id, application_id FROM schedule_events WHERE id = ?');
         $batchCheck->execute([$editId]);
-        $linkedBatchId = $batchCheck->fetchColumn();
-        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+        $linkedSchedule = $batchCheck->fetch(PDO::FETCH_ASSOC) ?: [];
+        $linkedBatchId = $linkedSchedule['batch_id'] ?? null;
+        if ($linkedBatchId !== null) {
             redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
                 'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
+        $linkedApplicationId = $linkedSchedule['application_id'] ?? null;
+        if ($linkedApplicationId !== null) {
+            redirect_to('/admin/requests/applications-queue.php?' . http_build_query([
+                'open_application_id' => (int) $linkedApplicationId,
             ]));
             exit;
         }
@@ -145,7 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     if (!in_array($updType, ['mass', 'wedding', 'baptism', 'other'], true)) $errors[] = 'Event type is required.';
     if ($updTitle === '')     $errors[] = 'Title is required.';
     if ($updDate === '')      $errors[] = 'Event date is required.';
+    if ($updDate !== '' && !parish_schedule_date_is_valid($updDate)) $errors[] = 'Enter a valid event date.';
     if ($updStart && $updEnd && $updEnd <= $updStart) $errors[] = 'End time must be after the start time.';
+    if ($updEnd && !$updStart) $errors[] = 'Enter a start time before an end time.';
     if (mb_strlen($updPublicDetails, 'UTF-8') > 1000) $errors[] = 'Public details must be 1,000 characters or fewer.';
 
     // Verify the row still exists (the GET loader was skipped on POST).
@@ -156,24 +164,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     }
 
     if ($editId && empty($errors)) {
-        // Same time-overlap check as add, excluding the row being edited.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ? AND id != ?");
-        $occupyStmt->execute([$updDate, $editId]);
-        $hadConflict = false;
-        foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($updStart, $updEnd, $existing['start_time'], $existing['end_time'])) {
-                $hadConflict = true;
-                break;
-            }
+        if (parish_schedule_has_conflict($pdo, $updDate, $updStart, $updEnd, $editId)) {
+            $errors[] = 'This time overlaps an existing parish or death service schedule. Choose another time.';
+        } else {
+            $stmt = $pdo->prepare(
+                "UPDATE schedule_events SET event_type = ?, title = ?, public_details = ?, event_date = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ?"
+            );
+            $stmt->execute([$updType, $updTitle, $updPublicDetails !== '' ? $updPublicDetails : null, $updDate, $updStart, $updEnd, $updNotes, $editId]);
+            log_activity($pdo, current_user()['id'], 'schedule_event_updated', 'schedule_events', $editId, "Updated: {$updTitle}");
+            redirect_to('/admin/schedule/calendar.php?updated=1');
+            exit;
         }
-
-        $stmt = $pdo->prepare(
-            "UPDATE schedule_events SET event_type = ?, title = ?, public_details = ?, event_date = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ?"
-        );
-        $stmt->execute([$updType, $updTitle, $updPublicDetails !== '' ? $updPublicDetails : null, $updDate, $updStart, $updEnd, $updNotes, $editId]);
-        log_activity($pdo, current_user()['id'], 'schedule_event_updated', 'schedule_events', $editId, "Updated: {$updTitle}");
-        redirect_to('/admin/schedule/calendar.php?updated=1' . ($hadConflict ? '&conflict=1' : ''));
-        exit;
     }
 }
 
@@ -181,12 +182,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_event']) && cs
     require_role('secretary');
     $id = (int) ($_POST['event_id'] ?? 0);
     if ($id) {
-        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck = $pdo->prepare('SELECT batch_id, application_id FROM schedule_events WHERE id = ?');
         $batchCheck->execute([$id]);
-        $linkedBatchId = $batchCheck->fetchColumn();
-        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+        $linkedSchedule = $batchCheck->fetch(PDO::FETCH_ASSOC) ?: [];
+        $linkedBatchId = $linkedSchedule['batch_id'] ?? null;
+        if ($linkedBatchId !== null) {
             redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
                 'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
+        $linkedApplicationId = $linkedSchedule['application_id'] ?? null;
+        if ($linkedApplicationId !== null) {
+            redirect_to('/admin/requests/applications-queue.php?' . http_build_query([
+                'open_application_id' => (int) $linkedApplicationId,
             ]));
             exit;
         }
@@ -211,7 +220,25 @@ $rfConfig = [
 require_once __DIR__ . '/../../includes/record-filters.php';
 $rf = rf_parse($rfConfig);
 
-$allEvents = $pdo->query("SELECT * FROM schedule_events ORDER BY event_date ASC, start_time ASC")->fetchAll();
+$allEvents = array_map(
+    static function (array $event): array {
+        $event['event_source'] = 'calendar';
+        return $event;
+    },
+    $pdo->query("SELECT * FROM schedule_events ORDER BY event_date ASC, start_time ASC")->fetchAll(PDO::FETCH_ASSOC)
+);
+$deathEvents = $pdo->query(
+    "SELECT fr.id, 'death' AS event_type,
+            CONCAT('Death service: ', CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix)) AS title,
+            NULL AS public_details, fr.service_date AS event_date, fr.service_time AS start_time,
+            ADDTIME(fr.service_time, '01:00:00') AS end_time, NULL AS notes,
+            'funeral' AS event_source
+     FROM funeral_records fr
+     JOIN persons p ON p.id = fr.person_id
+     WHERE fr.service_date IS NOT NULL
+     ORDER BY fr.service_date ASC, fr.service_time ASC"
+)->fetchAll(PDO::FETCH_ASSOC);
+$allEvents = array_merge($allEvents, $deathEvents);
 
 $allowedSorts = ['date', 'date_desc', 'title', 'title_desc', 'type', 'type_desc'];
 $sort = (string) ($_GET['sort'] ?? 'date');
@@ -233,8 +260,9 @@ $stmt->execute($rf['params']);
 $events = $stmt->fetchAll();
 
 // Per-type calendar colors (also used by the legend and the list badges).
-$typeColors = ['mass' => '#245b8f', 'wedding' => '#923b67', 'baptism' => '#176b5a', 'other' => '#526171'];
+$typeColors = ['mass' => '#245b8f', 'wedding' => '#923b67', 'baptism' => '#176b5a', 'other' => '#526171', 'death' => '#8a4b08'];
 $typeLabels = ['mass' => 'Mass', 'wedding' => 'Wedding', 'baptism' => 'Baptism', 'other' => 'Other'];
+$calendarTypeLabels = $typeLabels + ['death' => 'Death service'];
 
 // An event flags a booking conflict when another event on the SAME DATE has
 // an overlapping TIME (shown "— CONFLICT" in red on the calendar and with a
@@ -249,7 +277,10 @@ foreach ($allEvents as $ev) {
 function schedule_event_has_conflict(array $event, array $eventsByDate): bool
 {
     foreach ($eventsByDate[$event['event_date']] ?? [] as $other) {
-        if ((int) $other['id'] === (int) $event['id']) continue;
+        if (($other['event_source'] ?? 'calendar') === ($event['event_source'] ?? 'calendar')
+            && (int) $other['id'] === (int) $event['id']) {
+            continue;
+        }
         if (event_times_overlap($event['start_time'], $event['end_time'], $other['start_time'], $other['end_time'])) {
             return true;
         }
@@ -283,7 +314,9 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
         'end' => $e['end_time'] ? $e['event_date'] . 'T' . $e['end_time'] : null,
         'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? $typeColors['other']),
         'classNames' => trim((string) ($e['public_details'] ?? '')) === '' ? [] : ['has-public-details'],
-        'url'   => $basePath . '/admin/schedule/calendar.php?edit=' . (int) $e['id'],
+        'url' => ($e['event_source'] ?? 'calendar') === 'funeral'
+            ? $basePath . '/admin/funerals/form.php?id=' . (int) $e['id']
+            : $basePath . '/admin/schedule/calendar.php?edit=' . (int) $e['id'],
     ];
 }, $allEvents);
 
@@ -334,11 +367,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <p class="schedule-section-kicker">Schedule at a glance</p>
                     <h2 id="calendar-section-heading">Calendar</h2>
                 </div>
-                <p>Switch between Month and List views. Select an event to edit it.</p>
+                <p>Switch between Month and List views. Select an event to open its editor or record.</p>
             </div>
         <div class="calendar-toolbar">
             <div class="calendar-legend">
-                <?php foreach ($typeLabels as $type => $label): ?>
+                <?php foreach ($calendarTypeLabels as $type => $label): ?>
                     <span class="legend-item" title="<?= e($label) ?>"><span class="legend-swatch" style="background:<?= e($typeColors[$type]) ?>;" aria-hidden="true"></span><?= e($label) ?></span>
                 <?php endforeach; ?>
                 <span class="legend-item" title="Conflict"><span class="legend-swatch" style="background:#b91c1c;" aria-hidden="true"></span>Conflict</span>

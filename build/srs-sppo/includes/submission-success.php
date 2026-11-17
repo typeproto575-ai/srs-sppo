@@ -33,6 +33,9 @@ if (empty($trackingNumber)) {
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
 $successIsApplication = $successIsApplication ?? false;
+$successFormationGuidance = isset($successFormationGuidance) && is_string($successFormationGuidance)
+    ? trim($successFormationGuidance)
+    : '';
 $successRequiredDocuments = isset($successRequiredDocuments) && is_array($successRequiredDocuments)
     ? $successRequiredDocuments
     : [];
@@ -70,6 +73,9 @@ $basePath       = $basePath ?? base_path();
                 <ol>
                     <?php if ($successIsApplication): ?>
                     <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. Use your person reference and the email address you used to view requests linked to that profile. You may also contact the office or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
+                    <?php if ($successFormationGuidance !== ''): ?>
+                    <li><?= e($successFormationGuidance) ?></li>
+                    <?php endif; ?>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
@@ -91,6 +97,13 @@ $basePath       = $basePath ?? base_path();
                         <?php endforeach; ?>
                     </ul>
                 </section>
+            <?php endif; ?>
+
+            <?php if ($successIsApplication): ?>
+                <div class="submission-success-actions">
+                    <a href="<?= e($basePath . '/public/services.php#sacrament-applications') ?>" class="btn btn-secondary">View Sacrament Applications</a>
+                    <a href="<?= e($basePath . '/public/index.php') ?>" class="btn btn-secondary">Back to Home</a>
+                </div>
             <?php endif; ?>
 
             <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online.</p>

@@ -297,6 +297,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <div class="record-person-link">
                             <span class="field-hint"><?= e($link['label']) ?></span>
                             <strong><?= e(sd_full_name($link['person'])) ?><?= !empty($link['person']['birth_date']) ? ' — born ' . e($link['person']['birth_date']) : '' ?></strong>
+                            <small class="field-hint">Public person reference: <code><?= e($link['person']['public_reference'] ?: 'Not assigned') ?></code></small>
                             <a href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $link['person']['id']) ?>">View person profile</a>
                         </div>
                     <?php endforeach; ?>

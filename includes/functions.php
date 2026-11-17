@@ -167,10 +167,10 @@ function public_selected_person_id(
     $stmt = $pdo->prepare(
         'SELECT id FROM persons
          WHERE id = ?
-           AND first_name = ?
-           AND COALESCE(middle_name, \'\') = ?
-           AND last_name = ?
-           AND COALESCE(suffix, \'\') = ?
+           AND (first_name = ? OR first_name IS NULL OR TRIM(first_name) = \'\' OR UPPER(TRIM(first_name)) = \'N/A\')
+           AND (COALESCE(middle_name, \'\') = ? OR TRIM(COALESCE(middle_name, \'\')) = \'\' OR UPPER(TRIM(COALESCE(middle_name, \'\'))) = \'N/A\')
+           AND (last_name = ? OR last_name IS NULL OR TRIM(last_name) = \'\' OR UPPER(TRIM(last_name)) = \'N/A\')
+           AND (COALESCE(suffix, \'\') = ? OR TRIM(COALESCE(suffix, \'\')) = \'\' OR UPPER(TRIM(COALESCE(suffix, \'\'))) = \'N/A\')
            AND (birth_date = ? OR birth_date IS NULL)' . $deceasedFilter . '
          LIMIT 1'
     );
@@ -262,16 +262,41 @@ function public_person_reference(PDO $pdo, ?int $personId, array $identity): arr
     $profileUpdate = $pdo->prepare(
         "UPDATE persons
          SET birth_date = COALESCE(birth_date, ?),
-             birth_place = COALESCE(NULLIF(birth_place, ''), ?),
-             father_name = COALESCE(NULLIF(father_name, ''), ?),
-             mother_maiden_name = COALESCE(NULLIF(mother_maiden_name, ''), ?)
+             first_name = CASE
+                 WHEN (first_name IS NULL OR TRIM(first_name) = '' OR UPPER(TRIM(first_name)) = 'N/A') AND ? <> ''
+                 THEN ? ELSE first_name END,
+             middle_name = CASE
+                 WHEN (middle_name IS NULL OR TRIM(middle_name) = '' OR UPPER(TRIM(middle_name)) = 'N/A') AND ? <> ''
+                 THEN ? ELSE middle_name END,
+             last_name = CASE
+                 WHEN (last_name IS NULL OR TRIM(last_name) = '' OR UPPER(TRIM(last_name)) = 'N/A') AND ? <> ''
+                 THEN ? ELSE last_name END,
+             suffix = CASE
+                 WHEN (suffix IS NULL OR TRIM(suffix) = '' OR UPPER(TRIM(suffix)) = 'N/A') AND ? <> ''
+                 THEN ? ELSE suffix END,
+             birth_place = CASE
+                 WHEN (birth_place IS NULL OR TRIM(birth_place) = '' OR UPPER(TRIM(birth_place)) = 'N/A') AND ? IS NOT NULL
+                 THEN ? ELSE birth_place END,
+             father_name = CASE
+                 WHEN (father_name IS NULL OR TRIM(father_name) = '' OR UPPER(TRIM(father_name)) = 'N/A') AND ? IS NOT NULL
+                 THEN ? ELSE father_name END,
+             mother_maiden_name = CASE
+                 WHEN (mother_maiden_name IS NULL OR TRIM(mother_maiden_name) = '' OR UPPER(TRIM(mother_maiden_name)) = 'N/A') AND ? IS NOT NULL
+                 THEN ? ELSE mother_maiden_name END
          WHERE id = ?"
     );
+    $birthPlace = trim((string) ($identity['birth_place'] ?? '')) ?: null;
+    $fatherName = trim((string) ($identity['father_name'] ?? '')) ?: null;
+    $motherMaidenName = trim((string) ($identity['mother_maiden_name'] ?? '')) ?: null;
     $profileUpdate->execute([
         $name['birth_date'] !== '' ? $name['birth_date'] : null,
-        trim((string) ($identity['birth_place'] ?? '')) ?: null,
-        trim((string) ($identity['father_name'] ?? '')) ?: null,
-        trim((string) ($identity['mother_maiden_name'] ?? '')) ?: null,
+        $name['first_name'], $name['first_name'],
+        $name['middle_name'], $name['middle_name'],
+        $name['last_name'], $name['last_name'],
+        $name['suffix'], $name['suffix'],
+        $birthPlace, $birthPlace,
+        $fatherName, $fatherName,
+        $motherMaidenName, $motherMaidenName,
         $personId,
     ]);
     if (is_string($reference) && $reference !== '') {
@@ -341,7 +366,7 @@ function public_assert_no_open_sacrament_application(
         ];
         $label = $labels[$sacramentType] ?? 'sacrament';
         throw new InvalidArgumentException(
-            "An open {$label} application is already linked to this profile. Use person reference {$personReference} to check its status; do not submit another application."
+            "A {$label} pre-application or request is already on file for this person. Use person reference {$personReference} to check its status; you do not need to submit another one."
         );
     }
 }
@@ -487,9 +512,22 @@ function sacrament_formation_grade_options(): array
 
 function first_communion_grade_options(): array
 {
-    $grades = sacrament_formation_grade_options();
+    $grades = [];
+    for ($grade = 4; $grade <= 12; $grade++) {
+        $grades['grade_' . $grade] = 'Grade ' . $grade;
+    }
+
     $grades['not_enrolled'] = 'Out-of-School Youth (OSY)';
-    $grades['not_applicable'] = 'Not Applicable / Adult / Out-of-School';
+    $grades['other'] = 'Other';
+    $grades['not_applicable'] = 'Adult / Not in school';
+
+    return $grades;
+}
+
+function first_communion_grade_select_options(): array
+{
+    $grades = first_communion_grade_options();
+    unset($grades['not_enrolled'], $grades['not_applicable']);
 
     return $grades;
 }
@@ -504,6 +542,9 @@ function first_communion_formation_input_error(string $path, string $grade, stri
     }
 
     $gradeOptions = first_communion_grade_options();
+    if (preg_match('/^grade_([1-3])$/', $grade) === 1) {
+        return 'First Holy Communion applications require Grade 4 or above.';
+    }
     if ($path === 'individual_catchup') {
         if ($grade !== '' && strcasecmp($grade, 'N/A') !== 0 && !array_key_exists($grade, $gradeOptions)) {
             return 'Choose a valid current grade level.';
@@ -519,13 +560,23 @@ function first_communion_formation_input_error(string $path, string $grade, stri
     }
 
     $schoolYear = trim($schoolYear);
-    if ($path === 'school_based' && $schoolYear === '') {
-        return 'A school year is required for a school-based group, for example 2026-2027.';
+    if ($schoolYear !== '' && preg_match('/^\d{4}$/', $schoolYear) !== 1) {
+        return 'Enter one four-digit year, for example 2026.';
     }
-    if ($schoolYear !== ''
-        && (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $years) !== 1
-            || (int) $years[2] !== (int) $years[1] + 1)) {
-        return 'Enter the school year as two consecutive years, for example 2026-2027.';
+
+    return null;
+}
+
+function first_communion_place_input_error(string $place, string $otherPlace): ?string
+{
+    if (!in_array($place, ['parish_church', 'other'], true)) {
+        return 'Choose where the First Communion will take place.';
+    }
+    if ($place === 'other' && trim($otherPlace) === '') {
+        return 'Specify the other First Communion place or venue.';
+    }
+    if ($place === 'other' && mb_strlen(trim($otherPlace), 'UTF-8') > 150) {
+        return 'The other First Communion place or venue must be 150 characters or fewer.';
     }
 
     return null;
@@ -533,7 +584,7 @@ function first_communion_formation_input_error(string $path, string $grade, stri
 
 function sacrament_formation_input_error(string $path, string $grade, string $schoolYear): ?string
 {
-    if (!in_array($path, ['batch', 'individual_catchup', 'not_sure'], true)) {
+    if (!in_array($path, ['batch', 'individual_catchup'], true)) {
         return 'Choose a formation pathway.';
     }
     if (!array_key_exists($grade, sacrament_formation_grade_options())) {
@@ -644,6 +695,30 @@ function calculate_age(string $birthdate): int
     return $birth->diff($today)->y;
 }
 
+if (!defined('BAPTISM_LATE_PATHWAY_MIN_AGE')) {
+    define('BAPTISM_LATE_PATHWAY_MIN_AGE', 7);
+}
+
+function baptism_application_age(string $birthdate): ?int
+{
+    if (!preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $birthdate)) {
+        return null;
+    }
+
+    $date = DateTime::createFromFormat('!Y-m-d', $birthdate);
+    if (!$date || $date->format('Y-m-d') !== $birthdate) {
+        return null;
+    }
+
+    return calculate_age($birthdate);
+}
+
+function baptism_application_is_late(string $birthdate): ?bool
+{
+    $age = baptism_application_age($birthdate);
+    return $age === null ? null : $age >= BAPTISM_LATE_PATHWAY_MIN_AGE;
+}
+
 /** Validate a report month/year together, falling back to the current period if either is invalid. */
 function validated_report_period(mixed $month, mixed $year, ?DateTimeImmutable $currentDate = null): array
 {
@@ -712,6 +787,42 @@ function sacrament_age_assessment(PDO $pdo, string $sacramentType, int $age): ar
     }
 
     return ['age' => $age, 'range' => $range, 'status' => $status];
+}
+
+function sacrament_age_submission_error(PDO $pdo, string $sacramentType, string $birthdate): ?string
+{
+    if (!preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $birthdate)) {
+        return 'Enter a valid date of birth.';
+    }
+
+    $birthDate = DateTimeImmutable::createFromFormat('!Y-m-d', $birthdate);
+    if (!$birthDate || $birthDate->format('Y-m-d') !== $birthdate) {
+        return 'Enter a valid date of birth.';
+    }
+
+    $today = new DateTimeImmutable('today');
+    if ($birthDate > $today) {
+        return "The applicant's date of birth cannot be in the future.";
+    }
+
+    $assessment = sacrament_age_assessment($pdo, $sacramentType, $birthDate->diff($today)->y);
+    if ($assessment['status'] === 'Age-eligible') {
+        return null;
+    }
+
+    $label = $sacramentType === 'confirmation' ? 'Confirmation' : 'First Communion';
+    return "The applicant is not yet age-eligible for {$label}. Applicants must be at least {$assessment['range']['min_age']} years old to continue.";
+}
+
+function confirmation_certificate_transaction_error(string $certificateType, string $answer): ?string
+{
+    if ($certificateType !== 'confirmation') {
+        return null;
+    }
+
+    return in_array($answer, ['yes', 'no'], true)
+        ? null
+        : 'Please answer whether you already have a Confirmation certificate request or transaction with the Parish Office.';
 }
 
 /** Return a review-friendly age status without blocking the application. */
@@ -906,8 +1017,8 @@ function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, i
  * ROLLING 24-hour window (NOW() - INTERVAL 1 DAY) rather than calendar day,
  * which avoids timezone/edge-of-midnight surprises:
  *
- *   - 3 successful submissions per email address
- *   - 20 successful submissions per client IP
+ *   - 10 successful submissions per email address
+ *   - 40 successful submissions per client IP
  *
  * Only SUCCESSFUL submissions are counted (recorded just before commit),
  * so a visitor who re-submits a form with validation errors never burns
@@ -927,8 +1038,8 @@ function too_many_attempts(PDO $pdo, string $identifier, int $maxAttempts = 8, i
  * ===================================================================== */
 
 // Tunable caps — change here only; every public form reads these constants.
-define('PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY', 5);
-define('PUBLIC_SUBMISSIONS_PER_IP_PER_DAY', 20);
+define('PUBLIC_SUBMISSIONS_PER_EMAIL_PER_DAY', 10);
+define('PUBLIC_SUBMISSIONS_PER_IP_PER_DAY', 40);
 
 /**
  * Canonical form of a submitter address for rate-limit comparison.
@@ -1079,6 +1190,64 @@ function marriage_party_eligibility_error(string $maritalStatus, string $previou
 
     return null;
 }
+
+/**
+ * Screen a marriage party's age on the scheduled marriage date.
+ *
+ * This is a Secretary review aid, not a substitute for checking the marriage
+ * license file or canonical requirements with the parish.
+ *
+ * @return array{age:?int,status:string,label:string,tone:string}
+ */
+function marriage_party_age_eligibility(?string $birthDate, ?string $asOfDate = null): array
+{
+    $birthDate = trim((string) $birthDate);
+    $asOfDate = trim((string) ($asOfDate ?? date('Y-m-d')));
+    if (!parish_schedule_date_is_valid($birthDate)
+        || !parish_schedule_date_is_valid($asOfDate)
+        || $birthDate > $asOfDate) {
+        return [
+            'age' => null,
+            'status' => 'unknown',
+            'label' => 'Age unavailable; verify the birthdate and marriage date.',
+            'tone' => 'info',
+        ];
+    }
+
+    $age = (int) (new DateTimeImmutable($birthDate))->diff(new DateTimeImmutable($asOfDate))->y;
+    if ($age < 18) {
+        return [
+            'age' => $age,
+            'status' => 'underage',
+            'label' => 'Below the Philippine legal minimum age of 18; do not approve.',
+            'tone' => 'error',
+        ];
+    }
+    if ($age <= 20) {
+        return [
+            'age' => $age,
+            'status' => 'parental_consent',
+            'label' => 'Parental consent required (ages 18–20).',
+            'tone' => 'warning',
+        ];
+    }
+    if ($age <= 24) {
+        return [
+            'age' => $age,
+            'status' => 'parental_advice',
+            'label' => 'Parental advice required (ages 21–24).',
+            'tone' => 'warning',
+        ];
+    }
+
+    return [
+        'age' => $age,
+        'status' => 'eligible',
+        'label' => 'Meets the Philippine legal minimum age.',
+        'tone' => 'success',
+    ];
+}
+
 /**
  * Human-readable label for a party's previous-marriage answer, used on the
  * marriage review screen. 'no' / anything unexpected renders as 'No'.
@@ -1252,7 +1421,7 @@ function person_name_row_count(array $values, string $prefix): int
     return $count;
 }
 
-function validate_parent_name_or_na(array $values, string $prefix, string $label): ?string
+function validate_parent_name_or_na(array $values, string $prefix, string $label, bool $allowNa = true): ?string
 {
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
@@ -1261,7 +1430,9 @@ function validate_parent_name_or_na(array $values, string $prefix, string $label
     }
     $providedParts = array_filter($parts, static fn(string $part): bool => $part !== '');
     if ($providedParts === []) {
-        return "{$label}: enter the first and last name, or enter N/A if unknown.";
+        return $allowNa
+            ? "{$label}: enter the first and last name, or enter N/A if unknown."
+            : "{$label}: enter the first and last name.";
     }
 
     $hasNa = count(array_filter(
@@ -1269,6 +1440,9 @@ function validate_parent_name_or_na(array $values, string $prefix, string $label
         static fn(string $part): bool => strcasecmp($part, 'N/A') === 0
     )) > 0;
     if ($hasNa) {
+        if (!$allowNa) {
+            return "{$label}: enter the first and last name.";
+        }
         $hasOtherValue = count(array_filter(
             $providedParts,
             static fn(string $part): bool => strcasecmp($part, 'N/A') !== 0
@@ -1278,7 +1452,9 @@ function validate_parent_name_or_na(array $values, string $prefix, string $label
     }
 
     if ($parts['first'] === '' || $parts['last'] === '') {
-        return "{$label}: enter the first and last name, or enter N/A if unknown.";
+        return $allowNa
+            ? "{$label}: enter the first and last name, or enter N/A if unknown."
+            : "{$label}: enter the first and last name.";
     }
 
     return validate_full_name(compose_person_name($values, $prefix));
@@ -3064,6 +3240,147 @@ function format_event_time_range(?string $start, ?string $end): string
     if ($end !== null) $label .= '–' . date('g:i A', strtotime($end));
     return $label;
 }
+
+function parish_schedule_date_is_valid(string $date): bool
+{
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    $errors = DateTimeImmutable::getLastErrors();
+    return $parsed !== false
+        && $parsed->format('Y-m-d') === $date
+        && (!is_array($errors) || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
+}
+
+function parish_schedule_day_events(
+    PDO $pdo,
+    string $date,
+    int $excludeEventId = 0,
+    int $excludeFuneralRecordId = 0
+): array {
+    if (!parish_schedule_date_is_valid($date)) {
+        throw new InvalidArgumentException('Choose a valid schedule date.');
+    }
+
+    $eventSql = 'SELECT id, title AS label, start_time, end_time, \'calendar\' AS source
+                 FROM schedule_events WHERE event_date = ?';
+    $eventParams = [$date];
+    if ($excludeEventId > 0) {
+        $eventSql .= ' AND id <> ?';
+        $eventParams[] = $excludeEventId;
+    }
+    $eventStmt = $pdo->prepare($eventSql . ' ORDER BY start_time, id');
+    $eventStmt->execute($eventParams);
+
+    $funeralSql = 'SELECT id, \'Death service\' AS label, service_time AS start_time,
+                          NULL AS end_time, \'death\' AS source
+                   FROM funeral_records WHERE service_date = ?';
+    $funeralParams = [$date];
+    if ($excludeFuneralRecordId > 0) {
+        $funeralSql .= ' AND id <> ?';
+        $funeralParams[] = $excludeFuneralRecordId;
+    }
+    $funeralStmt = $pdo->prepare($funeralSql . ' ORDER BY service_time, id');
+    $funeralStmt->execute($funeralParams);
+
+    $events = array_merge(
+        $eventStmt->fetchAll(PDO::FETCH_ASSOC),
+        $funeralStmt->fetchAll(PDO::FETCH_ASSOC)
+    );
+    usort($events, static fn(array $left, array $right): int =>
+        strcmp((string) ($left['start_time'] ?? ''), (string) ($right['start_time'] ?? ''))
+    );
+
+    return $events;
+}
+
+function parish_schedule_available_slots(array $events, int $slotMinutes = 60): array
+{
+    if ($slotMinutes < 1 || $slotMinutes > 540) {
+        throw new InvalidArgumentException('Schedule slot length is invalid.');
+    }
+
+    $slots = [];
+    $openingMinutes = 8 * 60;
+    $closingMinutes = 17 * 60;
+    for ($startMinutes = $openingMinutes; $startMinutes + $slotMinutes <= $closingMinutes; $startMinutes += 60) {
+        $start = sprintf('%02d:%02d', intdiv($startMinutes, 60), $startMinutes % 60);
+        $endMinutes = $startMinutes + $slotMinutes;
+        $end = sprintf('%02d:%02d', intdiv($endMinutes, 60), $endMinutes % 60);
+        $hasConflict = false;
+
+        foreach ($events as $event) {
+            $eventStart = isset($event['start_time']) && $event['start_time'] !== ''
+                ? (string) $event['start_time']
+                : null;
+            $eventEnd = isset($event['end_time']) && $event['end_time'] !== ''
+                ? (string) $event['end_time']
+                : null;
+            if (event_times_overlap($start, $end, $eventStart, $eventEnd, $slotMinutes)) {
+                $hasConflict = true;
+                break;
+            }
+        }
+
+        if (!$hasConflict) {
+            $slots[] = [
+                'start_time' => $start,
+                'end_time' => $end,
+                'label' => format_event_time_range($start, $end),
+            ];
+        }
+    }
+
+    return $slots;
+}
+
+function parish_schedule_slot_is_available(
+    PDO $pdo,
+    string $date,
+    string $startTime,
+    string $endTime,
+    int $excludeEventId = 0,
+    int $excludeFuneralRecordId = 0
+): bool {
+    if (!parish_schedule_date_is_valid($date)
+        || $date < date('Y-m-d')
+        || preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/D', $startTime) !== 1
+        || preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/D', $endTime) !== 1) {
+        return false;
+    }
+
+    foreach (parish_schedule_available_slots(
+        parish_schedule_day_events($pdo, $date, $excludeEventId, $excludeFuneralRecordId)
+    ) as $slot) {
+        if ($slot['start_time'] === $startTime && $slot['end_time'] === $endTime) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function parish_schedule_has_conflict(
+    PDO $pdo,
+    string $date,
+    ?string $startTime,
+    ?string $endTime,
+    int $excludeEventId = 0,
+    int $excludeFuneralRecordId = 0
+): bool {
+    foreach (parish_schedule_day_events($pdo, $date, $excludeEventId, $excludeFuneralRecordId) as $event) {
+        $eventStart = isset($event['start_time']) && $event['start_time'] !== ''
+            ? (string) $event['start_time']
+            : null;
+        $eventEnd = isset($event['end_time']) && $event['end_time'] !== ''
+            ? (string) $event['end_time']
+            : null;
+        if (event_times_overlap($startTime, $endTime, $eventStart, $eventEnd)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function status_label(string $kind, string $value): string
 {
     static $map = [

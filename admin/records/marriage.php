@@ -754,7 +754,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         $identity = $partyData['identity'];
                         $linked = $partyData['id'] > 0;
                         $partyParts = $identity
-                        <?php endforeach; ?>
                             ? [(string) ($identity['first_name'] ?? ''), (string) ($identity['middle_name'] ?? ''), (string) ($identity['last_name'] ?? ''), (string) ($identity['suffix'] ?? '')]
                             : [
                                 (string) ($_POST[$party . '_first_name'] ?? ''),

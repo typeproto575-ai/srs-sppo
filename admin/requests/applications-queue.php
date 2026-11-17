@@ -60,18 +60,32 @@ function application_queue_label(string $value): string
     $labels = [
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
+        'late_baptism' => 'Late Baptism (age 7+)',
         'birth_place' => 'Place of Birth',
         'baptized_here' => 'Baptism Location',
+        'baptism_parish' => 'Baptism Parish/Church and Location',
+        'communion_place' => 'First Communion Place',
+        'communion_place_other' => 'Other First Communion Place',
+        'godparent_sponsor_names' => 'Godparents / Sponsors',
         'formation_path' => 'Requested Formation Pathway',
+        'formation_path_note' => 'Preparation Question / Additional Information',
+        'school_based' => 'School-based group (school batch / parochial school)',
+        'parish_based' => 'Parish-based / Sunday Catechism group',
         'school_grade' => 'Current Grade Level',
+        'school_grade_other' => 'Grade Level Details',
         'school_year' => 'School Year',
         'sponsor_names' => 'Proposed Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Declared at Submission',
         'guardian_relationship' => 'Guardian Relationship',
-        'parent_guardian_name' => 'Guardian / Authorized Representative',
+        'guardian_authorization_confirmed' => 'Guardian Authority Confirmed',
+        'parent_guardian_name' => 'Guardian',
         'batch' => 'Regular parish group',
         'individual_catchup' => 'Individual / catch-up pathway',
         'not_sure' => 'Not sure — please advise',
+        'other' => 'Other',
+        'not_enrolled' => 'Out-of-School Youth (OSY)',
+        'not_applicable' => 'Adult / Not in school',
+        'parish_church' => "St. Patrick's Parish Church",
         'this_parish' => 'This parish',
         'elsewhere' => 'Another parish / church',
     ];
@@ -136,7 +150,7 @@ function application_queue_render_detail_value(mixed $value): void
     }
 
     $text = (string) $value;
-    $knownValueLabels = ['batch', 'individual_catchup', 'not_sure', 'this_parish', 'elsewhere'];
+    $knownValueLabels = ['batch', 'individual_catchup', 'not_sure', 'other', 'this_parish', 'elsewhere'];
     echo e(str_contains($text, '_') || in_array($text, $knownValueLabels, true)
         ? application_queue_label($text)
         : $text);
@@ -372,6 +386,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 || (string) $existingSchedule['event_date'] !== $scheduledDate
                 || $existingStartTime !== $scheduledStartTime
                 || $existingEndTime !== $scheduledEndTime;
+            $preservingExistingSchedule = $existingSchedule !== null
+                && !$scheduleChanged
+                && $scheduledStartTime !== ''
+                && $scheduledEndTime !== '';
+            if (!$preservingExistingSchedule && !parish_schedule_slot_is_available(
+                $pdo,
+                $scheduledDate,
+                $scheduledStartTime,
+                $scheduledEndTime,
+                (int) ($existingSchedule['id'] ?? 0)
+            )) {
+                $pdo->rollBack();
+                $_SESSION['application_queue_error'] = 'That 60-minute time is no longer available. Choose an open time from the schedule list.';
+                redirect_to($postReturnUrl);
+            }
             $statusChanged = $application['status'] !== 'scheduled';
             if (!$scheduleChanged && !$statusChanged) {
                 $pdo->rollBack();
@@ -736,6 +765,8 @@ if ($filterStatus === 'in_progress') {
 } elseif (in_array($filterStatus, $statuses, true)) {
     $whereSql .= ' AND sa.status = ?';
     $params[] = $filterStatus;
+} else {
+    $whereSql .= " AND sa.status <> 'rejected'";
 }
 if (in_array($filterSacrament, $sacraments, true)) {
     $whereSql .= ' AND sa.sacrament_type = ?';
@@ -1193,6 +1224,38 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                     <?php
                     $scheduleEvent = $scheduleEventsByApplication[(int) $app['id']] ?? null;
+                    $marriageAgeReview = null;
+                    if ($app['sacrament_type'] === 'marriage') {
+                        $ageReferenceDate = is_scalar($scheduleEvent['event_date'] ?? null)
+                            ? (string) $scheduleEvent['event_date']
+                            : '';
+                        $hasConfirmedAgeDate = parish_schedule_date_is_valid($ageReferenceDate);
+                        if (!$hasConfirmedAgeDate) {
+                            $ageReferenceDate = date('Y-m-d');
+                        }
+                        $groomDetails = is_array($details['groom'] ?? null) ? $details['groom'] : [];
+                        $brideDetails = is_array($details['bride'] ?? null) ? $details['bride'] : [];
+                        $groomBirthDate = $groomDetails['birth_date'] ?? $details['groom_birthdate'] ?? null;
+                        $brideBirthDate = $brideDetails['birth_date'] ?? $details['bride_birthdate'] ?? null;
+                        if (!is_string($groomBirthDate) || trim($groomBirthDate) === '') {
+                            $groomBirthDate = $linkedPersons[(int) ($app['person_id'] ?? 0)]['birth_date'] ?? null;
+                        }
+                        if (!is_string($brideBirthDate) || trim($brideBirthDate) === '') {
+                            $brideBirthDate = $linkedPersons[(int) ($app['spouse_person_id'] ?? 0)]['birth_date'] ?? null;
+                        }
+                        $marriageAgeReview = [
+                            'as_of' => $ageReferenceDate,
+                            'date_source' => $hasConfirmedAgeDate ? 'Confirmed marriage schedule' : 'Today (no confirmed schedule)',
+                            'groom' => marriage_party_age_eligibility(
+                                is_string($groomBirthDate) ? $groomBirthDate : null,
+                                $ageReferenceDate
+                            ),
+                            'bride' => marriage_party_age_eligibility(
+                                is_string($brideBirthDate) ? $brideBirthDate : null,
+                                $ageReferenceDate
+                            ),
+                        ];
+                    }
                     $isFormationSacrament = in_array($app['sacrament_type'], ['first_communion', 'confirmation'], true);
                     $formationPath = (string) ($details['formation_path'] ?? '');
                     $isBatchPath = $isFormationSacrament && $formationPath === 'batch';
@@ -1200,6 +1263,27 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         || $formationPath === ''
                         || $formationPath === 'individual_catchup';
                     ?>
+                    <?php if ($marriageAgeReview !== null): ?>
+                        <section class="marriage-age-review" aria-label="Marriage age eligibility review">
+                            <h3>Age Eligibility Review</h3>
+                            <p class="field-hint">Calculated as of <?= e(date('M j, Y', strtotime($marriageAgeReview['as_of']))) ?> · <?= e($marriageAgeReview['date_source']) ?>.</p>
+                            <dl class="application-details-list">
+                                <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $partyKey => $partyLabel):
+                                    $partyReview = $marriageAgeReview[$partyKey];
+                                    ?>
+                                    <div class="alert alert-<?= e($partyReview['tone']) ?>">
+                                        <dt><?= e($partyLabel) ?></dt>
+                                        <dd>
+                                            <strong><?= $partyReview['age'] === null ? 'Age not available' : e((string) $partyReview['age'] . ' years old') ?></strong>
+                                            <br><?= e($partyReview['label']) ?>
+                                        </dd>
+                                    </div>
+                                <?php endforeach; ?>
+                            </dl>
+                            <p class="field-hint">Age screening only: verify required consent or advice at the marriage-license stage. This does not replace checking canonical requirements and supporting documents.</p>
+                        </section>
+                    <?php endif; ?>
+
                     <section class="application-schedule-panel" aria-label="Application schedule">
                         <h3>Schedule</h3>
                         <?php if ($isBatchPath): ?>
@@ -1208,7 +1292,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <?php if (!empty($app['batch_id'])): ?>
                                     <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => (int) $app['batch_id']])) ?>"><?= e((string) $app['batch_name']) ?></a>
                                 <?php else: ?>
-                                    Awaiting Parish Office assignment
+                                    Awaiting Parish Office assignment · <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Open Sacrament Groups</a>
                                 <?php endif; ?>
                             </p>
                         <?php endif; ?>
@@ -1242,7 +1326,37 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?php elseif ($app['status'] === 'rejected'): ?>
                             <p class="field-hint">This application was rejected, so no schedule can be set.</p>
                         <?php elseif ($isBatchPath): ?>
-                            <p class="field-hint">The group schedule is managed once for everyone assigned. The Parish Office will notify each family when the date is confirmed.</p>
+                            <p class="field-hint">This regular parish group is scheduled once for everyone assigned. Open the group above or visit <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a> to choose its date and available time.</p>
+                            <?php
+                            $availabilityPreviewDate = (string) ($scheduleEvent['event_date'] ?? $app['preferred_date'] ?? '');
+                            if ($availabilityPreviewDate < date('Y-m-d')) {
+                                $availabilityPreviewDate = '';
+                            }
+                            ?>
+                            <div
+                                class="parish-schedule-picker"
+                                data-parish-schedule-picker
+                                data-preview-only="1"
+                                data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
+                                data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
+                            >
+                                <label>Check availability for a date
+                                    <input type="date" min="<?= e(date('Y-m-d')) ?>" value="<?= e($availabilityPreviewDate) ?>" data-schedule-date>
+                                </label>
+                                <label>Tentative available time
+                                    <select data-schedule-slot disabled>
+                                        <option value="">Choose a date first</option>
+                                    </select>
+                                </label>
+                                <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
+                                <p class="field-hint">Choosing a time here is only a preview and does not reserve it. Set the confirmed time for everyone assigned in <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a>.</p>
+                                <ul class="parish-schedule-picker__events" data-schedule-slot-list aria-label="Available 60-minute times"></ul>
+                                <div data-schedule-event-panel hidden>
+                                    <strong>Schedules already booked that day</strong>
+                                    <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
+                                    <ul class="parish-schedule-picker__events" data-schedule-events></ul>
+                                </div>
+                            </div>
                         <?php elseif (!$canScheduleIndividually): ?>
                             <p class="field-hint">Confirm whether this should follow a batch or individual catch-up path before setting a schedule.</p>
                             <form method="post" class="inline-fields">
@@ -1265,36 +1379,76 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="set_schedule">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <label>Confirmed date *
-                                    <input
-                                        type="date"
-                                        name="scheduled_date"
-                                        min="<?= e(date('Y-m-d')) ?>"
-                                        value="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
-                                        required
-                                    >
-                                </label>
-                                <label>Start time
-                                    <input
-                                        type="time"
-                                        name="scheduled_start_time"
-                                        value="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['start_time']))) : '' ?>"
-                                    >
-                                </label>
-                                <label>End time
-                                    <input
-                                        type="time"
-                                        name="scheduled_end_time"
-                                        value="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['end_time']))) : '' ?>"
-                                    >
-                                </label>
+                                <div
+                                    class="parish-schedule-picker"
+                                    data-parish-schedule-picker
+                                    data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
+                                    data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
+                                    data-current-date="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
+                                    data-current-start="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(substr((string) $scheduleEvent['start_time'], 0, 5)) : '' ?>"
+                                    data-current-end="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(substr((string) $scheduleEvent['end_time'], 0, 5)) : '' ?>"
+                                >
+                                    <label>Confirmed date *
+                                        <input
+                                            type="date"
+                                            name="scheduled_date"
+                                            min="<?= e(date('Y-m-d')) ?>"
+                                            value="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
+                                            data-schedule-date
+                                            required
+                                        >
+                                    </label>
+                                    <label>Available 60-minute time *
+                                        <select data-schedule-slot required disabled>
+                                            <option value="">Choose a date first</option>
+                                        </select>
+                                    </label>
+                                    <input type="hidden" name="scheduled_start_time" value="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(substr((string) $scheduleEvent['start_time'], 0, 5)) : '' ?>" data-schedule-start>
+                                    <input type="hidden" name="scheduled_end_time" value="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(substr((string) $scheduleEvent['end_time'], 0, 5)) : '' ?>" data-schedule-end>
+                                    <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
+                                    <div data-schedule-event-panel hidden>
+                                        <strong>Schedules already booked that day</strong>
+                                        <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
+                                        <ul class="parish-schedule-picker__events" data-schedule-events></ul>
+                                    </div>
+                                </div>
                                 <button type="submit" class="btn btn-small">
                                     <?= $scheduleEvent ? 'Update confirmed schedule' : 'Set confirmed schedule' ?>
                                 </button>
                             </form>
-                            <p class="field-hint">The applicant’s preferred date stays unchanged. Saving this schedule moves the application to Scheduled and emails the confirmed date and time. Check the parish calendar for availability before confirming.</p>
+                            <p class="field-hint">The applicant’s preferred date stays unchanged. Select an open time from 8:00 AM to 5:00 PM; bookings are checked again when saved. Saving this schedule moves the application to Scheduled and emails the confirmed date and time.</p>
                         <?php else: ?>
-                            <p class="field-hint">Approve the application before setting its confirmed schedule.</p>
+                            <?php
+                            $availabilityPreviewDate = (string) ($scheduleEvent['event_date'] ?? $app['preferred_date'] ?? '');
+                            if ($availabilityPreviewDate < date('Y-m-d')) {
+                                $availabilityPreviewDate = '';
+                            }
+                            ?>
+                            <div
+                                class="parish-schedule-picker"
+                                data-parish-schedule-picker
+                                data-preview-only="1"
+                                data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
+                                data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
+                            >
+                                <label>Check availability for a date
+                                    <input type="date" min="<?= e(date('Y-m-d')) ?>" value="<?= e($availabilityPreviewDate) ?>" data-schedule-date>
+                                </label>
+                                <label>Tentative available time
+                                    <select data-schedule-slot disabled>
+                                        <option value="">Choose a date first</option>
+                                    </select>
+                                </label>
+                                <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
+                                <p class="field-hint">Choosing a time here is only a preview and does not reserve it. After approval, choose the time again under Confirmed schedule to book it.</p>
+                                <ul class="parish-schedule-picker__events" data-schedule-slot-list aria-label="Available 60-minute times"></ul>
+                                <div data-schedule-event-panel hidden>
+                                    <strong>Schedules already booked that day</strong>
+                                    <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
+                                    <ul class="parish-schedule-picker__events" data-schedule-events></ul>
+                                </div>
+                            </div>
+                            <p class="field-hint">Schedule editing becomes available after approval. Use <a href="#application-review-actions">Next Step below</a> to move this request through review and approve it first. Regular First Communion and Confirmation group schedules are managed in <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a>.</p>
                         <?php endif; ?>
                     </section>
 
@@ -1308,7 +1462,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                         $detailKey = (string) $key;
                                         $detailLabel = $detailKey === 'preferred_wedding_venue_other'
                                             ? 'Other venue name'
-                                            : application_queue_label($detailKey);
+                                            : ($detailKey === 'school_year' && ($application['sacrament_type'] ?? '') === 'first_communion'
+                                                ? 'Target sacrament year'
+                                                : application_queue_label($detailKey));
                                         if ($detailKey === 'preferred_wedding_venue') {
                                             $value = match ($value) {
                                                 'church' => "St. Patrick's Parish Church",
@@ -1495,7 +1651,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </div>
                     </section>
 
-                    <footer class="application-review-actions">
+                    <footer class="application-review-actions" id="application-review-actions">
                         <?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
                             <?php if ($canPrefill && $prefillUrl !== null): ?>
                                 <a class="btn btn-small" href="<?= e($prefillUrl) ?>">Open prefilled register form</a>
