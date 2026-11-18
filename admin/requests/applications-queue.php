@@ -1488,8 +1488,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $selfUrl = $basePath . '/admin/requests/applications-queue.php';
 $rfConfig = [
     'date_column' => 'DATE(sa.created_at)',
-    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)'],
-    'placeholder' => 'Search request number, applicant, or application details...',
+    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)', 'applicant_profile.public_reference', 'spouse_profile.public_reference'],
+    'placeholder' => 'Search reference number, applicant, or application details...',
     'ranges' => ['today', 'week', 'month', 'year'],
     'filters' => [
         'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
@@ -1533,7 +1533,13 @@ if ($filterAssignee === 'unassigned') {
     $params[] = (int) $filterAssignee;
 }
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications sa{$whereSql}");
+$countStmt = $pdo->prepare(
+    "SELECT COUNT(*)
+     FROM sacrament_applications sa
+     LEFT JOIN persons applicant_profile ON applicant_profile.id = sa.person_id
+     LEFT JOIN persons spouse_profile ON spouse_profile.id = sa.spouse_person_id
+     {$whereSql}"
+);
 $countStmt->execute($params);
 $totalRows = (int) $countStmt->fetchColumn();
 $page = min($rf['page'], max(1, (int) ceil($totalRows / $rf['per_page'])));
@@ -1551,11 +1557,15 @@ $stmt = $pdo->prepare(
             sa.schedule_proposal_status, sa.schedule_proposal_sent_at, sa.schedule_proposal_accepted_at,
             sa.schedule_proposal_accepted_by,
             assignee.full_name AS assigned_to_name, proposal_acceptor.full_name AS schedule_proposal_accepted_by_name,
-            batch.batch_name
+            batch.batch_name,
+            applicant_profile.public_reference AS applicant_public_reference,
+            spouse_profile.public_reference AS spouse_public_reference
      FROM sacrament_applications sa
      LEFT JOIN users assignee ON assignee.id = sa.assigned_to
      LEFT JOIN users proposal_acceptor ON proposal_acceptor.id = sa.schedule_proposal_accepted_by
      LEFT JOIN sacrament_batches batch ON batch.id = sa.batch_id
+     LEFT JOIN persons applicant_profile ON applicant_profile.id = sa.person_id
+     LEFT JOIN persons spouse_profile ON spouse_profile.id = sa.spouse_person_id
      {$whereSql}
      ORDER BY sa.created_at DESC, sa.id DESC
      LIMIT {$limit} OFFSET {$offset}"
@@ -1770,7 +1780,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <table class="admin-table application-queue-table">
                 <thead>
                     <tr>
-                        <th>Request No.</th>
+                        <th>Reference No.</th>
                         <th>Sacrament</th>
                         <th>Applicant(s)</th>
                         <th class="column-date">Submitted</th>
@@ -1919,7 +1929,24 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 }
             ?>
                 <tr>
-                    <td><strong><?= e($app['request_no']) ?></strong></td>
+                    <?php
+                    $queueReferenceNumbers = array_values(array_unique(array_filter([
+                        trim((string) ($app['applicant_public_reference'] ?? '')),
+                        $app['sacrament_type'] === 'marriage'
+                            ? trim((string) ($app['spouse_public_reference'] ?? ''))
+                            : '',
+                    ])));
+                    ?>
+                    <td>
+                        <?php if ($queueReferenceNumbers !== []): ?>
+                            <?php foreach ($queueReferenceNumbers as $queueReferenceNumber): ?>
+                                <strong><?= e($queueReferenceNumber) ?></strong><?php if ($queueReferenceNumber !== end($queueReferenceNumbers)): ?><br><?php endif; ?>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <strong><?= e($app['request_no']) ?></strong>
+                            <br><small>Internal request No.</small>
+                        <?php endif; ?>
+                    </td>
                     <td><?= e(application_queue_label($app['sacrament_type'])) ?></td>
                     <td>
                         <?= e(implode(' · ', $subjectNames)) ?>
@@ -1965,15 +1992,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <details
                             class="application-queue-review"
                             id="application-review-<?= (int) $app['id'] ?>"
-                            aria-label="Review <?= e($app['request_no']) ?>"
+                            aria-label="Review <?= e($queueReferenceNumbers[0] ?? $app['request_no']) ?>"
                             <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? 'open' : '' ?>
                         >
-                            <summary aria-hidden="true" tabindex="-1">Review details for <?= e($app['request_no']) ?></summary>
+                            <summary aria-hidden="true" tabindex="-1">Review details for <?= e($queueReferenceNumbers[0] ?? $app['request_no']) ?></summary>
                             <article class="application-review-card">
                     <header class="admin-queue-heading">
                         <div>
                             <p class="admin-queue-kicker"><?= e(application_queue_label($app['sacrament_type'])) ?> · <?= e(application_queue_label($app['channel'])) ?></p>
-                            <h2><?= e($app['request_no']) ?></h2>
+                            <h2><?= e(implode(' / ', $queueReferenceNumbers) ?: $app['request_no']) ?></h2>
+                            <p class="field-hint">Internal request No.: <?= e($app['request_no']) ?></p>
                             <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
                             <p><strong>Best contact for this request:</strong> <?= e($app['applicant_email']) ?> · <?= e(trim((string) ($app['applicant_contact'] ?? '')) ?: 'No phone number provided') ?></p>
                         </div>

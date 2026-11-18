@@ -352,19 +352,24 @@ $requesterName = $req['requester_name'];
 $statusLabel = status_label('certificate', (string) $req['status']);
 $processingPaymentGate = cert_request_payment_gate($req, 'for_signature');
 $recordName = '';
+$recordPerson = null;
 if ($record && !empty($record['person_id'])) {
     $recordPerson = sd_get_person($pdo, (int) $record['person_id']);
     if ($recordPerson) {
         $recordName = sd_full_name($recordPerson);
     }
 }
+if (!$recordPerson && !empty($req['person_id'])) {
+    $recordPerson = sd_get_person($pdo, (int) $req['person_id']);
+}
+$certificateReference = trim((string) ($req['request_no'] ?? ''));
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 <div class="certificate-detail-page">
 <header class="admin-queue-heading certificate-detail-heading">
     <div>
         <p class="admin-queue-kicker">Certificate request</p>
-        <h1><?= e($req['request_no']) ?></h1>
+        <h1><?= e($certificateReference) ?></h1>
         <p class="certificate-detail-heading__subject"><?= e(certificate_detail_label((string) $req['sacrament_type'])) ?> for <?= e($req['subject_name']) ?></p>
         <span class="status-badge certificate-detail-status status-<?= e($req['status']) ?>"><?= e($statusLabel) ?></span>
     </div>

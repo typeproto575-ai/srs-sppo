@@ -158,7 +158,7 @@ $selfUrl = $basePath . '/admin/requests/queue.php';
 $rfConfig = [
     'date_column'    => 'cr.created_at',
     'search_columns' => ['cr.request_no', 'cr.subject_name', 'cr.requester_name', 'cr.requester_email'],
-    'placeholder'    => 'Search request no., subject, requester, email...',
+    'placeholder'    => 'Search reference no., subject, requester, email...',
     'ranges'         => ['today', 'week', 'month', 'year'],
     'filters'        => [
         'status'    => ['label' => 'Status',
@@ -246,7 +246,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th><a class="table-sort-link<?= str_starts_with($sort, 'request') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'request', $sort)) ?>">Request No.<?= admin_sort_indicator('request', $sort) ?></a></th>
+                    <th><a class="table-sort-link<?= str_starts_with($sort, 'request') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'request', $sort)) ?>">Reference No.<?= admin_sort_indicator('request', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'sacrament') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'sacrament', $sort)) ?>">Sacrament<?= admin_sort_indicator('sacrament', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'subject') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'subject', $sort)) ?>">Subject<?= admin_sort_indicator('subject', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'requester') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'requester', $sort)) ?>">Requester<?= admin_sort_indicator('requester', $sort) ?></a></th>
@@ -260,7 +260,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <tbody>
                 <?php foreach ($requests as $req): ?>
                     <tr>
-                        <td><?= e($req['request_no']) ?></td>
+                        <td>
+                            <strong><?= e($req['request_no']) ?></strong>
+                        </td>
                         <td><?= e(humanize_label($req['sacrament_type'])) ?></td>
                         <td><?= e($req['subject_name']) ?></td>
                         <td><?= e($req['requester_name']) ?><br><small><?= e($req['requester_email']) ?></small></td>
