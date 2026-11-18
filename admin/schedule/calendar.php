@@ -77,11 +77,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_e
         // overlap BEFORE the insert so the success message can warn about a
         // booking conflict that the secretary must confirm manually. Same
         // day, different time (e.g. a 9am mass and a 2pm wedding) is fine.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ?");
+        $occupyStmt = $pdo->prepare("SELECT event_type, start_time, end_time FROM schedule_events WHERE event_date = ?");
         $occupyStmt->execute([$eventDate]);
         $hadConflict = false;
         foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($startTime, $endTime, $existing['start_time'], $existing['end_time'])) {
+            if (schedule_events_overlap_as_conflict([
+                'event_type' => $postedEventType,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ], $existing)) {
                 $hadConflict = true;
                 break;
             }
@@ -157,11 +161,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
     if ($editId && empty($errors)) {
         // Same time-overlap check as add, excluding the row being edited.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ? AND id != ?");
+        $occupyStmt = $pdo->prepare("SELECT event_type, start_time, end_time FROM schedule_events WHERE event_date = ? AND id != ?");
         $occupyStmt->execute([$updDate, $editId]);
         $hadConflict = false;
         foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($updStart, $updEnd, $existing['start_time'], $existing['end_time'])) {
+            if (schedule_events_overlap_as_conflict([
+                'event_type' => $updType,
+                'start_time' => $updStart,
+                'end_time' => $updEnd,
+            ], $existing)) {
                 $hadConflict = true;
                 break;
             }
@@ -250,7 +258,7 @@ function schedule_event_has_conflict(array $event, array $eventsByDate): bool
 {
     foreach ($eventsByDate[$event['event_date']] ?? [] as $other) {
         if ((int) $other['id'] === (int) $event['id']) continue;
-        if (event_times_overlap($event['start_time'], $event['end_time'], $other['start_time'], $other['end_time'])) {
+        if (schedule_events_overlap_as_conflict($event, $other)) {
             return true;
         }
     }

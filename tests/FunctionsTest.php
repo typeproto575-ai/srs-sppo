@@ -865,6 +865,14 @@ final class FunctionsTest extends TestCase
     {
         self::assertTrue(event_times_overlap('09:00:00', '10:00:00', '09:30:00', '10:30:00'));
         self::assertFalse(event_times_overlap('09:00:00', '10:00:00', '10:00:00', '11:00:00'));
+        self::assertFalse(schedule_events_overlap_as_conflict(
+            ['event_type' => 'baptism', 'start_time' => '09:00:00', 'end_time' => '10:00:00'],
+            ['event_type' => 'baptism', 'start_time' => '09:30:00', 'end_time' => '10:30:00']
+        ));
+        self::assertTrue(schedule_events_overlap_as_conflict(
+            ['event_type' => 'wedding', 'start_time' => '09:00:00', 'end_time' => '10:00:00'],
+            ['event_type' => 'baptism', 'start_time' => '09:30:00', 'end_time' => '10:30:00']
+        ));
     }
 
     public function testConfirmedApplicationScheduleValidation(): void

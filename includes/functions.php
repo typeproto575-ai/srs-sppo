@@ -3068,6 +3068,26 @@ function event_times_overlap(?string $aStart, ?string $aEnd, ?string $bStart, ?s
     return $aStartTs < $bEndTs && $bStartTs < $aEndTs;
 }
 
+function schedule_events_overlap_as_conflict(array $eventA, array $eventB): bool
+{
+    if (($eventA['event_type'] ?? '') === 'baptism'
+        && ($eventB['event_type'] ?? '') === 'baptism') {
+        return false;
+    }
+
+    $aStart = $eventA['start_time'] ?? null;
+    $aEnd = $eventA['end_time'] ?? null;
+    $bStart = $eventB['start_time'] ?? null;
+    $bEnd = $eventB['end_time'] ?? null;
+
+    return event_times_overlap(
+        is_string($aStart) && $aStart !== '' ? $aStart : null,
+        is_string($aEnd) && $aEnd !== '' ? $aEnd : null,
+        is_string($bStart) && $bStart !== '' ? $bStart : null,
+        is_string($bEnd) && $bEnd !== '' ? $bEnd : null
+    );
+}
+
 /**
  * Format a start/end time pair as "10:00 AM–11:00 AM" (or just the start
  * time when there's no end). Returns '' when there's no start time.

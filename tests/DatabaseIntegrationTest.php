@@ -464,7 +464,7 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
-    public function testScheduleEventsPersistAndFlagOverlappingTimes(): void
+    public function testScheduleEventsAllowOverlappingBaptismsAndFlagOtherConflicts(): void
     {
         $this->pdo->beginTransaction();
         try {
@@ -493,22 +493,34 @@ final class DatabaseIntegrationTest extends TestCase
                 null,
             ]);
             $secondId = (int) $this->pdo->lastInsertId();
+            $insert->execute([
+                'baptism',
+                'Integration Baptism 2',
+                null,
+                '2027-06-12',
+                '10:45:00',
+                '11:15:00',
+                null,
+            ]);
+            $thirdId = (int) $this->pdo->lastInsertId();
 
             $events = $this->pdo->prepare(
-                'SELECT event_date, start_time, end_time, public_details, notes
-                 FROM schedule_events WHERE id IN (?, ?) ORDER BY id'
+                'SELECT event_type, event_date, start_time, end_time, public_details, notes
+                 FROM schedule_events WHERE id IN (?, ?, ?) ORDER BY id'
             );
-            $events->execute([$firstId, $secondId]);
+            $events->execute([$firstId, $secondId, $thirdId]);
             $rows = $events->fetchAll();
 
-            self::assertCount(2, $rows);
-            self::assertSame('2027-06-12', $rows[0]['event_date']);
+            self::assertCount(3, $rows);
+            self::assertSame('2027-06-12', $rows[1]['event_date']);
             self::assertTrue(event_times_overlap(
-                $rows[0]['start_time'],
-                $rows[0]['end_time'],
                 $rows[1]['start_time'],
-                $rows[1]['end_time']
+                $rows[1]['end_time'],
+                $rows[2]['start_time'],
+                $rows[2]['end_time']
             ));
+            self::assertFalse(schedule_events_overlap_as_conflict($rows[1], $rows[2]));
+            self::assertTrue(schedule_events_overlap_as_conflict($rows[0], $rows[1]));
             self::assertFalse(event_times_overlap('10:00:00', '11:00:00', '11:00:00', '12:00:00'));
             self::assertSame('Public event detail', $rows[0]['public_details']);
             self::assertSame('Internal scheduling note', $rows[0]['notes']);
