@@ -797,15 +797,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_array($requirements)) {
                 $requirements = [];
             }
+            $currentRequirement = $requirements[$requirementKey] ?? [];
+            $currentRequirement = is_array($currentRequirement) ? $currentRequirement : [];
+            $currentRequirementStatus = (string) ($currentRequirement['status'] ?? 'not_received');
+            if (!in_array($currentRequirementStatus, $requirementStatuses, true)) {
+                $currentRequirementStatus = 'not_received';
+            }
+            $nextApplicationStatus = application_queue_requirement_status_transition(
+                (string) $application['status'],
+                $currentRequirementStatus,
+                $requirementStatus
+            );
             $requirements[$requirementKey] = [
                 'status' => $requirementStatus,
                 'note' => $requirementNote,
             ];
             $encodedRequirements = json_encode($requirements, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-            $update = $pdo->prepare('UPDATE sacrament_applications SET requirements = ? WHERE id = ?');
-            $update->execute([$encodedRequirements, (int) $applicationId]);
+            if ($nextApplicationStatus !== null) {
+                $update = $pdo->prepare(
+                    'UPDATE sacrament_applications SET requirements = ?, status = ? WHERE id = ?'
+                );
+                $update->execute([$encodedRequirements, $nextApplicationStatus, (int) $applicationId]);
+                log_activity(
+                    $pdo,
+                    (int) current_user()['id'],
+                    'sacrament_application_status_changed',
+                    'sacrament_applications',
+                    (int) $applicationId,
+                    'Application status automatically changed from new to reviewing after a requirement status changed.'
+                );
+            } else {
+                $update = $pdo->prepare('UPDATE sacrament_applications SET requirements = ? WHERE id = ?');
+                $update->execute([$encodedRequirements, (int) $applicationId]);
+            }
             $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Requirement checklist saved.';
+            if ($nextApplicationStatus !== null) {
+                notify_sacrament_application_status(
+                    $pdo,
+                    $nextApplicationStatus,
+                    (string) $application['sacrament_type'],
+                    (string) $application['request_no']
+                );
+                $_SESSION['application_queue_success'] = 'Requirement saved. Review has started.';
+            } else {
+                $_SESSION['application_queue_success'] = 'Requirement checklist saved.';
+            }
         } elseif ($action === 'update_status') {
             $currentStatus = (string) $application['status'];
             $newStatus = (string) ($_POST['new_status'] ?? '');

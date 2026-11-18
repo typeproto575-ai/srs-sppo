@@ -431,6 +431,21 @@ function application_queue_next_statuses(string $status): array
     ][$status] ?? [];
 }
 
+function application_queue_requirement_status_transition(
+    string $applicationStatus,
+    string $previousRequirementStatus,
+    string $newRequirementStatus
+): ?string {
+    if ($applicationStatus !== 'new' || $previousRequirementStatus === $newRequirementStatus) {
+        return null;
+    }
+
+    $nextStatus = 'reviewing';
+    return in_array($nextStatus, application_queue_next_statuses($applicationStatus), true)
+        ? $nextStatus
+        : null;
+}
+
 function application_schedule_input_error(
     string $date,
     string $startTime,

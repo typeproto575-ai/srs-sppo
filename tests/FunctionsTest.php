@@ -346,6 +346,24 @@ final class FunctionsTest extends TestCase
         ], 'requirements_pending')['ok']);
     }
 
+    public function testRequirementStatusChangeStartsReviewOnlyFromNewApplications(): void
+    {
+        self::assertSame(
+            'reviewing',
+            application_queue_requirement_status_transition('new', 'not_received', 'received')
+        );
+        self::assertNull(
+            application_queue_requirement_status_transition('new', 'received', 'received')
+        );
+
+        foreach (['reviewing', 'requirements_pending', 'approved', 'scheduled', 'completed', 'rejected'] as $status) {
+            self::assertNull(
+                application_queue_requirement_status_transition($status, 'not_received', 'received'),
+                "A requirement change must not automatically transition an application from {$status}."
+            );
+        }
+    }
+
     public function testConfiguredCommunionAndConfirmationAgeRangesAreAdvisory(): void
     {
         if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
