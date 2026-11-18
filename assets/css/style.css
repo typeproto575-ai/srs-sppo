@@ -432,6 +432,7 @@ label > input[type="checkbox"]:focus-visible {
    pair sits beside a Remove link that lines up with the inputs; the Add
    button lives under the group. Rows wrap on narrow screens. */
 .godparent-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 0.75rem; }
+.godparent-row > label { flex: 1 1 16rem; min-width: 0; }
 .godparent-row .inline-fields { flex: 1 1 16rem; min-width: 0; }
 .repeat-remove { margin: 0 0 1.2rem; }
 .repeat-add { margin: 0 0 1rem; }
@@ -736,6 +737,95 @@ html, body {
 }
 .tracker-request-number {
     color: var(--muted, #52605a);
+}
+.tracker-request-list {
+    display: grid;
+    gap: 1rem;
+}
+.tracker-request-card {
+    border: 1px solid var(--color-rule, #d9d3c4);
+    border-left: 4px solid var(--color-parish-green, #2f5e3f);
+    border-radius: 8px;
+    background: #fff;
+    padding: 1rem;
+}
+.tracker-request-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.tracker-request-header h4 {
+    margin: 0 0 0.25rem;
+    color: var(--color-ledger-dark, #1f3d2b);
+}
+.tracker-request-header .tracker-request-number {
+    margin: 0;
+}
+.tracker-status {
+    flex: 0 0 auto;
+    max-width: 12rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    background: #edf4ef;
+    color: #245b36;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-align: center;
+}
+.tracker-status.closed {
+    background: #f4ece9;
+    color: #7a3d35;
+}
+.tracker-request-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 0.9rem 0 0.25rem;
+}
+.tracker-request-meta div {
+    min-width: 0;
+}
+.tracker-request-meta dt {
+    color: var(--muted, #52605a);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.tracker-request-meta dd {
+    margin: 0.15rem 0 0;
+}
+.tracker-request-note {
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    border-radius: 6px;
+    background: #faf8f3;
+}
+@media (max-width: 620px) {
+    .tracker-request-card {
+        padding: 0.85rem;
+    }
+    .tracker-request-header {
+        display: grid;
+    }
+    .tracker-status {
+        justify-self: start;
+        max-width: none;
+    }
+    .tracker-request-meta {
+        grid-template-columns: 1fr;
+    }
+    .status-timeline {
+        display: grid;
+        gap: 0.35rem;
+    }
+    .status-timeline li {
+        min-width: 0;
+    }
+    .status-timeline li:not(:last-child)::after {
+        display: none;
+    }
 }
 .submission-success .submission-next-steps h3 {
     margin: 0 0 0.4rem;

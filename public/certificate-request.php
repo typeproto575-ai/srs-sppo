@@ -31,61 +31,17 @@ if (($_GET['person_lookup'] ?? '') === '1') {
 
     $reference = strtoupper(trim(is_string($_GET['reference'] ?? null) ? $_GET['reference'] : ''));
     $preapplicationLookup = ($_GET['lookup_context'] ?? '') === 'preapplication';
-    $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
-    $date = DateTime::createFromFormat('Y-m-d', $birthDate);
-    $validBirthDate = $date && $date->format('Y-m-d') === $birthDate;
-    if ($preapplicationLookup) {
-        if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Enter a valid person reference to search.']);
-            exit;
-        }
-
-        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
-                FROM persons
-                WHERE public_reference = ? AND is_deceased = 0
-                LIMIT 1';
-        $params = [$reference];
-    } elseif ($reference !== '') {
-        if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1 || !$validBirthDate) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Enter a valid person reference and date of birth to search.']);
-            exit;
-        }
-
-        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
-                FROM persons
-                WHERE public_reference = ? AND birth_date = ? AND is_deceased = 0
-                LIMIT 1';
-        $params = [$reference, $birthDate];
-    } else {
-        $fullName = trim(is_string($_GET['name'] ?? null) ? $_GET['name'] : '');
-        $parts = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        if (count($parts) < 2 || strlen($fullName) > 150 || !$validBirthDate) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Enter a full name and valid date of birth to search.']);
-            exit;
-        }
-
-        $parts = array_values(array_filter($parts, static fn($part) => strlen($part) >= 2));
-        if (count($parts) < 2) {
-            echo json_encode(['results' => []]);
-            exit;
-        }
-
-        $conditions = [];
-        $params = [$birthDate];
-        foreach ($parts as $part) {
-            $conditions[] = "(first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR suffix LIKE ?)";
-            $term = '%' . addcslashes($part, '\\_%') . '%';
-            array_push($params, $term, $term, $term, $term);
-        }
-        $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
-                FROM persons
-                WHERE birth_date = ? AND is_deceased = 0 AND ' . implode(' AND ', $conditions) . '
-                ORDER BY last_name, first_name
-                LIMIT 5';
+    if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Enter a valid person reference to search.']);
+        exit;
     }
+
+    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+            FROM persons
+            WHERE public_reference = ? AND is_deceased = 0
+            LIMIT 1';
+    $params = [$reference];
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -154,16 +110,16 @@ $certificateTypes = [
 $certificatePreparation = [
     'baptism' => [
         'The name and birthdate recorded in the parish register.',
-        "The father's name and mother's maiden name, if known.",
+        "The father's name and mother's maiden name.",
         'The approximate Baptism date, if known.',
     ],
     'first_communion' => [
         'The name and birthdate recorded in the parish register.',
-        'Parent names and the approximate First Communion date, if known.',
+        "The parents' names and the approximate First Communion date, if known.",
     ],
     'confirmation' => [
         'The name and birthdate recorded in the parish register.',
-        'Parent names and the approximate Confirmation date, if known.',
+        "The parents' names and the approximate Confirmation date, if known.",
     ],
     'marriage' => [
         'Both spouses’ names and the approximate marriage date.',
@@ -292,8 +248,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if ($values['requester_email'] === '' || !filter_var($values['requester_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Enter a valid email address.';
         }
-        if ($values['requester_contact_number'] !== '' && strlen($values['requester_contact_number']) > 30) {
+        if ($values['requester_contact_number'] === '') {
+            $errors[] = 'Enter your contact number.';
+        } elseif (strlen($values['requester_contact_number']) > 30) {
             $errors[] = 'The contact number must be 30 characters or fewer.';
+        }
+        if ($values['mother_maiden_name'] === '' || strcasecmp($values['mother_maiden_name'], 'N/A') === 0) {
+            $errors[] = "Enter the person's mother's maiden name; N/A is not accepted.";
+        } elseif (strlen($values['mother_maiden_name']) > 150) {
+            $errors[] = "The mother's maiden name must be 150 characters or fewer.";
+        } elseif (($e = validate_full_name($values['mother_maiden_name'])) !== null) {
+            $errors[] = $e;
         }
         if (!in_array($values['purpose'], $purposeLabels, true)) {
             $errors[] = 'Choose a purpose.';
@@ -572,22 +537,23 @@ require_once __DIR__ . '/../includes/header.php';
 
         <h2 class="form-stage-heading">Certificate details</h2>
         <div class="public-person-lookup" data-public-person-lookup
+             data-lookup-context="certificate"
              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
              data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
              data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
              data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
             <h3 class="lookup-title">Already registered with the parish?</h3>
-            <p class="field-hint">Enter your reference number here (with the date of birth below), or fill in the full name and date of birth below to search. Selecting a match fills in the known details. No match? Just continue with the form.</p>
+            <p class="field-hint">Enter a person reference to fill in recorded details. Without a reference, enter the person’s name and date of birth manually.</p>
             <div data-person-results aria-live="polite"></div>
         </div>
         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
 
         <h3 class="form-subheading">Person on the certificate</h3>
-        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
-        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
-
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
+
+        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
 
         <div id="marriage-only" <?= $values['certificate_type'] === 'marriage' ? '' : 'hidden' ?>>
             <label for="spouse_name">Bride's full name *</label>
@@ -599,8 +565,8 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="father_name">Father's full name (optional)</label>
         <input type="text" id="father_name" name="father_name" maxlength="150" value="<?= e($values['father_name']) ?>">
 
-        <label for="mother_maiden_name">Mother's maiden name (optional)</label>
-        <input type="text" id="mother_maiden_name" name="mother_maiden_name" maxlength="150" value="<?= e($values['mother_maiden_name']) ?>">
+        <label for="mother_maiden_name">Mother's maiden name *</label>
+        <input type="text" id="mother_maiden_name" name="mother_maiden_name" maxlength="150" value="<?= e($values['mother_maiden_name']) ?>" required>
 
         <label for="event_date">Approximate date of the sacrament (optional)</label>
         <input type="date" id="event_date" name="event_date" value="<?= e($values['event_date']) ?>">
@@ -626,8 +592,8 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
 
-        <label for="requester_contact_number">Contact number (optional)</label>
-        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>">
+        <label for="requester_contact_number">Contact number *</label>
+        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>" required>
         </div>
 
         <div data-certificate-phase="purpose">
@@ -659,20 +625,20 @@ require_once __DIR__ . '/../includes/header.php';
             <h2 class="form-stage-heading">Review your request</h2>
             <p>Check the details before submitting. Payment is recorded at the Parish Office after submission.</p>
             <dl class="certificate-request-review" data-certificate-review></dl>
+            <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
+                <strong>After submission: review, payment, and pickup</strong>
+                <ol>
+                    <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
+                    <li>If asked to proceed, handle payment at the Parish Office.</li>
+                    <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
+                    <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
+                </ol>
+                <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
+            </section>
         </div>
 
         <button type="submit" class="btn" data-certificate-submit>Submit request</button>
     </form>
-    <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
-        <strong>After submission: review, payment, and pickup</strong>
-        <ol>
-            <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
-            <li>If asked to proceed, handle payment at the Parish Office.</li>
-            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
-            <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
-        </ol>
-        <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
-    </section>
     <script>
         (function () {
             var typeSelect = document.getElementById('certificate_type');

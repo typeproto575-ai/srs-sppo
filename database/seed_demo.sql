@@ -103,6 +103,7 @@ INSERT INTO announcements (title, content, event_date, is_published, posted_by) 
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('parish_name', 'St. Patrick Parish', 1);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('first_communion_min_age', '8', 1);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('confirmation_min_age', '12', 1);
+INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('marriage_min_age', '18', 1);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('priest_approval_email', 'priest@example.com', 1);
 
 -- notifications

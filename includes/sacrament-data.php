@@ -38,6 +38,17 @@ function sd_application_requirement_keys(): array
         'marriage' => [
             'psa_cenomar_groom',
             'psa_cenomar_bride',
+            'psa_marriage_certificate_couple',
+            'psa_death_certificate_groom',
+            'psa_death_certificate_bride',
+            'psa_prior_marriage_certificate_groom',
+            'psa_prior_marriage_certificate_bride',
+            'civil_annulment_finality_groom',
+            'civil_annulment_finality_bride',
+            'annotated_psa_marriage_certificate_groom',
+            'annotated_psa_marriage_certificate_bride',
+            'church_declaration_nullity_groom',
+            'church_declaration_nullity_bride',
             'origin_baptismal_certificate_groom',
             'origin_baptismal_certificate_bride',
             'transfer_letter',
@@ -132,6 +143,27 @@ function sd_strip_parent_birthplaces(array $details): array
     return $details;
 }
 
+/** Normalize optional application residence values before they enter details JSON. */
+function sd_application_optional_residence(mixed $value, string $label, int $maxLength): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+    if (!is_string($value)) {
+        throw new InvalidArgumentException($label . ' must be text.');
+    }
+
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+    if (mb_strlen($value) > $maxLength) {
+        throw new InvalidArgumentException($label . ' must be ' . $maxLength . ' characters or fewer.');
+    }
+
+    return $value;
+}
+
 /** Normalize current and legacy godparent payloads from a baptism application. */
 function sd_application_godparents(array $details): array
 {
@@ -197,6 +229,22 @@ function sd_application_godparents(array $details): array
     }
 
     foreach (['godfather', 'godmother'] as $role) {
+        $fullNamesKey = $role . '_full_name';
+        if (array_key_exists($fullNamesKey, $details)) {
+            $fullNames = is_array($details[$fullNamesKey])
+                ? $details[$fullNamesKey]
+                : [$details[$fullNamesKey]];
+            $residences = is_array($details[$role . '_residence'] ?? null)
+                ? $details[$role . '_residence']
+                : [];
+            foreach ($fullNames as $index => $fullName) {
+                $append($role, [
+                    'full_name' => $fullName,
+                    'residence' => $residences[$index] ?? null,
+                ]);
+            }
+        }
+
         foreach ([$role, $role . '_name', $role . 's'] as $key) {
             if (!array_key_exists($key, $details)) {
                 continue;
@@ -219,6 +267,120 @@ function sd_application_godparents(array $details): array
     return $godparents;
 }
 
+function sd_application_apply_detail_corrections(array $submittedDetails, mixed $corrections): array
+{
+    if (!is_array($corrections)) {
+        throw new InvalidArgumentException('Submitted details could not be read. Reload the page and try again.');
+    }
+
+    foreach ($submittedDetails as $key => $originalValue) {
+        $key = (string) $key;
+        if (!array_key_exists($key, $corrections)) {
+            throw new InvalidArgumentException('Every submitted detail must have a valid correction value.');
+        }
+
+        $correctedValue = $corrections[$key];
+        if ($key === 'godparents' && is_array($correctedValue)) {
+            $normalizedGodparents = [];
+            $roleCounts = ['godfather' => 0, 'godmother' => 0];
+            foreach ($correctedValue as $participant) {
+                if (!is_array($participant)) {
+                    throw new InvalidArgumentException('Each godparent must have a role and full name.');
+                }
+                $role = is_string($participant['role'] ?? null) ? trim($participant['role']) : '';
+                $fullName = is_string($participant['full_name'] ?? null) ? trim($participant['full_name']) : '';
+                if ($role === '' && $fullName === '') {
+                    continue;
+                }
+                if (!array_key_exists($role, $roleCounts)) {
+                    throw new InvalidArgumentException('Choose whether each godparent is a godfather or godmother.');
+                }
+                if ($fullName === '' || mb_strlen($fullName) > 150) {
+                    throw new InvalidArgumentException('Each godparent must have a full name of 150 characters or fewer.');
+                }
+                if (($nameError = validate_full_name($fullName)) !== null) {
+                    throw new InvalidArgumentException('Godparent name: ' . $nameError);
+                }
+                $roleCounts[$role]++;
+                if ($roleCounts[$role] > 8) {
+                    throw new InvalidArgumentException('No more than eight godparents of each role may be entered.');
+                }
+                $normalizedParticipant = ['role' => $role, 'full_name' => $fullName];
+                $residence = sd_application_optional_residence(
+                    $participant['residence'] ?? null,
+                    'Godparent residence',
+                    150
+                );
+                if ($residence !== null) {
+                    $normalizedParticipant['residence'] = $residence;
+                }
+                $normalizedGodparents[] = $normalizedParticipant;
+            }
+            $submittedDetails[$key] = $normalizedGodparents;
+            continue;
+        }
+
+        if (in_array($key, ['child_residence', 'parents_residence'], true)) {
+            $label = $key === 'child_residence'
+                ? "Child's current residence"
+                : "Parents' current residence";
+            $submittedDetails[$key] = sd_application_optional_residence($correctedValue, $label, 255);
+            continue;
+        }
+
+        if (is_array($originalValue) && is_array($correctedValue)) {
+            if (!array_is_list($correctedValue)) {
+                throw new InvalidArgumentException('List submitted details must remain a list.');
+            }
+            $normalizedList = [];
+            foreach ($correctedValue as $listItem) {
+                if (!is_scalar($listItem)) {
+                    throw new InvalidArgumentException('List submitted details must contain text values.');
+                }
+                $listItem = trim((string) $listItem);
+                if (mb_strlen($listItem) > 5000) {
+                    throw new InvalidArgumentException('Each submitted detail must be 5000 characters or fewer.');
+                }
+                if ($listItem !== '') {
+                    $normalizedList[] = $listItem;
+                }
+            }
+            $submittedDetails[$key] = $normalizedList;
+            continue;
+        }
+
+        if (!is_string($correctedValue)) {
+            throw new InvalidArgumentException('Every submitted detail must have a valid correction value.');
+        }
+        $correctedValue = trim($correctedValue);
+        if (mb_strlen($correctedValue) > 5000) {
+            throw new InvalidArgumentException('Each submitted detail must be 5000 characters or fewer.');
+        }
+
+        if (is_array($originalValue)) {
+            try {
+                $decodedValue = json_decode($correctedValue, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $exception) {
+                throw new InvalidArgumentException('Nested submitted details must remain valid JSON.', 0, $exception);
+            }
+            if (!is_array($decodedValue)) {
+                throw new InvalidArgumentException('Nested submitted details must remain a JSON object or list.');
+            }
+            $submittedDetails[$key] = $decodedValue;
+        } elseif ($originalValue === null && $correctedValue === '') {
+            $submittedDetails[$key] = null;
+        } else {
+            $submittedDetails[$key] = $correctedValue;
+        }
+    }
+
+    if (count($corrections) !== count($submittedDetails)) {
+        throw new InvalidArgumentException('The submitted detail fields do not match this application.');
+    }
+
+    return $submittedDetails;
+}
+
 function sd_baptism_godparent_presence(array $namesByRole, bool $isEdit): array
 {
     $errors = [];
@@ -239,6 +401,15 @@ function sd_baptism_godparent_presence(array $namesByRole, bool $isEdit): array
         'errors' => $isEdit ? [] : $errors,
         'warnings' => $isEdit ? $warnings : [],
     ];
+}
+
+function sd_baptism_guardian_attestation_error(string $guardianName, bool $confirmed): ?string
+{
+    if (trim($guardianName) === '' || $confirmed) {
+        return null;
+    }
+
+    return "Confirm that you are the child's legal guardian or have permission from the child's parents.";
 }
 
 /**
@@ -448,13 +619,23 @@ function sd_get_person_records(PDO $pdo, int $personId): array
  */
 function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
 {
-    if (!in_array($sacramentType, ['first_communion', 'confirmation'], true)) {
-        throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.');
+    if (!in_array($sacramentType, ['first_communion', 'confirmation', 'marriage'], true)) {
+        throw new InvalidArgumentException('Age eligibility is only configured for First Communion, Confirmation, and Marriage.');
     }
 
     $range = sacrament_eligibility_range($pdo, $sacramentType);
     $minimumAge = (int) $range['min_age'];
     $today = new DateTimeImmutable('today');
+    $receivedPredicate = $sacramentType === 'marriage'
+        ? "AND NOT EXISTS (
+               SELECT 1 FROM sacrament_records received
+               WHERE received.sacrament_type = ?
+                 AND (received.person_id = p.id OR received.spouse_person_id = p.id)
+           )"
+        : "AND NOT EXISTS (
+               SELECT 1 FROM sacrament_records received
+               WHERE received.person_id = p.id AND received.sacrament_type = ?
+           )";
     $stmt = $pdo->prepare(
         'SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
                 (SELECT b.id FROM sacrament_records b
@@ -467,10 +648,7 @@ function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
                SELECT 1 FROM sacrament_records baptism
                WHERE baptism.person_id = p.id AND baptism.sacrament_type = \'baptism\'
            )
-           AND NOT EXISTS (
-               SELECT 1 FROM sacrament_records received
-               WHERE received.person_id = p.id AND received.sacrament_type = ?
-           )
+           ' . $receivedPredicate . '
          ORDER BY p.birth_date, p.last_name, p.first_name, p.id'
     );
     $stmt->execute([$sacramentType]);
@@ -1270,6 +1448,9 @@ function sd_certificate_source(PDO $pdo, int $recordId): ?array
     switch ($record['sacrament_type'] ?? '') {
         case 'baptism':
             $record['child_full_name'] = $person ? sd_full_name($person) : null;
+            $record['child_first_name'] = $person['first_name'] ?? null;
+            $record['child_last_name'] = $person['last_name'] ?? null;
+            $record['child_suffix'] = $person['suffix'] ?? null;
             $record['baptism_date'] = $record['event_date'] ?? null;
             $record['birth_date'] = $person['birth_date'] ?? null;
             $record['birth_place'] = $person['birth_place'] ?? null;

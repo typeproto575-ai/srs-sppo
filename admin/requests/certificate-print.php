@@ -144,6 +144,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['print_certificate']))
 }
 
 $bcLayout = baptismal_blank_stock_layout();
+$certificateNo = trim((string) ($req['certificate_no'] ?? ''));
+if ($certificateNo === '') {
+    $certificateNo = 'C-' . date('Y') . '-' . str_pad((string) $requestId, 5, '0', STR_PAD_LEFT);
+}
+$req['certificate_no'] = $certificateNo;
 $certificateMarkup = '';
 if ($canPrint && $source !== null) {
     if ($req['sacrament_type'] === 'baptism') {
@@ -152,11 +157,6 @@ if ($canPrint && $source !== null) {
     } else {
         $certificateMarkup = sacramental_certificate_html((string) $req['sacrament_type'], $source, $req, $basePath);
     }
-}
-
-$certificateNo = trim((string) ($req['certificate_no'] ?? ''));
-if ($certificateNo === '') {
-    $certificateNo = 'C-' . date('Y') . '-' . str_pad((string) $requestId, 5, '0', STR_PAD_LEFT);
 }
 
 require_once __DIR__ . '/../../includes/admin-header.php';

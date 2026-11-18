@@ -5,16 +5,18 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/application-requirements.php';
 
 final class MarriageEligibilityTest extends TestCase
 {
-    private const BLOCK_MESSAGE = 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.';
+    private const BLOCK_MESSAGE = 'Applicants currently married (civilly or in church) to another person cannot apply for a Catholic wedding until the prior marriage is legally annulled and declared null by the Church.';
 
     public function testBlockedPartyWhoseMaritalStatusIsMarried(): void
     {
         self::assertSame(self::BLOCK_MESSAGE, marriage_party_eligibility_error('married', 'no'));
         self::assertSame(self::BLOCK_MESSAGE, marriage_party_eligibility_error('married', 'church'));
         self::assertSame(self::BLOCK_MESSAGE, marriage_party_eligibility_error('married', 'civil'));
+        self::assertSame(self::BLOCK_MESSAGE, marriage_party_eligibility_error('married_elsewhere', 'no'));
     }
 
     public function testBlockedSinglePartyWhoAlsoClaimsAPreviousChurchMarriage(): void
@@ -61,5 +63,74 @@ final class MarriageEligibilityTest extends TestCase
         self::assertSame('Yes — civil', marriage_previous_marriage_label('civil'));
         self::assertSame('No', marriage_previous_marriage_label(''));
         self::assertSame('No', marriage_previous_marriage_label('unknown'));
+    }
+
+    public function testCivillyMarriedStatusMustMatchForBothApplicants(): void
+    {
+        $message = "If you are civilly married to each other, both the groom and bride must select 'Civilly Married (to each other)'.";
+
+        self::assertSame($message, marriage_status_pair_error('civilly_married', 'single'));
+        self::assertSame($message, marriage_status_pair_error('widowed', 'civilly_married'));
+        self::assertNull(marriage_status_pair_error('civilly_married', 'civilly_married'));
+        self::assertNull(marriage_status_pair_error('single', 'widowed'));
+        self::assertNull(marriage_status_pair_error('civilly_married', ''));
+    }
+
+    public function testSacramentRecordCanSuggestYesButDoesNotTurnMissingRecordsIntoNo(): void
+    {
+        $recordFound = marriage_sacrament_record_assessment(['id' => 12], '');
+        self::assertTrue($recordFound['record_found']);
+        self::assertSame('yes', $recordFound['suggested_answer']);
+        self::assertFalse($recordFound['answer_conflicts']);
+
+        $conflictingAnswer = marriage_sacrament_record_assessment(['id' => 12], 'no');
+        self::assertTrue($conflictingAnswer['answer_conflicts']);
+
+        $noRecord = marriage_sacrament_record_assessment(null, 'no');
+        self::assertFalse($noRecord['record_found']);
+        self::assertNull($noRecord['suggested_answer']);
+        self::assertFalse($noRecord['answer_conflicts']);
+    }
+
+    public function testRequirementsFollowTheSelectedMaritalStatuses(): void
+    {
+        $singleDocuments = marriage_preapplication_required_documents('single', 'single', 'church');
+        self::assertContains('Groom: PSA Certificate of No Marriage Record (CENOMAR).', $singleDocuments);
+        self::assertContains('Bride: PSA Certificate of No Marriage Record (CENOMAR).', $singleDocuments);
+        self::assertContains('Marriage License from the Municipal Civil Registrar; submit it at the Parish Office.', $singleDocuments);
+
+        $civilDocuments = marriage_preapplication_required_documents('civilly_married', 'civilly_married', 'church');
+        self::assertContains('Couple: PSA Marriage Certificate.', $civilDocuments);
+        self::assertNotContains('Groom: PSA Certificate of No Marriage Record (CENOMAR).', $civilDocuments);
+        self::assertNotContains('Marriage License from the Municipal Civil Registrar; submit it at the Parish Office.', $civilDocuments);
+
+        $widowedDocuments = marriage_preapplication_required_documents('widowed', 'single', 'church');
+        self::assertContains('Groom: deceased spouse’s PSA Death Certificate.', $widowedDocuments);
+        self::assertContains('Groom: prior PSA Marriage Certificate.', $widowedDocuments);
+        self::assertContains('Marriage License from the Municipal Civil Registrar; submit it at the Parish Office.', $widowedDocuments);
+
+        $annulledDocuments = marriage_preapplication_required_documents('annulled', 'single', 'church');
+        self::assertContains('Groom: Civil Annulment Decree / Certificate of Finality.', $annulledDocuments);
+        self::assertContains('Groom: annotated PSA Marriage Certificate.', $annulledDocuments);
+        self::assertContains('Groom: Church Declaration of Nullity.', $annulledDocuments);
+    }
+
+    public function testOfficeChecklistMarksStatusSpecificDocumentsAsRequiredOrNotApplicable(): void
+    {
+        $civilRequirements = marriage_application_requirement_states('civilly_married', 'civilly_married', 'church');
+        self::assertSame('not_applicable', $civilRequirements['psa_cenomar_groom']['status']);
+        self::assertSame('not_applicable', $civilRequirements['psa_cenomar_bride']['status']);
+        self::assertSame('not_applicable', $civilRequirements['marriage_license_application']['status']);
+        self::assertSame('not_received', $civilRequirements['psa_marriage_certificate_couple']['status']);
+
+        $singleRequirements = marriage_application_requirement_states('single', 'widowed', 'church');
+        self::assertSame('not_received', $singleRequirements['psa_cenomar_groom']['status']);
+        self::assertSame('not_applicable', $singleRequirements['psa_cenomar_bride']['status']);
+        self::assertSame('not_received', $singleRequirements['marriage_license_application']['status']);
+        self::assertSame('not_received', $singleRequirements['psa_death_certificate_bride']['status']);
+        self::assertSame('not_received', $singleRequirements['psa_prior_marriage_certificate_bride']['status']);
+
+        $annulledRequirements = marriage_application_requirement_states('annulled', 'widowed', 'church');
+        self::assertSame('not_received', $annulledRequirements['marriage_license_application']['status']);
     }
 }

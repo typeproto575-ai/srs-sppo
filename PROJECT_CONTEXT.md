@@ -75,7 +75,7 @@ The register uses the shared `sacrament_records` table, with `sacrament_type` di
 
 ## Per-sacrament specifics
 
-**Baptismal** — no age prerequisite. Public certificate requests use the unified form at `public/certificate-request.php` and are stored in the shared v2 `certificate_requests` table. Public pre-application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
+**Baptismal** — no age prerequisite. Public certificate requests use the unified form at `public/certificate-request.php` and are stored in the shared v2 `certificate_requests` table. Public pre-application (`public/sacrament-applications/baptismal.php`) collects parent/guardian, godparents, preferred date, and optional current residences for the child, shared by the parents, and each godparent in the application `details` JSON; these do not update `persons.address`. Baptismal certificates can print onto parish **blank stock** via `admin/certificates/baptismal-certificate.php` + coordinates in `admin/certificates/print-coordinates.php`.
 
 **Confirmation** — certificate request and online pre-application (`public/sacrament-applications/confirmation.php`) plus walk-in encoding exist. Receiving the sacrament is also encoded as a **register row**. Prerequisite: baptized (flag, do not auto-reject). Minimum age in `settings` is a **placeholder (12+)** until the priest confirms it.
 

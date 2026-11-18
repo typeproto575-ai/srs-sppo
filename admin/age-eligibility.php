@@ -1,6 +1,6 @@
 <?php
 /**
- * Advisory staff review list for age-based First Communion and Confirmation alerts.
+ * Advisory staff review list for age-based First Communion, Confirmation, and Marriage alerts.
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -12,6 +12,7 @@ $basePath = $basePath ?? base_path();
 $labels = [
     'first_communion' => 'First Communion',
     'confirmation' => 'Confirmation',
+    'marriage' => 'Marriage',
 ];
 $type = (string) ($_GET['type'] ?? 'first_communion');
 if (!isset($labels[$type])) {
@@ -87,21 +88,13 @@ require_once __DIR__ . '/../includes/admin-header.php';
         <div class="age-eligibility-heading__copy">
             <p class="age-eligibility-eyebrow">Secretary review</p>
             <h1>Age Eligibility Review</h1>
-            <p>A focused shortlist of baptized people who have reached the configured minimum age and do not yet have this sacrament recorded.</p>
+            <p>A focused shortlist of baptized people who have reached the configured minimum age and do not yet have this sacrament or marriage record.</p>
         </div>
         <div class="age-eligibility-heading__stat" aria-label="<?= $totalPeople ?> people shown">
             <strong><?= $totalPeople ?></strong>
             <span>people shown</span>
         </div>
     </header>
-
-    <aside class="age-eligibility-notice">
-        <span class="age-eligibility-notice__mark" aria-hidden="true">i</span>
-        <div>
-            <strong>For secretary review only</strong>
-            <p>Age is an advisory reminder, not approval or confirmation of readiness. Confirm prerequisites and parish requirements before proceeding.</p>
-        </div>
-    </aside>
 
     <nav class="age-eligibility-tabs" aria-label="Filter by sacrament">
         <?php foreach ($labels as $sacramentType => $label): ?>
@@ -193,7 +186,7 @@ require_once __DIR__ . '/../includes/admin-header.php';
                             <th>Person</th>
                             <th>Date of birth</th>
                             <th>Age</th>
-                            <th>Baptism record</th>
+                            <th><?= $type === 'marriage' ? 'Marriage status' : 'Baptism record' ?></th>
                             <th>Review</th>
                         </tr>
                     </thead>
@@ -203,7 +196,7 @@ require_once __DIR__ . '/../includes/admin-header.php';
                                 <td><strong><?= e($person['full_name']) ?></strong></td>
                                 <td><?= e(date('M j, Y', strtotime((string) $person['birth_date']))) ?></td>
                                 <td><span class="age-eligibility-age"><?= (int) $person['age'] ?></span></td>
-                                <td><span class="age-eligibility-baptism"><span aria-hidden="true">✓</span> Recorded</span></td>
+                                <td><span class="age-eligibility-baptism"><span aria-hidden="true">✓</span> <?= $type === 'marriage' ? 'No record found' : 'Recorded' ?></span></td>
                                 <td><a class="age-eligibility-open" href="<?= e($basePath . '/admin/system/person-profile.php?id=' . (int) $person['id']) ?>">Open profile <span aria-hidden="true">→</span></a></td>
                             </tr>
                         <?php endforeach; ?>

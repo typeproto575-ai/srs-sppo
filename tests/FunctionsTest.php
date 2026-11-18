@@ -5,6 +5,7 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../admin/certificates/baptismal-certificate.php';
+require_once __DIR__ . '/../admin/certificates/print-coordinates.php';
 require_once __DIR__ . '/../admin/certificates/sacramental-certificate.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 require_once __DIR__ . '/../includes/mail.php';
@@ -35,6 +36,37 @@ final class FunctionsTest extends TestCase
             parents_union_type_label('legitimate')
         );
         self::assertSame('Not recorded', parents_union_type_label(null));
+    }
+
+    public function testRequiredParentNameRejectsMissingPartsAndNa(): void
+    {
+        self::assertNull(validate_required_parent_name([
+            'mother_first' => 'Maria',
+            'mother_last' => 'Santos',
+        ], 'mother', "Mother's maiden name"));
+        self::assertSame(
+            "Mother's maiden name: enter the first and last name.",
+            validate_required_parent_name(['mother_first' => 'Maria'], 'mother', "Mother's maiden name")
+        );
+        self::assertSame(
+            "Mother's maiden name: enter the full name; N/A is not accepted.",
+            validate_required_parent_name([
+                'mother_first' => 'N/A',
+                'mother_last' => 'N/A',
+            ], 'mother', "Mother's maiden name")
+        );
+        $fields = person_name_fields(
+            'mother',
+            "Mother's maiden name",
+            [],
+            true,
+            null,
+            'required: enter the first and last name; N/A is not accepted',
+            false,
+            true
+        );
+        self::assertStringContainsString('name="mother_first" autocomplete="given-name" required', $fields);
+        self::assertStringContainsString('name="mother_last" autocomplete="family-name" required', $fields);
     }
 
     public function testBaptismDetailsIgnoreLegacyParentBirthplacesButPreserveChildBirthplace(): void
@@ -91,7 +123,90 @@ final class FunctionsTest extends TestCase
             'godfather_name' => 'Marco Rivera',
             'godmother_name' => 'Lea Delos Santos',
         ]));
+        self::assertSame([
+            ['role' => 'godfather', 'full_name' => 'Someone'],
+            ['role' => 'godfather', 'full_name' => 'Someone'],
+        ], sd_application_godparents([
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Someone'],
+                ['role' => 'godfather', 'full_name' => 'Someone'],
+            ],
+        ]));
         self::assertSame([], sd_application_godparents(['godparents' => 'legacy scalar payload']));
+    }
+
+    public function testApplicationGodparentResidenceArraysRemainPairedWithNames(): void
+    {
+        self::assertSame([
+            ['role' => 'godfather', 'full_name' => 'Marco Rivera', 'residence' => 'North Street'],
+            ['role' => 'godfather', 'full_name' => 'Luis Reyes', 'residence' => 'South Street'],
+            ['role' => 'godmother', 'full_name' => 'Lea Santos', 'residence' => 'East Street'],
+        ], sd_application_godparents([
+            'godfather_full_name' => [0 => '', 1 => ' Marco Rivera ', 2 => 'Luis Reyes'],
+            'godfather_residence' => [0 => '', 1 => ' North Street ', 2 => 'South Street'],
+            'godmother_full_name' => ['Lea Santos'],
+            'godmother_residence' => ['East Street'],
+        ]));
+    }
+
+    public function testOptionalApplicationResidencesAreTrimmedAndLengthLimited(): void
+    {
+        self::assertSame('12 Main Street', sd_application_optional_residence(' 12 Main Street ', 'Residence', 255));
+        self::assertNull(sd_application_optional_residence('', 'Residence', 255));
+        self::assertNull(sd_application_optional_residence(null, 'Residence', 255));
+
+        try {
+            sd_application_optional_residence(str_repeat('A', 256), 'Residence', 255);
+            self::fail('An overlong residence must be rejected.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame('Residence must be 255 characters or fewer.', $exception->getMessage());
+        }
+    }
+
+    public function testSubmittedResidenceCorrectionsAreTrimmedAndPreserved(): void
+    {
+        self::assertSame([
+            'child_residence' => '12 Main Street',
+            'parents_residence' => '13 Oak Avenue',
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Marco Rivera', 'residence' => '14 Pine Road'],
+            ],
+        ], sd_application_apply_detail_corrections([
+            'child_residence' => 'Old child address',
+            'parents_residence' => 'Old parents address',
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Old Name', 'residence' => 'Old godparent address'],
+            ],
+        ], [
+            'child_residence' => ' 12 Main Street ',
+            'parents_residence' => ' 13 Oak Avenue ',
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Marco Rivera', 'residence' => ' 14 Pine Road '],
+            ],
+        ]));
+    }
+
+    public function testSubmittedDetailsCorrectionsHandleGodparentAndScalarLists(): void
+    {
+        self::assertSame([
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+                ['role' => 'godmother', 'full_name' => 'Lea Santos'],
+            ],
+            'sponsors' => ['Ana Cruz', 'Luis Reyes'],
+            'child_name' => 'Maria Santos',
+        ], sd_application_apply_detail_corrections([
+            'godparents' => [['role' => 'godfather', 'full_name' => 'Old Name']],
+            'sponsors' => ['Old Sponsor'],
+            'child_name' => 'Old Child',
+        ], [
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+                ['role' => 'godmother', 'full_name' => 'Lea Santos'],
+            ],
+            'sponsors' => ['Ana Cruz', '', 'Luis Reyes'],
+            'child_name' => 'Maria Santos',
+        ]));
     }
 
     public function testBaptismRequiresBothGodparentRolesAndWarnsForHistoricalRecords(): void
@@ -119,6 +234,17 @@ final class FunctionsTest extends TestCase
             ['errors' => [], 'warnings' => ['No godfather is entered. This historical record can still be saved.']],
             sd_baptism_godparent_presence(['godmother' => ['Lea Delos Santos']], true)
         );
+    }
+
+    public function testBaptismGuardianAttestationIsRequiredOnlyWhenGuardianIsListed(): void
+    {
+        self::assertNull(sd_baptism_guardian_attestation_error('', false));
+        self::assertNull(sd_baptism_guardian_attestation_error('   ', false));
+        self::assertSame(
+            "Confirm that you are the child's legal guardian or have permission from the child's parents.",
+            sd_baptism_guardian_attestation_error('Guardian Name', false)
+        );
+        self::assertNull(sd_baptism_guardian_attestation_error('Guardian Name', true));
     }
 
     public function testWalkInApplicationRequiresValidSubjectAndApplicantContact(): void
@@ -212,8 +338,59 @@ final class FunctionsTest extends TestCase
         self::assertNull(first_communion_formation_input_error('individual_catchup', 'N/A', '2026-2027'));
         self::assertNull(first_communion_formation_input_error('individual_catchup', 'not_applicable', '2026-2027'));
         self::assertSame(
+            'Choose a formation pathway.',
+            first_communion_formation_input_error('not_sure', 'not_enrolled', '2026-2027')
+        );
+        self::assertSame(
             'Out-of-School Youth (OSY)',
             first_communion_grade_options()['not_enrolled']
+        );
+    }
+
+    public function testFirstCommunionDetailsRequireExternalParishAndOtherVenueInformation(): void
+    {
+        $valid = [
+            'baptized_here' => 'elsewhere',
+            'baptism_parish' => 'St. Anne Parish, Dingalan, Aurora',
+            'communion_venue' => 'parish_church',
+        ];
+        self::assertSame([], first_communion_details_input_errors($valid));
+
+        self::assertContains(
+            'Enter the name and location of the parish or church where the applicant was baptized.',
+            first_communion_details_input_errors([
+                'baptized_here' => 'elsewhere',
+                'communion_venue' => 'other',
+                'communion_venue_other' => '',
+            ])
+        );
+        self::assertContains(
+            'Enter the name and location of the other First Communion venue.',
+            first_communion_details_input_errors([
+                'baptized_here' => 'this_parish',
+                'communion_venue' => 'other',
+            ])
+        );
+        self::assertContains(
+            'Choose where First Communion will take place.',
+            first_communion_details_input_errors([
+                'baptized_here' => 'this_parish',
+                'communion_venue' => 'barangay_chapel',
+            ])
+        );
+    }
+
+    public function testOtherSacramentGradeRequiresADescription(): void
+    {
+        self::assertNull(sacrament_formation_grade_other_error('grade_6', ''));
+        self::assertNull(sacrament_formation_grade_other_error('other', 'Out-of-school formation'));
+        self::assertSame(
+            'Describe the other grade level or preparation situation.',
+            sacrament_formation_grade_other_error('other', '')
+        );
+        self::assertSame(
+            'The other grade level description must be 100 characters or fewer.',
+            sacrament_formation_grade_other_error('grade_6', str_repeat('x', 101))
         );
     }
 
@@ -476,6 +653,18 @@ final class FunctionsTest extends TestCase
         self::assertNull(
             application_queue_requirement_status_transition('new', 'received', 'received')
         );
+        self::assertSame(
+            'reviewing',
+            application_queue_status_filter_after_transition('new', 'reviewing')
+        );
+        self::assertSame(
+            'in_progress',
+            application_queue_status_filter_after_transition('in_progress', 'reviewing')
+        );
+        self::assertSame(
+            'new',
+            application_queue_status_filter_after_transition('new', 'approved')
+        );
 
         foreach (['reviewing', 'requirements_pending', 'approved', 'scheduled', 'completed', 'rejected'] as $status) {
             self::assertNull(
@@ -501,6 +690,10 @@ final class FunctionsTest extends TestCase
         self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'confirmation', 11));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 12));
         self::assertSame('Age-eligible', sacrament_age_status($pdo, 'confirmation', 18));
+
+        self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'marriage', 17));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'marriage', 18));
+        self::assertSame('Age-eligible', sacrament_age_status($pdo, 'marriage', 25));
 
         $pdo->exec("INSERT INTO settings (setting_key, setting_value) VALUES ('first_communion_min_age', '8')");
         self::assertSame('Not yet age-eligible', sacrament_age_status($pdo, 'first_communion', 7));
@@ -531,6 +724,7 @@ final class FunctionsTest extends TestCase
             'CREATE TABLE sacrament_records (
                 id INTEGER PRIMARY KEY,
                 person_id INTEGER NOT NULL,
+                spouse_person_id INTEGER,
                 sacrament_type TEXT NOT NULL
             )'
         );
@@ -663,6 +857,7 @@ final class FunctionsTest extends TestCase
                 birth_place TEXT,
                 father_name TEXT,
                 mother_maiden_name TEXT,
+                address TEXT,
                 public_reference TEXT
             )'
         );
@@ -674,6 +869,7 @@ final class FunctionsTest extends TestCase
             'birth_place' => 'Dingalan',
             'father_name' => 'Juan Santos',
             'mother_maiden_name' => 'Rosa Cruz',
+            'address' => 'Dingalan, Aurora',
         ];
 
         $personId = save_person_identity($pdo, null, $identity);
@@ -684,7 +880,24 @@ final class FunctionsTest extends TestCase
         $profile = $pdo->query('SELECT * FROM persons')->fetch(PDO::FETCH_ASSOC);
         self::assertSame('Juan Santos', $profile['father_name']);
         self::assertSame('Rosa Cruz', $profile['mother_maiden_name']);
+        self::assertSame('Dingalan, Aurora', $profile['address']);
         self::assertMatchesRegularExpression('/^SPPO-P-[A-F0-9]{16}$/', $profile['public_reference']);
+
+        $pdo->exec('UPDATE persons SET address = NULL WHERE id = ' . (int) $personId);
+        save_person_identity($pdo, $personId, [
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'address' => 'Dingalan, Aurora',
+        ]);
+        save_person_identity($pdo, $personId, [
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'address' => 'Different residence',
+        ]);
+        self::assertSame(
+            'Dingalan, Aurora',
+            $pdo->query('SELECT address FROM persons WHERE id = ' . (int) $personId)->fetchColumn()
+        );
     }
 
     public function testTrackingTokenUsesRandomLookingUnambiguousFormat(): void
@@ -789,14 +1002,53 @@ final class FunctionsTest extends TestCase
         );
     }
 
-    public function testBaptismalCertificateDoesNotPrintRequesterPurposeAsAnOfficialAnnotation(): void
+    public function testBaptismalCertificateFormatsPurposeAndShowsNoneWhenNoRemarksExist(): void
     {
         $values = baptismal_certificate_values(
-            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
-            ['purpose' => 'other', 'purpose_other' => 'School enrollment']
+            [
+                'child_full_name' => 'Julian Orlasan Cordova',
+                'child_first_name' => 'Julian',
+                'child_middle_name' => 'Orlasan',
+                'child_last_name' => 'Cordova',
+            ],
+            ['purpose' => 'Personal records', 'certificate_no' => 'B-2026-0001']
         );
 
-        self::assertSame('', $values['purpose']);
+        self::assertSame('JULIAN CORDOVA', $values['subject_full_name']);
+        self::assertSame('PERSONAL RECORD', $values['purpose']);
+        self::assertSame('None', $values['remarks']);
+        self::assertSame('0001', $values['certificate_serial']);
+
+        $customPurpose = baptismal_certificate_values(
+            ['child_full_name' => 'Mikaela Therese Rivera Dela Cruz'],
+            ['purpose' => 'Other', 'purpose_other' => 'School enrollment']
+        );
+        self::assertSame('SCHOOL ENROLLMENT', $customPurpose['purpose']);
+
+        $withNotation = baptismal_certificate_values(
+            [
+                'child_full_name' => 'Mikaela Therese Rivera Dela Cruz',
+                'notations' => [[
+                    'sacrament_type' => 'confirmation',
+                    'event_date' => '2025-03-07',
+                    'place' => 'St. Patrick Parish',
+                ]],
+            ],
+            ['purpose' => 'Personal records']
+        );
+        self::assertSame('Confirmation — March 7, 2025, St. Patrick Parish', $withNotation['remarks']);
+    }
+
+    public function testBaptismalCertificateLayoutIncludesItsSerialNumber(): void
+    {
+        $layout = baptismal_blank_stock_layout();
+        $certificate = baptismal_certificate_svg($layout, [
+            'certificate_serial' => '0001',
+        ]);
+
+        self::assertStringContainsString('No.', $certificate);
+        self::assertStringContainsString('data-field="certificate_serial"', $certificate);
+        self::assertStringContainsString('>0001</text>', $certificate);
     }
 
     public function testMarriagePurposeCertificatesHaveNoProjectDefinedExpiryDate(): void
@@ -841,6 +1093,33 @@ final class FunctionsTest extends TestCase
                 'sponsor_first' => [''],
                 'sponsor_last' => [''],
             ], 'sponsor', 'Sponsor')
+        );
+    }
+
+    public function testMarriagePrincipalSponsorsRequireOneGodfatherAndGodmother(): void
+    {
+        self::assertSame([], validate_marriage_principal_sponsors([
+            'godfather_full_name' => ['Juan Sponsor'],
+            'godmother_full_name' => ['Maria Sponsor'],
+        ]));
+        self::assertContains(
+            'At least one principal godfather is required.',
+            validate_marriage_principal_sponsors([
+                'godmother_full_name' => ['Maria Sponsor'],
+            ])
+        );
+        self::assertContains(
+            'At least one principal godmother is required.',
+            validate_marriage_principal_sponsors([
+                'godfather_full_name' => ['Juan Sponsor'],
+            ])
+        );
+        self::assertContains(
+            'No more than 4 principal sponsors may be entered.',
+            validate_marriage_principal_sponsors([
+                'godfather_full_name' => ['Godfather One', 'Godfather Two', 'Godfather Three'],
+                'godmother_full_name' => ['Godmother One', 'Godmother Two'],
+            ])
         );
     }
 
@@ -996,6 +1275,23 @@ final class FunctionsTest extends TestCase
         ));
     }
 
+    public function testApplicationScheduleSlotsRespectConflictsAndBaptismOverlapRule(): void
+    {
+        $events = [
+            ['event_type' => 'wedding', 'start_time' => '08:00:00', 'end_time' => '09:00:00'],
+            ['event_type' => 'baptism', 'start_time' => '10:00:00', 'end_time' => '11:00:00'],
+        ];
+
+        $baptismSlots = array_column(application_schedule_available_slots('baptism', $events), 'start_time');
+        self::assertNotContains('08:00', $baptismSlots);
+        self::assertContains('10:00', $baptismSlots);
+
+        $weddingSlots = array_column(application_schedule_available_slots('wedding', $events), 'start_time');
+        self::assertNotContains('08:00', $weddingSlots);
+        self::assertNotContains('10:00', $weddingSlots);
+        self::assertSame(9, count(application_schedule_available_slots('baptism', [])));
+    }
+
     public function testConfirmedApplicationScheduleValidation(): void
     {
         $today = new DateTimeImmutable('2026-11-16');
@@ -1101,6 +1397,7 @@ final class FunctionsTest extends TestCase
     {
         self::assertNull(sacrament_formation_input_error('batch', 'grade_3', '2026-2027'));
         self::assertNull(sacrament_formation_input_error('individual_catchup', 'grade_6', '2026-2027'));
+        self::assertNull(sacrament_formation_input_error('individual_catchup', '', ''));
         self::assertNull(sacrament_formation_input_error('not_sure', 'not_enrolled', '2026-2027'));
         self::assertNull(sacrament_formation_input_error('individual_catchup', 'not_enrolled', 'N/A'));
     }

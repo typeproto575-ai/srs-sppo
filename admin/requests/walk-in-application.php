@@ -61,9 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $selectedType = isset($types[$values['sacrament_type']]) ? $values['sacrament_type'] : '';
+$walkInFormId = 'walk-in-application-form';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 
+<div class="walk-in-page">
 <section class="page-header">
     <div>
         <h1>Walk-in Pre-Application</h1>
@@ -78,18 +80,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
 <?php endif; ?>
 
-<form method="post" class="stacked-form" data-walk-in-intake autocomplete="off">
+<form id="walk-in-application-form" method="post" class="walk-in-form walk-in-dedicated stacked-form" data-walk-in-dedicated="application" data-walk-in-intake autocomplete="off">
     <?= csrf_field() ?>
+    <input type="hidden" name="walk_in_current_step" value="1" data-dedicated-step>
 
-    <label for="walk-in-sacrament-type">Sacrament type <span class="required-marker" aria-hidden="true">*</span></label>
-    <select id="walk-in-sacrament-type" name="sacrament_type" data-walk-in-type required autofocus>
-        <option value="">Choose a sacrament</option>
-        <?php foreach ($types as $type => $label): ?>
-            <option value="<?= e($type) ?>"<?= $selectedType === $type ? ' selected' : '' ?>><?= e($label) ?></option>
-        <?php endforeach; ?>
-    </select>
+    <section class="card walk-in-form-section" data-dedicated-panel="type">
+        <h2>Pre-application details</h2>
+        <label for="walk-in-sacrament-type">Sacrament type <span class="required-marker" aria-hidden="true">*</span></label>
+        <select id="walk-in-sacrament-type" name="sacrament_type" data-walk-in-type required autofocus>
+            <option value="">Choose a sacrament</option>
+            <?php foreach ($types as $type => $label): ?>
+                <option value="<?= e($type) ?>"<?= $selectedType === $type ? ' selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </section>
 
-    <section class="card">
+    <section class="card walk-in-form-section" data-dedicated-panel="person">
         <h2>Person</h2>
         <p class="field-hint">Search the master person index first. A new profile needs only a name and date of birth.</p>
         <?php
@@ -108,8 +114,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         ?>
     </section>
 
-    <fieldset class="card" data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
-        <legend>Bride</legend>
+    <section class="card walk-in-form-section" data-dedicated-spouse data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
+        <h2>Bride</h2>
         <p class="field-hint">Search the master person index first, or create a profile with only a name and date of birth.</p>
         <?php
         $matchRole = 'spouse';
@@ -124,26 +130,39 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         $matchBirthDate = $values['spouse_birth_date'];
         require __DIR__ . '/../../includes/person-match-widget.php';
         ?>
-    </fieldset>
+    </section>
 
-    <fieldset class="card">
-        <legend>Applicant contact</legend>
-        <label for="applicant-name">Applicant / contact name <span class="required-marker" aria-hidden="true">*</span></label>
-        <input id="applicant-name" type="text" name="applicant_name" maxlength="150" value="<?= e($values['applicant_name']) ?>" required>
-        <label for="applicant-email">Applicant email <span class="required-marker" aria-hidden="true">*</span></label>
-        <input id="applicant-email" type="email" name="applicant_email" maxlength="150" value="<?= e($values['applicant_email']) ?>" required>
-        <label for="applicant-contact">Contact number <span class="field-hint">(optional)</span></label>
-        <input id="applicant-contact" type="tel" name="applicant_contact" maxlength="30" value="<?= e($values['applicant_contact']) ?>">
-    </fieldset>
+    <section class="card walk-in-form-section" data-dedicated-panel="contact">
+        <h2>Applicant contact</h2>
+        <div class="walk-in-requester-grid">
+            <div class="walk-in-field">
+                <label for="applicant-name">Applicant / contact name <span class="required-marker" aria-hidden="true">*</span></label>
+                <input id="applicant-name" form="walk-in-application-form" type="text" name="applicant_name" maxlength="150" value="<?= e($values['applicant_name']) ?>" required>
+            </div>
+            <div class="walk-in-field">
+                <label for="applicant-email">Applicant email <span class="required-marker" aria-hidden="true">*</span></label>
+                <input id="applicant-email" form="walk-in-application-form" type="email" name="applicant_email" maxlength="150" value="<?= e($values['applicant_email']) ?>" required>
+            </div>
+            <div class="walk-in-field">
+                <label for="applicant-contact">Contact number <span class="field-hint">(optional)</span></label>
+                <input id="applicant-contact" form="walk-in-application-form" type="tel" name="applicant_contact" maxlength="30" value="<?= e($values['applicant_contact']) ?>">
+            </div>
+        </div>
+    </section>
 
-    <fieldset class="card" data-baptism-only<?= $selectedType === 'baptism' ? '' : ' hidden' ?>>
-        <legend>Baptism preference</legend>
+    <section class="card walk-in-form-section" data-dedicated-panel="contact" data-baptism-only<?= $selectedType === 'baptism' ? '' : ' hidden' ?>>
+        <h2>Baptism preference</h2>
         <label for="baptism-venue">Preferred place / venue of baptism <span class="field-hint">(optional; parish confirmation required)</span></label>
-        <input id="baptism-venue" type="text" name="baptism_venue" maxlength="150" value="<?= e($values['baptism_venue']) ?>">
-    </fieldset>
+        <input id="baptism-venue" form="walk-in-application-form" type="text" name="baptism_venue" maxlength="150" value="<?= e($values['baptism_venue']) ?>">
+    </section>
 
-    <p class="field-hint">Requirements are checked in person from the application queue. No documents or payment are collected on this screen.</p>
-    <button type="submit" class="btn">Save and open application</button>
+    <section class="card walk-in-form-section" data-dedicated-panel="review">
+        <h2>Review</h2>
+        <dl class="walk-in-dedicated-review" data-dedicated-review></dl>
+    </section>
+    <p class="field-hint" data-dedicated-note>Requirements are checked in person from the application queue. No documents or payment are collected on this screen.</p>
+    <button type="submit" form="walk-in-application-form" class="btn" data-dedicated-submit hidden>Save and open application</button>
 </form>
+</div>
 
 <?php require __DIR__ . '/../../includes/admin-footer.php'; ?>

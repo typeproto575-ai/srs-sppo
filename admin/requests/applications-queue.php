@@ -47,13 +47,25 @@ function application_queue_label(string $value): string
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
         'birth_place' => 'Place of Birth',
+        'child_residence' => "Child's Current Residence",
+        'parents_residence' => "Parents' Current Residence",
         'baptized_here' => 'Baptism Location',
+        'baptism_parish' => 'Baptism Parish / Church and Location',
+        'communion_venue' => 'Requested First Communion Venue',
+        'communion_venue_other' => 'Other First Communion Venue',
+        'communion_sponsor_names' => 'Godparents / Sponsors',
+        'principal_sponsors' => 'Principal Sponsors',
+        'godfathers' => 'Godfathers (Ninong)',
+        'godmothers' => 'Godmothers (Ninang)',
+        'sponsors' => 'Principal Sponsors',
         'formation_path' => 'Requested Formation Pathway',
         'school_grade' => 'Current Grade Level',
+        'school_grade_other' => 'Other Grade Level / Preparation Situation',
         'school_year' => 'School Year',
         'sponsor_names' => 'Proposed Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Declared at Submission',
         'guardian_relationship' => 'Guardian Relationship',
+        'guardian_relationship_other' => 'Other Guardian Relationship',
         'parent_guardian_name' => 'Guardian / Authorized Representative',
         'batch' => 'Regular parish group',
         'individual_catchup' => 'Individual / catch-up pathway',
@@ -90,7 +102,14 @@ function application_queue_render_detail_value(mixed $value): void
             echo '<ol class="application-detail-compact">';
             foreach ($value as $item) {
                 echo '<li><span class="detail-role">' . e(application_queue_label((string) $item['role'])) . '</span> '
-                    . e((string) $item['full_name']) . '</li>';
+                    . e((string) $item['full_name']);
+                $residence = is_scalar($item['residence'] ?? null)
+                    ? trim((string) $item['residence'])
+                    : '';
+                if ($residence !== '') {
+                    echo '<span class="detail-residence">Current residence: ' . e($residence) . '</span>';
+                }
+                echo '</li>';
             }
             echo '</ol>';
             return;
@@ -238,7 +257,7 @@ function application_queue_person_match(array $application, array $details, stri
     ];
 }
 
-function application_queue_return_url_from_post(array $allowedKeys): string
+function application_queue_return_url_from_post(array $allowedKeys, ?string $nextStatus = null): string
 {
     $rawQuery = (string) ($_POST['return_query'] ?? '');
     parse_str($rawQuery, $parsed);
@@ -250,6 +269,12 @@ function application_queue_return_url_from_post(array $allowedKeys): string
         if (!is_scalar($value)) {
             unset($params[$key]);
         }
+    }
+    if ($nextStatus !== null && isset($params['status']) && is_scalar($params['status'])) {
+        $params['status'] = application_queue_status_filter_after_transition(
+            (string) $params['status'],
+            $nextStatus
+        );
     }
     $query = http_build_query($params);
     $url = '/admin/requests/applications-queue.php' . ($query !== '' ? '?' . $query : '');
@@ -370,42 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($application['sacrament_type'] ?? '') === 'baptism') {
                 $submittedDetails = sd_strip_parent_birthplaces($submittedDetails);
             }
-            if ($correctedDetails === null) {
-                $correctedDetails = [];
-            }
-            if (!is_array($correctedDetails)) {
-                throw new InvalidArgumentException('Submitted details could not be read. Reload the page and try again.');
-            }
-
-            foreach ($submittedDetails as $key => $originalValue) {
-                $key = (string) $key;
-                if (!array_key_exists($key, $correctedDetails) || !is_string($correctedDetails[$key])) {
-                    throw new InvalidArgumentException('Every submitted detail must have a valid correction value.');
-                }
-                $correctedValue = trim($correctedDetails[$key]);
-                if (mb_strlen($correctedValue) > 5000) {
-                    throw new InvalidArgumentException('Each submitted detail must be 5000 characters or fewer.');
-                }
-
-                if (is_array($originalValue)) {
-                    try {
-                        $decodedValue = json_decode($correctedValue, true, 512, JSON_THROW_ON_ERROR);
-                    } catch (JsonException $e) {
-                        throw new InvalidArgumentException('Nested submitted details must remain valid JSON.', 0, $e);
-                    }
-                    if (!is_array($decodedValue)) {
-                        throw new InvalidArgumentException('Nested submitted details must remain a JSON object or list.');
-                    }
-                    $submittedDetails[$key] = $decodedValue;
-                } elseif ($originalValue === null && $correctedValue === '') {
-                    $submittedDetails[$key] = null;
-                } else {
-                    $submittedDetails[$key] = $correctedValue;
-                }
-            }
-            if (count($correctedDetails) !== count($submittedDetails)) {
-                throw new InvalidArgumentException('The submitted detail fields do not match this application.');
-            }
+            $submittedDetails = sd_application_apply_detail_corrections($submittedDetails, $correctedDetails);
 
             $encodedDetails = json_encode($submittedDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             $update = $pdo->prepare(
@@ -493,6 +483,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['application_queue_error'] = $scheduleInputError;
                 redirect_to($postReturnUrl);
             }
+            if ($scheduledStartTime === '' || $scheduledEndTime === '') {
+                $pdo->rollBack();
+                $_SESSION['application_queue_error'] = 'Choose an available 60-minute schedule slot.';
+                redirect_to($postReturnUrl);
+            }
+
+            $eventType = match ($application['sacrament_type']) {
+                'baptism' => 'baptism',
+                'marriage' => 'wedding',
+                default => 'other',
+            };
 
             $scheduleEventStmt = $pdo->prepare(
                 'SELECT id, event_date, start_time, end_time, public_details
@@ -510,6 +511,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $existingSchedule = $linkedScheduleEvents[0] ?? null;
+            $dayEventsStmt = $pdo->prepare(
+                'SELECT id, event_type, start_time, end_time
+                 FROM schedule_events
+                 WHERE event_date = ?
+                 FOR UPDATE'
+            );
+            $dayEventsStmt->execute([$scheduledDate]);
+            $dayEvents = array_values(array_filter(
+                $dayEventsStmt->fetchAll(PDO::FETCH_ASSOC),
+                static fn(array $event): bool => $existingSchedule === null
+                    || (int) $event['id'] !== (int) $existingSchedule['id']
+            ));
+            $selectedSlotIsAvailable = false;
+            foreach (application_schedule_available_slots($eventType, $dayEvents) as $slot) {
+                if ($slot['start_time'] === $scheduledStartTime && $slot['end_time'] === $scheduledEndTime) {
+                    $selectedSlotIsAvailable = true;
+                    break;
+                }
+            }
+            if (!$selectedSlotIsAvailable) {
+                $pdo->rollBack();
+                $_SESSION['application_queue_error'] = 'That 60-minute time slot is no longer available. Choose another slot.';
+                redirect_to($postReturnUrl);
+            }
+
             $existingStartTime = $existingSchedule && $existingSchedule['start_time'] !== null
                 ? substr((string) $existingSchedule['start_time'], 0, 5)
                 : '';
@@ -533,11 +559,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect_to($postReturnUrl);
             }
 
-            $eventType = match ($application['sacrament_type']) {
-                'baptism' => 'baptism',
-                'marriage' => 'wedding',
-                default => 'other',
-            };
             $eventTitle = match ($application['sacrament_type']) {
                 'baptism' => 'Baptism',
                 'first_communion' => 'First Communion',
@@ -816,6 +837,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             if ($nextApplicationStatus !== null) {
+                $postReturnUrl = application_queue_return_url_from_post($returnKeys, $nextApplicationStatus);
                 notify_sacrament_application_status(
                     $pdo,
                     $nextApplicationStatus,
@@ -1001,7 +1023,7 @@ if ($applications !== []) {
     $schedulePlaceholders = implode(', ', array_fill(0, count($applicationIdsForSchedules), '?'));
     $scheduleEventsStmt = $pdo->prepare(
         "SELECT se.id, COALESCE(se.application_id, batch_app.id) AS linked_application_id,
-                se.batch_id, se.event_date, se.start_time, se.end_time
+                se.batch_id, se.event_date, se.start_time, se.end_time, se.public_details
          FROM schedule_events se
          LEFT JOIN sacrament_applications batch_app ON batch_app.batch_id = se.batch_id
          WHERE se.application_id IN ({$schedulePlaceholders})
@@ -1165,7 +1187,7 @@ unset($_SESSION['application_queue_error'], $_SESSION['application_queue_success
 
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<div class="admin-list-page">
+<div class="admin-list-page application-queue-page">
     <header class="admin-queue-heading">
         <div>
             <p class="admin-queue-kicker">Requests</p>
@@ -1420,12 +1442,40 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                     <?php
                     $scheduleEvent = $scheduleEventsByApplication[(int) $app['id']] ?? null;
+                    $scheduleVenue = '';
+                    $scheduleVenueLabel = 'Location';
+                    if ($app['sacrament_type'] === 'baptism') {
+                        $scheduleVenue = $confirmedBaptismVenue;
+                        if ($scheduleVenue === '' && $scheduleEvent !== null) {
+                            $schedulePublicDetails = trim((string) ($scheduleEvent['public_details'] ?? ''));
+                            if (preg_match('/^Venue:\s*(.+)$/i', $schedulePublicDetails, $venueMatches) === 1) {
+                                $scheduleVenue = trim($venueMatches[1]);
+                            }
+                        }
+                        if ($scheduleVenue === '' && $requestedBaptismVenue !== '') {
+                            $scheduleVenue = $requestedBaptismVenue;
+                            $scheduleVenueLabel = 'Requested location';
+                        }
+                    }
                     $isFormationSacrament = in_array($app['sacrament_type'], ['first_communion', 'confirmation'], true);
+                    $scheduleEventType = match ($app['sacrament_type']) {
+                        'baptism' => 'baptism',
+                        'marriage' => 'wedding',
+                        default => 'other',
+                    };
                     $formationPath = (string) ($details['formation_path'] ?? '');
                     $isBatchPath = $isFormationSacrament && $formationPath === 'batch';
                     $canScheduleIndividually = !$isFormationSacrament
                         || $formationPath === ''
                         || $formationPath === 'individual_catchup';
+                    $canConfirmSchedule = in_array($app['status'], ['approved', 'scheduled'], true);
+                    $scheduleDateValue = $scheduleEvent ? (string) $scheduleEvent['event_date'] : '';
+                    if ($scheduleDateValue === '' && is_string($app['preferred_date'] ?? null)) {
+                        $preferredScheduleDate = trim((string) $app['preferred_date']);
+                        if (application_schedule_input_error($preferredScheduleDate, '', '') === null) {
+                            $scheduleDateValue = $preferredScheduleDate;
+                        }
+                    }
                     ?>
                     <section class="application-schedule-panel" aria-label="Application schedule">
                         <h3>Schedule</h3>
@@ -1461,7 +1511,24 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php else: ?>
                                 Not scheduled
                             <?php endif; ?>
+                            <?php if ($app['sacrament_type'] === 'baptism' && $scheduleVenue !== ''): ?>
+                                · <strong><?= e($scheduleVenueLabel) ?>:</strong> <?= e($scheduleVenue) ?>
+                            <?php endif; ?>
                         </p>
+                        <?php if ($app['sacrament_type'] === 'baptism'
+                            && !in_array($app['status'], ['completed', 'rejected', 'approved', 'scheduled'], true)): ?>
+                            <?php $venueInputValue = $confirmedBaptismVenue !== '' ? $confirmedBaptismVenue : $requestedBaptismVenue; ?>
+                            <form method="post" class="inline-fields application-venue-confirmation-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                                <input type="hidden" name="action" value="confirm_venue">
+                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                <label>Venue confirmed by the Parish Office
+                                    <input type="text" name="confirmed_venue" maxlength="150" value="<?= e($venueInputValue) ?>">
+                                </label>
+                                <button type="submit" class="btn btn-small">Confirm venue</button>
+                            </form>
+                        <?php endif; ?>
                         <?php if ($app['status'] === 'completed'): ?>
                             <p class="field-hint">
                                 This application is complete<?php if (!empty($app['record_id'])): ?> and linked to register record #<?= (int) $app['record_id'] ?><?php endif; ?>. No further scheduling is needed.
@@ -1486,13 +1553,24 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 </label>
                                 <button type="submit" class="btn btn-small">Save pathway</button>
                             </form>
-                        <?php elseif (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
-                            <form method="post" class="inline-fields application-schedule-form">
+                        <?php else: ?>
+                            <?php if ($scheduleEventType === 'baptism'): ?>
+                                <p class="field-hint">Multiple Baptisms may share the same date and time. Overlapping events of other types still block that time slot.</p>
+                            <?php endif; ?>
+                            <form
+                                method="post"
+                                class="application-schedule-form"
+                                data-schedule-availability
+                                data-schedule-can-save="<?= $canConfirmSchedule ? 'true' : 'false' ?>"
+                                data-endpoint="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
+                                data-event-type="<?= e($scheduleEventType) ?>"
+                                data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
+                            >
                                 <?= csrf_field() ?>
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="set_schedule">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <?php if ($app['sacrament_type'] === 'baptism'): ?>
+                                <?php if ($canConfirmSchedule && $app['sacrament_type'] === 'baptism'): ?>
                                     <label>Where will the baptism be held?
                                         <input
                                             type="text"
@@ -1502,43 +1580,54 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                         >
                                     </label>
                                 <?php endif; ?>
+                                <div class="application-schedule-booking">
                                 <label>Confirmed date *
                                     <input
                                         type="date"
                                         name="scheduled_date"
+                                        data-schedule-date
                                         min="<?= e(date('Y-m-d')) ?>"
-                                        value="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
+                                        value="<?= e($scheduleDateValue) ?>"
                                         required
                                     >
                                 </label>
-                                <label>Start time
-                                    <input
-                                        type="time"
+                                <label>Available 60-minute time *
+                                    <select
                                         name="scheduled_start_time"
-                                        value="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['start_time']))) : '' ?>"
+                                        data-schedule-time
+                                        data-saved-start-time="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['start_time']))) : '' ?>"
+                                        required
+                                        disabled
                                     >
+                                        <option value="">Choose a date first</option>
+                                    </select>
                                 </label>
-                                <label>End time
-                                    <input
-                                        type="time"
-                                        name="scheduled_end_time"
-                                        value="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['end_time']))) : '' ?>"
-                                    >
-                                </label>
-                                <button type="submit" class="btn btn-small">
-                                    <?= $scheduleEvent ? 'Update confirmed schedule' : 'Set confirmed schedule' ?>
+                                <input type="hidden" name="scheduled_end_time" data-schedule-end value="">
+                                <p class="field-hint" data-schedule-message role="status" aria-live="polite">Choose a date to view available time slots.</p>
+                                <div class="application-schedule-booked" data-schedule-booked hidden>
+                                    <h4>Schedules already booked that day</h4>
+                                    <ul data-schedule-booked-list></ul>
+                                </div>
+                                </div>
+                                <button type="submit" class="btn btn-small" <?= $canConfirmSchedule ? '' : 'disabled' ?>>
+                                    <?= $canConfirmSchedule
+                                        ? ($scheduleEvent ? 'Update confirmed schedule' : 'Set confirmed schedule')
+                                        : 'Approve before confirming' ?>
                                 </button>
                             </form>
-                            <p class="field-hint">The applicant’s preferred date stays unchanged. Saving this schedule moves the application to Scheduled and emails the confirmed date and time. Check the parish calendar for availability before confirming.</p>
-                        <?php else: ?>
-                            <p class="field-hint">Approve the application before setting its confirmed schedule.</p>
+                            <?php if ($canConfirmSchedule): ?>
+                                <p class="field-hint">The applicant’s preferred date stays unchanged. Saving this schedule moves the application to Scheduled and emails the confirmed date and time.</p>
+                            <?php else: ?>
+                                <p class="field-hint">Availability preview: choose a date to see open 60-minute times and schedules already booked. Approve the application before confirming a schedule.</p>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </section>
 
-                    <section aria-label="Pre-application details">
+                    <?php $canEditSubmission = !in_array($app['status'], ['completed', 'rejected'], true); ?>
+                    <section class="application-submitted-details" aria-label="Pre-application details">
                         <div class="application-detail-heading">
                             <h3>Submitted details</h3>
-                            <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
+                            <?php if ($canEditSubmission): ?>
                                 <button
                                     type="button"
                                     class="btn btn-small btn-secondary"
@@ -1548,97 +1637,211 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 >Change / Edit</button>
                             <?php endif; ?>
                         </div>
-                        <?php if ($app['sacrament_type'] === 'baptism'): ?>
+                        <form
+                            method="post"
+                            id="submission-edit-<?= (int) $app['id'] ?>"
+                            class="application-submission-edit-form"
+                            data-submission-edit-form
+                        >
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                            <input type="hidden" name="action" value="update_submission">
+                            <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
                             <dl class="application-details-list">
-                                <div><dt>Venue (requested)</dt><dd><?= e($requestedBaptismVenue) ?></dd></div>
-                            </dl>
-                        <?php endif; ?>
-                        <dl class="application-details-list">
-                            <?php if ($details !== []): ?>
-                                <?php foreach ($details as $key => $value): ?>
-                                    <?php if ($app['sacrament_type'] === 'baptism' && (string) $key === 'baptism_venue') continue; ?>
-                                    <div>
+                                <div>
+                                    <dt>Applicant name</dt>
+                                    <dd>
+                                        <span data-submission-display><?= e((string) $app['applicant_name']) ?></span>
+                                        <?php if ($canEditSubmission): ?>
+                                            <input type="text" name="applicant_name" maxlength="150" value="<?= e((string) $app['applicant_name']) ?>" data-submission-edit-field hidden disabled required>
+                                        <?php endif; ?>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt>Applicant contact</dt>
+                                    <dd>
+                                        <span data-submission-display><?= e((string) ($app['applicant_contact'] ?? '')) ?></span>
+                                        <?php if ($canEditSubmission): ?>
+                                            <input type="text" name="applicant_contact" maxlength="30" value="<?= e((string) ($app['applicant_contact'] ?? '')) ?>" data-submission-edit-field hidden disabled>
+                                        <?php endif; ?>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt>Applicant email</dt>
+                                    <dd>
+                                        <span data-submission-display><?= e((string) $app['applicant_email']) ?></span>
+                                        <?php if ($canEditSubmission): ?>
+                                            <input type="email" name="applicant_email" maxlength="150" value="<?= e((string) $app['applicant_email']) ?>" data-submission-edit-field hidden disabled required>
+                                        <?php endif; ?>
+                                    </dd>
+                                </div>
+                                <?php if ($details !== []): ?>
+                                    <?php foreach ($details as $detailKey => $detailValue): ?>
                                         <?php
-                                        $detailKey = (string) $key;
-                                        $detailLabel = $detailKey === 'preferred_wedding_venue_other'
+                                        $detailName = (string) $detailKey;
+                                        if ($app['sacrament_type'] === 'baptism'
+                                            && in_array($detailName, ['baptism_venue', 'confirmed_venue'], true)) {
+                                            if ($canEditSubmission) {
+                                                $protectedValue = is_scalar($detailValue) ? (string) $detailValue : '';
+                                                ?>
+                                                <input
+                                                    type="hidden"
+                                                    name="corrected_details[<?= e($detailName) ?>]"
+                                                    value="<?= e($protectedValue) ?>"
+                                                    data-submission-edit-field
+                                                    disabled
+                                                >
+                                                <?php
+                                            }
+                                            continue;
+                                        }
+                                        $detailLabel = $detailName === 'preferred_wedding_venue_other'
                                             ? 'Other venue name'
-                                            : application_queue_label($detailKey);
-                                        if ($detailKey === 'preferred_wedding_venue') {
-                                            $value = match ($value) {
+                                            : application_queue_label($detailName);
+                                        $displayValue = $detailValue;
+                                        if ($detailName === 'preferred_wedding_venue') {
+                                            $displayValue = match ($detailValue) {
                                                 'church' => "St. Patrick's Parish Church",
                                                 'other' => 'Other',
                                                 'barangay_chapel' => 'Barangay Chapel',
-                                                default => $value,
+                                                default => $detailValue,
                                             };
+                                        } elseif ($detailName === 'communion_venue') {
+                                            $displayValue = match ($detailValue) {
+                                                'parish_church' => "St. Patrick's Parish Church",
+                                                'other' => 'Other',
+                                                default => $detailValue,
+                                            };
+                                        } elseif ($detailName === 'godparents') {
+                                            $displayValue = sd_application_godparents($details);
                                         }
-                                        if ($detailKey === 'godparents') {
-                                            $normalizedGodparents = sd_application_godparents($details);
-                                            if ($normalizedGodparents !== []) {
-                                                $value = $normalizedGodparents;
+                                        $scalarList = is_array($detailValue) && array_is_list($detailValue);
+                                        if ($scalarList) {
+                                            foreach ($detailValue as $listItem) {
+                                                if (!is_scalar($listItem)) {
+                                                    $scalarList = false;
+                                                    break;
+                                                }
                                             }
                                         }
                                         ?>
-                                        <dt><?= e($detailLabel) ?></dt>
-                                        <dd><?php application_queue_render_detail_value($value); ?></dd>
-                                    </div>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
-                            <?php endif; ?>
-                                    </dl>
-                        <?php if ($app['sacrament_type'] === 'baptism'
-                            && !in_array($app['status'], ['completed', 'rejected'], true)): ?>
-                            <?php $venueInputValue = $confirmedBaptismVenue !== '' ? $confirmedBaptismVenue : $requestedBaptismVenue; ?>
-                            <form method="post" class="inline-fields application-venue-confirmation-form">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                <input type="hidden" name="action" value="confirm_venue">
-                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <label>Venue confirmed by the Parish Office
-                                    <input type="text" name="confirmed_venue" maxlength="150" value="<?= e($venueInputValue) ?>">
-                                </label>
-                                <button type="submit" class="btn btn-small">Confirm venue</button>
-                            </form>
-                        <?php endif; ?>
-                        <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
-                            <div id="submission-edit-<?= (int) $app['id'] ?>" class="application-submission-edit" hidden>
-                                <h4>Correct submission data</h4>
-                                <form method="post" class="application-submission-edit-form">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                    <input type="hidden" name="action" value="update_submission">
-                                    <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                    <div class="form-grid view-grid">
-                                        <label>Applicant name
-                                            <input type="text" name="applicant_name" maxlength="150" value="<?= e((string) $app['applicant_name']) ?>" required>
-                                        </label>
-                                        <label>Applicant contact
-                                            <input type="text" name="applicant_contact" maxlength="30" value="<?= e((string) ($app['applicant_contact'] ?? '')) ?>">
-                                        </label>
-                                        <label>Applicant email
-                                            <input type="email" name="applicant_email" maxlength="150" value="<?= e((string) $app['applicant_email']) ?>" required>
-                                        </label>
-                                        <?php foreach ($details as $detailKey => $detailValue): ?>
-                                            <?php
-                                            $detailName = (string) $detailKey;
-                                            $detailInput = is_array($detailValue)
-                                                ? json_encode($detailValue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-                                                : (is_scalar($detailValue) ? (string) $detailValue : '');
-                                            ?>
-                                            <label><?= e(application_queue_label($detailName)) ?>
-                                                <?php if (is_array($detailValue)): ?>
-                                                    <textarea name="corrected_details[<?= e($detailName) ?>]" rows="5"><?= e((string) $detailInput) ?></textarea>
-                                                    <span class="field-hint">Keep this value as valid JSON.</span>
-                                                <?php else: ?>
-                                                    <input type="text" name="corrected_details[<?= e($detailName) ?>]" value="<?= e((string) $detailInput) ?>" maxlength="5000">
+                                        <div>
+                                            <dt><?= e($detailLabel) ?></dt>
+                                            <dd>
+                                                <span data-submission-display><?php application_queue_render_detail_value($displayValue); ?></span>
+                                                <?php if ($canEditSubmission): ?>
+                                                    <?php if ($detailName === 'godparents'): ?>
+                                                        <?php
+                                                        $godparentsForEditing = sd_application_godparents($details);
+                                                        if ($godparentsForEditing === []) {
+                                                            $godparentsForEditing = [['role' => '', 'full_name' => '']];
+                                                        }
+                                                        ?>
+                                                        <div class="application-inline-editor" data-submission-editor hidden>
+                                                            <div data-godparent-rows data-next-index="<?= count($godparentsForEditing) ?>" data-initial-count="<?= count($godparentsForEditing) ?>">
+                                                                <?php foreach ($godparentsForEditing as $index => $godparent): ?>
+                                                                    <div class="application-inline-editor-row" data-godparent-row>
+                                                                        <select
+                                                                            name="corrected_details[godparents][<?= (int) $index ?>][role]"
+                                                                            data-submission-edit-field
+                                                                            disabled
+                                                                            aria-label="Godparent role"
+                                                                        >
+                                                                            <option value="">-- Role --</option>
+                                                                            <option value="godfather" <?= ($godparent['role'] ?? '') === 'godfather' ? 'selected' : '' ?>>Godfather</option>
+                                                                            <option value="godmother" <?= ($godparent['role'] ?? '') === 'godmother' ? 'selected' : '' ?>>Godmother</option>
+                                                                        </select>
+                                                                        <input
+                                                                            type="text"
+                                                                            name="corrected_details[godparents][<?= (int) $index ?>][full_name]"
+                                                                            value="<?= e((string) ($godparent['full_name'] ?? '')) ?>"
+                                                                            maxlength="150"
+                                                                            data-submission-edit-field
+                                                                            disabled
+                                                                            aria-label="Godparent full name"
+                                                                        >
+                                                                        <input
+                                                                            type="text"
+                                                                            name="corrected_details[godparents][<?= (int) $index ?>][residence]"
+                                                                            value="<?= e((string) ($godparent['residence'] ?? '')) ?>"
+                                                                            maxlength="150"
+                                                                            data-submission-edit-field
+                                                                            disabled
+                                                                            aria-label="Godparent current residence"
+                                                                        >
+                                                                        <button type="button" class="btn btn-small btn-secondary" data-godparent-clear>Clear</button>
+                                                                    </div>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                            <button type="button" class="btn btn-small btn-secondary" data-godparent-add>Add godparent</button>
+                                                            <span class="field-hint">Leave the role and name blank to remove a row. Current residence is optional; up to eight of each role.</span>
+                                                            <template data-godparent-template>
+                                                                <div class="application-inline-editor-row" data-godparent-row>
+                                                                    <select name="corrected_details[godparents][__INDEX__][role]" data-submission-edit-field disabled aria-label="Godparent role">
+                                                                        <option value="">-- Role --</option>
+                                                                        <option value="godfather">Godfather</option>
+                                                                        <option value="godmother">Godmother</option>
+                                                                    </select>
+                                                                    <input type="text" name="corrected_details[godparents][__INDEX__][full_name]" maxlength="150" data-submission-edit-field disabled aria-label="Godparent full name">
+                                                                    <input type="text" name="corrected_details[godparents][__INDEX__][residence]" maxlength="150" data-submission-edit-field disabled aria-label="Godparent current residence">
+                                                                    <button type="button" class="btn btn-small btn-secondary" data-godparent-clear>Clear</button>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    <?php elseif ($scalarList): ?>
+                                                        <?php $listValues = $detailValue !== [] ? array_values($detailValue) : ['']; ?>
+                                                        <div class="application-inline-editor" data-submission-editor hidden data-list-rows data-next-index="<?= count($listValues) ?>" data-initial-count="<?= count($listValues) ?>">
+                                                            <?php foreach ($listValues as $index => $listValue): ?>
+                                                                <input
+                                                                    type="text"
+                                                                    name="corrected_details[<?= e($detailName) ?>][<?= (int) $index ?>]"
+                                                                    value="<?= e((string) $listValue) ?>"
+                                                                    maxlength="5000"
+                                                                    data-submission-edit-field
+                                                                    disabled
+                                                                    aria-label="<?= e($detailLabel) ?> item"
+                                                                >
+                                                            <?php endforeach; ?>
+                                                            <button type="button" class="btn btn-small btn-secondary" data-list-add>Add item</button>
+                                                            <template data-list-template>
+                                                                <input type="text" name="corrected_details[<?= e($detailName) ?>][__INDEX__]" maxlength="5000" data-submission-edit-field disabled aria-label="<?= e($detailLabel) ?> item">
+                                                            </template>
+                                                        </div>
+                                                    <?php elseif (is_array($detailValue)): ?>
+                                                        <div class="application-inline-editor" data-submission-editor hidden>
+                                                            <textarea
+                                                                name="corrected_details[<?= e($detailName) ?>]"
+                                                                rows="3"
+                                                                data-submission-edit-field
+                                                                disabled
+                                                            ><?= e(json_encode($detailValue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) ?></textarea>
+                                                            <span class="field-hint">Keep this value as valid JSON.</span>
+                                                        </div>
+                                                    <?php else: ?>
+                                                        <input
+                                                            type="text"
+                                                            name="corrected_details[<?= e($detailName) ?>]"
+                                                            value="<?= e(is_scalar($detailValue) ? (string) $detailValue : '') ?>"
+                                                            maxlength="<?= in_array($detailName, ['child_residence', 'parents_residence'], true) ? '255' : '5000' ?>"
+                                                            data-submission-edit-field
+                                                            hidden
+                                                            disabled
+                                                        >
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
-                                            </label>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-small">Save corrected submission</button>
-                                </form>
-                            </div>
-                        <?php endif; ?>
+                                            </dd>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
+                                <?php endif; ?>
+                            </dl>
+                            <?php if ($canEditSubmission): ?>
+                                <div class="application-submission-edit-actions" data-submission-edit-actions hidden>
+                                    <button type="submit" class="btn btn-primary btn-small">Save changes</button>
+                                </div>
+                            <?php endif; ?>
+                        </form>
                     </section>
                                                 <?php if ($prerequisiteChecks !== []): ?>
                         <aside class="alert alert-success" role="note">
@@ -1654,7 +1857,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </aside>
                     <?php endif; ?>
 
-                    <section aria-label="Person matching">
+                    <section class="application-person-match-panel" aria-label="Person matching">
                         <h3><?= in_array($app['status'], ['completed', 'rejected'], true)
                             ? 'Linked applicant profiles'
                             : 'Match applicant' . (count($matches) === 2 ? 's' : '') . ' to master profiles' ?></h3>
@@ -1764,7 +1967,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </div>
                     </section>
 
-                    <section aria-label="Document requirements">
+                    <section class="application-requirements-panel" aria-label="Document requirements">
                         <h3>Requirements checklist</h3>
                         <div class="application-requirements-list">
                             <?php foreach ($checklistKeys as $requirementKey):
@@ -1872,11 +2075,75 @@ document.addEventListener('click', (event) => {
     const editButton = target.closest('[data-submission-edit-toggle]');
     if (editButton instanceof HTMLButtonElement) {
         const editor = document.getElementById(editButton.getAttribute('aria-controls') || '');
-        if (!(editor instanceof HTMLElement)) return;
-        const showEditor = editor.hidden;
-        editor.hidden = !showEditor;
+        if (!(editor instanceof HTMLFormElement)) return;
+        const showEditor = !editor.classList.contains('is-editing');
+        editor.classList.toggle('is-editing', showEditor);
+        editor.querySelectorAll('[data-submission-display]').forEach((value) => {
+            value.hidden = showEditor;
+        });
+        editor.querySelectorAll('[data-submission-editor]').forEach((control) => {
+            control.hidden = !showEditor;
+        });
+        editor.querySelectorAll('[data-submission-edit-field]').forEach((field) => {
+            field.disabled = !showEditor;
+            if (field.type !== 'hidden' && !field.closest('[data-submission-editor]')) {
+                field.hidden = !showEditor;
+            }
+        });
+        const actions = editor.querySelector('[data-submission-edit-actions]');
+        if (actions) actions.hidden = !showEditor;
+        if (!showEditor) {
+            editor.querySelectorAll('[data-added-row]').forEach((row) => row.remove());
+            editor.reset();
+            editor.querySelectorAll('[data-next-index]').forEach((container) => {
+                container.setAttribute('data-next-index', container.getAttribute('data-initial-count') || '0');
+            });
+        }
         editButton.setAttribute('aria-expanded', showEditor ? 'true' : 'false');
         editButton.textContent = showEditor ? 'Cancel edit' : 'Change / Edit';
+        return;
+    }
+    const addGodparentButton = target.closest('[data-godparent-add]');
+    if (addGodparentButton instanceof HTMLButtonElement) {
+        const editor = addGodparentButton.closest('[data-submission-editor]');
+        const rows = editor?.querySelector('[data-godparent-rows]');
+        const template = editor?.querySelector('template[data-godparent-template]');
+        if (!(rows instanceof HTMLElement) || !(template instanceof HTMLTemplateElement)) return;
+        const index = Number.parseInt(rows.getAttribute('data-next-index') || '0', 10);
+        rows.setAttribute('data-next-index', String(index + 1));
+        const row = template.content.firstElementChild?.cloneNode(true);
+        if (!(row instanceof HTMLElement)) return;
+        row.dataset.addedRow = 'true';
+        row.querySelectorAll('[name]').forEach((field) => {
+            field.name = field.name.replace('__INDEX__', String(index));
+            field.disabled = false;
+        });
+        rows.appendChild(row);
+        return;
+    }
+    const clearGodparentButton = target.closest('[data-godparent-clear]');
+    if (clearGodparentButton instanceof HTMLButtonElement) {
+        const row = clearGodparentButton.closest('[data-godparent-row]');
+        row?.querySelectorAll('select, input').forEach((field) => {
+            field.value = '';
+        });
+        return;
+    }
+    const addListButton = target.closest('[data-list-add]');
+    if (addListButton instanceof HTMLButtonElement) {
+        const editor = addListButton.closest('[data-submission-editor]');
+        const template = editor?.querySelector('template[data-list-template]');
+        if (!(editor instanceof HTMLElement) || !(template instanceof HTMLTemplateElement)) return;
+        const index = Number.parseInt(editor.getAttribute('data-next-index') || '0', 10);
+        editor.setAttribute('data-next-index', String(index + 1));
+        const field = template.content.firstElementChild?.cloneNode(true);
+        if (!(field instanceof HTMLInputElement)) return;
+        field.name = field.name.replace('__INDEX__', String(index));
+        field.disabled = false;
+        field.hidden = false;
+        field.dataset.addedRow = 'true';
+        editor.insertBefore(field, addListButton);
+        field.focus();
         return;
     }
     const button = target.closest('[data-application-review-toggle]');
@@ -1906,6 +2173,117 @@ document.addEventListener('click', (event) => {
         const row = button.closest('tr');
         if (row) row.scrollIntoView({ block: 'nearest' });
     }
+});
+document.querySelectorAll('form[data-schedule-availability]').forEach((form) => {
+    const dateField = form.querySelector('[data-schedule-date]');
+    const timeField = form.querySelector('[data-schedule-time]');
+    const endField = form.querySelector('[data-schedule-end]');
+    const message = form.querySelector('[data-schedule-message]');
+    const bookedPanel = form.querySelector('[data-schedule-booked]');
+    const bookedList = form.querySelector('[data-schedule-booked-list]');
+    const submitButton = form.querySelector('button[type="submit"]');
+    const endpoint = form.getAttribute('data-endpoint');
+    const canSaveSchedule = form.getAttribute('data-schedule-can-save') === 'true';
+    if (!(dateField instanceof HTMLInputElement)
+        || !(timeField instanceof HTMLSelectElement)
+        || !(endField instanceof HTMLInputElement)
+        || !(message instanceof HTMLElement)
+        || !(bookedPanel instanceof HTMLElement)
+        || !(bookedList instanceof HTMLUListElement)
+        || !endpoint) return;
+
+    const initialDate = dateField.value;
+    const savedStartTime = timeField.getAttribute('data-saved-start-time') || '';
+    let requestSequence = 0;
+    let selectedStartTime = savedStartTime;
+    const setSubmitDisabled = (disabled) => {
+        if (submitButton instanceof HTMLButtonElement) {
+            submitButton.disabled = disabled || !canSaveSchedule;
+        }
+    };
+    if (!canSaveSchedule) {
+        form.addEventListener('submit', (event) => event.preventDefault());
+    }
+    const updateEndTime = () => {
+        const selectedOption = timeField.selectedOptions[0];
+        endField.value = selectedOption?.getAttribute('data-end-time') || '';
+    };
+    timeField.addEventListener('change', updateEndTime);
+    dateField.addEventListener('change', () => {
+        selectedStartTime = dateField.value === initialDate ? savedStartTime : '';
+        loadScheduleAvailability();
+    });
+
+    function loadScheduleAvailability() {
+        const sequence = ++requestSequence;
+        const date = dateField.value;
+        timeField.replaceChildren(new Option(date ? 'Loading available times…' : 'Choose a date first', ''));
+        timeField.disabled = true;
+        endField.value = '';
+        bookedPanel.hidden = true;
+        bookedList.replaceChildren();
+        if (!date) {
+            message.textContent = 'Choose a date to view available time slots.';
+            setSubmitDisabled(true);
+            return;
+        }
+
+        message.textContent = 'Loading schedule availability…';
+        setSubmitDisabled(true);
+        const url = new URL(endpoint, window.location.href);
+        url.searchParams.set('date', date);
+        url.searchParams.set('event_type', form.getAttribute('data-event-type') || 'other');
+        url.searchParams.set('exclude_event_id', form.getAttribute('data-exclude-event-id') || '0');
+        fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then((response) => response.json().then((payload) => {
+                if (!response.ok) throw new Error(payload.error || 'Schedule availability could not be loaded.');
+                return payload;
+            }))
+            .then((payload) => {
+                if (sequence !== requestSequence) return;
+                const slots = Array.isArray(payload.slots) ? payload.slots : [];
+                const events = Array.isArray(payload.events) ? payload.events : [];
+                timeField.replaceChildren(new Option('Choose an available time', ''));
+                slots.forEach((slot) => {
+                    if (!slot || typeof slot.start_time !== 'string' || typeof slot.end_time !== 'string'
+                        || typeof slot.label !== 'string') return;
+                    const option = new Option(slot.label, slot.start_time);
+                    option.setAttribute('data-end-time', slot.end_time);
+                    timeField.add(option);
+                });
+                timeField.disabled = slots.length === 0;
+                const savedSlot = Array.from(timeField.options).find((option) => option.value === selectedStartTime);
+                timeField.value = savedSlot ? selectedStartTime : '';
+                updateEndTime();
+                setSubmitDisabled(slots.length === 0);
+                message.textContent = slots.length
+                    ? slots.length + ' available 60-minute schedules between 8:00 AM and 5:00 PM.'
+                    : 'No 60-minute schedules are available on this date.';
+
+                if (events.length === 0) {
+                    const item = document.createElement('li');
+                    item.textContent = 'No schedules are booked on this date.';
+                    bookedList.appendChild(item);
+                } else {
+                    events.forEach((bookedEvent) => {
+                        const item = document.createElement('li');
+                        item.textContent = [bookedEvent.label, bookedEvent.time].filter(Boolean).join(' · ');
+                        bookedList.appendChild(item);
+                    });
+                }
+                bookedPanel.hidden = false;
+            })
+            .catch((error) => {
+                if (sequence !== requestSequence) return;
+                timeField.replaceChildren(new Option('Availability unavailable', ''));
+                timeField.disabled = true;
+                endField.value = '';
+                message.textContent = error.message || 'Schedule availability could not be loaded. Please try again.';
+                setSubmitDisabled(true);
+            });
+    }
+
+    loadScheduleAvailability();
 });
 document.querySelectorAll('form.application-requirement-form').forEach((form) => {
     const button = form.querySelector('button[type="submit"]');

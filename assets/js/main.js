@@ -614,11 +614,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        var clear = document.createElement('button');
-        clear.type = 'button';
-        clear.className = 'btn btn-secondary btn-small person-finder-clear';
-        clear.textContent = 'Clear selection';
-        clear.hidden = true;
+        var clear = null;
+        if (!finder.hasAttribute('data-no-clear-selection')) {
+            clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'btn btn-secondary btn-small person-finder-clear';
+            clear.textContent = 'Clear selection';
+            clear.hidden = true;
+        }
 
         function field(name) {
             var input = form.querySelector('[name="' + name + '"]');
@@ -717,8 +720,10 @@ document.addEventListener('DOMContentLoaded', function () {
             selection.textContent = '';
             var selectedName = selectedPersonName();
             if (!hiddenId.value) {
-                clear.hidden = true;
-                selection.appendChild(clear);
+                if (clear) {
+                    clear.hidden = true;
+                    selection.appendChild(clear);
+                }
                 notifyWalkInPersonChange(selectedName);
                 return;
             }
@@ -728,8 +733,10 @@ document.addEventListener('DOMContentLoaded', function () {
             var note = document.createElement('span');
             note.textContent = 'Recorded biographical details are reused; enter only sacrament-specific information.';
             selection.appendChild(note);
-            selection.appendChild(clear);
-            clear.hidden = false;
+            if (clear) {
+                selection.appendChild(clear);
+                clear.hidden = false;
+            }
             notifyWalkInPersonChange(selectedName);
         }
 
@@ -851,19 +858,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
 
-        clear.addEventListener('click', function () {
-            hiddenId.value = '';
-            setIdentityReadOnly(false);
-            search.value = '';
-            if (form.hasAttribute('data-walk-in-intake')) {
-                identityFieldNames().forEach(function (name) {
-                    var input = form.querySelector('[name="' + name + '"]');
-                    if (input) input.value = '';
-                });
-            }
-            renderSelection();
-            resultsBox.textContent = '';
-        });
+        if (clear) {
+            clear.addEventListener('click', function () {
+                hiddenId.value = '';
+                setIdentityReadOnly(false);
+                search.value = '';
+                if (form.hasAttribute('data-walk-in-intake')) {
+                    identityFieldNames().forEach(function (name) {
+                        var input = form.querySelector('[name="' + name + '"]');
+                        if (input) input.value = '';
+                    });
+                }
+                renderSelection();
+                resultsBox.textContent = '';
+            });
+        }
 
         ['first_name', 'middle_name', 'last_name', 'suffix'].forEach(function (part) {
             var input = form.querySelector('[name="' + namePrefix() + '_' + part + '"]');
@@ -1671,7 +1680,7 @@ document.addEventListener('DOMContentLoaded', function () {
         sync();
     });
 
-    // ---- First Communion formation pathway fields -----------------------
+    // ---- Sacrament formation pathway fields -----------------------------
     document.querySelectorAll('[data-formation-pathway]').forEach(function (pathway) {
         var form = pathway.closest('form');
         var grade = form && form.elements.school_grade;
@@ -1807,6 +1816,156 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     }
+
+    // ---- Dedicated walk-in counter forms ---------------------------------
+    document.querySelectorAll('form.walk-in-dedicated').forEach(function (form) {
+        var kind = form.getAttribute('data-walk-in-dedicated');
+        var isRequest = kind === 'request';
+        var steps = isRequest
+            ? [
+                { key: 'type', label: 'Certificate type' },
+                { key: 'subject', label: 'Certificate subject' },
+                { key: 'requester', label: 'Requester details' },
+                { key: 'review', label: 'Review & save' }
+            ]
+            : [
+                { key: 'type', label: 'Sacrament type' },
+                { key: 'person', label: 'Person details' },
+                { key: 'contact', label: 'Applicant details' },
+                { key: 'review', label: 'Review & save' }
+            ];
+        var current = form.querySelector('[data-dedicated-step]');
+        var submit = form.querySelector('[data-dedicated-submit]');
+        if (!current || !submit) return;
+
+        var shell = document.createElement('div');
+        shell.className = 'walk-in-dedicated-shell';
+        var progress = document.createElement('ol');
+        progress.className = 'walk-in-dedicated-progress';
+        progress.setAttribute('aria-label', isRequest ? 'Certificate request progress' : 'Pre-application progress');
+        var status = document.createElement('p');
+        status.className = 'walk-in-dedicated-status';
+        status.setAttribute('aria-live', 'polite');
+        var alert = document.createElement('p');
+        alert.className = 'walk-in-dedicated-error';
+        alert.setAttribute('role', 'alert');
+        alert.hidden = true;
+        var panels = {};
+
+        steps.forEach(function (step) {
+            var panel = document.createElement('section');
+            panel.className = 'walk-in-dedicated-panel';
+            panel.dataset.dedicatedActive = step.key;
+            panels[step.key] = panel;
+            shell.appendChild(panel);
+
+            var item = document.createElement('li');
+            var number = document.createElement('span');
+            number.textContent = String(progress.children.length + 1);
+            var label = document.createElement('span');
+            label.textContent = step.label;
+            item.append(number, label);
+            progress.appendChild(item);
+        });
+
+        form.querySelectorAll('[data-dedicated-panel]').forEach(function (node) {
+            var key = node.getAttribute('data-dedicated-panel');
+            if (panels[key]) panels[key].appendChild(node);
+        });
+        var spouse = form.querySelector('[data-dedicated-spouse]');
+        var subjectKey = isRequest ? 'subject' : 'person';
+        if (spouse && panels[subjectKey]) panels[subjectKey].appendChild(spouse);
+        var note = form.querySelector('[data-dedicated-note]');
+        if (note) panels.contact?.appendChild(note);
+
+        var review = form.querySelector('[data-dedicated-panel="review"]');
+        if (review) panels.review.appendChild(review);
+
+        var controls = document.createElement('div');
+        controls.className = 'walk-in-dedicated-actions';
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn-secondary';
+        back.textContent = 'Back';
+        var next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'btn';
+        next.textContent = 'Continue';
+        controls.append(back, next);
+        shell.insertBefore(progress, shell.firstChild);
+        shell.insertBefore(status, progress.nextSibling);
+        shell.insertBefore(alert, status.nextSibling);
+        shell.appendChild(controls);
+        controls.appendChild(submit);
+        form.appendChild(shell);
+
+        function requiredControls(panelKey) {
+            var panel = panels[panelKey];
+            if (!panel) return [];
+            return Array.from(panel.querySelectorAll('input[required], select[required], textarea[required]'))
+                .filter(function (field) { return !field.disabled && !field.closest('[hidden]'); });
+        }
+
+        function updateReview() {
+            var list = form.querySelector('[data-dedicated-review]');
+            if (!list) return;
+            list.textContent = '';
+            form.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function (field) {
+                if (field.disabled || field.hidden || field.type === 'submit' || field.type === 'button') return;
+                if (!field.value || !field.value.trim()) return;
+                var label = field.closest('label');
+                var name = label ? label.childNodes[0].textContent : '';
+                name = name ? name.trim().replace(/\s*\*$/, '') : field.name.replace(/[_\[\]]+/g, ' ');
+                if (!name) return;
+                var dt = document.createElement('dt');
+                var dd = document.createElement('dd');
+                dt.textContent = name;
+                dd.textContent = field.tagName === 'SELECT'
+                    ? field.options[field.selectedIndex].textContent
+                    : field.value;
+                list.append(dt, dd);
+            });
+        }
+
+        function showStep(index) {
+            index = Math.max(1, Math.min(steps.length, index));
+            current.value = String(index);
+            steps.forEach(function (step, stepIndex) {
+                panels[step.key].hidden = stepIndex + 1 !== index;
+            });
+            Array.from(progress.children).forEach(function (item, stepIndex) {
+                item.classList.toggle('is-current', stepIndex + 1 === index);
+                item.classList.toggle('is-done', stepIndex + 1 < index);
+                if (stepIndex + 1 === index) item.setAttribute('aria-current', 'step');
+                else item.removeAttribute('aria-current');
+            });
+            status.textContent = 'Step ' + index + ' of ' + steps.length + ' - ' + steps[index - 1].label;
+            back.hidden = index === 1;
+            next.hidden = index === steps.length;
+            submit.hidden = index !== steps.length;
+            alert.hidden = true;
+            if (index === steps.length) updateReview();
+        }
+
+        next.addEventListener('click', function () {
+            var index = Number(current.value);
+            var missing = requiredControls(steps[index - 1].key).filter(function (field) {
+                return !field.value.trim();
+            });
+            if (missing.length) {
+                alert.hidden = false;
+                alert.textContent = 'Please complete the required fields before continuing.';
+                missing[0].focus();
+                return;
+            }
+            showStep(index + 1);
+        });
+        back.addEventListener('click', function () { showStep(Number(current.value) - 1); });
+        form.addEventListener('submit', function (event) {
+            if (Number(current.value) !== steps.length) event.preventDefault();
+        });
+        showStep(1);
+    });
 
     // ---- 11) Phased walk-in request/application forms --------------------
     document.querySelectorAll('form.walk-in-wizard[data-walk-in-kind]').forEach(function (form) {
@@ -2244,14 +2403,14 @@ document.addEventListener('DOMContentLoaded', function () {
         var resultsBox = widget.querySelector('[data-person-results]');
         var endpoint = widget.getAttribute('data-endpoint');
         var lookupContext = widget.getAttribute('data-lookup-context') || '';
-        var referenceOnly = lookupContext === 'preapplication';
+        var showRecordHistory = lookupContext === 'preapplication';
         var nameInputs = (widget.getAttribute('data-name-inputs') || '').split(',').filter(Boolean);
         var birthField = widget.getAttribute('data-birth-field');
         var personIdField = widget.getAttribute('data-person-id-field');
         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
 
         var referenceLabel = document.createElement('label');
-        referenceLabel.textContent = referenceOnly ? 'Person reference number (optional)' : 'Reference number (optional)';
+        referenceLabel.textContent = 'Person reference number (optional)';
         var referenceInput = document.createElement('input');
         referenceInput.type = 'text';
         referenceInput.autocomplete = 'off';
@@ -2395,7 +2554,7 @@ document.addEventListener('DOMContentLoaded', function () {
             selectionClear.hidden = false;
             confirmation.appendChild(selectionClear);
             resultsBox.appendChild(confirmation);
-            if (referenceOnly) renderRecordHistory(Array.isArray(records) ? records : []);
+            if (showRecordHistory) renderRecordHistory(Array.isArray(records) ? records : []);
         }
 
         selectionClear.addEventListener('click', function () {
@@ -2406,9 +2565,7 @@ document.addEventListener('DOMContentLoaded', function () {
             setPublicIdentityReadOnly(false);
             selectionClear.hidden = true;
             resultsBox.replaceChildren();
-            resultsBox.textContent = referenceOnly
-                ? 'Profile link cleared. Enter a person reference to search again.'
-                : 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
+            resultsBox.textContent = 'Profile link cleared. Enter a person reference to search again.';
         });
 
         if (idInput && idInput.value) {
@@ -2419,19 +2576,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function runSearch() {
             var reference = referenceInput.value.trim();
-            var fullName = nameInputs.map(value).filter(Boolean).join(' ');
-            var birthDate = value(birthField);
             resultsBox.replaceChildren();
-            if (referenceOnly && !reference) {
-                resultsBox.textContent = 'Enter a person reference to find the profile and linked sacrament records.';
-                return;
-            }
-            if (reference && !birthDate && !referenceOnly) {
-                resultsBox.textContent = 'Now enter your date of birth to find your profile.';
-                return;
-            }
-            if (!referenceOnly && !reference && (fullName.trim().split(/\s+/).length < 2 || !birthDate)) {
-                resultsBox.textContent = 'Enter the full name and date of birth to search the parish records.';
+            if (!/^SPPO-P-[A-Z0-9]{8,40}$/i.test(reference)) {
+                resultsBox.textContent = reference
+                    ? 'Enter a complete person reference (SPPO-P-...) to search.'
+                    : 'Enter a person reference to find the profile.';
                 return;
             }
 
@@ -2441,16 +2590,8 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.appendChild(status);
             var url = new URL(endpoint, window.location.href);
             url.searchParams.set('person_lookup', '1');
-            if (referenceOnly) {
-                url.searchParams.set('lookup_context', lookupContext);
-            } else {
-                url.searchParams.set('birth_date', birthDate);
-            }
-            if (reference) {
-                url.searchParams.set('reference', reference);
-            } else {
-                url.searchParams.set('name', fullName);
-            }
+            if (lookupContext) url.searchParams.set('lookup_context', lookupContext);
+            url.searchParams.set('reference', reference);
             fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
                 .then(function (response) {
                     return response.json().then(function (payload) {
@@ -2461,11 +2602,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (payload) {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
-                        resultsBox.textContent = reference
-                            ? (referenceOnly
-                                ? 'No profile matched that reference number. Check it, or continue with the form manually.'
-                                : 'No profile matched that reference number and date of birth. Check them, or search by name and date of birth instead.')
-                            : 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
+                        resultsBox.textContent = 'No profile matched that reference number. Check it, or continue with the form manually.';
                         return;
                     }
                     var heading = document.createElement('p');
@@ -2521,7 +2658,7 @@ document.addEventListener('DOMContentLoaded', function () {
             searchTimer = window.setTimeout(runSearch, 350);
         }
 
-        (referenceOnly ? [referenceInput] : nameInputs.concat([birthField]).concat([referenceInput])).forEach(function (name) {
+        [referenceInput].forEach(function (name) {
             var input = typeof name === 'string' ? field(name) : name;
             if (!input) return;
             input.addEventListener('input', scheduleSearch);

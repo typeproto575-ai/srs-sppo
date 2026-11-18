@@ -269,6 +269,40 @@ function walk_in_save_application(PDO $pdo, array $input, array $user): array
         if ($spouse !== null && (int) $spouse['id'] === (int) $person['id']) {
             throw new InvalidArgumentException('The groom and bride must be different person profiles.');
         }
+        $ageChecks = [
+            'first_communion' => ['primary person', 'person'],
+            'confirmation' => ['primary person', 'person'],
+            'marriage' => ['groom', 'person'],
+        ];
+        if (isset($ageChecks[$type])) {
+            [$personLabel] = $ageChecks[$type];
+            $personBirthDate = (string) ($person['birth_date'] ?? '');
+            if ($personBirthDate === '') {
+                throw new InvalidArgumentException($personLabel . ' date of birth is required before continuing.');
+            } else {
+                $assessment = sacrament_age_assessment($pdo, $type, calculate_age($personBirthDate));
+                if ($assessment['status'] !== 'Age-eligible') {
+                    throw new InvalidArgumentException(
+                        $personLabel . ' is not yet age-eligible. The minimum age for ' .
+                        walk_in_sacrament_types()[$type] . ' is ' . (int) $assessment['range']['min_age'] . ' years.'
+                    );
+                }
+            }
+        }
+        if ($type === 'marriage' && $spouse !== null) {
+            $brideBirthDate = (string) ($spouse['birth_date'] ?? '');
+            if ($brideBirthDate === '') {
+                throw new InvalidArgumentException('Bride date of birth is required before continuing.');
+            } else {
+                $assessment = sacrament_age_assessment($pdo, 'marriage', calculate_age($brideBirthDate));
+                if ($assessment['status'] !== 'Age-eligible') {
+                    throw new InvalidArgumentException(
+                        'Bride is not yet age-eligible. The minimum age for Marriage is ' .
+                        (int) $assessment['range']['min_age'] . ' years.'
+                    );
+                }
+            }
+        }
         $details = walk_in_application_details(
             $type,
             $person,

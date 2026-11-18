@@ -102,7 +102,20 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
         $_POST['place'] = $venue === 'church'
             ? "St. Patrick's Parish Church"
             : trim((string) ($applicationDetails['preferred_wedding_venue_other'] ?? ''));
-        $sponsors = array_slice(array_values(array_filter((array) ($applicationDetails['sponsors'] ?? []), 'is_string')), 0, 2);
+        $principalSponsors = $applicationDetails['principal_sponsors'] ?? null;
+        if (is_array($principalSponsors)) {
+            $godfathers = array_values(array_filter((array) ($principalSponsors['godfathers'] ?? []), 'is_string'));
+            $godmothers = array_values(array_filter((array) ($principalSponsors['godmothers'] ?? []), 'is_string'));
+            $sponsors = array_merge(
+                array_slice($godfathers, 0, 1),
+                array_slice($godmothers, 0, 1),
+                array_slice($godfathers, 1),
+                array_slice($godmothers, 1)
+            );
+        } else {
+            $sponsors = array_values(array_filter((array) ($applicationDetails['sponsors'] ?? []), 'is_string'));
+        }
+        $sponsors = array_slice($sponsors, 0, 2);
         foreach ($sponsors as $i => $sponsorName) {
             $_POST['witness_full_name'][$i] = $sponsorName;
         }

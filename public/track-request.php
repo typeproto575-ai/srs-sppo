@@ -210,6 +210,63 @@ $sacramentLabels = [
     'marriage' => 'Marriage',
 ];
 
+function tracker_format_date(?string $value): string
+{
+    $value = trim((string) $value);
+    if ($value === '') return '—';
+    $timestamp = strtotime($value);
+    return $timestamp ? date('F j, Y', $timestamp) : $value;
+}
+
+function tracker_status_timeline(string $kind, string $status): array
+{
+    if ($kind === 'certificate') {
+        $stages = [
+            'Submitted' => ['new', 'pending'],
+            'Record review' => ['matched'],
+            'For signature' => ['for_signature'],
+            'Ready for pickup' => ['ready'],
+            'Issued' => ['released'],
+        ];
+    } else {
+        $stages = [
+            'Submitted' => ['new'],
+            'Under review' => ['reviewing', 'requirements_pending'],
+            'Approved' => ['approved'],
+            'Scheduled' => ['scheduled'],
+            'Completed' => ['completed'],
+        ];
+    }
+
+    $labels = array_keys($stages);
+    $currentIndex = -1;
+    $stageIndex = 0;
+    foreach ($stages as $stageStatuses) {
+        if (in_array($status, $stageStatuses, true)) {
+            $currentIndex = $stageIndex;
+            break;
+        }
+        $stageIndex++;
+    }
+    if (in_array($status, ['rejected', 'cancelled'], true)) {
+        $currentIndex = -2;
+    }
+
+    $timeline = [];
+    foreach ($labels as $index => $label) {
+        $class = '';
+        if ($status === 'rejected' || $status === 'cancelled') {
+            $class = 'closed';
+        } elseif ($index < $currentIndex) {
+            $class = 'done';
+        } elseif ($index === $currentIndex) {
+            $class = 'current';
+        }
+        $timeline[] = ['label' => $label, 'class' => $class];
+    }
+    return $timeline;
+}
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 <section class="card">
@@ -263,25 +320,16 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php if ($group['items'] === []): ?>
                     <p>No <?= e(strtolower($groupTitle)) ?> found.</p>
                 <?php else: ?>
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Request</th><th>Status</th><th>Submitted</th><th>Preferred date</th></tr></thead>
-                            <tbody>
+                    <div class="tracker-request-list">
                             <?php foreach ($group['items'] as $item): ?>
                                 <?php
+                                $rawStatus = (string) $item['status'];
                                 $sacramentName = $sacramentLabels[$item['sacrament_type']] ?? ucfirst(str_replace('_', ' ', (string) $item['sacrament_type']));
-                                $requestType = $group['type'] === 'application' ? $sacramentName . ' application' : $sacramentName . ' certificate';
+                                $requestType = $group['type'] === 'application' ? $sacramentName . ' Application' : $sacramentName . ' Certificate';
                                 $status = $group['type'] === 'certificate'
-                                    ? status_label('certificate', (string) $item['status'])
-                                    : ($statusLabels[$item['status']] ?? ucfirst(str_replace('_', ' ', (string) $item['status'])));
-                                ?>
-                                <tr>
-                                    <td><?= e($requestType) ?><br><small class="tracker-request-number">Request no.: <?= e((string) $item['request_no']) ?></small></td>
-                                    <td><?= e($status) ?></td>
-                                    <td><?= e((string) $item['created_at']) ?></td>
-                                    <td><?= e((string) ($item['preferred_date'] ?? '—') ?: '—') ?></td>
-                                </tr>
-                                <?php
+                                    ? status_label('certificate', $rawStatus)
+                                    : ($statusLabels[$rawStatus] ?? ucfirst(str_replace('_', ' ', $rawStatus)));
+                                $timeline = tracker_status_timeline($group['type'], $rawStatus);
                                 $requirements = json_decode((string) ($item['requirements'] ?? ''), true);
                                 $missingRequirements = [];
                                 if ($group['type'] === 'application' && is_array($requirements)) {
@@ -294,15 +342,38 @@ require_once __DIR__ . '/../includes/header.php';
                                     }
                                 }
                                 ?>
+                            <article class="tracker-request-card">
+                                <div class="tracker-request-header">
+                                    <div>
+                                        <h4><?= e($requestType) ?></h4>
+                                        <p class="tracker-request-number">Request no. <strong><?= e((string) $item['request_no']) ?></strong></p>
+                                    </div>
+                                    <span class="tracker-status <?= e(in_array($rawStatus, ['rejected', 'cancelled'], true) ? 'closed' : 'active') ?>"><?= e($status) ?></span>
+                                </div>
+                                <dl class="tracker-request-meta">
+                                    <div><dt>Submitted</dt><dd><?= e(tracker_format_date((string) $item['created_at'])) ?></dd></div>
+                                    <?php if ($group['type'] === 'application'): ?>
+                                        <div><dt>Preferred date</dt><dd><?= e(tracker_format_date($item['preferred_date'] ?? null)) ?></dd></div>
+                                    <?php endif; ?>
+                                </dl>
+                                <?php if (!in_array($rawStatus, ['rejected', 'cancelled'], true)): ?>
+                                    <ol class="status-timeline" aria-label="Request progress">
+                                        <?php foreach ($timeline as $step): ?>
+                                            <li class="<?= e($step['class']) ?>">
+                                                <span class="timeline-dot" aria-hidden="true"></span>
+                                                <span class="timeline-label"><?= e($step['label']) ?></span>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php endif; ?>
                                 <?php if ($missingRequirements !== []): ?>
-                                    <tr><td colspan="4"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this same person reference; do not submit a duplicate.</td></tr>
+                                    <p class="tracker-request-note"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this request number; do not submit a duplicate.</p>
                                 <?php endif; ?>
-                                <?php if ($item['status'] === 'rejected' && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
-                                    <tr><td colspan="4"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</td></tr>
+                                <?php if (in_array($rawStatus, ['rejected', 'cancelled'], true) && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
+                                    <p class="tracker-request-note"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</p>
                                 <?php endif; ?>
+                            </article>
                             <?php endforeach; ?>
-                            </tbody>
-                        </table>
                     </div>
                 <?php endif; ?>
             </section>

@@ -71,6 +71,7 @@ if (($_GET['start'] ?? '') === 'profile') {
         $formData = array_merge(public_application_profile_fields($person, 'child'), [
             'contact_number' => (string) ($person['contact_number'] ?? ''),
             'email' => (string) ($person['email'] ?? ''),
+            'child_residence' => (string) ($person['address'] ?? ''),
         ]);
         $app['current_step'] = STEP_APP_DETAILS;
         session_write_close();
@@ -97,6 +98,38 @@ function fd(string $key, array $data): string {
 function fa(string $key, array $data): array {
     $val = $data[$key] ?? [];
     return is_array($val) ? $val : [];
+}
+
+function baptismal_application_optional_residence(mixed $value, string $label, int $maxLength, array &$errors): ?string
+{
+    try {
+        return sd_application_optional_residence($value, $label, $maxLength);
+    } catch (InvalidArgumentException $exception) {
+        $errors[] = $exception->getMessage();
+        return is_string($value) ? trim($value) : null;
+    }
+}
+
+function baptismal_application_residence_rows(
+    mixed $values,
+    string $label,
+    int $maxLength,
+    array &$errors
+): array {
+    if (!is_array($values)) {
+        $errors[] = $label . ' values must be submitted as text.';
+        return [];
+    }
+    if (count($values) > 8) {
+        $role = preg_replace('/\s+residence$/i', '', $label) ?: $label;
+        $errors[] = 'No more than 8 ' . strtolower($role) . ' residences can be entered.';
+    }
+
+    foreach ($values as $index => $value) {
+        $values[$index] = baptismal_application_optional_residence($value, $label, $maxLength, $errors);
+    }
+
+    return $values;
 }
 
 function compose_godparent_names(array $data, string $prefix): array {
@@ -126,6 +159,9 @@ function validate_godparent_names(array $data, string $prefix, string $label): a
 // =====================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = is_string($_POST['_action'] ?? null) ? trim($_POST['_action']) : '';
+    if ($action === 'next' && $currentStep === STEP_FAMILY_REQS) {
+        $_POST['guardian_authority_confirmed'] = ($_POST['guardian_authority_confirmed'] ?? '') === '1' ? '1' : '';
+    }
 
     // CSRF verification for all POSTs
     if (!csrf_verify()) {
@@ -138,6 +174,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childName       = compose_person_name($_POST, 'child');
                 $childBirthdate  = $_POST['child_birthdate'] ?? '';
                 $childBirthplace = fd('child_birthplace', $_POST);
+                $_POST['child_residence'] = baptismal_application_optional_residence(
+                    $_POST['child_residence'] ?? null,
+                    "Child's current residence",
+                    255,
+                    $errors
+                ) ?? '';
                 $baptismVenueInput = $_POST['baptism_venue'] ?? '';
                 if (!is_string($baptismVenueInput)) {
                     $errors[] = 'Preferred baptism venue must be text.';
@@ -153,19 +195,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
                 if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
                 if (is_unknown_place_of_birth($childBirthplace)) {
-                    $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
+                    $errors[] = "Please enter the child's city or municipality and province of birth.";
                 }
                 if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
                 if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
             }
 
             if ($currentStep === STEP_FAMILY_REQS) {
+                $_POST['parents_residence'] = baptismal_application_optional_residence(
+                    $_POST['parents_residence'] ?? null,
+                    "Parents' current residence",
+                    255,
+                    $errors
+                ) ?? '';
+                $_POST['godfather_residence'] = baptismal_application_residence_rows(
+                    $_POST['godfather_residence'] ?? [],
+                    'Godfather residence',
+                    150,
+                    $errors
+                );
+                $_POST['godmother_residence'] = baptismal_application_residence_rows(
+                    $_POST['godmother_residence'] ?? [],
+                    'Godmother residence',
+                    150,
+                    $errors
+                );
                 $parentGuardian = compose_person_name($_POST, 'parent_guardian');
-                if ($parentGuardian === '') $errors[] = 'Parent/Guardian name is required.';
-                if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
-                foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
+                if ($parentGuardian !== '' && ($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
+                $guardianConfirmationError = sd_baptism_guardian_attestation_error(
+                    $parentGuardian,
+                    ($_POST['guardian_authority_confirmed'] ?? '') === '1'
+                );
+                if ($guardianConfirmationError !== null) $errors[] = $guardianConfirmationError;
+                foreach (['father' => "Father's name"] as $prefix => $label) {
                     if (($e = validate_parent_name_or_na($_POST, $prefix, $label)) !== null) $errors[] = $e;
                 }
+                if (($e = validate_required_parent_name($_POST, 'mother', "Mother's maiden name")) !== null) $errors[] = $e;
                 $errors = array_merge(
                     $errors,
                     validate_godparent_names($_POST, 'godfather', 'Godfather'),
@@ -183,8 +248,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email         = fd('email', $_POST);
                 $privacyConsent = $_POST['privacy_consent'] ?? '';
 
-                if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
-                    $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
+                if ($contactNumber === '') {
+                    $errors[] = 'Contact number is required.';
+                } elseif (!is_valid_phone_number($contactNumber)) {
+                    $errors[] = 'Please enter a valid contact number (at least 10 digits).';
                 }
                 if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     $errors[] = 'Please enter a valid email address.';
@@ -253,6 +320,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $godfatherNames      = compose_godparent_names($formData, 'godfather');
             $godmotherNames      = compose_godparent_names($formData, 'godmother');
+            $childResidence = baptismal_application_optional_residence(
+                $formData['child_residence'] ?? null,
+                "Child's current residence",
+                255,
+                $errors
+            );
+            $parentsResidence = baptismal_application_optional_residence(
+                $formData['parents_residence'] ?? null,
+                "Parents' current residence",
+                255,
+                $errors
+            );
+            $formData['godfather_residence'] = baptismal_application_residence_rows(
+                $formData['godfather_residence'] ?? [],
+                'Godfather residence',
+                150,
+                $errors
+            );
+            $formData['godmother_residence'] = baptismal_application_residence_rows(
+                $formData['godmother_residence'] ?? [],
+                'Godmother residence',
+                150,
+                $errors
+            );
+            $godparents = sd_application_godparents($formData);
             $childPersonId = null;
 
             if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
@@ -261,22 +353,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
             if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
             if (is_unknown_place_of_birth($childBirthplace)) {
-                $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
+                $errors[] = "Please enter the child's city or municipality and province of birth.";
             }
             if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
             if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
-            if ($parentGuardian === '')  $errors[] = 'Parent/Guardian name is required.';
-            if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
-                $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
+            if ($contactNumber === '') {
+                $errors[] = 'Contact number is required.';
+            } elseif (!is_valid_phone_number($contactNumber)) {
+                $errors[] = 'Please enter a valid contact number (at least 10 digits).';
             }
             if ($email === '')           $errors[] = 'Email address is required.';
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Please enter a valid email address.';
             }
-            if (($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
-            foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
+            if ($parentGuardian !== '' && ($e = validate_full_name($parentGuardian)) !== null) $errors[] = $e;
+            foreach (['father' => "Father's name"] as $prefix => $label) {
                 if (($e = validate_parent_name_or_na($formData, $prefix, $label)) !== null) $errors[] = $e;
             }
+            if (($e = validate_required_parent_name($formData, 'mother', "Mother's maiden name")) !== null) $errors[] = $e;
             if (fd('child_person_id', $formData) !== '') {
                 try {
                     $childPersonId = public_selected_person_id(
@@ -297,6 +391,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 validate_godparent_names($formData, 'godfather', 'Godfather'),
                 validate_godparent_names($formData, 'godmother', 'Godmother')
             );
+            $guardianConfirmationError = sd_baptism_guardian_attestation_error(
+                $parentGuardian,
+                ($formData['guardian_authority_confirmed'] ?? '') === '1'
+            );
+            if ($guardianConfirmationError !== null) $errors[] = $guardianConfirmationError;
             $presence = sd_baptism_godparent_presence([
                 'godfather' => $godfatherNames,
                 'godmother' => $godmotherNames,
@@ -330,23 +429,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             [$childPersonId],
                             $personProfile['reference']
                         );
-                        $godparents = [];
-                        foreach (['godfather' => $godfatherNames, 'godmother' => $godmotherNames] as $role => $names) {
-                            foreach ($names as $name) {
-                                if (is_scalar($name) && trim((string) $name) !== '') {
-                                    $godparents[] = ['role' => $role, 'full_name' => trim((string) $name)];
-                                }
-                            }
-                        }
                         $details = [
                             'child_name' => $childName,
                             'child_birth_date' => $childBirthdate,
                             'child_birthplace' => $childBirthplace,
+                            'child_residence' => $childResidence,
                             'father_name' => $fatherName,
                             'mother_maiden_name' => $motherMaidenName,
-                            'parent_guardian_name' => $parentGuardian,
+                            'parents_residence' => $parentsResidence,
                             'godparents' => $godparents,
                         ];
+                        if ($parentGuardian !== '') {
+                            $details['parent_guardian_name'] = $parentGuardian;
+                            $details['guardian_authority_confirmed'] = true;
+                        }
                         if ($baptismVenue !== '') {
                             $details['baptism_venue'] = $baptismVenue;
                         }
@@ -422,11 +518,28 @@ if ($currentStep < STEP_APP_DETAILS || $currentStep > STEP_COUNT + 1) {
     exit;
 }
 
-$reviewNames = static function (array $names): string {
-    return e(implode(', ', array_filter(array_map(
-        static fn($name) => is_scalar($name) ? trim((string) $name) : '',
-        $names
-    ))));
+$reviewGodparents = static function (array $godparents, string $role): string {
+    $participants = array_values(array_filter(
+        $godparents,
+        static fn(array $participant): bool => ($participant['role'] ?? '') === $role
+    ));
+    if ($participants === []) {
+        return '—';
+    }
+
+    $items = [];
+    foreach ($participants as $participant) {
+        $item = '<li>' . e((string) ($participant['full_name'] ?? ''));
+        $residence = is_scalar($participant['residence'] ?? null)
+            ? trim((string) $participant['residence'])
+            : '';
+        if ($residence !== '') {
+            $item .= '<br><span class="field-hint">Current residence: ' . e($residence) . '</span>';
+        }
+        $items[] = $item . '</li>';
+    }
+
+    return '<ul class="public-review-godparents">' . implode('', $items) . '</ul>';
 };
 require_once __DIR__ . '/../../includes/header.php';
 ?><section class="application-form">
@@ -478,9 +591,6 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <div data-person-results aria-live="polite"></div>
             </div>
             <h3 class="form-subheading">Child’s details</h3>
-            <label>Date of birth *
-                <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
-            </label>
             <div class="inline-fields">
                 <label>Child's First Name *
                     <input type="text" name="child_first" autocomplete="given-name" value="<?= e(fd('child_first', $formData)) ?>" required>
@@ -497,14 +607,21 @@ if ($currentStep === STEP_COUNT + 1): ?>
                     <input type="text" name="child_suffix" autocomplete="honorific-suffix" value="<?= e(fd('child_suffix', $formData)) ?>">
                 </label>
             </div>
+            <label>Date of birth *
+                <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
+            </label>
+            <label>Child's Current Residence <span class="field-hint">(optional)</span>
+                <input type="text" name="child_residence" maxlength="255" autocomplete="street-address"
+                       value="<?= e(fd('child_residence', $formData)) ?>">
+            </label>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
             <label>Place of Birth *
                 <input type="text" name="child_birthplace" maxlength="150"
-                       placeholder="City / Municipality, Province (as shown on PSA Birth Certificate)"
+                       placeholder="City / Municipality, Province"
                        pattern="(?!(?:\s*)(?:[nN]/[aA]|[nN][aA]|[nN]\.[aA]\.|[nN][oO][nN][eE]|[uU][nN][kK][nN][oO][wW][nN]|-)\s*$).+"
-                       title="Enter the city or municipality and province shown on the PSA/LCR Birth Certificate. Placeholder values are not accepted."
+                       title="Enter the city or municipality and province. Placeholder values are not accepted."
                        value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
             <label>Preferred place / venue of baptism <span class="field-hint">(optional)</span>
@@ -535,8 +652,22 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <fieldset>
             <legend>Phase 2 of 4 — Family Information</legend>
             <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?>
-            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', false) ?>
-            <?= person_name_fields('parent_guardian', 'Parent/Guardian', $formData) ?>
+            <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the first and last name; N/A is not accepted', false, true) ?>
+            <label>Parents' Current Residence <span class="field-hint">(optional; shared by both parents)</span>
+                <input type="text" name="parents_residence" maxlength="255" autocomplete="street-address"
+                       value="<?= e(fd('parents_residence', $formData)) ?>">
+            </label>
+            <section class="guardian-section">
+                <p class="field-hint">The Guardian field is optional. Adults applying for themselves may leave it blank.</p>
+                <?= person_name_fields('parent_guardian', 'Guardian', $formData, false) ?>
+                <div class="alert alert-info" data-guardian-attestation<?= compose_person_name($formData, 'parent_guardian') === '' ? ' hidden' : '' ?>>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="guardian_authority_confirmed" value="1" <?= (fd('guardian_authority_confirmed', $formData) === '1') ? 'checked' : '' ?>>
+                        If I am a guardian, I confirm that I am the child's legal guardian or have permission from the child's parents to submit this baptism pre-application.
+                    </label>
+                    <p class="field-hint">This confirmation is required when a guardian is listed. A guardian does not have to be related to the child; if you are not the child's legal guardian, you must have permission from the child's parents.</p>
+                </div>
+            </section>
             <?php
             $godfatherRows = max(1, count(fa('godfather_full_name', $formData)));
             $godmotherRows = max(1, count(fa('godmother_full_name', $formData)));
@@ -548,7 +679,11 @@ if ($currentStep === STEP_COUNT + 1): ?>
                     <?php for ($i = 0; $i < $godfatherRows; $i++): ?>
                         <div class="godparent-row">
                             <label>Godfather's Full Name
-                                <input type="text" name="godfather_full_name[<?= $i ?>]" value="<?= e(fa('godfather_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                                <input type="text" name="godfather_full_name[]" value="<?= e(fa('godfather_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                            </label>
+                            <label>Current Residence <span class="field-hint">(optional)</span>
+                                <input type="text" name="godfather_residence[]" maxlength="150" autocomplete="street-address"
+                                       value="<?= e(fa('godfather_residence', $formData)[$i] ?? '') ?>">
                             </label>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
@@ -563,7 +698,11 @@ if ($currentStep === STEP_COUNT + 1): ?>
                     <?php for ($i = 0; $i < $godmotherRows; $i++): ?>
                         <div class="godparent-row">
                             <label>Godmother's Full Name
-                                <input type="text" name="godmother_full_name[<?= $i ?>]" value="<?= e(fa('godmother_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                                <input type="text" name="godmother_full_name[]" value="<?= e(fa('godmother_full_name', $formData)[$i] ?? '') ?>" autocomplete="name">
+                            </label>
+                            <label>Current Residence <span class="field-hint">(optional)</span>
+                                <input type="text" name="godmother_residence[]" maxlength="150" autocomplete="street-address"
+                                       value="<?= e(fa('godmother_residence', $formData)[$i] ?? '') ?>">
                             </label>
                             <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $i === 0 ? ' hidden' : '' ?>>Remove</button>
                         </div>
@@ -577,6 +716,27 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <button type="submit" class="btn">Next</button>
         </div>
     </form>
+    <script>
+        (function () {
+            var section = document.querySelector('.guardian-section');
+            if (!section) return;
+            var attestation = section.querySelector('[data-guardian-attestation]');
+            var fields = section.querySelectorAll('input[name^="parent_guardian_"]');
+            var checkbox = section.querySelector('input[name="guardian_authority_confirmed"]');
+            var updateAttestationVisibility = function () {
+                var guardianNamed = Array.prototype.some.call(fields, function (field) {
+                    return field.value.trim() !== '';
+                });
+                attestation.hidden = !guardianNamed;
+                if (!guardianNamed && checkbox) checkbox.checked = false;
+            };
+            fields.forEach(function (field) {
+                field.addEventListener('input', updateAttestationVisibility);
+                field.addEventListener('change', updateAttestationVisibility);
+            });
+            updateAttestationVisibility();
+        })();
+    </script>
 </section>
 <?php elseif ($currentStep === STEP_CONTACT_CONSENT): ?>
     <h1><?= e($pageTitle) ?></h1>
@@ -595,8 +755,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
             <legend>Phase 3 of 4 — Contact & Consent</legend>
-            <label>Contact Number <span class="field-hint">(optional; email is used for updates)</span>
-                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>">
+            <label>Contact Number *
+                <input type="tel" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>" required>
             </label>
             <label>Email Address
                 <input type="email" name="email" value="<?= e(fd('email', $formData)) ?>" required>
@@ -636,19 +796,25 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <tr><th>Child's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
                 <tr><th>Date of Birth</th><td><?= e($formData['child_birthdate'] ?? '') ?></td></tr>
                 <tr><th>Place of Birth</th><td><?= e(fd('child_birthplace', $formData)) ?></td></tr>
+                <tr><th>Child's Current Residence</th><td><?= e(fd('child_residence', $formData) ?: '—') ?></td></tr>
                 <tr>
                     <th>Preferred place / venue of baptism</th>
                     <td><?= e(fd('baptism_venue', $formData)) ?><br><span class="field-hint">Preference only; the Parish Office will confirm the venue.</span></td>
                 </tr>
                 <tr><th>Father's Name</th><td><?= e(compose_person_name($formData, 'father')) ?></td></tr>
                 <tr><th>Mother's Maiden Name</th><td><?= e(compose_person_name($formData, 'mother')) ?></td></tr>
-                <tr><th>Parent/Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
-                <tr><th>Godfathers</th><td><?= $reviewNames(compose_godparent_names($formData, 'godfather')) ?></td></tr>
-                <tr><th>Godmothers</th><td><?= $reviewNames(compose_godparent_names($formData, 'godmother')) ?></td></tr>
+                <tr><th>Parents' Current Residence</th><td><?= e(fd('parents_residence', $formData) ?: '—') ?></td></tr>
+                <tr><th>Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian') ?: '—') ?></td></tr>
+                <?php if (compose_person_name($formData, 'parent_guardian') !== ''): ?>
+                    <tr><th>Guardian authority</th><td><?= e(($formData['guardian_authority_confirmed'] ?? '') === '1' ? 'Confirmed' : 'Not confirmed') ?></td></tr>
+                <?php endif; ?>
+                <tr><th>Godfathers</th><td><?= $reviewGodparents(sd_application_godparents($formData), 'godfather') ?></td></tr>
+                <tr><th>Godmothers</th><td><?= $reviewGodparents(sd_application_godparents($formData), 'godmother') ?></td></tr>
                 <tr><th>Contact Number</th><td><?= e(fd('contact_number', $formData)) ?></td></tr>
                 <tr><th>Email</th><td><?= e(fd('email', $formData)) ?></td></tr>
                 <tr><th>Preferred Date</th><td><?= e((string) ($formData['preferred_date'] ?? '')) ?></td></tr>
             </table>
+            <?php $applicationType = 'baptism'; $requirementsNoticePart = 'after'; require __DIR__ . '/../../includes/public-requirements-notice.php'; unset($requirementsNoticePart); ?>
         </fieldset>
         <label class="checkbox-label" style="margin-top: 1rem;">
             <input type="checkbox" name="certify_accuracy" value="1" required>

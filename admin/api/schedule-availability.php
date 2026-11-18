@@ -21,23 +21,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 $date = is_string($_GET['date'] ?? null) ? trim($_GET['date']) : '';
 $excludeEventId = filter_var($_GET['exclude_event_id'] ?? 0, FILTER_VALIDATE_INT);
-$excludeFuneralRecordId = filter_var($_GET['exclude_funeral_record_id'] ?? 0, FILTER_VALIDATE_INT);
-if (!parish_schedule_date_is_valid($date)
-    || $date < date('Y-m-d')
-    || $excludeEventId === false
-    || $excludeEventId < 0
-    || $excludeFuneralRecordId === false
-    || $excludeFuneralRecordId < 0) {
-    schedule_availability_response(422, ['error' => 'Choose a valid date from today onward.']);
+$eventType = is_string($_GET['event_type'] ?? null) ? trim($_GET['event_type']) : '';
+$dateError = application_schedule_input_error($date, '', '');
+if ($dateError !== null || $excludeEventId === false || $excludeEventId < 0) {
+    schedule_availability_response(422, ['error' => $dateError ?? 'Choose a valid date from today onward.']);
+}
+if (!in_array($eventType, ['baptism', 'wedding', 'mass', 'other'], true)) {
+    schedule_availability_response(422, ['error' => 'Choose a valid event type.']);
 }
 
 try {
-    $events = parish_schedule_day_events(
-        $pdo,
-        $date,
-        (int) $excludeEventId,
-        (int) $excludeFuneralRecordId
+    $eventsStmt = $pdo->prepare(
+        'SELECT id, event_type, title, public_details, start_time, end_time
+         FROM schedule_events
+         WHERE event_date = ? AND id <> ?
+         ORDER BY start_time, id'
     );
+    $eventsStmt->execute([$date, (int) $excludeEventId]);
+    $events = $eventsStmt->fetchAll(PDO::FETCH_ASSOC);
     $displayEvents = array_map(static function (array $event): array {
         $start = isset($event['start_time']) && $event['start_time'] !== ''
             ? substr((string) $event['start_time'], 0, 5)
@@ -47,9 +48,8 @@ try {
             : null;
 
         return [
-            'label' => (string) $event['label'],
-            'time' => $start === null ? 'Time not confirmed; day unavailable' : format_event_time_range($start, $end),
-            'source' => (string) $event['source'],
+            'label' => (string) $event['title'],
+            'time' => $start === null ? 'Time not confirmed' : format_event_time_range($start, $end),
         ];
     }, $events);
 
@@ -57,7 +57,7 @@ try {
         'date' => $date,
         'slot_minutes' => 60,
         'events' => $displayEvents,
-        'slots' => parish_schedule_available_slots($events),
+        'slots' => application_schedule_available_slots($eventType, $events),
     ]);
 } catch (PDOException $exception) {
     error_log('Schedule availability lookup failed: ' . $exception->getMessage());

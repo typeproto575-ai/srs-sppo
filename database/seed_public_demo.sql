@@ -98,6 +98,7 @@ INSERT INTO announcements (title, content, event_date, is_published, posted_by) 
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ( 'parish_name', 'St. Patrick Parish', NULL);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ( 'first_communion_min_age', '8', NULL);
 INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ( 'confirmation_min_age', '12', NULL);
+INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ( 'marriage_min_age', '18', NULL);
 -- =====================================================================
 -- Scenarios in this seed
 --  1 Four generations: Teodoro+Felisa (1,2) > Ernesto+Rosario (3,4) > Ricardo+Liza (5,6) > Roy, Beatrice, Carlo (7,8,9)

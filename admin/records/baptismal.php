@@ -117,7 +117,7 @@ if ($isEdit) {
                 sr.minister_name, sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
                 sr.parents_union_type, sr.parents_marriage_parish, sr.details, sr.remarks, sr.encoded_by,
                 p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
-                p.birth_place, p.father_name, p.mother_maiden_name
+                p.birth_place, p.father_name, p.mother_maiden_name, p.address
          FROM sacrament_records sr
          JOIN persons p ON p.id = sr.person_id
          WHERE sr.id = ? AND sr.sacrament_type = 'baptism'"
@@ -246,7 +246,7 @@ if (!$isEdit && $personId === 0 && $_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($personId > 0) {
     $stmt = $pdo->prepare(
         'SELECT id, first_name, middle_name, last_name, suffix, birth_date,
-                birth_place, father_name, mother_maiden_name
+                birth_place, father_name, mother_maiden_name, address
          FROM persons WHERE id = ?'
     );
     $stmt->execute([$personId]);
@@ -285,6 +285,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
         $birthplaceInput = '';
     }
     $birthplaceInput = trim($birthplaceInput);
+    $applicantResidenceInput = $_POST['person_address'] ?? '';
+    if (!is_string($applicantResidenceInput)) {
+        $errors[] = "The child's current residence must be text.";
+        $applicantResidenceInput = '';
+    }
+    $applicantResidenceInput = trim($applicantResidenceInput);
+    if (mb_strlen($applicantResidenceInput) > 255) {
+        $errors[] = "The child's current residence must be 255 characters or fewer.";
+    }
     if (is_unknown_place_of_birth($birthplaceInput)) {
         $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
     }
@@ -448,6 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
                         'birth_place' => $birthplaceInput,
                         'father_name' => $fatherName,
                         'mother_maiden_name' => $motherName,
+                        'address' => $applicantResidenceInput,
                         'baptismal_status' => 'baptized_catholic',
                     ]);
                     $createdPersonProfile = true;
@@ -456,16 +466,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
             if (!$createdPersonProfile) {
                 $personBefore = sd_person_audit_snapshot($pdo, $savePersonId);
                 sd_save_person($pdo, ['birth_place' => $birthplaceInput], $savePersonId);
+                $applicantResidenceWasAdded = !$isPostEdit
+                    && $applicantResidenceInput !== ''
+                    && trim((string) ($identity['address'] ?? '')) === '';
+                if ($applicantResidenceWasAdded) {
+                    save_person_identity($pdo, $savePersonId, [
+                        'first_name' => (string) $identity['first_name'],
+                        'last_name' => (string) $identity['last_name'],
+                        'address' => $applicantResidenceInput,
+                    ]);
+                }
                 $personAfter = sd_person_audit_snapshot($pdo, $savePersonId);
+                $personEditReason = $isPostEdit
+                    ? trim((string) ($_POST['reason_change'] ?? ''))
+                    : 'Birthplace verified against the PSA/LCR Birth Certificate during baptism record encoding.';
+                if ($applicantResidenceWasAdded) {
+                    $personEditReason .= ' Added a previously unrecorded current residence during baptism record encoding.';
+                }
                 sd_log_person_edit(
                     $pdo,
                     (int) current_user()['id'],
                     $savePersonId,
                     $personBefore,
                     $personAfter,
-                    $isPostEdit
-                        ? trim((string) ($_POST['reason_change'] ?? ''))
-                        : 'Birthplace verified against the PSA/LCR Birth Certificate during baptism record encoding.'
+                    $personEditReason
                 );
             }
 
@@ -647,7 +671,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
     }
 }
 ?>
-<dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
+<dialog id="encode-dialog" class="encode-dialog baptism-encode-dialog"<?= ($isEdit || $isNew || $errors || $applicationId) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
     <div class="dialog-head">
         <h2><?= $isEdit ? 'Edit Baptism Record #' . (int) $editRecord['id'] : 'Encode New Baptism Record' ?></h2>
         <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
@@ -665,11 +689,11 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
             </div>
         <?php endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
-        <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
+        <form class="baptism-record-entry-form" autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?>
             <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
-            <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+            <div class="person-finder" data-person-finder<?= $isEdit ? ' data-no-clear-selection' : '' ?> data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
                 <label>Find possible people
                     <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
                 </label>
@@ -691,16 +715,37 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
             </fieldset>
             <fieldset>
                 <legend>Child identity</legend>
+                <?php
+                $applicantResidenceValue = is_scalar($formValues['person_address'] ?? null)
+                    ? (string) $formValues['person_address']
+                    : '';
+                $canEnterApplicantResidence = !$isEdit
+                    && (!$identity || trim((string) ($identity['address'] ?? '')) === '');
+                ?>
                 <?php if ($identity): ?>
                     <p><strong><?= e(person_identity_label($identity)) ?></strong></p>
                     <p>Birth date: <?= e((string) ($identity['birth_date'] ?? 'Not recorded')) ?></p>
+                    <p>Current residence: <?= e(trim((string) ($identity['address'] ?? '')) ?: 'Not recorded') ?></p>
                     <p class="field-hint">Identity and parent details are read-only from the master persons record. Place of birth is confirmed below from the PSA/LCR certificate.</p>
+                    <?php if ($canEnterApplicantResidence): ?>
+                        <label class="applicant-residence-field">
+                            <span class="applicant-residence-label">Applicant's Current Residence <span class="field-hint">(optional)</span></span>
+                            <input type="text" name="person_address" maxlength="255" value="<?= e($applicantResidenceValue) ?>">
+                        </label>
+                        <span class="field-hint">This will fill the linked profile only if its residence is still blank.</span>
+                    <?php endif; ?>
                 <?php else: ?>
-                    <div class="inline-fields structured-name-fields">
+                    <div class="inline-fields structured-name-fields child-identity-name-fields">
                         <label>First Name <span class="required-marker">*</span> <input type="text" name="child_first_name" value="<?= e($formValues['child_first_name'] ?? '') ?>" required></label>
                         <label>Middle Name <input type="text" name="child_middle_name" value="<?= e($formValues['child_middle_name'] ?? '') ?>"></label>
                         <label>Surname <span class="required-marker">*</span> <input type="text" name="child_last_name" value="<?= e($formValues['child_last_name'] ?? '') ?>" required></label>
                         <label>Suffix <input type="text" name="child_suffix" value="<?= e($formValues['child_suffix'] ?? '') ?>"></label>
+                        <?php if ($canEnterApplicantResidence): ?>
+                            <label class="applicant-residence-field">
+                                <span class="applicant-residence-label">Applicant's Current Residence <span class="field-hint">(optional)</span></span>
+                                <input type="text" name="person_address" maxlength="255" value="<?= e($applicantResidenceValue) ?>">
+                            </label>
+                        <?php endif; ?>
                     </div>
                     <label>Birth Date <input type="date" name="birth_date" value="<?= e($formValues['birth_date'] ?? '') ?>"></label>
                     <p class="field-hint">Saving creates a person profile in <code>persons</code>.</p>
@@ -809,7 +854,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                                     <label><?= $role === 'godfather' ? 'Godfather full name' : 'Godmother full name' ?>
                                         <input type="text" name="<?= e($role) ?>_full_name[]" maxlength="150" value="<?= e($participant['full_name'] ?? '') ?>" autocomplete="name">
                                     </label>
-                                    <label>Residence <input type="text" name="<?= e($role) ?>_residence[]" maxlength="150" value="<?= e($formValues[$role . '_residence'][$index] ?? $participant['residence'] ?? '') ?>"></label>
+                                    <label>Current residence <input type="text" name="<?= e($role) ?>_residence[]" maxlength="150" value="<?= e($formValues[$role . '_residence'][$index] ?? $participant['residence'] ?? '') ?>"></label>
                                 </div>
                                 <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $index === 0 ? ' hidden' : '' ?>>Remove</button>
                             </div>
@@ -829,8 +874,10 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
 <p class="field-hint">Required if you change anything. Saving will clear book verification.</p>
 <?php endif; ?>
             </fieldset>
-            <button type="submit" name="<?= $isEdit ? 'update_record' : 'add_record' ?>" value="1" class="btn btn-primary"><?= $isEdit ? 'Update Record' : 'Save Record' ?></button>
-            <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+            <div class="record-encode-actions">
+                <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+                <button type="submit" name="<?= $isEdit ? 'update_record' : 'add_record' ?>" value="1" class="btn btn-primary"><?= $isEdit ? 'Update Record' : 'Save Record' ?></button>
+            </div>
         </form>
     </div>
 </dialog>

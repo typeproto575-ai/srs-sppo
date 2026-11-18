@@ -6,10 +6,11 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class MarriageApplicationTest extends TestCase
 {
-    private const BLOCK_MESSAGE = 'A Catholic wedding cannot be scheduled while either party is currently bound by an existing marriage (church or civil). Please visit the Parish Office for pastoral consultation or inquiries regarding annulment.';
+    private const BLOCK_MESSAGE = 'Applicants currently married (civilly or in church) to another person cannot apply for a Catholic wedding until the prior marriage is legally annulled and declared null by the Church.';
     private const DATE_MESSAGE = 'The target wedding date cannot be earlier than today.';
 
     private PDO $pdo;
@@ -116,12 +117,121 @@ final class MarriageApplicationTest extends TestCase
     {
         return [
             'groom married' => ['groom', 'married', 'no'],
+            'groom married to someone else' => ['groom', 'married_elsewhere', 'no'],
             'groom single + previous church' => ['groom', 'single', 'church'],
             'groom single + previous civil' => ['groom', 'single', 'civil'],
             'bride married' => ['bride', 'married', 'no'],
+            'bride married to someone else' => ['bride', 'married_elsewhere', 'no'],
             'bride single + previous church' => ['bride', 'single', 'church'],
             'bride single + previous civil' => ['bride', 'single', 'civil'],
         ];
+    }
+
+    public function testCivillyMarriedStatusesMustMatchBeforeBrideStepAdvances(): void
+    {
+        $post = $this->baseStepData();
+        $post = array_merge($post, $this->validPartyData('groom', 'civilly_married', 'no'));
+        $post = array_merge($post, $this->validPartyData('bride', 'single', 'no'));
+
+        $result = $this->runPage($post, 3);
+
+        self::assertSame(3, $result['step']);
+        self::assertContains(
+            "If you are civilly married to each other, both the groom and bride must select 'Civilly Married (to each other)'.",
+            $result['errors']
+        );
+    }
+
+    public function testCivilMarriageDateAndPlaceAreRequiredOnStepFour(): void
+    {
+        $post = $this->baseStepData();
+        $post = array_merge($post, $this->validPartyData('groom', 'civilly_married', 'no'));
+        $post = array_merge($post, $this->validPartyData('bride', 'civilly_married', 'no'));
+        $post['godfather_full_name'] = ['Juan Sponsor'];
+        $post['godmother_full_name'] = ['Maria Sponsor'];
+
+        $result = $this->runPage($post, 4);
+
+        self::assertSame(4, $result['step']);
+        self::assertContains('Civil marriage date is required when both applicants are civilly married to each other.', $result['errors']);
+        self::assertContains('Place of civil marriage is required when both applicants are civilly married to each other.', $result['errors']);
+    }
+
+    public function testStepFourDoesNotTreatUnlinkedProfilesAsNegativeRecordEvidence(): void
+    {
+        $post = $this->baseStepData();
+        $post = array_merge($post, $this->validPartyData('groom', 'single', 'no'));
+        $post = array_merge($post, $this->validPartyData('bride', 'single', 'no'));
+
+        $result = $this->runPage($post, 4);
+
+        self::assertSame(4, $result['step']);
+        self::assertStringContainsString('No parish profile is linked', $result['output']);
+        self::assertStringContainsString('Missing records do not mean a sacrament did not happen', $result['output']);
+    }
+
+    public function testStepFourSuggestsYesWhenLinkedBaptismRecordExists(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $profile = public_person_reference($this->pdo, null, [
+                'first_name' => 'RecordCheck',
+                'middle_name' => '',
+                'last_name' => 'Groom',
+                'suffix' => '',
+                'birth_date' => '1990-01-01',
+                'birth_place' => 'Dingalan',
+            ]);
+            sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $profile['person_id'],
+                'event_date' => '1990-02-01',
+                'place' => 'St. Patrick Parish',
+                'minister_name' => 'Test Minister',
+                'participants' => ['godfather' => ['full_name' => 'Test Sponsor']],
+            ], [['role' => 'godfather', 'full_name' => 'Test Sponsor']]);
+
+            $post = $this->baseStepData();
+            $post = array_merge($post, $this->validPartyData('groom', 'single', 'no'));
+            $post = array_merge($post, $this->validPartyData('bride', 'single', 'no'));
+            $post['groom_first'] = 'RecordCheck';
+            $post['groom_last'] = 'Groom';
+            $post['groom_person_id'] = (string) $profile['person_id'];
+            $post['groom_baptized'] = '';
+
+            $result = $this->runPage($post, 4);
+
+            self::assertSame(4, $result['step']);
+            self::assertSame('yes', $result['form_data']['groom_baptized'] ?? '');
+            self::assertStringContainsString('A linked record suggests Yes', $result['output']);
+
+            $post['groom_baptized'] = 'no';
+            $conflictResult = $this->runPage($post, 4);
+            self::assertSame('no', $conflictResult['form_data']['groom_baptized'] ?? '');
+            self::assertStringContainsString('Your answer is No, so the parish office will review this difference.', $conflictResult['output']);
+        } finally {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+        }
+    }
+
+    public function testFinalSubmitRequiresEligibilityDeclaration(): void
+    {
+        $post = $this->baseStepData();
+        $post = array_merge($post, $this->validPartyData('groom', 'single', 'no'));
+        $post = array_merge($post, $this->validPartyData('bride', 'single', 'no'));
+        $post['godfather_full_name'] = ['Juan Sponsor'];
+        $post['godmother_full_name'] = ['Maria Sponsor'];
+        $post['_action'] = 'final_submit';
+
+        $result = $this->runPage($post, 5);
+
+        self::assertSame(5, $result['step']);
+        self::assertContains(
+            'You must confirm that neither applicant has an existing, unannulled marriage to another person.',
+            $result['errors']
+        );
     }
 
     public function testAllowedWidowedPartyIsNotBlocked(): void

@@ -200,10 +200,11 @@ function mail_public_url(string $path, ?string $basePath = null): string
     return $scheme . '://' . $authority . $basePath . '/' . ltrim($path, '/');
 }
 
-function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, string $requestNumber = ''): bool
+function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, string $requestNumber = '', ?array $documentRequirements = null): bool
 {
     $displayKind = mail_request_display_name($kind);
-    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
+    $documents = $documentRequirements ?? mail_request_documents($kind);
+    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, $documents));
     $documentHeading = mail_request_documents_heading($kind);
     $trackingUrl = mail_public_url('/public/track-request.php');
     $requestNumberText = $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '';

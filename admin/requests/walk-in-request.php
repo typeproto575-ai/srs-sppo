@@ -64,9 +64,11 @@ $selectedType = isset($types[$values['sacrament_type']]) ? $values['sacrament_ty
 $selectedRelationship = in_array($values['requester_relationship'], ['self', 'parent', 'sibling', 'child', 'authorized_representative'], true)
     ? $values['requester_relationship']
     : 'self';
+$walkInFormId = 'walk-in-certificate-form';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
 
+<div class="walk-in-page">
 <section class="page-header">
     <div>
         <h1>Walk-in Certificate Request</h1>
@@ -81,18 +83,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
 <?php endif; ?>
 
-<form method="post" class="stacked-form" data-walk-in-intake data-walk-in-certificate autocomplete="off">
+<form id="walk-in-certificate-form" method="post" class="walk-in-form walk-in-dedicated stacked-form" data-walk-in-dedicated="request" data-walk-in-intake data-walk-in-certificate autocomplete="off">
     <?= csrf_field() ?>
+    <input type="hidden" name="walk_in_current_step" value="1" data-dedicated-step>
 
-    <label for="walk-in-certificate-type">Certificate type <span class="required-marker" aria-hidden="true">*</span></label>
-    <select id="walk-in-certificate-type" name="sacrament_type" data-walk-in-type required autofocus>
-        <option value="">Choose a sacrament</option>
-        <?php foreach ($types as $type => $label): ?>
-            <option value="<?= e($type) ?>"<?= $selectedType === $type ? ' selected' : '' ?>><?= e($label) ?></option>
-        <?php endforeach; ?>
-    </select>
+    <section class="card walk-in-form-section" data-dedicated-panel="type">
+        <h2>Request details</h2>
+        <label for="walk-in-certificate-type">Certificate type <span class="required-marker" aria-hidden="true">*</span></label>
+        <select id="walk-in-certificate-type" name="sacrament_type" data-walk-in-type required autofocus>
+            <option value="">Choose a sacrament</option>
+            <?php foreach ($types as $type => $label): ?>
+                <option value="<?= e($type) ?>"<?= $selectedType === $type ? ' selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </section>
 
-    <section class="card">
+    <section class="card walk-in-form-section" data-dedicated-panel="subject">
         <h2>Certificate subject</h2>
         <p class="field-hint">Search the master person index first. A new profile needs only a name and date of birth.</p>
         <?php
@@ -111,8 +117,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         ?>
     </section>
 
-    <fieldset class="card" data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
-        <legend>Spouse</legend>
+    <section class="card walk-in-form-section" data-dedicated-spouse data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
+        <h2>Spouse</h2>
         <p class="field-hint">Search the master person index first, or create a profile with only a name and date of birth.</p>
         <?php
         $matchRole = 'spouse';
@@ -127,32 +133,47 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         $matchBirthDate = $values['spouse_birth_date'];
         require __DIR__ . '/../../includes/person-match-widget.php';
         ?>
-    </fieldset>
+    </section>
 
-    <fieldset class="card">
-        <legend>Requester</legend>
-        <label for="requester-relationship">Relationship to the subject <span class="required-marker" aria-hidden="true">*</span></label>
-        <select id="requester-relationship" name="requester_relationship" required>
-            <option value="self"<?= $selectedRelationship === 'self' ? ' selected' : '' ?>>Self</option>
-            <option value="parent"<?= $selectedRelationship === 'parent' ? ' selected' : '' ?>>Parent</option>
-            <option value="sibling"<?= $selectedRelationship === 'sibling' ? ' selected' : '' ?>>Sibling</option>
-            <option value="child"<?= $selectedRelationship === 'child' ? ' selected' : '' ?>>Child</option>
-            <option value="authorized_representative"<?= $selectedRelationship === 'authorized_representative' ? ' selected' : '' ?>>Authorized Representative</option>
-        </select>
-        <label for="requester-name">Requester name <span class="required-marker" aria-hidden="true">*</span></label>
-        <input id="requester-name" type="text" name="requester_name" data-requester-name maxlength="150"
-               value="<?= e($values['requester_name']) ?>"
-               <?= $selectedRelationship === 'self' ? 'readonly' : 'required' ?>>
-        <p class="field-hint">Self is copied from the selected profile. Enter the actual requester email; this page does not substitute staff email.</p>
-        <p data-self-id-note<?= $selectedRelationship === 'self' ? '' : ' hidden' ?>>A valid ID matching the subject profile is required at pickup.</p>
-        <label for="requester-email">Requester email <span class="required-marker" aria-hidden="true">*</span></label>
-        <input id="requester-email" type="email" name="requester_email" maxlength="150" value="<?= e($values['requester_email']) ?>" required>
-        <label for="requester-contact">Contact number <span class="field-hint">(optional)</span></label>
-        <input id="requester-contact" type="tel" name="requester_contact" maxlength="30" value="<?= e($values['requester_contact']) ?>">
-    </fieldset>
+    <section class="card walk-in-form-section" data-dedicated-panel="requester">
+        <h2>Requester</h2>
+        <div class="walk-in-requester-grid">
+            <div class="walk-in-field">
+                <label for="requester-relationship">Relationship to the subject <span class="required-marker" aria-hidden="true">*</span></label>
+                <select id="requester-relationship" form="walk-in-certificate-form" name="requester_relationship" required>
+                    <option value="self"<?= $selectedRelationship === 'self' ? ' selected' : '' ?>>Self</option>
+                    <option value="parent"<?= $selectedRelationship === 'parent' ? ' selected' : '' ?>>Parent</option>
+                    <option value="sibling"<?= $selectedRelationship === 'sibling' ? ' selected' : '' ?>>Sibling</option>
+                    <option value="child"<?= $selectedRelationship === 'child' ? ' selected' : '' ?>>Child</option>
+                    <option value="authorized_representative"<?= $selectedRelationship === 'authorized_representative' ? ' selected' : '' ?>>Authorized Representative</option>
+                </select>
+            </div>
+            <div class="walk-in-field">
+                <label for="requester-name">Requester name <span class="required-marker" aria-hidden="true">*</span></label>
+                <input id="requester-name" form="walk-in-certificate-form" type="text" name="requester_name" data-requester-name maxlength="150"
+                       value="<?= e($values['requester_name']) ?>"
+                       <?= $selectedRelationship === 'self' ? 'readonly' : 'required' ?>>
+            </div>
+            <div class="walk-in-field">
+                <label for="requester-email">Requester email <span class="required-marker" aria-hidden="true">*</span></label>
+                <input id="requester-email" form="walk-in-certificate-form" type="email" name="requester_email" maxlength="150" value="<?= e($values['requester_email']) ?>" required>
+            </div>
+            <div class="walk-in-field">
+                <label for="requester-contact">Contact number <span class="field-hint">(optional)</span></label>
+                <input id="requester-contact" form="walk-in-certificate-form" type="tel" name="requester_contact" maxlength="30" value="<?= e($values['requester_contact']) ?>">
+            </div>
+            <p class="field-hint walk-in-grid-full">Self is copied from the selected profile. Enter the actual requester email; this page does not substitute staff email.</p>
+            <p class="walk-in-grid-full" data-self-id-note<?= $selectedRelationship === 'self' ? '' : ' hidden' ?>>A valid ID matching the subject profile is required at pickup.</p>
+        </div>
+    </section>
 
     <p class="field-hint">Documents and payment are handled in person. The request will open in the existing certificate queue detail.</p>
-    <button type="submit" class="btn">Save and open request</button>
+    <section class="card walk-in-form-section" data-dedicated-panel="review">
+        <h2>Review</h2>
+        <dl class="walk-in-dedicated-review" data-dedicated-review></dl>
+    </section>
+    <button type="submit" form="walk-in-certificate-form" class="btn" data-dedicated-submit hidden>Save and open request</button>
 </form>
+</div>
 
 <?php require __DIR__ . '/../../includes/admin-footer.php'; ?>
