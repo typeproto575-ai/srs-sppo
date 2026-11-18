@@ -307,14 +307,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to($postReturnUrl);
         }
 
-        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff', 'set_schedule', 'set_formation_path', 'update_submission'], true)
+        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff', 'set_schedule', 'set_formation_path', 'update_submission', 'confirm_venue'], true)
             && in_array($application['status'], ['completed', 'rejected'], true)) {
             $pdo->rollBack();
             $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications cannot be reassigned or edited.';
             redirect_to($postReturnUrl);
         }
 
-        if ($action === 'update_submission') {
+        if ($action === 'confirm_venue') {
+            if (($application['sacrament_type'] ?? '') !== 'baptism') {
+                throw new InvalidArgumentException('A requested venue can only be confirmed for a baptism application.');
+            }
+            $venueInput = $_POST['confirmed_venue'] ?? '';
+            if (!is_string($venueInput)) {
+                throw new InvalidArgumentException('Confirmed venue must be text.');
+            }
+            $confirmedVenue = trim($venueInput);
+            if (mb_strlen($confirmedVenue) > 150) {
+                throw new InvalidArgumentException('Confirmed venue must be 150 characters or fewer.');
+            }
+            $applicationDetails = json_decode((string) ($application['details'] ?? ''), true);
+            if ($applicationDetails === null && empty($application['details'])) {
+                $applicationDetails = [];
+            }
+            if (!is_array($applicationDetails)) {
+                throw new InvalidArgumentException('Application details could not be read. Reload the page and try again.');
+            }
+            if ($confirmedVenue === '') {
+                unset($applicationDetails['confirmed_venue']);
+            } else {
+                $applicationDetails['confirmed_venue'] = $confirmedVenue;
+            }
+            $encodedDetails = json_encode($applicationDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            $update = $pdo->prepare('UPDATE sacrament_applications SET details = ? WHERE id = ?');
+            $update->execute([$encodedDetails, (int) $applicationId]);
+            log_activity(
+                $pdo,
+                (int) current_user()['id'],
+                'sacrament_application_venue_confirmed',
+                'sacrament_applications',
+                (int) $applicationId,
+                $confirmedVenue === ''
+                    ? 'Cleared the confirmed baptism venue.'
+                    : 'Confirmed the baptism venue as ' . $confirmedVenue . '.'
+            );
+            $pdo->commit();
+            $_SESSION['application_queue_success'] = $confirmedVenue === ''
+                ? 'Confirmed venue cleared.'
+                : 'Baptism venue confirmed.';
+        } elseif ($action === 'update_submission') {
             $applicantName = is_string($_POST['applicant_name'] ?? null)
                 ? trim($_POST['applicant_name'])
                 : '';
@@ -1100,6 +1141,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 $applicationReturnParams['open_application_id'] = (int) $app['id'];
                 $applicationReturnQuery = http_build_query($applicationReturnParams);
                 $details = application_queue_details($app);
+                $requestedBaptismVenue = is_scalar($details['baptism_venue'] ?? null)
+                    ? trim((string) $details['baptism_venue'])
+                    : '';
+                $confirmedBaptismVenue = is_scalar($details['confirmed_venue'] ?? null)
+                    ? trim((string) $details['confirmed_venue'])
+                    : '';
+                $venueIsConfirmed = $confirmedBaptismVenue !== '';
                 $matches = $app['sacrament_type'] === 'marriage'
                     ? [
                         application_queue_person_match($app, $details, 'applicant'),
@@ -1253,6 +1301,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                             : 'No Baptism record matched in the parish system')));
                         ?>
                             <span class="application-queue-submitter"><?= e($baptismCheckLabel) ?></span>
+                        <?php endif; ?>
+                        <?php if ($app['sacrament_type'] === 'baptism'): ?>
+                            <span class="status-badge <?= $venueIsConfirmed ? 'status-approved' : 'status-pending' ?>">
+                                Venue: <?= $venueIsConfirmed ? 'confirmed' : 'not yet confirmed' ?>
+                            </span>
                         <?php endif; ?>
                     </td>
                     <td>
@@ -1415,9 +1468,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 >Change / Edit</button>
                             <?php endif; ?>
                         </div>
+                        <?php if ($app['sacrament_type'] === 'baptism'): ?>
+                            <dl class="application-details-list">
+                                <div><dt>Venue (requested)</dt><dd><?= e($requestedBaptismVenue) ?></dd></div>
+                            </dl>
+                        <?php endif; ?>
                         <dl class="application-details-list">
                             <?php if ($details !== []): ?>
                                 <?php foreach ($details as $key => $value): ?>
+                                    <?php if ($app['sacrament_type'] === 'baptism' && (string) $key === 'baptism_venue') continue; ?>
                                     <div>
                                         <?php
                                         $detailKey = (string) $key;
@@ -1441,6 +1500,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
                             <?php endif; ?>
                                     </dl>
+                        <?php if ($app['sacrament_type'] === 'baptism'
+                            && !in_array($app['status'], ['completed', 'rejected'], true)): ?>
+                            <?php $venueInputValue = $confirmedBaptismVenue !== '' ? $confirmedBaptismVenue : $requestedBaptismVenue; ?>
+                            <form method="post" class="inline-fields application-venue-confirmation-form">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                                <input type="hidden" name="action" value="confirm_venue">
+                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                <label>Venue confirmed by the Parish Office
+                                    <input type="text" name="confirmed_venue" maxlength="150" value="<?= e($venueInputValue) ?>">
+                                </label>
+                                <button type="submit" class="btn btn-small">Confirm venue</button>
+                            </form>
+                        <?php endif; ?>
                         <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
                             <div id="submission-edit-<?= (int) $app['id'] ?>" class="application-submission-edit" hidden>
                                 <h4>Correct submission data</h4>

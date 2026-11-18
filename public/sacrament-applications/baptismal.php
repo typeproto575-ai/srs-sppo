@@ -27,6 +27,7 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Baptismal Pre-Application';
 $errors    = [];
 $trackingNumber = null;
+$successBaptismVenue = '';
 
 // Ensure session is started
 if (session_status() === PHP_SESSION_NONE) {
@@ -132,7 +133,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childName       = compose_person_name($_POST, 'child');
                 $childBirthdate  = $_POST['child_birthdate'] ?? '';
                 $childBirthplace = fd('child_birthplace', $_POST);
+                $baptismVenueInput = $_POST['baptism_venue'] ?? '';
+                if (!is_string($baptismVenueInput)) {
+                    $errors[] = 'Preferred baptism venue must be text.';
+                    $baptismVenueInput = '';
+                }
+                $baptismVenue = trim($baptismVenueInput);
                 $_POST['child_birthplace'] = $childBirthplace;
+                $_POST['baptism_venue'] = $baptismVenue;
 
                 if (fd('child_first', $_POST) === '') $errors[] = "Child's first name is required.";
                 if (fd('child_last', $_POST) === '') $errors[] = "Child's last name is required.";
@@ -143,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
                 }
                 if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
+                if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
             }
 
             if ($currentStep === STEP_FAMILY_REQS) {
@@ -221,6 +230,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $childName       = compose_person_name($formData, 'child');
             $childBirthdate  = $formData['child_birthdate'] ?? '';
             $childBirthplace = fd('child_birthplace', $formData);
+            $baptismVenueInput = $formData['baptism_venue'] ?? '';
+            if (!is_string($baptismVenueInput)) {
+                $errors[] = 'Preferred baptism venue must be text.';
+                $baptismVenueInput = '';
+                $formData['baptism_venue'] = '';
+            }
+            $baptismVenue = trim($baptismVenueInput);
             $fatherName      = compose_person_name($formData, 'father');
             $motherMaidenName = compose_person_name($formData, 'mother');
             $parentGuardian  = compose_person_name($formData, 'parent_guardian');
@@ -244,6 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
             }
             if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
+            if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
             if ($parentGuardian === '')  $errors[] = 'Parent/Guardian name is required.';
             if ($contactNumber !== '' && !is_valid_phone_number($contactNumber)) {
                 $errors[] = 'Please enter a valid contact number (at least 10 digits) when provided.';
@@ -324,6 +341,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'parent_guardian_name' => $parentGuardian,
                             'godparents' => $godparents,
                         ];
+                        if ($baptismVenue !== '') {
+                            $details['baptism_venue'] = $baptismVenue;
+                        }
                         $requirements = [
                             'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
                             'godparent_eligibility' => ['status' => 'not_received', 'note' => ''],
@@ -357,6 +377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             record_public_submission($pdo, [$email], 'application_baptismal');
                         }
                         $pdo->commit();
+                        $successBaptismVenue = $baptismVenue;
                         $trackingNumber = $personProfile['reference'];
 
                         if ($isSecretary) {
@@ -414,6 +435,10 @@ if ($currentStep === STEP_COUNT + 1): ?>
         $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
+        <?php if ($successBaptismVenue !== ''): ?>
+            <p><strong>Preferred place / venue of baptism:</strong> <?= e($successBaptismVenue) ?></p>
+            <p class="field-hint">This is a preference only; the Parish Office will confirm the venue.</p>
+        <?php endif; ?>
         <a href="baptismal.php?reset=1" class="btn">Start a New Pre-Application</a>
     </div>
 </section>
@@ -475,6 +500,10 @@ if ($currentStep === STEP_COUNT + 1): ?>
                        pattern="(?!(?:\s*)(?:[nN]/[aA]|[nN][aA]|[nN]\.[aA]\.|[nN][oO][nN][eE]|[uU][nN][kK][nN][oO][wW][nN]|-)\s*$).+"
                        title="Enter the city or municipality and province shown on the PSA/LCR Birth Certificate. Placeholder values are not accepted."
                        value="<?= e(fd('child_birthplace', $formData)) ?>" required>
+            </label>
+            <label>Preferred place / venue of baptism <span class="field-hint">(optional)</span>
+                <input type="text" name="baptism_venue" maxlength="150" value="<?= e(fd('baptism_venue', $formData)) ?>">
+                <span class="field-hint">This is a preference only; the Parish Office will confirm the venue.</span>
             </label>
         </fieldset>
         <div class="form-actions">
@@ -601,6 +630,10 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <tr><th>Child's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
                 <tr><th>Date of Birth</th><td><?= e($formData['child_birthdate'] ?? '') ?></td></tr>
                 <tr><th>Place of Birth</th><td><?= e(fd('child_birthplace', $formData)) ?></td></tr>
+                <tr>
+                    <th>Preferred place / venue of baptism</th>
+                    <td><?= e(fd('baptism_venue', $formData)) ?><br><span class="field-hint">Preference only; the Parish Office will confirm the venue.</span></td>
+                </tr>
                 <tr><th>Father's Name</th><td><?= e(compose_person_name($formData, 'father')) ?></td></tr>
                 <tr><th>Mother's Maiden Name</th><td><?= e(compose_person_name($formData, 'mother')) ?></td></tr>
                 <tr><th>Parent/Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?></td></tr>
