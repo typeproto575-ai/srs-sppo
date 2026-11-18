@@ -691,23 +691,38 @@ document.addEventListener('DOMContentLoaded', function () {
                 input.readOnly = readOnly;
                 input.classList.toggle('person-profile-readonly', input.readOnly);
             });
+            if (form.hasAttribute('data-walk-in-intake')) {
+                var birthDateField = form.querySelector('[name="' + finder.dataset.birthField + '"]');
+                if (birthDateField) birthDateField.required = !readOnly;
+            }
         }
 
-        function renderSelection() {
-            selection.textContent = '';
-            if (!hiddenId.value) {
-                clear.hidden = true;
-                selection.appendChild(clear);
-                return;
-            }
-            var text = document.createElement('strong');
+        function selectedPersonName() {
             var prefix = namePrefix();
-            var selectedName = [
+            return [
                 field(prefix + '_first_name'),
                 field(prefix + '_middle_name'),
                 field(prefix + '_last_name'),
                 field(prefix + '_suffix')
             ].filter(Boolean).join(' ');
+        }
+
+        function notifyWalkInPersonChange(name) {
+            if (form.hasAttribute('data-walk-in-certificate')) {
+                finder.dispatchEvent(new CustomEvent('walkinpersonchange', { detail: { name: name || '' } }));
+            }
+        }
+
+        function renderSelection() {
+            selection.textContent = '';
+            var selectedName = selectedPersonName();
+            if (!hiddenId.value) {
+                clear.hidden = true;
+                selection.appendChild(clear);
+                notifyWalkInPersonChange(selectedName);
+                return;
+            }
+            var text = document.createElement('strong');
             text.textContent = 'Selected: ' + (selectedName || 'Person profile #' + hiddenId.value);
             selection.appendChild(text);
             var note = document.createElement('span');
@@ -715,11 +730,19 @@ document.addEventListener('DOMContentLoaded', function () {
             selection.appendChild(note);
             selection.appendChild(clear);
             clear.hidden = false;
+            notifyWalkInPersonChange(selectedName);
         }
 
         function clearStaleSelection() {
+            var wasLinked = hiddenId.value !== '';
             hiddenId.value = '';
             setIdentityReadOnly(false);
+            if (wasLinked && form.hasAttribute('data-walk-in-intake')) {
+                identityFieldNames().forEach(function (name) {
+                    var input = form.querySelector('[name="' + name + '"]');
+                    if (input) input.value = '';
+                });
+            }
             renderSelection();
             resultsBox.textContent = '';
         }
@@ -744,7 +767,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     hiddenId.value = record.id;
                     search.value = name.textContent;
                     var prefix = namePrefix();
-                    var personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    var personName;
+                    if (finder.dataset.namePrefix) {
+                        personName = {
+                            first: record.first_name || '',
+                            middle: record.middle_name || '',
+                            last: record.last_name || '',
+                            suffix: record.suffix || ''
+                        };
+                    } else {
+                        personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    }
                     if (prefix === 'wife' && record.maiden_name) personName.last = record.maiden_name;
                     fillFromProfile(prefix + '_first_name', personName.first);
                     fillFromProfile(prefix + '_middle_name', personName.middle);
@@ -804,6 +837,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 window.clearTimeout(searchTimer);
                 searchTimer = window.setTimeout(searchPeople, 300);
             });
+            search.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    searchPeople();
+                }
+            });
             if (birthDateSearch) {
                 birthDateSearch.addEventListener('change', function () {
                     clearStaleSelection();
@@ -816,6 +855,12 @@ document.addEventListener('DOMContentLoaded', function () {
             hiddenId.value = '';
             setIdentityReadOnly(false);
             search.value = '';
+            if (form.hasAttribute('data-walk-in-intake')) {
+                identityFieldNames().forEach(function (name) {
+                    var input = form.querySelector('[name="' + name + '"]');
+                    if (input) input.value = '';
+                });
+            }
             renderSelection();
             resultsBox.textContent = '';
         });
@@ -837,6 +882,62 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         setIdentityReadOnly(hiddenId.value !== '');
         renderSelection();
+    });
+
+    document.querySelectorAll('[data-walk-in-intake]').forEach(function (form) {
+        var typeSelect = form.querySelector('[data-walk-in-type]');
+        var marriageFields = form.querySelector('[data-marriage-only]');
+        var baptismFields = form.querySelector('[data-baptism-only]');
+        if (typeSelect) {
+            var updateTypeFields = function () {
+                if (marriageFields) {
+                    marriageFields.hidden = typeSelect.value !== 'marriage';
+                    marriageFields.disabled = typeSelect.value !== 'marriage';
+                }
+                if (baptismFields) baptismFields.hidden = typeSelect.value !== 'baptism';
+            };
+            typeSelect.addEventListener('change', updateTypeFields);
+            updateTypeFields();
+        }
+
+        if (!form.hasAttribute('data-walk-in-certificate')) return;
+        var relationship = form.querySelector('[name="requester_relationship"]');
+        var requesterName = form.querySelector('[name="requester_name"]');
+        var selfIdNote = form.querySelector('[data-self-id-note]');
+        var primaryFinder = form.querySelector('[data-person-finder][data-name-prefix="person"]');
+        if (!relationship || !requesterName || !primaryFinder) return;
+
+        var subjectName = [
+            form.querySelector('[name="person_first_name"]'),
+            form.querySelector('[name="person_middle_name"]'),
+            form.querySelector('[name="person_last_name"]'),
+            form.querySelector('[name="person_suffix"]')
+        ].map(function (input) { return input ? input.value.trim() : ''; }).filter(Boolean).join(' ');
+        var autoRequesterName = '';
+
+        function updateRequesterName() {
+            var selfRequest = relationship.value === 'self';
+            requesterName.readOnly = selfRequest;
+            requesterName.required = !selfRequest;
+            if (selfIdNote) selfIdNote.hidden = !selfRequest;
+            if (selfRequest) {
+                if (autoRequesterName && requesterName.value !== autoRequesterName) {
+                    requesterName.value = '';
+                }
+                requesterName.value = subjectName;
+                autoRequesterName = subjectName;
+            } else if (requesterName.value === autoRequesterName) {
+                requesterName.value = '';
+                autoRequesterName = '';
+            }
+        }
+
+        primaryFinder.addEventListener('walkinpersonchange', function (event) {
+            subjectName = event.detail && event.detail.name ? event.detail.name : '';
+            updateRequesterName();
+        });
+        relationship.addEventListener('change', updateRequesterName);
+        updateRequesterName();
     });
 
     // ---- 7) Person Mapper search-first assignment -----------------------

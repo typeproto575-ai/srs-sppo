@@ -23,6 +23,9 @@ function certificate_detail_post_string(string $key): string
 
 function certificate_detail_label(string $value): string
 {
+    if (strtolower($value) === 'spouse_person_id') {
+        return 'Spouse Profile';
+    }
     return ucwords(str_replace('_', ' ', $value));
 }
 
@@ -410,6 +413,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             $detailValue = is_scalar($value)
                 ? (string) $value
                 : (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (strtolower((string) $key) === 'spouse_person_id' && is_numeric($value)) {
+                $detailValue = 'Person #' . (int) $value;
+            }
             if (
                 is_string($value)
                 && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)

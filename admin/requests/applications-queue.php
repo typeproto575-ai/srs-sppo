@@ -33,22 +33,7 @@ if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
     unset($_GET['assignee']);
 }
 $requirementStatuses = ['not_received', 'received', 'verified'];
-$requirementKeys = [
-    'baptism' => ['psa_birth_certificate', 'godparent_eligibility', 'guardianship_papers'],
-    'first_communion' => ['origin_baptismal_certificate', 'first_reconciliation', 'catechism_completion', 'parent_guardian_commitment'],
-    'confirmation' => ['psa_birth_certificate', 'origin_baptismal_certificate', 'first_communion_verified', 'confirmation_sponsor_details', 'parent_guardian_commitment'],
-    'marriage' => [
-        'psa_cenomar_groom',
-        'psa_cenomar_bride',
-        'origin_baptismal_certificate_groom',
-        'origin_baptismal_certificate_bride',
-        'transfer_letter',
-        'pre_cana_seminar',
-        'marriage_license_application',
-        'origin_confirmation_certificate_groom',
-        'origin_confirmation_certificate_bride',
-    ],
-];
+$requirementKeys = sd_application_requirement_keys();
 $returnKeys = ['status', 'sacrament', 'channel', 'assignee', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
 $returnParams = array_intersect_key($_GET, array_flip($returnKeys));
 $returnQuery = http_build_query($returnParams);

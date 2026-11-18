@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../includes/backup.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/walk-in-intake.php';
 
 final class DatabaseIntegrationTest extends TestCase
 {
@@ -357,6 +358,59 @@ final class DatabaseIntegrationTest extends TestCase
             self::assertSame(1, (int) $row['id_verified']);
             self::assertSame('certificate.release', $row['action']);
             self::assertSame('disabled', $row['delivery_status']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testWalkInRequestsUseOnsiteChannelRegardlessOfSubmittedChannel(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $sessionUser = ['id' => $userId, 'role' => 'secretary'];
+            $application = walk_in_save_application($this->pdo, [
+                'channel' => 'online',
+                'sacrament_type' => 'baptism',
+                'person_first_name' => 'Walk In',
+                'person_last_name' => 'Child',
+                'person_birth_date' => '2018-03-14',
+                'applicant_name' => 'Walk In Parent',
+                'applicant_email' => 'walkin-parent@example.test',
+                'baptism_venue' => 'Parish Chapel',
+            ], $sessionUser);
+
+            $applicationStmt = $this->pdo->prepare(
+                'SELECT channel, status, person_id, details, requirements
+                 FROM sacrament_applications WHERE id = ?'
+            );
+            $applicationStmt->execute([$application['id']]);
+            $savedApplication = $applicationStmt->fetch();
+            self::assertSame('onsite', $savedApplication['channel']);
+            self::assertSame('new', $savedApplication['status']);
+            self::assertSame('Parish Chapel', json_decode($savedApplication['details'], true)['baptism_venue']);
+            self::assertSame(
+                'not_received',
+                json_decode($savedApplication['requirements'], true)['psa_birth_certificate']['status']
+            );
+
+            $request = walk_in_save_certificate_request($this->pdo, [
+                'channel' => 'online',
+                'sacrament_type' => 'baptism',
+                'person_id' => (string) $savedApplication['person_id'],
+                'requester_relationship' => 'self',
+                'requester_email' => 'walkin-parent@example.test',
+            ], $sessionUser);
+            $requestStmt = $this->pdo->prepare(
+                'SELECT channel, status, requester_name, person_id
+                 FROM certificate_requests WHERE id = ?'
+            );
+            $requestStmt->execute([$request['id']]);
+            $savedRequest = $requestStmt->fetch();
+            self::assertSame('onsite', $savedRequest['channel']);
+            self::assertSame('new', $savedRequest['status']);
+            self::assertSame('Walk In Child', $savedRequest['requester_name']);
+            self::assertSame((int) $savedApplication['person_id'], (int) $savedRequest['person_id']);
         } finally {
             $this->pdo->rollBack();
         }

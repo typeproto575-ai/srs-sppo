@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/public-person-lookup.php';
 require_once __DIR__ . '/../includes/record-search.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 require_once __DIR__ . '/../includes/funeral-data.php';
+require_once __DIR__ . '/../includes/walk-in-intake.php';
 
 final class FunctionsTest extends TestCase
 {
@@ -91,6 +92,67 @@ final class FunctionsTest extends TestCase
             'godmother_name' => 'Lea Delos Santos',
         ]));
         self::assertSame([], sd_application_godparents(['godparents' => 'legacy scalar payload']));
+    }
+
+    public function testWalkInApplicationRequiresValidSubjectAndApplicantContact(): void
+    {
+        $input = [
+            'sacrament_type' => 'baptism',
+            'person_first_name' => 'Ana',
+            'person_last_name' => 'Integration',
+            'person_birth_date' => '2012-04-12',
+            'applicant_name' => 'Parent Integration',
+            'applicant_email' => 'parent@example.test',
+        ];
+        self::assertSame([], walk_in_application_input_errors($input));
+
+        unset($input['person_birth_date'], $input['applicant_email']);
+        $errors = walk_in_application_input_errors($input);
+        self::assertContains("Enter the new primary person's date of birth.", $errors);
+        self::assertContains('Enter a valid applicant email address of 150 characters or fewer.', $errors);
+    }
+
+    public function testWalkInMarriageRequiresBrideAndCertificateRepresentativeNeedsName(): void
+    {
+        $application = [
+            'sacrament_type' => 'marriage',
+            'person_first_name' => 'Groom',
+            'person_last_name' => 'Integration',
+            'person_birth_date' => '1990-04-12',
+            'spouse_first_name' => 'Bride',
+            'spouse_last_name' => 'Integration',
+            'spouse_birth_date' => '1992-06-15',
+            'applicant_name' => 'Groom Integration',
+            'applicant_email' => 'groom@example.test',
+        ];
+        self::assertSame([], walk_in_application_input_errors($application));
+
+        $certificate = [
+            'sacrament_type' => 'marriage',
+            'person_first_name' => 'Groom',
+            'person_last_name' => 'Integration',
+            'person_birth_date' => '1990-04-12',
+            'spouse_first_name' => 'Bride',
+            'spouse_last_name' => 'Integration',
+            'spouse_birth_date' => '1992-06-15',
+            'requester_relationship' => 'self',
+            'requester_email' => 'groom@example.test',
+        ];
+        self::assertSame([], walk_in_certificate_input_errors($certificate));
+
+        $certificate['requester_relationship'] = 'authorized_representative';
+        self::assertContains('Enter the requester name.', walk_in_certificate_input_errors($certificate));
+    }
+
+    public function testWalkInChannelComesFromTheSecretarySession(): void
+    {
+        self::assertSame(
+            ['user_id' => 42, 'channel' => 'onsite'],
+            walk_in_session_context(['id' => 42, 'role' => 'secretary'])
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        walk_in_session_context(['id' => 42, 'role' => 'admin']);
     }
 
     public function testPlaceOfBirthNormalizesUnknownPlaceholdersAndIdentifiesMissingValues(): void

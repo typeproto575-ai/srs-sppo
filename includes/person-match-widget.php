@@ -2,8 +2,49 @@
 $matchRole = ($matchRole ?? 'applicant') === 'spouse' ? 'spouse' : 'applicant';
 $matchLabel = $matchLabel ?? ($matchRole === 'spouse' ? 'Bride' : 'Applicant');
 $matchWidgetMode = $matchWidgetMode ?? 'ajax';
+$matchFieldPrefix = ($matchFieldPrefix ?? 'person') === 'spouse' ? 'spouse' : 'person';
 ?>
-<?php if ($matchWidgetMode !== 'link-only'): ?>
+<?php if ($matchWidgetMode === 'intake'): ?>
+<div class="person-match-form">
+    <div class="person-finder" data-person-finder data-name-prefix="<?= e($matchFieldPrefix) ?>"
+         data-birth-field="<?= e($matchFieldPrefix . '_birth_date') ?>"
+         data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+        <input type="hidden" name="<?= e($matchFieldPrefix === 'spouse' ? 'spouse_person_id' : 'person_id') ?>"
+               data-person-id value="<?= e($matchPersonId ?? '') ?>">
+        <label>Find an existing <?= e(strtolower($matchLabel)) ?>
+            <input autocomplete="off" type="search" name="<?= e($matchFieldPrefix) ?>_search_name"
+                   data-person-search value="<?= e($matchSearchName ?? '') ?>"
+                   placeholder="Search the master person index">
+        </label>
+        <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
+        <div class="person-finder-results" data-person-results aria-live="polite"></div>
+        <button type="button" class="btn btn-secondary btn-small" data-person-find>Search people</button>
+        <div class="walk-in-person-identity">
+            <label>First name
+                <input type="text" name="<?= e($matchFieldPrefix) ?>_first_name" maxlength="150"
+                       autocomplete="given-name" value="<?= e($matchFirstName ?? '') ?>" required>
+            </label>
+            <label>Middle name <span class="field-hint">(optional)</span>
+                <input type="text" name="<?= e($matchFieldPrefix) ?>_middle_name" maxlength="100"
+                       autocomplete="additional-name" value="<?= e($matchMiddleName ?? '') ?>">
+            </label>
+            <label>Last name
+                <input type="text" name="<?= e($matchFieldPrefix) ?>_last_name" maxlength="100"
+                       autocomplete="family-name" value="<?= e($matchLastName ?? '') ?>" required>
+            </label>
+            <label>Suffix <span class="field-hint">(optional)</span>
+                <input type="text" name="<?= e($matchFieldPrefix) ?>_suffix" maxlength="20"
+                       autocomplete="honorific-suffix" value="<?= e($matchSuffix ?? '') ?>">
+            </label>
+            <label>Date of birth
+                <input type="date" name="<?= e($matchFieldPrefix) ?>_birth_date"
+                       data-person-birth-date value="<?= e($matchBirthDate ?? '') ?>" required>
+            </label>
+        </div>
+        <p class="field-hint">Select a search result to fill these details from the profile. Otherwise enter only the person's name and birth date.</p>
+    </div>
+</div>
+<?php elseif ($matchWidgetMode !== 'link-only'): ?>
 <form method="post" class="person-match-form" data-person-match-widget novalidate
       data-person-link-endpoint="<?= e($basePath . '/admin/api/application-person-link.php') ?>">
     <?= csrf_field() ?>
