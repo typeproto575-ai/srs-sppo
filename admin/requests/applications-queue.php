@@ -95,7 +95,6 @@ function application_queue_render_detail_value(mixed $value): void
         $isParticipantList = array_is_list($value);
         foreach ($value as $item) {
             if (!is_array($item)
-                || count($item) !== 2
                 || !is_scalar($item['role'] ?? null)
                 || !is_scalar($item['full_name'] ?? null)) {
                 $isParticipantList = false;
@@ -1586,6 +1585,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                                 'barangay_chapel' => 'Barangay Chapel',
                                                 default => $value,
                                             };
+                                        }
+                                        if ($detailKey === 'godparents') {
+                                            $normalizedGodparents = sd_application_godparents($details);
+                                            if ($normalizedGodparents !== []) {
+                                                $value = $normalizedGodparents;
+                                            }
                                         }
                                         ?>
                                         <dt><?= e($detailLabel) ?></dt>

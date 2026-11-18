@@ -199,25 +199,17 @@ if ($isEdit) {
             }
             $godfathers = [];
             $godmothers = [];
-            foreach (($applicationDetails['godparents'] ?? []) as $godparent) {
-                if (!is_array($godparent)) {
-                    continue;
-                }
-                $role = (string) ($godparent['role'] ?? '');
-                $name = trim((string) ($godparent['full_name'] ?? ''));
-                if ($name === '') {
-                    continue;
-                }
-                if ($role === 'godfather') {
+            foreach (sd_application_godparents($applicationDetails) as $godparent) {
+                if ($godparent['role'] === 'godfather') {
                     $godfathers[] = $godparent;
-                } elseif ($role === 'godmother') {
+                } elseif ($godparent['role'] === 'godmother') {
                     $godmothers[] = $godparent;
                 }
             }
             foreach (['godfather' => $godfathers, 'godmother' => $godmothers] as $prefix => $rows) {
                 foreach ($rows as $index => $row) {
                     $formValues[$prefix . '_full_name'][$index] = (string) $row['full_name'];
-                    $formValues[$prefix . '_residence'][$index] = '';
+                    $formValues[$prefix . '_residence'][$index] = (string) ($row['residence'] ?? '');
                 }
             }
         }

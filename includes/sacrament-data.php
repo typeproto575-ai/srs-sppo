@@ -112,6 +112,93 @@ function sd_strip_parent_birthplaces(array $details): array
     return $details;
 }
 
+/** Normalize current and legacy godparent payloads from a baptism application. */
+function sd_application_godparents(array $details): array
+{
+    $godparents = [];
+    $roleFor = static function (mixed $value): ?string {
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        return match (strtolower(trim((string) $value))) {
+            'godfather', 'godfather_name', 'godfathers' => 'godfather',
+            'godmother', 'godmother_name', 'godmothers' => 'godmother',
+            default => null,
+        };
+    };
+    $append = static function (?string $fallbackRole, mixed $entry) use (&$godparents, $roleFor): void {
+        if (is_array($entry)) {
+            $role = $roleFor($entry['role'] ?? $entry['godparent_type'] ?? $entry['sponsor_type'] ?? $fallbackRole);
+            $name = $entry['full_name'] ?? $entry['godparent_name'] ?? $entry['sponsor_name'] ?? $entry['name'] ?? null;
+            $residence = $entry['residence'] ?? $entry['godparent_residence'] ?? $entry['sponsor_residence'] ?? null;
+        } else {
+            $role = $fallbackRole;
+            $name = $entry;
+            $residence = null;
+        }
+
+        if ($role === null || !is_scalar($name)) {
+            return;
+        }
+        $name = trim((string) $name);
+        if ($name === '') {
+            return;
+        }
+
+        $participant = ['role' => $role, 'full_name' => $name];
+        if (is_scalar($residence) && trim((string) $residence) !== '') {
+            $participant['residence'] = trim((string) $residence);
+        }
+        $godparents[] = $participant;
+    };
+
+    $source = $details['godparents'] ?? null;
+    if (is_array($source)) {
+        $hasName = array_intersect(
+            ['full_name', 'godparent_name', 'sponsor_name', 'name'],
+            array_keys($source)
+        ) !== [];
+        $sourceRole = $roleFor($source['role'] ?? $source['godparent_type'] ?? $source['sponsor_type'] ?? null);
+        if ($hasName && $sourceRole !== null) {
+            $append(null, $source);
+        } else {
+            foreach ($source as $key => $entry) {
+                $fallbackRole = $roleFor((string) $key);
+                if ($fallbackRole !== null && is_array($entry) && array_is_list($entry)) {
+                    foreach ($entry as $participant) {
+                        $append($fallbackRole, $participant);
+                    }
+                } else {
+                    $append($fallbackRole, $entry);
+                }
+            }
+        }
+    }
+
+    foreach (['godfather', 'godmother'] as $role) {
+        foreach ([$role, $role . '_name', $role . 's'] as $key) {
+            if (!array_key_exists($key, $details)) {
+                continue;
+            }
+            $before = count($godparents);
+            $value = $details[$key];
+            if (is_array($value) && array_is_list($value)) {
+                foreach ($value as $entry) {
+                    $append($role, $entry);
+                }
+            } else {
+                $append($role, $value);
+            }
+            if (count($godparents) > $before) {
+                break;
+            }
+        }
+    }
+
+    return $godparents;
+}
+
 /**
  * Search persons. The query is split into words. Every word must match.
  *   word like 1985-02-14  -> exact birth date

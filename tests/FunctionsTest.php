@@ -61,6 +61,38 @@ final class FunctionsTest extends TestCase
         );
     }
 
+    public function testApplicationGodparentsNormalizeLegacyShapesWithoutWarnings(): void
+    {
+        self::assertSame([
+            ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+            ['role' => 'godmother', 'full_name' => 'Lea Delos Santos'],
+        ], sd_application_godparents([
+            'godparents' => [
+                ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+                ['role' => 'godmother', 'full_name' => 'Lea Delos Santos'],
+            ],
+        ]));
+
+        self::assertSame([
+            ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+            ['role' => 'godmother', 'full_name' => 'Lea Delos Santos'],
+        ], sd_application_godparents([
+            'godparents' => [
+                'godfather' => 'Marco Rivera',
+                'godmother' => ['name' => 'Lea Delos Santos'],
+            ],
+        ]));
+
+        self::assertSame([
+            ['role' => 'godfather', 'full_name' => 'Marco Rivera'],
+            ['role' => 'godmother', 'full_name' => 'Lea Delos Santos'],
+        ], sd_application_godparents([
+            'godfather_name' => 'Marco Rivera',
+            'godmother_name' => 'Lea Delos Santos',
+        ]));
+        self::assertSame([], sd_application_godparents(['godparents' => 'legacy scalar payload']));
+    }
+
     public function testPlaceOfBirthNormalizesUnknownPlaceholdersAndIdentifiesMissingValues(): void
     {
         foreach (['n/a', ' NA ', 'N.A.', 'none', 'Unknown', '-'] as $placeholder) {
