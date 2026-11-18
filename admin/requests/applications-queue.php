@@ -466,6 +466,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect_to($postReturnUrl);
             }
 
+            $confirmedVenue = null;
+            if (($application['sacrament_type'] ?? '') === 'baptism') {
+                if (!is_string($_POST['confirmed_venue'] ?? null)) {
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'Confirmed baptism venue must be text.';
+                    redirect_to($postReturnUrl);
+                }
+                $confirmedVenue = trim($_POST['confirmed_venue']);
+                if (mb_strlen($confirmedVenue) > 150) {
+                    $pdo->rollBack();
+                    $_SESSION['application_queue_error'] = 'Confirmed baptism venue must be 150 characters or fewer.';
+                    redirect_to($postReturnUrl);
+                }
+                if (!is_array($applicationDetails)) {
+                    if (empty($application['details'])) {
+                        $applicationDetails = [];
+                    } else {
+                        $pdo->rollBack();
+                        $_SESSION['application_queue_error'] = 'Application details could not be read. Reload the page and try again.';
+                        redirect_to($postReturnUrl);
+                    }
+                }
+            }
+
             $scheduledDate = is_string($_POST['scheduled_date'] ?? null)
                 ? trim($_POST['scheduled_date'])
                 : '';
@@ -487,7 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $scheduleEventStmt = $pdo->prepare(
-                'SELECT id, event_date, start_time, end_time
+                'SELECT id, event_date, start_time, end_time, public_details
                  FROM schedule_events
                  WHERE application_id = ?
                  ORDER BY id
@@ -508,10 +532,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingEndTime = $existingSchedule && $existingSchedule['end_time'] !== null
                 ? substr((string) $existingSchedule['end_time'], 0, 5)
                 : '';
+            $existingConfirmedVenue = is_scalar($applicationDetails['confirmed_venue'] ?? null)
+                ? trim((string) $applicationDetails['confirmed_venue'])
+                : '';
+            $venueChanged = $confirmedVenue !== null
+                && $existingConfirmedVenue !== $confirmedVenue;
             $scheduleChanged = $existingSchedule === null
                 || (string) $existingSchedule['event_date'] !== $scheduledDate
                 || $existingStartTime !== $scheduledStartTime
-                || $existingEndTime !== $scheduledEndTime;
+                || $existingEndTime !== $scheduledEndTime
+                || $venueChanged;
             $statusChanged = $application['status'] !== 'scheduled';
             if (!$scheduleChanged && !$statusChanged) {
                 $pdo->rollBack();
@@ -533,16 +563,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             };
             $startTimeValue = $scheduledStartTime !== '' ? $scheduledStartTime : null;
             $endTimeValue = $scheduledEndTime !== '' ? $scheduledEndTime : null;
+            $schedulePublicDetails = $confirmedVenue !== null && $confirmedVenue !== ''
+                ? 'Venue: ' . $confirmedVenue
+                : null;
 
             if ($existingSchedule === null) {
                 $insertSchedule = $pdo->prepare(
                     'INSERT INTO schedule_events
                         (event_type, title, public_details, event_date, start_time, end_time, application_id, notes, created_by)
-                     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)'
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $insertSchedule->execute([
                     $eventType,
                     $eventTitle,
+                    $schedulePublicDetails,
                     $scheduledDate,
                     $startTimeValue,
                     $endTimeValue,
@@ -553,15 +587,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $updateSchedule = $pdo->prepare(
                     'UPDATE schedule_events
-                     SET event_type = ?, event_date = ?, start_time = ?, end_time = ?
+                     SET event_type = ?, public_details = ?, event_date = ?, start_time = ?, end_time = ?
                      WHERE id = ?'
                 );
                 $updateSchedule->execute([
                     $eventType,
+                    $confirmedVenue !== null ? $schedulePublicDetails : ($existingSchedule['public_details'] ?? null),
                     $scheduledDate,
                     $startTimeValue,
                     $endTimeValue,
                     (int) $existingSchedule['id'],
+                ]);
+            }
+
+            if ($confirmedVenue !== null) {
+                if ($confirmedVenue === '') {
+                    unset($applicationDetails['confirmed_venue']);
+                } else {
+                    $applicationDetails['confirmed_venue'] = $confirmedVenue;
+                }
+                $updateApplicationDetails = $pdo->prepare(
+                    'UPDATE sacrament_applications SET details = ? WHERE id = ?'
+                );
+                $updateApplicationDetails->execute([
+                    json_encode($applicationDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                    (int) $applicationId,
                 ]);
             }
 
@@ -1422,6 +1472,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="set_schedule">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                <?php if ($app['sacrament_type'] === 'baptism'): ?>
+                                    <label>Where will the baptism be held?
+                                        <input
+                                            type="text"
+                                            name="confirmed_venue"
+                                            maxlength="150"
+                                            value="<?= e($confirmedBaptismVenue !== '' ? $confirmedBaptismVenue : $requestedBaptismVenue) ?>"
+                                        >
+                                    </label>
+                                <?php endif; ?>
                                 <label>Confirmed date *
                                     <input
                                         type="date"

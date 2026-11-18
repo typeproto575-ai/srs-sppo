@@ -162,6 +162,9 @@ if ($isEdit) {
             if (!empty($application['scheduled_event_date'])) {
                 $formValues['baptism_date'] = (string) $application['scheduled_event_date'];
             }
+            if (is_scalar($applicationDetails['confirmed_venue'] ?? null)) {
+                $formValues['baptism_place'] = (string) $applicationDetails['confirmed_venue'];
+            }
             foreach ([
                 'child_birth_date' => 'birth_date',
                 'child_birth_place' => 'child_birthplace',
@@ -366,7 +369,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
         || !checkdate((int) substr($baptismDate, 5, 2), (int) substr($baptismDate, 8, 2), (int) substr($baptismDate, 0, 4))) {
         $errors[] = 'Enter a valid baptism date.';
     }
-    if (!$isPostEdit && $baptismPlace === '') {
+    if (!$isPostEdit && !$application && $baptismPlace === '') {
         $errors[] = 'Enter the actual place of baptism.';
     }
     if (!$isPostEdit && $ministerName === '') {
@@ -743,8 +746,8 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 </label>
                 <div class="inline-fields">
                     <label>Baptism Date <span class="required-marker">*</span> <input type="date" name="baptism_date" value="<?= e($formValues['baptism_date'] ?? $editRecord['event_date'] ?? '') ?>" required></label>
-                    <label>Place of Baptism<?= !$isEdit ? ' *' : '' ?>
-                        <input type="text" name="baptism_place" maxlength="150" value="<?= e($formValues['baptism_place'] ?? $editRecord['place'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                    <label>Place of Baptism<?= !$isEdit && !$application ? ' *' : '' ?>
+                        <input type="text" name="baptism_place" maxlength="150" value="<?= e($formValues['baptism_place'] ?? $editRecord['place'] ?? '') ?>"<?= !$isEdit && !$application ? ' required' : '' ?>>
                     </label>
                 </div>
             </fieldset>

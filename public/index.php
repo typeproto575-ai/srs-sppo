@@ -31,10 +31,18 @@ $calendarEvents = array_map(function ($event) use ($typeColorMap, $typeLabels) {
     $color = $typeColorMap[$event['event_type']] ?? $typeColorMap['other'];
     $displayTitle = public_calendar_title((string) $event['title']);
     $publicDetails = trim((string) ($event['public_details'] ?? ''));
+    $publicVenue = '';
+    if (($event['event_type'] ?? '') === 'baptism'
+        && preg_match('/^Venue:\s*(.+)$/i', $publicDetails, $venueMatch)) {
+        $publicVenue = trim($venueMatch[1]);
+    }
     $calendarTitle = $displayTitle;
     if (!empty($event['start_time'])) {
         $timeLabel = date('g:i A', strtotime($event['start_time']));
         $calendarTitle = $timeLabel . ' - ' . $displayTitle;
+    }
+    if ($publicVenue !== '') {
+        $calendarTitle .= ' · Venue: ' . $publicVenue;
     }
     return [
         'title' => $calendarTitle,
@@ -44,6 +52,7 @@ $calendarEvents = array_map(function ($event) use ($typeColorMap, $typeLabels) {
         'classNames' => $publicDetails === '' ? [] : ['has-public-details'],
         'displayTitle' => $displayTitle,
         'publicDetails' => $publicDetails,
+        'publicVenue' => $publicVenue,
         'eventType' => $typeLabels[$event['event_type']] ?? $typeLabels['other'],
         'displayDate' => date('l, F j, Y', strtotime($event['event_date'])),
     ];
@@ -183,7 +192,9 @@ require_once __DIR__ . '/../includes/header.php';
             eventDidMount: function (info) {
                 var details = info.event.extendedProps;
                 var hasPublicDetails = details.publicDetails !== '';
-                info.el.setAttribute('aria-label', details.displayTitle + ', ' + details.eventType + ', ' + details.displayDate + (hasPublicDetails ? '. Select to read more.' : '. No additional details posted.'));
+                info.el.setAttribute('aria-label', details.displayTitle + ', ' + details.eventType + ', ' + details.displayDate
+                    + (details.publicVenue ? '. Venue: ' + details.publicVenue : '')
+                    + (hasPublicDetails ? '. Select to read more.' : '. No additional details posted.'));
                 if (hasPublicDetails) {
                     var indicator = document.createElement('span');
                     indicator.className = 'calendar-event-has-details';

@@ -270,6 +270,15 @@ function schedule_calendar_title(string $title): string
     return trim((string) preg_replace('/(?:\s*[-–—|:]\s*|\s+)\(?\b(?:AM|PM)\b\)?\s*$/i', '', $title));
 }
 
+function schedule_calendar_venue(array $event): string
+{
+    if (($event['event_type'] ?? '') !== 'baptism'
+        || !preg_match('/^Venue:\s*(.+)$/i', trim((string) ($event['public_details'] ?? '')), $matches)) {
+        return '';
+    }
+    return trim($matches[1]);
+}
+
 $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $eventsByDateAll, $basePath) {
     $conflict = schedule_event_has_conflict($e, $eventsByDateAll);
     $timeLabel = '';
@@ -277,8 +286,11 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
         $timeLabel = date('g:i A', strtotime($e['start_time']));
         $timeLabel .= ' - ';
     }
+    $venue = schedule_calendar_venue($e);
     return [
-        'title' => $timeLabel . schedule_calendar_title((string) $e['title']) . ($conflict ? ' — CONFLICT' : ''),
+        'title' => $timeLabel . schedule_calendar_title((string) $e['title'])
+            . ($venue !== '' ? ' · Venue: ' . $venue : '')
+            . ($conflict ? ' — CONFLICT' : ''),
         'start' => $e['event_date'] . ($e['start_time'] ? 'T' . $e['start_time'] : ''),
         'end' => $e['end_time'] ? $e['event_date'] . 'T' . $e['end_time'] : null,
         'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? $typeColors['other']),
@@ -386,7 +398,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 eventDidMount: function (info) {
                     info.el.setAttribute('aria-label', info.event.title + ', ' + info.event.start.toLocaleDateString());
                 },
-                events: <?= json_encode($calendarEvents) ?>
+                events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
             });
             calendar.render();
         });
@@ -428,9 +440,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <tbody>
                 <?php foreach ($events as $e): ?>
                     <?php $conflict = schedule_event_has_conflict($e, $eventsByDateAll); ?>
+                    <?php $venue = schedule_calendar_venue($e); ?>
                     <tr>
                         <td><?= e(date('M j, Y', strtotime($e['event_date']))) ?></td>
-                        <td><?= $e['start_time'] ? e(date('g:i A', strtotime($e['start_time']))) : '—' ?></td>
+                        <td>
+                            <?= $e['start_time'] ? e(date('g:i A', strtotime($e['start_time']))) : '—' ?>
+                            <?php if ($venue !== ''): ?><br><span class="field-hint">Venue: <?= e($venue) ?></span><?php endif; ?>
+                        </td>
                         <td><span class="status-badge" style="background:<?= e($typeColors[$e['event_type']] ?? '#6b7280') ?>;color:#fff;"><?= e($typeLabels[$e['event_type']] ?? ucfirst($e['event_type'])) ?></span></td>
                         <td><?= e($e['title']) ?><?php if ($conflict): ?> <span class="status-badge status-rejected">Conflict</span><?php endif; ?></td>
                         <td><?= e($e['public_details'] ?? '') ?></td>
