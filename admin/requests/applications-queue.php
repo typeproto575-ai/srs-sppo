@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_login();
 require_role('secretary');
 
@@ -145,7 +146,13 @@ function application_queue_render_detail_value(mixed $value): void
 function application_queue_details(array $application): array
 {
     $details = json_decode((string) ($application['details'] ?? ''), true);
-    return is_array($details) ? $details : [];
+    if (!is_array($details)) {
+        return [];
+    }
+
+    return ($application['sacrament_type'] ?? '') === 'baptism'
+        ? sd_strip_parent_birthplaces($details)
+        : $details;
 }
 
 function application_queue_has_verified_baptism_record(PDO $pdo, int $personId): bool

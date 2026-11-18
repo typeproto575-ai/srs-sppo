@@ -415,11 +415,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $parentsUnion = normalize_parents_union_type(trim((string) ($_POST['parents_union_type'] ?? '')));
             $parentsMarriageParish = trim((string) ($_POST['parents_marriage_parish'] ?? ''));
-            $fatherBirthplace = trim((string) ($_POST['father_birthplace'] ?? ''));
-            $motherBirthplace = trim((string) ($_POST['mother_birthplace'] ?? ''));
-            $parentsOrigin = trim((string) ($_POST['parents_origin'] ?? ''));
             $parentsResidence = trim((string) ($_POST['parents_residence'] ?? ''));
-            $proxyName = trim((string) ($_POST['proxy_name'] ?? ''));
+            $fatherReligion = trim((string) ($_POST['father_religion'] ?? ''));
+            $motherReligion = trim((string) ($_POST['mother_religion'] ?? ''));
             $domicile = trim((string) ($_POST['domicile'] ?? ''));
 
             // Godparents (baptism only): 4 rows
@@ -496,11 +494,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($effectivePersonId > 0 && $matchBox === null) {
                     $details = [];
                     if ($isBaptism) {
-                        if ($fatherBirthplace !== '') $details['father_birthplace'] = $fatherBirthplace;
-                        if ($motherBirthplace !== '') $details['mother_birthplace'] = $motherBirthplace;
-                        if ($parentsOrigin !== '') $details['parents_origin'] = $parentsOrigin;
                         if ($parentsResidence !== '') $details['parents_residence'] = $parentsResidence;
-                        if ($proxyName !== '') $details['proxy_name'] = $proxyName;
+                        if ($fatherReligion !== '') $details['father_religion'] = $fatherReligion;
+                        if ($motherReligion !== '') $details['mother_religion'] = $motherReligion;
                     }
                     if ($type === 'first_communion' && $domicile !== '') {
                         $details['domicile'] = $domicile;
@@ -917,7 +913,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="save">
                 <input type="hidden" name="confirm_new" value="1">
-                <?php foreach (['first_name','middle_name','last_name','suffix','sex','birth_date','birth_place','father_name','mother_maiden_name','address','event_date','place','minister_name','source','parents_union_type','parents_marriage_parish','entry_no','book_no','page_no','line_no','father_birthplace','mother_birthplace','parents_origin','parents_residence','proxy_name','remarks'] as $f): ?>
+                <?php foreach (['first_name','middle_name','last_name','suffix','sex','birth_date','birth_place','father_name','mother_maiden_name','address','event_date','place','minister_name','source','parents_union_type','parents_marriage_parish','entry_no','book_no','page_no','line_no','parents_residence','father_religion','mother_religion','remarks'] as $f): ?>
                     <input type="hidden" name="<?= e($f) ?>" value="<?= e((string) ($_POST[$f] ?? '')) ?>">
                 <?php endforeach; ?>
                 <button type="submit" class="btn btn-small">No, this is a different person</button>
@@ -1013,11 +1009,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <section class="panel-card">
                 <h2>Details</h2>
                 <div class="form-grid view-grid">
-                    <div class="field"><label class="field-label">Father's birthplace</label><input type="text" name="father_birthplace" value="<?= e((string) ($_POST['father_birthplace'] ?? ($prefillDetails['father_birthplace'] ?? ''))) ?>"></div>
-                    <div class="field"><label class="field-label">Mother's birthplace</label><input type="text" name="mother_birthplace" value="<?= e((string) ($_POST['mother_birthplace'] ?? ($prefillDetails['mother_birthplace'] ?? ''))) ?>"></div>
-                    <div class="field"><label class="field-label">Parents' origin</label><input type="text" name="parents_origin" value="<?= e((string) ($_POST['parents_origin'] ?? ($prefillDetails['parents_origin'] ?? ''))) ?>"></div>
                     <div class="field"><label class="field-label">Parents' residence</label><input type="text" name="parents_residence" value="<?= e((string) ($_POST['parents_residence'] ?? ($prefillDetails['parents_residence'] ?? ''))) ?>"></div>
-                    <div class="field"><label class="field-label">Proxy name</label><input type="text" name="proxy_name" value="<?= e((string) ($_POST['proxy_name'] ?? ($prefillDetails['proxy_name'] ?? ''))) ?>"></div>
+                    <div class="field"><label class="field-label">Father's religion</label><input type="text" name="father_religion" value="<?= e((string) ($_POST['father_religion'] ?? ($prefillDetails['father_religion'] ?? ''))) ?>"></div>
+                    <div class="field"><label class="field-label">Mother's religion</label><input type="text" name="mother_religion" value="<?= e((string) ($_POST['mother_religion'] ?? ($prefillDetails['mother_religion'] ?? ''))) ?>"></div>
                 </div>
             </section>
 

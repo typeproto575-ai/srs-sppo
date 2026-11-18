@@ -167,11 +167,9 @@ if ($isEdit) {
                 'child_birth_place' => 'child_birthplace',
                 'parents_union_type' => 'union_type',
                 'parents_marriage_parish' => 'parents_marriage_parish',
-                'father_birthplace' => 'father_birthplace',
-                'mother_birthplace' => 'mother_birthplace',
-                'parents_origin' => 'parents_origin',
                 'parents_residence' => 'parents_residence',
-                'proxy_name' => 'proxy_name',
+                'father_religion' => 'father_religion',
+                'mother_religion' => 'mother_religion',
             ] as $detailKey => $fieldName) {
                 if (isset($applicationDetails[$detailKey]) && is_scalar($applicationDetails[$detailKey])) {
                     $formValues[$fieldName] = (string) $applicationDetails[$detailKey];
@@ -252,13 +250,6 @@ if ($personId > 0) {
     } else {
         $linkedParentProfiles = sd_get_family($pdo, $personId);
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            foreach (['father' => 'father_birthplace', 'mother' => 'mother_birthplace'] as $role => $field) {
-                $parent = $linkedParentProfiles[$role] ?? null;
-                if (is_array($parent) && !empty($parent['birth_place'])
-                    && trim((string) ($formValues[$field] ?? '')) === '') {
-                    $formValues[$field] = (string) $parent['birth_place'];
-                }
-            }
             $fatherAddress = trim((string) ($linkedParentProfiles['father']['address'] ?? ''));
             $motherAddress = trim((string) ($linkedParentProfiles['mother']['address'] ?? ''));
             if ($fatherAddress !== '' && $fatherAddress === $motherAddress
@@ -317,22 +308,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
         }
         $parentsMarriageParish = '';
     }
-    $fatherBirthplaceInput = $_POST['father_birthplace'] ?? '';
-    $motherBirthplaceInput = $_POST['mother_birthplace'] ?? '';
-    $fatherBirthplace = is_string($fatherBirthplaceInput) ? trim($fatherBirthplaceInput) : '';
-    $motherBirthplace = is_string($motherBirthplaceInput) ? trim($motherBirthplaceInput) : '';
     $fatherName = compose_person_name($_POST, 'father');
     $motherName = compose_person_name($_POST, 'mother');
     $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $parentDetails = [];
-    foreach (['father_birthplace', 'mother_birthplace', 'parents_origin', 'parents_residence', 'proxy_name'] as $key) {
+    foreach (['parents_residence' => 255, 'father_religion' => 150, 'mother_religion' => 150] as $key => $maxLength) {
         $rawValue = $_POST[$key] ?? '';
         if (!is_string($rawValue)) {
             $errors[] = 'Parent and guardian details must be text.';
             continue;
         }
         $value = trim($rawValue);
+        if (mb_strlen($value) > $maxLength) {
+            $errors[] = 'Parent details must be ' . $maxLength . ' characters or fewer.';
+        }
         if ($value !== '') {
             $parentDetails[$key] = $value;
         }
@@ -382,17 +372,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
     if (!$isPostEdit && $ministerName === '') {
         $errors[] = 'Enter the officiating minister’s full name.';
     }
-    if ($fatherBirthplace === '') {
-        $errors[] = "Enter the father's birthplace.";
-    }
-    if ($motherBirthplace === '') {
-        $errors[] = "Enter the mother's birthplace.";
-    }
     if (!is_string($unionInput) || !in_array($unionType, ['', 'canonical', 'civil', 'common_law', 'unmarried'], true)) {
         $errors[] = 'Choose a valid parents’ union type.';
-    }
-    if (mb_strlen($fatherBirthplace) > 150 || mb_strlen($motherBirthplace) > 150) {
-        $errors[] = "Parent birthplaces must be 150 characters or fewer.";
     }
     if (mb_strlen($parentsMarriageParish) > 255) {
         $errors[] = "Parents' marriage parish must be 255 characters or fewer.";
@@ -769,7 +750,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
             </fieldset>
             <fieldset>
                 <legend>Parents</legend>
-                <p class="field-hint">Father's and mother's birthplaces are required for the parish baptism register. Place of origin means where the family is from; current residence is where they live now. Birthplaces and shared current residence prefill from linked parent profiles when available.</p>
+                <p class="field-hint">Enter the parents' current residence and religion, together with their union details.</p>
                 <?php if ($identity): ?>
                     <p>Father: <?= e((string) ($identity['father_name'] ?? 'Not recorded')) ?></p>
                     <p>Mother’s maiden name: <?= e((string) ($identity['mother_maiden_name'] ?? 'Not recorded')) ?></p>
@@ -780,7 +761,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <?php endif; ?>
                 <?php
                 $parentFieldValues = [];
-                foreach (['father_birthplace', 'mother_birthplace', 'parents_residence', 'parents_origin', 'proxy_name'] as $fieldName) {
+                foreach (['parents_residence', 'father_religion', 'mother_religion'] as $fieldName) {
                     $value = $formValues[$fieldName] ?? $recordDetails[$fieldName] ?? '';
                     $parentFieldValues[$fieldName] = is_scalar($value) ? (string) $value : '';
                 }
@@ -792,20 +773,14 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                     : '';
                 ?>
                 <div class="baptism-parent-grid">
-                    <label>Father's Birthplace <span class="required-marker" aria-hidden="true">*</span>
-                        <input type="text" name="father_birthplace" maxlength="150" value="<?= e($parentFieldValues['father_birthplace']) ?>" required>
-                    </label>
-                    <label>Mother's Birthplace <span class="required-marker" aria-hidden="true">*</span>
-                        <input type="text" name="mother_birthplace" maxlength="150" value="<?= e($parentFieldValues['mother_birthplace']) ?>" required>
-                    </label>
                     <label>Parents' Current Residence
                         <input type="text" name="parents_residence" maxlength="255" value="<?= e($parentFieldValues['parents_residence']) ?>">
                     </label>
-                    <label>Parents' Place of Origin (optional)
-                        <input type="text" name="parents_origin" maxlength="150" value="<?= e($parentFieldValues['parents_origin']) ?>">
+                    <label>Father's Religion
+                        <input type="text" name="father_religion" maxlength="150" value="<?= e($parentFieldValues['father_religion']) ?>">
                     </label>
-                    <label>Proxy / Guardian Name
-                        <input type="text" name="proxy_name" maxlength="150" value="<?= e($parentFieldValues['proxy_name']) ?>">
+                    <label>Mother's Religion
+                        <input type="text" name="mother_religion" maxlength="150" value="<?= e($parentFieldValues['mother_religion']) ?>">
                     </label>
                     <?php
                     $selectedUnionValue = $formValues['union_type'] ?? $editRecord['parents_union_type'] ?? '';

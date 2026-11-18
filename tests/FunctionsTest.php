@@ -36,6 +36,31 @@ final class FunctionsTest extends TestCase
         self::assertSame('Not recorded', parents_union_type_label(null));
     }
 
+    public function testBaptismDetailsIgnoreLegacyParentBirthplacesButPreserveChildBirthplace(): void
+    {
+        $record = sd_decode_record([
+            'sacrament_type' => 'baptism',
+            'details' => json_encode([
+                'father_birthplace' => 'Oldtown',
+                'mother_birth_place' => 'Oldtown',
+                'child_birthplace' => 'Dingalan',
+                'nested' => ['father-place-of-birth' => 'Oldtown', 'note' => 'Kept'],
+            ]),
+        ]);
+
+        self::assertSame([
+            'child_birthplace' => 'Dingalan',
+            'nested' => ['note' => 'Kept'],
+        ], $record['details']);
+        self::assertSame(
+            ['father_birthplace' => 'Oldtown'],
+            sd_decode_record([
+                'sacrament_type' => 'confirmation',
+                'details' => json_encode(['father_birthplace' => 'Oldtown']),
+            ])['details']
+        );
+    }
+
     public function testPlaceOfBirthNormalizesUnknownPlaceholdersAndIdentifiesMissingValues(): void
     {
         foreach (['n/a', ' NA ', 'N.A.', 'none', 'Unknown', '-'] as $placeholder) {

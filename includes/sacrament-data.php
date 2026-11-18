@@ -82,7 +82,34 @@ function sd_decode_record(array $row): array
         $decoded = json_decode($row['details'], true);
     }
     $row['details'] = is_array($decoded) ? $decoded : [];
+    if (($row['sacrament_type'] ?? '') === 'baptism') {
+        $row['details'] = sd_strip_parent_birthplaces($row['details']);
+    }
     return $row;
+}
+
+/** Remove obsolete parent-birthplace keys without changing the child's birthplace. */
+function sd_strip_parent_birthplaces(array $details): array
+{
+    foreach ($details as $key => $value) {
+        $normalizedKey = strtolower(str_replace([' ', '-'], '_', (string) $key));
+        if (in_array($normalizedKey, [
+            'father_birthplace',
+            'mother_birthplace',
+            'father_birth_place',
+            'mother_birth_place',
+            'father_place_of_birth',
+            'mother_place_of_birth',
+        ], true)) {
+            unset($details[$key]);
+            continue;
+        }
+        if (is_array($value)) {
+            $details[$key] = sd_strip_parent_birthplaces($value);
+        }
+    }
+
+    return $details;
 }
 
 /**
@@ -762,6 +789,9 @@ function sd_save_record(PDO $pdo, array $data, ?array $participants = null, ?int
         if ($details === null && trim((string) ($data['details'] ?? '')) !== '') {
             throw new InvalidArgumentException('Details must be valid JSON.');
         }
+    }
+    if ($type === 'baptism' && is_array($details)) {
+        $details = sd_strip_parent_birthplaces($details);
     }
     $detailsJson = (is_array($details) && $details) ? json_encode($details, JSON_UNESCAPED_UNICODE) : null;
 
