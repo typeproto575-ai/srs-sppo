@@ -19,6 +19,7 @@ $editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? 
 $editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 $pageTitle = 'Baptismal Record';
 $errors = [];
+$warnings = [];
 $duplicateMatches = [];
 $success = null;
 $notice = null;
@@ -133,6 +134,17 @@ if ($isEdit) {
     );
     $stmt->execute([(int) $editRecord['id']]);
     $editParticipants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        $editGodparentNames = ['godfather' => [], 'godmother' => []];
+        foreach ($editParticipants as $participant) {
+            $role = (string) ($participant['role'] ?? '');
+            $name = trim((string) ($participant['full_name'] ?? ''));
+            if (isset($editGodparentNames[$role]) && $name !== '') {
+                $editGodparentNames[$role][] = $name;
+            }
+        }
+        $warnings = sd_baptism_godparent_presence($editGodparentNames, true)['warnings'];
+    }
     $formValues = array_merge($editRecord, is_array($_POST) ? $_POST : []);
     $recordDetails = json_decode((string) ($editRecord['details'] ?? ''), true);
     $recordDetails = is_array($recordDetails) ? $recordDetails : [];
@@ -323,6 +335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
         }
     }
     $godparents = [];
+    $godparentNames = ['godfather' => [], 'godmother' => []];
     foreach (['godfather', 'godmother'] as $role) {
         $names = $_POST[$role . '_full_name'] ?? [];
         if (!is_array($names)) {
@@ -345,6 +358,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
             if ($name === '') {
                 continue;
             }
+            $godparentNames[$role][] = $name;
             if (mb_strlen($name) > 150) {
                 $errors[] = 'Godparent names must be 150 characters or fewer.';
             }
@@ -368,6 +382,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
             ];
         }
     }
+    $presence = sd_baptism_godparent_presence($godparentNames, $isPostEdit);
+    $errors = array_merge($errors, $presence['errors']);
+    $warnings = array_merge($warnings, $presence['warnings']);
 
     if ($baptismDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $baptismDate)
         || !checkdate((int) substr($baptismDate, 5, 2), (int) substr($baptismDate, 8, 2), (int) substr($baptismDate, 0, 4))) {
@@ -642,6 +659,11 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <p class="field-hint">Applicant-provided child name: <strong><?= e((string) ($applicationDetails['child_name'] ?? '')) ?></strong>. Split and confirm the name in the editable fields below; it is not split automatically.</p>
             <?php endif; ?>
         <?php endif; ?>
+        <?php if ($warnings !== []): ?>
+            <div class="alert alert-warning" role="status">
+                <ul><?php foreach ($warnings as $warning): ?><li><?= e($warning) ?></li><?php endforeach; ?></ul>
+            </div>
+        <?php endif; ?>
         <?php if ($errors): ?><div class="alert alert-error"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div><?php endif; ?>
         <form autocomplete="off" method="post" action="" data-review data-review-title="Review Baptismal Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?>
@@ -776,7 +798,10 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
             </fieldset>
             <?php foreach (['godfather' => ['Godfathers (Ninong)', $godfatherRows], 'godmother' => ['Godmothers (Ninang)', $godmotherRows]] as $role => [$legend, $rows]): ?>
                 <fieldset>
-                    <legend><?= e($legend) ?></legend>
+                    <legend><?= e($legend) ?><?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : '' ?></legend>
+                    <?php if (!$isEdit): ?>
+                        <p class="field-hint">At least one <?= e($role) ?> is required; up to 8 may be entered.</p>
+                    <?php endif; ?>
                     <div data-repeat-group="<?= e($role) ?>" data-repeat-max="8">
                         <?php foreach ($rows as $index => $participant): ?>
                             <div class="godparent-row">

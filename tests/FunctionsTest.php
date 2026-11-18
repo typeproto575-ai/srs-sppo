@@ -94,6 +94,33 @@ final class FunctionsTest extends TestCase
         self::assertSame([], sd_application_godparents(['godparents' => 'legacy scalar payload']));
     }
 
+    public function testBaptismRequiresBothGodparentRolesAndWarnsForHistoricalRecords(): void
+    {
+        self::assertSame(
+            ['errors' => [], 'warnings' => []],
+            sd_baptism_godparent_presence([
+                'godfather' => ['Marco Rivera'],
+                'godmother' => ['Lea Delos Santos'],
+            ], false)
+        );
+        self::assertSame(
+            ['errors' => ['At least one godmother is required.'], 'warnings' => []],
+            sd_baptism_godparent_presence(['godfather' => ['Marco Rivera']], false)
+        );
+        self::assertSame(
+            ['errors' => ['At least one godfather is required.'], 'warnings' => []],
+            sd_baptism_godparent_presence(['godmother' => ['Lea Delos Santos']], false)
+        );
+        self::assertSame(
+            ['errors' => [], 'warnings' => ['No godmother is entered. This historical record can still be saved.']],
+            sd_baptism_godparent_presence(['godfather' => ['Marco Rivera']], true)
+        );
+        self::assertSame(
+            ['errors' => [], 'warnings' => ['No godfather is entered. This historical record can still be saved.']],
+            sd_baptism_godparent_presence(['godmother' => ['Lea Delos Santos']], true)
+        );
+    }
+
     public function testWalkInApplicationRequiresValidSubjectAndApplicantContact(): void
     {
         $input = [

@@ -219,6 +219,28 @@ function sd_application_godparents(array $details): array
     return $godparents;
 }
 
+function sd_baptism_godparent_presence(array $namesByRole, bool $isEdit): array
+{
+    $errors = [];
+    $warnings = [];
+    foreach ([
+        'godfather' => 'godfather',
+        'godmother' => 'godmother',
+    ] as $role => $label) {
+        $names = $namesByRole[$role] ?? [];
+        if (is_array($names) && $names !== []) {
+            continue;
+        }
+        $errors[] = 'At least one ' . $label . ' is required.';
+        $warnings[] = 'No ' . $label . ' is entered. This historical record can still be saved.';
+    }
+
+    return [
+        'errors' => $isEdit ? [] : $errors,
+        'warnings' => $isEdit ? $warnings : [],
+    ];
+}
+
 /**
  * Search persons. The query is split into words. Every word must match.
  *   word like 1985-02-14  -> exact birth date

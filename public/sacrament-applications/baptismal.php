@@ -20,6 +20,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php'; // session for CSRF
 require_once __DIR__ . '/../../includes/mail.php'; // confirmation email
+require_once __DIR__ . '/../../includes/sacrament-data.php';
 
 // Subfolder-safe URL prefix for links inside the success message.
 $basePath = $basePath ?? base_path();
@@ -107,7 +108,11 @@ function compose_godparent_names(array $data, string $prefix): array {
 
 function validate_godparent_names(array $data, string $prefix, string $label): array {
     $errors = [];
-    foreach (fa($prefix . '_full_name', $data) as $name) {
+    $names = fa($prefix . '_full_name', $data);
+    if (count($names) > 8) {
+        $errors[] = 'No more than 8 ' . ($prefix === 'godfather' ? 'godfathers' : 'godmothers') . ' can be entered.';
+    }
+    foreach ($names as $name) {
         if (!is_scalar($name) || trim((string) $name) === '') continue;
         if (($error = validate_full_name(trim((string) $name))) !== null) {
             $errors[] = $label . ': ' . $error;
@@ -166,12 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     validate_godparent_names($_POST, 'godfather', 'Godfather'),
                     validate_godparent_names($_POST, 'godmother', 'Godmother')
                 );
-                if (
-                    compose_godparent_names($_POST, 'godfather') === []
-                    && compose_godparent_names($_POST, 'godmother') === []
-                ) {
-                    $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
-                }
+                $presence = sd_baptism_godparent_presence([
+                    'godfather' => compose_godparent_names($_POST, 'godfather'),
+                    'godmother' => compose_godparent_names($_POST, 'godmother'),
+                ], false);
+                $errors = array_merge($errors, $presence['errors']);
             }
 
             if ($currentStep === STEP_CONTACT_CONSENT) {
@@ -293,9 +297,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 validate_godparent_names($formData, 'godfather', 'Godfather'),
                 validate_godparent_names($formData, 'godmother', 'Godmother')
             );
-            if ($godfatherNames === [] && $godmotherNames === []) {
-                $errors[] = 'A baptism needs at least one godparent (a godfather or a godmother). Please add one.';
-            }
+            $presence = sd_baptism_godparent_presence([
+                'godfather' => $godfatherNames,
+                'godmother' => $godmotherNames,
+            ], false);
+            $errors = array_merge($errors, $presence['errors']);
 
             if (empty($errors)) {
                 try {
@@ -536,8 +542,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
             $godmotherRows = max(1, count(fa('godmother_full_name', $formData)));
             ?>
             <fieldset>
-                <legend>Godfathers (Ninong)</legend>
-                <p class="field-hint">Up to 8 godfathers. Enter each person's full name; leave a row blank if none.</p>
+                <legend>Godfathers (Ninong) <span class="required-marker" aria-hidden="true">*</span></legend>
+                <p class="field-hint">At least one godfather is required; up to 8 may be entered.</p>
                 <div data-repeat-group="godfather" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godfatherRows; $i++): ?>
                         <div class="godparent-row">
@@ -551,8 +557,8 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
             </fieldset>
             <fieldset>
-                <legend>Godmothers (Ninang)</legend>
-                <p class="field-hint">Up to 8 godmothers. Enter each person's full name; leave a row blank if none.</p>
+                <legend>Godmothers (Ninang) <span class="required-marker" aria-hidden="true">*</span></legend>
+                <p class="field-hint">At least one godmother is required; up to 8 may be entered.</p>
                 <div data-repeat-group="godmother" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godmotherRows; $i++): ?>
                         <div class="godparent-row">
