@@ -293,7 +293,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
         $lock = $pdo->prepare(
-            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements, assigned_to
+            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements, assigned_to,
+                    applicant_name, applicant_contact, applicant_email, details
              FROM sacrament_applications
              WHERE id = ?
              FOR UPDATE'
@@ -306,14 +307,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to($postReturnUrl);
         }
 
-        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff', 'set_schedule', 'set_formation_path'], true)
+        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff', 'set_schedule', 'set_formation_path', 'update_submission'], true)
             && in_array($application['status'], ['completed', 'rejected'], true)) {
             $pdo->rollBack();
             $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications cannot be reassigned or edited.';
             redirect_to($postReturnUrl);
         }
 
-        if ($action === 'set_schedule') {
+        if ($action === 'update_submission') {
+            $applicantName = is_string($_POST['applicant_name'] ?? null)
+                ? trim($_POST['applicant_name'])
+                : '';
+            $applicantContact = is_string($_POST['applicant_contact'] ?? null)
+                ? trim($_POST['applicant_contact'])
+                : '';
+            $applicantEmail = is_string($_POST['applicant_email'] ?? null)
+                ? trim($_POST['applicant_email'])
+                : '';
+            $submittedDetails = json_decode((string) ($application['details'] ?? ''), true);
+            $correctedDetails = $_POST['corrected_details'] ?? null;
+
+            if ($applicantName === '' || mb_strlen($applicantName) > 150) {
+                throw new InvalidArgumentException('Applicant name is required and must be 150 characters or fewer.');
+            }
+            if ($applicantContact !== '' && mb_strlen($applicantContact) > 30) {
+                throw new InvalidArgumentException('Applicant contact must be 30 characters or fewer.');
+            }
+            if ($applicantEmail === '' || mb_strlen($applicantEmail) > 150 || !filter_var($applicantEmail, FILTER_VALIDATE_EMAIL)) {
+                throw new InvalidArgumentException('Enter a valid applicant email address (150 characters or fewer).');
+            }
+            if ($submittedDetails === null) {
+                $submittedDetails = [];
+            }
+            if (!is_array($submittedDetails)) {
+                throw new InvalidArgumentException('Submitted details could not be read. Reload the page and try again.');
+            }
+            if (($application['sacrament_type'] ?? '') === 'baptism') {
+                $submittedDetails = sd_strip_parent_birthplaces($submittedDetails);
+            }
+            if ($correctedDetails === null) {
+                $correctedDetails = [];
+            }
+            if (!is_array($correctedDetails)) {
+                throw new InvalidArgumentException('Submitted details could not be read. Reload the page and try again.');
+            }
+
+            foreach ($submittedDetails as $key => $originalValue) {
+                $key = (string) $key;
+                if (!array_key_exists($key, $correctedDetails) || !is_string($correctedDetails[$key])) {
+                    throw new InvalidArgumentException('Every submitted detail must have a valid correction value.');
+                }
+                $correctedValue = trim($correctedDetails[$key]);
+                if (mb_strlen($correctedValue) > 5000) {
+                    throw new InvalidArgumentException('Each submitted detail must be 5000 characters or fewer.');
+                }
+
+                if (is_array($originalValue)) {
+                    try {
+                        $decodedValue = json_decode($correctedValue, true, 512, JSON_THROW_ON_ERROR);
+                    } catch (JsonException $e) {
+                        throw new InvalidArgumentException('Nested submitted details must remain valid JSON.', 0, $e);
+                    }
+                    if (!is_array($decodedValue)) {
+                        throw new InvalidArgumentException('Nested submitted details must remain a JSON object or list.');
+                    }
+                    $submittedDetails[$key] = $decodedValue;
+                } elseif ($originalValue === null && $correctedValue === '') {
+                    $submittedDetails[$key] = null;
+                } else {
+                    $submittedDetails[$key] = $correctedValue;
+                }
+            }
+            if (count($correctedDetails) !== count($submittedDetails)) {
+                throw new InvalidArgumentException('The submitted detail fields do not match this application.');
+            }
+
+            $encodedDetails = json_encode($submittedDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            $update = $pdo->prepare(
+                'UPDATE sacrament_applications
+                 SET applicant_name = ?, applicant_contact = ?, applicant_email = ?, details = ?
+                 WHERE id = ?'
+            );
+            $update->execute([
+                $applicantName,
+                $applicantContact !== '' ? $applicantContact : null,
+                $applicantEmail,
+                $encodedDetails,
+                (int) $applicationId,
+            ]);
+            log_activity(
+                $pdo,
+                (int) current_user()['id'],
+                'sacrament_application_submission_corrected',
+                'sacrament_applications',
+                (int) $applicationId,
+                'Corrected submitted application details and applicant contact information.'
+            );
+            $pdo->commit();
+            $_SESSION['application_queue_success'] = 'Submitted details corrected.';
+        } elseif ($action === 'set_schedule') {
             $applicationDetails = json_decode((string) ($application['details'] ?? ''), true);
             $formationPath = is_array($applicationDetails)
                 ? (string) ($applicationDetails['formation_path'] ?? '')
@@ -690,6 +782,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['application_queue_error'] = 'The requested action is invalid.';
             redirect_to($postReturnUrl);
         }
+    } catch (InvalidArgumentException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['application_queue_error'] = $e->getMessage();
     } catch (JsonException $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -770,7 +867,7 @@ $rf['page'] = $page;
 $rf['offset'] = $offset;
 $stmt = $pdo->prepare(
     "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.batch_id, sa.spouse_person_id,
-            sa.applicant_name, sa.applicant_email, sa.preferred_date, sa.preferred_time,
+            sa.applicant_name, sa.applicant_contact, sa.applicant_email, sa.preferred_date, sa.preferred_time,
             sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at, 
             sa.updated_at, sa.rejection_reason, sa.assigned_to, 
             assignee.full_name AS assigned_to_name, batch.batch_name
@@ -1193,7 +1290,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <div>
                             <p class="admin-queue-kicker"><?= e(application_queue_label($app['sacrament_type'])) ?> · <?= e(application_queue_label($app['channel'])) ?></p>
                             <h2><?= e($app['request_no']) ?></h2>
-                            <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e($app['applicant_email']) ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
+                            <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e($app['applicant_email']) ?><?= !empty($app['applicant_contact']) ? ' · ' . e($app['applicant_contact']) : '' ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
                         </div>
                         <span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span>
                     </header>
@@ -1306,7 +1403,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </section>
 
                     <section aria-label="Pre-application details">
-                        <h3>Submitted details</h3>
+                        <div class="application-detail-heading">
+                            <h3>Submitted details</h3>
+                            <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
+                                <button
+                                    type="button"
+                                    class="btn btn-small btn-secondary"
+                                    data-submission-edit-toggle
+                                    aria-controls="submission-edit-<?= (int) $app['id'] ?>"
+                                    aria-expanded="false"
+                                >Change / Edit</button>
+                            <?php endif; ?>
+                        </div>
                         <dl class="application-details-list">
                             <?php if ($details !== []): ?>
                                 <?php foreach ($details as $key => $value): ?>
@@ -1333,6 +1441,45 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
                             <?php endif; ?>
                                     </dl>
+                        <?php if (!in_array($app['status'], ['completed', 'rejected'], true)): ?>
+                            <div id="submission-edit-<?= (int) $app['id'] ?>" class="application-submission-edit" hidden>
+                                <h4>Correct submission data</h4>
+                                <form method="post" class="application-submission-edit-form">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
+                                    <input type="hidden" name="action" value="update_submission">
+                                    <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
+                                    <div class="form-grid view-grid">
+                                        <label>Applicant name
+                                            <input type="text" name="applicant_name" maxlength="150" value="<?= e((string) $app['applicant_name']) ?>" required>
+                                        </label>
+                                        <label>Applicant contact
+                                            <input type="text" name="applicant_contact" maxlength="30" value="<?= e((string) ($app['applicant_contact'] ?? '')) ?>">
+                                        </label>
+                                        <label>Applicant email
+                                            <input type="email" name="applicant_email" maxlength="150" value="<?= e((string) $app['applicant_email']) ?>" required>
+                                        </label>
+                                        <?php foreach ($details as $detailKey => $detailValue): ?>
+                                            <?php
+                                            $detailName = (string) $detailKey;
+                                            $detailInput = is_array($detailValue)
+                                                ? json_encode($detailValue, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                                                : (is_scalar($detailValue) ? (string) $detailValue : '');
+                                            ?>
+                                            <label><?= e(application_queue_label($detailName)) ?>
+                                                <?php if (is_array($detailValue)): ?>
+                                                    <textarea name="corrected_details[<?= e($detailName) ?>]" rows="5"><?= e((string) $detailInput) ?></textarea>
+                                                    <span class="field-hint">Keep this value as valid JSON.</span>
+                                                <?php else: ?>
+                                                    <input type="text" name="corrected_details[<?= e($detailName) ?>]" value="<?= e((string) $detailInput) ?>" maxlength="5000">
+                                                <?php endif; ?>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-small">Save corrected submission</button>
+                                </form>
+                            </div>
+                        <?php endif; ?>
                     </section>
                                                 <?php if ($prerequisiteChecks !== []): ?>
                         <aside class="alert alert-success" role="note">
@@ -1563,6 +1710,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const editButton = target.closest('[data-submission-edit-toggle]');
+    if (editButton instanceof HTMLButtonElement) {
+        const editor = document.getElementById(editButton.getAttribute('aria-controls') || '');
+        if (!(editor instanceof HTMLElement)) return;
+        const showEditor = editor.hidden;
+        editor.hidden = !showEditor;
+        editButton.setAttribute('aria-expanded', showEditor ? 'true' : 'false');
+        editButton.textContent = showEditor ? 'Cancel edit' : 'Change / Edit';
+        return;
+    }
     const button = target.closest('[data-application-review-toggle]');
     if (!(button instanceof HTMLButtonElement)) return;
     const review = document.getElementById(button.getAttribute('aria-controls') || '');
