@@ -7,8 +7,6 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
-require_once __DIR__ . '/../../includes/person-activity.php';
-require_once __DIR__ . '/../../includes/audit-history.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
@@ -27,21 +25,13 @@ $personLabel = sd_full_name($person);
 $notice = null;
 $noticeType = null;
 $observandaValue = (string) ($person['observanda'] ?? '');
-$observandaReason = '';
-$invalidObservandaValue = false;
-$invalidObservandaReason = false;
 $updatedFlag = isset($_GET['updated']) && (string) $_GET['updated'] === '1';
 $observandaUpdatedFlag = isset($_GET['observanda_updated']) && (string) $_GET['observanda_updated'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string) ($_POST['action'] ?? ''));
     if ($action === 'save_observanda') {
-        $rawObservanda = $_POST['observanda'] ?? '';
-        $rawReason = $_POST['correction_reason'] ?? '';
-        $invalidObservandaValue = !is_scalar($rawObservanda);
-        $invalidObservandaReason = !is_scalar($rawReason);
-        $observandaValue = $invalidObservandaValue ? '' : trim((string) $rawObservanda);
-        $observandaReason = $invalidObservandaReason ? '' : trim((string) $rawReason);
+        $observandaValue = trim((string) ($_POST['observanda'] ?? ''));
     }
     if (!csrf_verify()) {
         $notice = 'Your session token is invalid or expired. Refresh the page and try again.';
@@ -66,16 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif ($action === 'save_observanda') {
-            if ($invalidObservandaValue) {
-                $notice = 'Enter valid Profile Notes.';
-                $noticeType = 'error';
-            } elseif (strlen($observandaValue) > 4000) {
-                $notice = 'Profile Notes must be 4,000 bytes or fewer.';
-                $noticeType = 'error';
-            } elseif ($invalidObservandaReason
-                || strlen($observandaReason) < 5
-                || strlen($observandaReason) > 500) {
-                $notice = 'Enter a correction reason between 5 and 500 characters.';
+            if (strlen($observandaValue) > 4000) {
+                $notice = 'Observanda must be 4,000 bytes or fewer.';
                 $noticeType = 'error';
             } else {
                 try {
@@ -89,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $personId,
                         $before,
                         $after,
-                        $observandaReason
+                        'Updated profile Observanda'
                     );
                     $pdo->commit();
                     redirect_to('/admin/system/person-profile.php?id=' . $personId . '&observanda_updated=1');
@@ -97,8 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
                     }
-                    error_log('SRS-SPPO profile notes update failed: ' . $e->getMessage());
-                    $notice = 'Could not save Profile Notes. Check the server error log.';
+                    error_log('SRS-SPPO profile Observanda update failed: ' . $e->getMessage());
+                    $notice = 'Could not save profile Observanda. Check the server error log.';
                     $noticeType = 'error';
                 }
             }
@@ -110,7 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $recs = sd_get_person_records($pdo, $personId);
-$activityHistory = sd_get_person_activity_history($pdo, $personId);
 $family = sd_get_family($pdo, $personId);
 $funeralStmt = $pdo->prepare(
     'SELECT id, date_of_death, service_type, service_date, place_of_burial,
@@ -169,7 +150,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <p class="alert alert-success">Person details updated.</p>
 <?php endif; ?>
 <?php if ($observandaUpdatedFlag): ?>
-    <p class="alert alert-success">Profile Notes saved.</p>
+    <p class="alert alert-success">Profile Observanda saved.</p>
 <?php endif; ?>
 <?php if ($verifiedFlag): ?>
     <p class="alert alert-success">Book entry verified.</p>
@@ -273,11 +254,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <div class="person-profile-detail">
             <span class="person-profile-detail__label">Father</span>
-            <span class="person-profile-detail__value"><?= e($person['father_name'] ? format_full_name((string) $person['father_name']) : 'Not specified') ?></span>
+            <span class="person-profile-detail__value"><?= e($person['father_name'] ?: 'Not specified') ?></span>
         </div>
         <div class="person-profile-detail">
             <span class="person-profile-detail__label">Mother's maiden name</span>
-            <span class="person-profile-detail__value"><?= e($person['mother_maiden_name'] ? format_full_name((string) $person['mother_maiden_name']) : 'Not specified') ?></span>
+            <span class="person-profile-detail__value"><?= e($person['mother_maiden_name'] ?: 'Not specified') ?></span>
         </div>
         <div class="person-profile-detail person-profile-detail--wide">
             <span class="person-profile-detail__label">Address</span>
@@ -301,7 +282,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <div class="person-profile-section__heading">
             <div>
                 <p class="person-profile-section__eyebrow">Liber Defunctorum</p>
-                <h2 id="funeral-record-heading">Death record</h2>
+                <h2 id="funeral-record-heading">Funeral record</h2>
             </div>
         </div>
         <div class="person-profile-details">
@@ -323,7 +304,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
         </div>
         <div class="person-profile-record__actions">
-            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $funeralRecord['id']) ?>">Open death record</a>
+            <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/funerals/form.php?id=' . (int) $funeralRecord['id']) ?>">Open funeral record</a>
+            <a class="btn btn-primary btn-small" href="<?= e($basePath . '/admin/funerals/certification.php?id=' . (int) $funeralRecord['id']) ?>">Print certification</a>
         </div>
     </section>
 <?php endif; ?>
@@ -332,21 +314,18 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <div class="person-profile-section__heading">
         <div>
             <p class="person-profile-section__eyebrow">Person-level note</p>
-            <h2 id="profile-observanda-heading">Profile Notes</h2>
+            <h2 id="profile-observanda-heading">Profile Observanda</h2>
         </div>
     </div>
-    <p class="field-hint">Use this for a note about the person as a whole. Sacrament remarks remain with their register entries.</p>
+    <p class="field-hint">Use this for a note about the person as a whole. Individual sacrament Observanda remain with their register entries.</p>
     <form method="post" class="person-profile-observanda-form">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_observanda">
-        <label for="profile-observanda">Profile Notes</label>
+        <label for="profile-observanda">Observanda</label>
         <textarea id="profile-observanda" name="observanda" maxlength="4000" rows="5"><?= e($observandaValue) ?></textarea>
-        <label for="profile-notes-reason">Correction reason *
-            <textarea id="profile-notes-reason" name="correction_reason" maxlength="500" rows="2" required><?= e($observandaReason) ?></textarea>
-        </label>
         <div class="person-profile-observanda-actions">
-            <span class="field-hint">Changed values are recorded automatically; explain why the note is being changed. Leave Profile Notes blank to clear it.</span>
-            <button type="submit" class="btn btn-primary">Save Profile Notes</button>
+            <span class="field-hint">Saving a change records the previous and new note in Correction History. Leave blank to clear it.</span>
+            <button type="submit" class="btn btn-primary">Save Observanda</button>
         </div>
     </form>
 </section>
@@ -368,8 +347,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <ul class="record-person-link-list record-history-list">
             <?php foreach ($personHistory as $entry): ?>
                 <?php
-                $correctionData = audit_correction_data((string) ($entry['description'] ?? ''));
-                if (($correctionData['format'] ?? '') !== 'person-correction-v1') {
+                $correctionData = json_decode((string) ($entry['description'] ?? ''), true);
+                if (!is_array($correctionData) || ($correctionData['format'] ?? '') !== 'person-correction-v1') {
                     $correctionData = [];
                 }
                 ?>
@@ -380,136 +359,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </div>
                     <?php if (!empty($entry['reason'])): ?><small>Reason: <?= e($entry['reason']) ?></small><?php endif; ?>
                     <?php if (!empty($correctionData['changes']) && is_array($correctionData['changes'])): ?>
-                        <small><?= e(audit_correction_summary($correctionData)) ?></small>
-                        <?php audit_render_correction_details($correctionData); ?>
+                        <details>
+                            <summary>Before-and-after values (<?= count($correctionData['changes']) ?> fields)</summary>
+                            <?php foreach ($correctionData['changes'] as $field => $change): ?>
+                                <?php if (!is_array($change) || !array_key_exists('before', $change) || !array_key_exists('after', $change)) continue; ?>
+                                <h3><?= e(ucwords(str_replace('_', ' ', (string) $field))) ?></h3>
+                                <dl class="record-detail-list">
+                                    <div><dt>Before</dt><dd><pre><?= e(json_encode($change['before'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
+                                    <div><dt>After</dt><dd><pre><?= e(json_encode($change['after'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
+                                </dl>
+                            <?php endforeach; ?>
+                        </details>
                     <?php endif; ?>
                 </li>
             <?php endforeach; ?>
         </ul>
-    <?php endif; ?>
-</section>
-
-<section class="panel-card person-profile-section" aria-labelledby="activity-history-heading">
-    <div class="person-profile-section__heading">
-        <div>
-            <p class="person-profile-section__eyebrow">Linked activity</p>
-            <h2 id="activity-history-heading">Activity &amp; transaction history</h2>
-        </div>
-        <span class="person-profile-count"><?= count($activityHistory) ?> <?= count($activityHistory) === 1 ? 'event' : 'events' ?></span>
-    </div>
-    <p class="field-hint">Only requests linked to this person profile are shown. Unlinked or anonymized requests are not included.</p>
-    <?php if ($activityHistory === []): ?>
-        <p class="person-profile-empty">No sacrament applications, certificate requests, or sacramental records are linked to this profile yet.</p>
-    <?php else: ?>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="Person activity and transaction history; scroll horizontally to view all columns">
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th scope="col" class="column-date">Date</th>
-                        <th scope="col">Activity</th>
-                        <th scope="col">Reference</th>
-                        <th scope="col">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($activityHistory as $event): ?>
-                        <?php
-                        $sacramentLabel = $event['sacrament_type'] === 'marriage'
-                            ? 'Holy Matrimony'
-                            : sd_type_label((string) $event['sacrament_type']);
-                        $summary = '';
-                        $referenceUrl = '';
-                        $referenceLabel = '';
-                        $statusValue = '';
-                        $statusLabel = '';
-                        $meta = '';
-                        if ($event['activity_type'] === 'application') {
-                            $summary = $sacramentLabel . ' Pre-Application';
-                            if ($event['sacrament_type'] === 'marriage' && !empty($event['partner_name'])) {
-                                $summary .= ' with ' . (string) $event['partner_name'];
-                            }
-                            $referenceUrl = $basePath . '/admin/requests/applications-queue.php?' . http_build_query([
-                                'q' => (string) $event['reference_no'],
-                                'status' => (string) $event['status'],
-                                'open_application_id' => (int) $event['activity_id'],
-                            ]);
-                            $referenceLabel = (string) $event['reference_no'];
-                            $statusValue = (string) $event['status'];
-                            $statusLabel = status_label('application', $statusValue);
-                        } elseif ($event['activity_type'] === 'certificate') {
-                            $summary = $sacramentLabel . ' Certificate Request';
-                            $referenceUrl = $basePath . '/admin/requests/certificate-detail.php?id=' . (int) $event['activity_id'];
-                            $referenceLabel = (string) $event['reference_no'];
-                            $statusValue = (string) $event['status'];
-                            $statusLabel = status_label('certificate', $statusValue);
-                            $purpose = trim((string) ($event['purpose_other'] ?? ''));
-                            if ($purpose === '') {
-                                $purpose = trim((string) ($event['purpose'] ?? ''));
-                            }
-                            if ($purpose !== '') {
-                                $meta = 'Purpose: ' . humanize_label_local($purpose);
-                            }
-                            $relationship = (string) ($event['requester_relationship'] ?? '');
-                            if ($relationship !== '' && $relationship !== 'self') {
-                                $relationshipLabel = $relationship === 'other'
-                                    && trim((string) ($event['requester_relationship_other'] ?? '')) !== ''
-                                    ? trim((string) $event['requester_relationship_other'])
-                                    : humanize_label_local($relationship);
-                                $requester = trim((string) ($event['requester_name'] ?? '')) ?: 'Name not recorded';
-                                $meta .= ($meta === '' ? '' : ' · ') . 'Requested by ' . $requester . ' (' . $relationshipLabel . ')';
-                            }
-                        } else {
-                            $summary = $sacramentLabel . ' received';
-                            if ($event['sacrament_type'] === 'marriage' && !empty($event['partner_name'])) {
-                                $summary .= ' with ' . (string) $event['partner_name'];
-                            }
-                            $recordType = $event['sacrament_type'] === 'baptism'
-                                ? 'baptismal'
-                                : (string) $event['sacrament_type'];
-                            $referenceUrl = $basePath . '/admin/records/view.php?' . http_build_query([
-                                'type' => $recordType,
-                                'id' => (int) $event['activity_id'],
-                                'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
-                            ]);
-                            $referenceLabel = 'Record #' . (int) $event['activity_id'];
-                            $statusValue = 'completed';
-                            $statusLabel = 'Recorded';
-                            $registerParts = [];
-                            foreach ([
-                                'book_no' => 'Book',
-                                'page_no' => 'Page',
-                                'line_no' => 'Line',
-                            ] as $key => $label) {
-                                $value = trim((string) ($event[$key] ?? ''));
-                                if ($value !== '') {
-                                    $registerParts[] = $label . ' ' . $value;
-                                }
-                            }
-                            if ($registerParts !== []) {
-                                $meta = implode(' · ', $registerParts);
-                            }
-                        }
-                        $eventTimestamp = strtotime((string) $event['event_at']);
-                        ?>
-                        <tr>
-                            <td class="column-date">
-                                <?php if ($eventTimestamp !== false): ?>
-                                    <time datetime="<?= e(date('c', $eventTimestamp)) ?>"><?= e(date('M j, Y', $eventTimestamp)) ?></time>
-                                <?php else: ?>
-                                    Not recorded
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <strong><?= e($summary) ?></strong>
-                                <?php if ($meta !== ''): ?><br><small><?= e($meta) ?></small><?php endif; ?>
-                            </td>
-                            <td><a href="<?= e($referenceUrl) ?>"><?= e($referenceLabel) ?></a></td>
-                            <td><span class="status-badge status-<?= e($statusValue) ?>"><?= e($statusLabel) ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
     <?php endif; ?>
 </section>
 
@@ -547,12 +411,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <span class="person-profile-badge person-profile-badge--neutral">Parents: <?= e(parents_union_type_label((string) $record['parents_union_type'])) ?></span>
                     <?php endif; ?>
                 </div>
-                <section class="person-profile-observanda" aria-label="<?= e(sd_type_label($type)) ?> remarks">
-                    <h4>Remarks</h4>
+                <section class="person-profile-observanda" aria-label="<?= e(sd_type_label($type)) ?> Observanda">
+                    <h4>Observanda</h4>
                     <?php if (!empty($record['remarks'])): ?>
                         <p class="record-view-remarks"><?= nl2br(e((string) $record['remarks'])) ?></p>
                     <?php else: ?>
-                        <p class="person-profile-note">No remarks recorded.</p>
+                        <p class="person-profile-note">No Observanda recorded.</p>
                     <?php endif; ?>
                 </section>
                 <div class="person-profile-record__actions">
@@ -614,12 +478,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <span class="person-profile-badge"><?= (!empty($record['source']) && $record['source'] === 'other_parish') ? 'Other parish' : 'This parish' ?></span>
                     <span class="person-profile-badge<?= !empty($record['book_verified_at']) ? ' is-verified' : ' is-unverified' ?>"><?= !empty($record['book_verified_at']) ? 'Book entry verified' : 'Not yet verified' ?></span>
                 </div>
-                <section class="person-profile-observanda" aria-label="Marriage remarks">
-                    <h4>Remarks</h4>
+                <section class="person-profile-observanda" aria-label="Marriage Observanda">
+                    <h4>Observanda</h4>
                     <?php if (!empty($record['remarks'])): ?>
                         <p class="record-view-remarks"><?= nl2br(e((string) $record['remarks'])) ?></p>
                     <?php else: ?>
-                        <p class="person-profile-note">No remarks recorded.</p>
+                        <p class="person-profile-note">No Observanda recorded.</p>
                     <?php endif; ?>
                 </section>
                 <div class="person-profile-record__actions">

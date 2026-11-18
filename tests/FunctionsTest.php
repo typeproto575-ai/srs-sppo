@@ -12,7 +12,6 @@ require_once __DIR__ . '/../includes/public-person-lookup.php';
 require_once __DIR__ . '/../includes/record-search.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 require_once __DIR__ . '/../includes/funeral-data.php';
-require_once __DIR__ . '/../includes/audit-history.php';
 
 final class FunctionsTest extends TestCase
 {
@@ -50,191 +49,26 @@ final class FunctionsTest extends TestCase
         self::assertFalse(is_unknown_place_of_birth('Dingalan, Aurora'));
     }
 
-    public function testLateBaptismPathwayStartsOnSeventhBirthdayAndRejectsInvalidDates(): void
-    {
-        $today = new DateTimeImmutable('today');
-        $seventhBirthday = $today->modify('-7 years')->format('Y-m-d');
-        $dayBeforeSeventhBirthday = $today->modify('-7 years')->modify('+1 day')->format('Y-m-d');
-
-        self::assertSame(7, baptism_application_age($seventhBirthday));
-        self::assertTrue(baptism_application_is_late($seventhBirthday));
-        self::assertSame(6, baptism_application_age($dayBeforeSeventhBirthday));
-        self::assertFalse(baptism_application_is_late($dayBeforeSeventhBirthday));
-        self::assertNull(baptism_application_age('2023-02-29'));
-        self::assertNull(baptism_application_is_late('2023-02-29'));
-    }
-
     public function testFirstCommunionFormationValidationFollowsTheSelectedPathway(): void
     {
-        self::assertNull(first_communion_formation_input_error('school_based', 'grade_4', '2026'));
-        self::assertSame(
-            'First Holy Communion applications require Grade 4 or above.',
-            first_communion_formation_input_error('school_based', 'grade_3', '2026')
-        );
-        self::assertNull(first_communion_formation_input_error('school_based', 'grade_4', ''));
-        self::assertNotNull(first_communion_formation_input_error('school_based', 'grade_4', '2026-2027'));
-        self::assertNotNull(first_communion_formation_input_error('school_based', 'grade_4', '26'));
-        self::assertNotNull(first_communion_formation_input_error('school_based', '', '2026'));
-        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_applicable', '2026'));
-        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_enrolled', '2026'));
+        self::assertNull(first_communion_formation_input_error('school_based', 'grade_3', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'grade_3', ''));
+        self::assertNotNull(first_communion_formation_input_error('school_based', '', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_applicable', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('school_based', 'not_enrolled', '2026-2027'));
 
         self::assertNull(first_communion_formation_input_error('parish_based', 'not_enrolled', ''));
-        self::assertNull(first_communion_formation_input_error('parish_based', 'grade_4', '2026'));
-        self::assertNotNull(first_communion_formation_input_error('parish_based', 'grade_3', ''));
+        self::assertNull(first_communion_formation_input_error('parish_based', 'grade_3', '2026-2027'));
+        self::assertNotNull(first_communion_formation_input_error('parish_based', 'grade_3', 'N/A'));
         self::assertNotNull(first_communion_formation_input_error('parish_based', '', ''));
 
         self::assertNull(first_communion_formation_input_error('individual_catchup', '', 'invalid'));
-        self::assertNull(first_communion_formation_input_error('individual_catchup', 'N/A', '2026'));
-        self::assertSame(
-            'First Holy Communion applications require Grade 4 or above.',
-            first_communion_formation_input_error('individual_catchup', 'grade_2', '')
-        );
+        self::assertNull(first_communion_formation_input_error('individual_catchup', 'N/A', '2026-2027'));
         self::assertNull(first_communion_formation_input_error('individual_catchup', 'not_applicable', '2026-2027'));
-        self::assertArrayNotHasKey('kindergarten', first_communion_grade_options());
-        self::assertArrayNotHasKey('grade_3', first_communion_grade_options());
-        self::assertArrayHasKey('grade_4', first_communion_grade_options());
-        self::assertArrayHasKey('not_applicable', first_communion_grade_options());
-        self::assertSame('Adult / Not in school', first_communion_grade_options()['not_applicable']);
-        self::assertSame('Out-of-School Youth (OSY)', first_communion_grade_options()['not_enrolled']);
-        self::assertSame('Other', first_communion_grade_select_options()['other']);
-        self::assertArrayNotHasKey('not_enrolled', first_communion_grade_select_options());
-        self::assertArrayNotHasKey('not_applicable', first_communion_grade_select_options());
         self::assertSame(
             'Out-of-School Youth (OSY)',
             first_communion_grade_options()['not_enrolled']
         );
-    }
-
-    public function testFirstCommunionPlaceRequiresSpecificationForOther(): void
-    {
-        self::assertNull(first_communion_place_input_error('parish_church', ''));
-        self::assertNull(first_communion_place_input_error('other', 'Barangay Chapel'));
-        self::assertNotNull(first_communion_place_input_error('other', ''));
-        self::assertNotNull(first_communion_place_input_error('invalid', 'Parish Hall'));
-        self::assertNotNull(first_communion_place_input_error('other', str_repeat('x', 151)));
-    }
-
-    public function testFirstCommunionSponsorNamesHaveNoApplicationCountLimit(): void
-    {
-        $sponsors = array_map(
-            static fn(int $index): string => 'Sponsor Name ' . $index,
-            range(1, 20)
-        );
-        $values = ['communion_sponsor_full_name' => $sponsors];
-
-        self::assertSame([], validate_person_name_rows($values, 'communion_sponsor', 'Godparent/sponsor'));
-        self::assertCount(20, compose_person_name_rows($values, 'communion_sponsor'));
-    }
-
-    public function testMarriageAgeReviewUsesExactAgeBoundaries(): void
-    {
-        $underage = marriage_party_age_eligibility('2008-03-16', '2026-03-15');
-        self::assertSame(17, $underage['age']);
-        self::assertSame('underage', $underage['status']);
-        self::assertSame('error', $underage['tone']);
-
-        $requiresConsent = marriage_party_age_eligibility('2008-03-15', '2026-03-15');
-        self::assertSame(18, $requiresConsent['age']);
-        self::assertSame('parental_consent', $requiresConsent['status']);
-
-        $requiresAdvice = marriage_party_age_eligibility('2005-03-15', '2026-03-15');
-        self::assertSame(21, $requiresAdvice['age']);
-        self::assertSame('parental_advice', $requiresAdvice['status']);
-
-        $eligible = marriage_party_age_eligibility('2001-03-15', '2026-03-15');
-        self::assertSame(25, $eligible['age']);
-        self::assertSame('eligible', $eligible['status']);
-
-        self::assertSame('unknown', marriage_party_age_eligibility('2023-02-29', '2026-03-15')['status']);
-        self::assertSame('unknown', marriage_party_age_eligibility('2000-01-01', '2026-02-30')['status']);
-    }
-
-    public function testActiveMarriageAgeReviewsUseScheduleDateAndLinkedPersonDetails(): void
-    {
-        if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
-            self::markTestSkipped('PDO SQLite is required for the marriage age review data test.');
-        }
-
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $pdo->exec('CREATE TABLE persons (
-            id INTEGER PRIMARY KEY,
-            first_name TEXT,
-            middle_name TEXT,
-            last_name TEXT,
-            suffix TEXT,
-            birth_date TEXT
-        )');
-        $pdo->exec('CREATE TABLE sacrament_applications (
-            id INTEGER PRIMARY KEY,
-            request_no TEXT,
-            status TEXT,
-            sacrament_type TEXT,
-            person_id INTEGER,
-            spouse_person_id INTEGER,
-            details TEXT,
-            anonymized_at TEXT,
-            created_at TEXT
-        )');
-        $pdo->exec('CREATE TABLE schedule_events (
-            id INTEGER PRIMARY KEY,
-            application_id INTEGER,
-            event_date TEXT
-        )');
-        $pdo->exec("INSERT INTO persons VALUES
-            (1, 'Groom', NULL, 'Linked', NULL, '2008-03-16'),
-            (2, 'Bride', NULL, 'Linked', NULL, '2005-03-15')");
-        $pdo->exec("INSERT INTO sacrament_applications VALUES
-            (1, 'MR-1', 'scheduled', 'marriage', 1, 2, '{\"groom\":{},\"bride\":{}}', NULL, '2026-01-01'),
-            (2, 'MR-2', 'new', 'marriage', NULL, NULL, '{\"groom\":{\"birth_date\":\"2000-01-01\"},\"bride\":{\"birth_date\":\"2000-01-01\"}}', NULL, '2026-01-02'),
-            (3, 'MR-3', 'reviewing', 'marriage', NULL, NULL, '{\"groom\":{},\"bride\":{}}', NULL, '2026-01-03'),
-            (4, 'MR-4', 'completed', 'marriage', NULL, NULL, '{}', NULL, '2026-01-04')");
-        $pdo->exec("INSERT INTO schedule_events VALUES (1, 1, '2026-03-15')");
-
-        $applications = sd_get_active_marriage_age_reviews($pdo);
-        $byRequestNo = [];
-        foreach ($applications as $application) {
-            $byRequestNo[$application['request_no']] = $application;
-        }
-
-        self::assertSame(['MR-3', 'MR-2', 'MR-1'], array_column($applications, 'request_no'));
-        self::assertSame('Today (no confirmed schedule)', $byRequestNo['MR-2']['date_source']);
-        self::assertSame('Confirmed marriage schedule', $byRequestNo['MR-1']['date_source']);
-        self::assertSame(17, $byRequestNo['MR-1']['groom']['age_review']['age']);
-        self::assertSame('parental_advice', $byRequestNo['MR-1']['bride']['age_review']['status']);
-        self::assertSame('Groom Linked', $byRequestNo['MR-1']['groom']['name']);
-        self::assertSame('Bride Linked', $byRequestNo['MR-1']['bride']['name']);
-        self::assertSame('unknown', $byRequestNo['MR-3']['groom']['age_review']['status']);
-    }
-
-    public function testMarriageMinimumAgeFilterAppliesToBothPartiesAndAllKeepsUnknown(): void
-    {
-        $applications = [
-            [
-                'id' => 1,
-                'groom' => ['age_review' => ['age' => 17]],
-                'bride' => ['age_review' => ['age' => 25]],
-            ],
-            [
-                'id' => 2,
-                'groom' => ['age_review' => ['age' => 21]],
-                'bride' => ['age_review' => ['age' => 24]],
-            ],
-            [
-                'id' => 3,
-                'groom' => ['age_review' => ['age' => null]],
-                'bride' => ['age_review' => ['age' => 25]],
-            ],
-        ];
-
-        self::assertSame([1, 2, 3], array_column(
-            sd_filter_marriage_age_review_applications($applications, 'all'),
-            'id'
-        ));
-        self::assertSame([2], array_column(
-            sd_filter_marriage_age_review_applications($applications, 'custom', 18),
-            'id'
-        ));
     }
 
     public function testReportPeriodValidationAcceptsValidValuesAndFallsBackForInvalidValues(): void
@@ -353,22 +187,6 @@ final class FunctionsTest extends TestCase
         self::assertSame('/srs-sppo/public/track-request.php', parse_url($trackingUrl, PHP_URL_PATH));
     }
 
-    public function testMarriageScheduleProposalEmailRequiresSixtyMinuteDuration(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        mail_marriage_schedule_proposal(
-            'couple@example.com',
-            'REQ-2026-0042',
-            'Groom',
-            'Bride',
-            '',
-            '2026-12-10',
-            '09:00',
-            '10:30'
-        );
-    }
-
     public function testPublicPersonLookupReturnsOnlySafeSacramentRecordDetails(): void
     {
         $summary = public_person_lookup_record_summary([
@@ -458,57 +276,33 @@ final class FunctionsTest extends TestCase
         ], 'for_signature')['ok']);
     }
 
-    public function testCertificatePaymentRequiresMatchingSacramentRecord(): void
-    {
-        $request = [
-            'record_id' => null,
-            'sacrament_type' => 'baptism',
-        ];
-
-        self::assertFalse(cert_request_payment_record_gate($request, null)['ok']);
-        self::assertFalse(cert_request_payment_record_gate($request, [
-            'id' => 12,
-            'sacrament_type' => 'baptism',
-        ])['ok']);
-
-        $request['record_id'] = 12;
-        self::assertFalse(cert_request_payment_record_gate($request, [
-            'id' => 13,
-            'sacrament_type' => 'baptism',
-        ])['ok']);
-        self::assertFalse(cert_request_payment_record_gate($request, [
-            'id' => 12,
-            'sacrament_type' => 'confirmation',
-        ])['ok']);
-        self::assertTrue(cert_request_payment_record_gate($request, [
-            'id' => 12,
-            'sacrament_type' => 'baptism',
-        ])['ok']);
-    }
-
-    public function testCertificateReleaseRequiresPaymentAndAuthorizationForRepresentatives(): void
+    public function testCertificateReleaseRequiresPaymentAndCounterVerification(): void
     {
         $request = ['status' => 'ready', 'paid_at' => null];
         self::assertSame(
             'Payment has not been recorded.',
-            cert_request_release_gate($request, 'self', '', false)['reason']
+            cert_request_release_gate($request, 'self', '', true, false)['reason']
         );
 
         $request['paid_at'] = '2026-10-14 05:00:00';
-        self::assertTrue(cert_request_release_gate($request, 'self', '', false)['ok']);
+        self::assertSame(
+            'Confirm that the claimant presented a valid ID at the counter.',
+            cert_request_release_gate($request, 'self', '', false, false)['reason']
+        );
+        self::assertTrue(cert_request_release_gate($request, 'self', '', true, false)['ok']);
         self::assertSame(
             'Select a valid claimant and provide representative details when applicable.',
-            cert_request_release_gate($request, 'representative', '', true)['reason']
+            cert_request_release_gate($request, 'representative', '', true, true)['reason']
         );
         self::assertSame(
             'Confirm that the signed authorization letter was received.',
-            cert_request_release_gate($request, 'representative', 'Representative', false)['reason']
+            cert_request_release_gate($request, 'representative', 'Representative', true, false)['reason']
         );
         self::assertTrue(
-            cert_request_release_gate($request, 'representative', 'Representative', true)['ok']
+            cert_request_release_gate($request, 'representative', 'Representative', true, true)['ok']
         );
         self::assertFalse(
-            cert_request_release_gate(['status' => 'matched', 'paid_at' => 'now'], 'self', '', false)['ok']
+            cert_request_release_gate(['status' => 'matched', 'paid_at' => 'now'], 'self', '', true, false)['ok']
         );
     }
 
@@ -709,13 +503,13 @@ final class FunctionsTest extends TestCase
             )'
         );
         $identity = [
-            'first_name' => 'maria',
-            'middle_name' => 'teresa',
-            'last_name' => 'santos',
+            'first_name' => 'Maria',
+            'middle_name' => 'Teresa',
+            'last_name' => 'Santos',
             'birth_date' => '2000-01-02',
             'birth_place' => 'Dingalan',
-            'father_name' => 'juan santos',
-            'mother_maiden_name' => 'rosa cruz',
+            'father_name' => 'Juan Santos',
+            'mother_maiden_name' => 'Rosa Cruz',
         ];
 
         $personId = save_person_identity($pdo, null, $identity);
@@ -724,21 +518,9 @@ final class FunctionsTest extends TestCase
         self::assertSame($personId, $samePersonId);
         self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM persons')->fetchColumn());
         $profile = $pdo->query('SELECT * FROM persons')->fetch(PDO::FETCH_ASSOC);
-        self::assertSame('Maria', $profile['first_name']);
-        self::assertSame('Teresa', $profile['middle_name']);
-        self::assertSame('Santos', $profile['last_name']);
         self::assertSame('Juan Santos', $profile['father_name']);
         self::assertSame('Rosa Cruz', $profile['mother_maiden_name']);
         self::assertMatchesRegularExpression('/^SPPO-P-[A-F0-9]{16}$/', $profile['public_reference']);
-
-        $otherPersonId = sd_save_person($pdo, [
-            'first_name' => 'naruto',
-            'middle_name' => 'McDonald',
-            'last_name' => "o'neil",
-            'suffix' => 'iii',
-        ]);
-        $otherProfile = $pdo->query('SELECT * FROM persons WHERE id = ' . (int) $otherPersonId)->fetch(PDO::FETCH_ASSOC);
-        self::assertSame("Naruto McDonald O'Neil III", sd_full_name($otherProfile));
     }
 
     public function testTrackingTokenUsesRandomLookingUnambiguousFormat(): void
@@ -777,29 +559,6 @@ final class FunctionsTest extends TestCase
             'applicant_last' => 'Santos',
         ], 'applicant'));
         self::assertNotNull(validate_full_name('J. Santos'));
-    }
-
-    public function testNameCapitalizationPreservesMixedCaseAndFormatsExistingDisplays(): void
-    {
-        self::assertSame(
-            "Naruto McDonald O'Neil III",
-            format_full_name("naruto McDonald o'neil iii")
-        );
-        self::assertSame(
-            "Naruto McDonald O'Neil III",
-            sd_full_name([
-                'first_name' => 'naruto',
-                'middle_name' => 'McDonald',
-                'last_name' => "o'neil",
-                'suffix' => 'iii',
-            ])
-        );
-        self::assertSame(
-            [0 => "Naruto McDonald O'Neil III"],
-            compose_person_name_rows_by_index([
-                'godparent_full_name' => ["naruto McDonald o'neil iii"],
-            ], 'godparent')
-        );
     }
 
     public function testNamePartsAllowMissingFirstOrLastName(): void
@@ -848,22 +607,6 @@ final class FunctionsTest extends TestCase
             'father_last' => 'Santos',
             'father_suffix' => '',
         ], 'father', "Father's name"));
-    }
-
-    public function testParentNameCanRequireARealName(): void
-    {
-        self::assertNotNull(validate_parent_name_or_na([
-            'mother_first' => 'N/A',
-            'mother_last' => '',
-        ], 'mother', "Mother's maiden name", false));
-        self::assertNotNull(validate_parent_name_or_na([
-            'mother_first' => 'N/A',
-            'mother_last' => 'Santos',
-        ], 'mother', "Mother's maiden name", false));
-        self::assertNull(validate_parent_name_or_na([
-            'mother_first' => 'Maria',
-            'mother_last' => 'Santos',
-        ], 'mother', "Mother's maiden name", false));
     }
 
     public function testRecordListNameUsesStructuredMiddleName(): void
@@ -1081,53 +824,6 @@ final class FunctionsTest extends TestCase
         self::assertFalse(event_times_overlap('09:00:00', '10:00:00', '10:00:00', '11:00:00'));
     }
 
-    public function testParishScheduleSlotsExcludeBookedAndUnconfirmedTimes(): void
-    {
-        $slots = parish_schedule_available_slots([
-            ['start_time' => '08:00:00', 'end_time' => '09:00:00'],
-            ['start_time' => '10:30:00', 'end_time' => '11:30:00'],
-        ]);
-        $slotStarts = array_column($slots, 'start_time');
-
-        self::assertNotContains('08:00', $slotStarts);
-        self::assertContains('09:00', $slotStarts);
-        self::assertNotContains('10:00', $slotStarts);
-        self::assertNotContains('11:00', $slotStarts);
-        self::assertContains('12:00', $slotStarts);
-        self::assertNotContains('17:00', $slotStarts);
-        self::assertSame([], parish_schedule_available_slots([
-            ['start_time' => null, 'end_time' => null],
-        ]));
-    }
-
-    public function testParishAvailabilityCombinesCalendarAndDeathSchedules(): void
-    {
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE schedule_events (id INTEGER PRIMARY KEY, title TEXT, event_date TEXT, start_time TEXT, end_time TEXT)');
-        $pdo->exec('CREATE TABLE funeral_records (id INTEGER PRIMARY KEY, service_date TEXT, service_time TEXT)');
-        $date = (new DateTimeImmutable('today'))->modify('+2 days')->format('Y-m-d');
-        $calendarInsert = $pdo->prepare(
-            'INSERT INTO schedule_events (id, title, event_date, start_time, end_time) VALUES (1, ?, ?, ?, ?)'
-        );
-        $calendarInsert->execute(['Baptism schedule', $date, '09:00:00', '10:00:00']);
-        $deathInsert = $pdo->prepare(
-            'INSERT INTO funeral_records (id, service_date, service_time) VALUES (1, ?, ?)'
-        );
-        $deathInsert->execute([$date, '11:00:00']);
-
-        $events = parish_schedule_day_events($pdo, $date);
-        $slotStarts = array_column(parish_schedule_available_slots($events), 'start_time');
-        self::assertCount(2, $events);
-        self::assertNotContains('09:00', $slotStarts);
-        self::assertNotContains('11:00', $slotStarts);
-        self::assertContains('10:00', $slotStarts);
-
-        $withoutCurrentBookings = parish_schedule_day_events($pdo, $date, 1, 1);
-        $openStarts = array_column(parish_schedule_available_slots($withoutCurrentBookings), 'start_time');
-        self::assertContains('09:00', $openStarts);
-        self::assertContains('11:00', $openStarts);
-    }
-
     public function testConfirmedApplicationScheduleValidation(): void
     {
         $today = new DateTimeImmutable('2026-11-16');
@@ -1221,254 +917,24 @@ final class FunctionsTest extends TestCase
             )
         );
     }
-
-    public function testAuditCorrectionRowsFlattenNestedRecordValues(): void
-    {
-        $correctionData = [
-            'format' => 'record-correction-v1',
-            'changes' => [
-                'record' => [
-                    'before' => [
-                        'event_date' => '2026-01-01',
-                        'details' => ['place' => 'Old chapel'],
-                    ],
-                    'after' => [
-                        'event_date' => '2026-01-02',
-                        'details' => ['place' => 'New chapel'],
-                    ],
-                ],
-            ],
-        ];
-
-        self::assertSame([
-            ['field' => 'Record · Event date', 'before' => '2026-01-01', 'after' => '2026-01-02'],
-            ['field' => 'Record · Additional details · Place', 'before' => 'Old chapel', 'after' => 'New chapel'],
-        ], audit_correction_rows($correctionData));
-        self::assertSame(
-            'Record · Event date: 2026-01-01 -> 2026-01-02; Record · Additional details · Place: Old chapel -> New chapel',
-            audit_correction_summary($correctionData)
-        );
-        self::assertSame(
-            audit_correction_summary($correctionData),
-            audit_correction_full_summary($correctionData)
-        );
-        self::assertNull(audit_correction_data('not correction JSON'));
-    }
-
-    public function testRestoreSqlValidationRejectsUnsafeDatabaseCommands(): void
-    {
-        $sql = "-- SRS-SPPO database export\n"
-            . "DROP DATABASE srs_sppo_db;\n"
-            . "CREATE TABLE `persons` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `sacrament_records` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `sacrament_applications` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `audit_logs` (id INT PRIMARY KEY);\n";
-
-        $this->expectException(RuntimeException::class);
-        validate_restore_sql($sql);
-    }
-
-    public function testRestoreSqlValidationAllowsNormalDataTextContainingUse(): void
-    {
-        $sql = "-- SRS-SPPO database export\n"
-            . "CREATE TABLE `persons` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `sacrament_records` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `sacrament_applications` (id INT PRIMARY KEY);\n"
-            . "CREATE TABLE `audit_logs` (id INT PRIMARY KEY);\n"
-            . "INSERT INTO `persons` (id) VALUES (1); -- the parish uses this record\n";
-
-        $summary = validate_restore_sql($sql);
-        self::assertSame(4, $summary['create_table_count']);
-    }
-
-    public function testRestoreSqlValidationAndUsersPreservation(): void
-    {
-        $sql = "-- SRS-SPPO database export\n\n"
-            . "-- Table: persons\n"
-            . "CREATE TABLE `persons` (id INT PRIMARY KEY);\n"
-            . "INSERT INTO `persons` (id) VALUES (1);\n\n"
-            . "-- Table: sacrament_records\n"
-            . "CREATE TABLE `sacrament_records` (id INT PRIMARY KEY);\n\n"
-            . "-- Table: sacrament_applications\n"
-            . "CREATE TABLE `sacrament_applications` (id INT PRIMARY KEY);\n\n"
-            . "-- Table: users\n"
-            . "CREATE TABLE `users` (id INT PRIMARY KEY);\n"
-            . "INSERT INTO `users` (id) VALUES (1);\n\n"
-            . "-- Table: audit_logs\n"
-            . "CREATE TABLE `audit_logs` (id INT PRIMARY KEY);\n";
-
-        $summary = validate_restore_sql($sql);
-        self::assertSame(5, $summary['create_table_count']);
-        self::assertSame(2, $summary['insert_count']);
-        $prepared = prepare_live_restore_sql($sql);
-        self::assertStringNotContainsString('Table: users', $prepared);
-        self::assertStringNotContainsString('INSERT INTO `users`', $prepared);
-        self::assertStringContainsString('Table: audit_logs', $prepared);
-    }
-
-    public function testApplicationAuditCorrectionRowsUseBeforeAndAfterValues(): void
-    {
-        $correctionData = [
-            'format' => 'application-correction-v1',
-            'changes' => [
-                'applicant_email' => [
-                    'before' => 'old@example.com',
-                    'after' => 'correct@example.com',
-                ],
-                'submitted_details' => [
-                    'groom.full_name' => [
-                        'before' => 'Jon Doe',
-                        'after' => 'John Doe',
-                    ],
-                ],
-            ],
-        ];
-
-        self::assertSame([
-            ['field' => 'Applicant / submitter email', 'before' => 'old@example.com', 'after' => 'correct@example.com'],
-            ['field' => 'Submitted form details · Groom · Full name', 'before' => 'Jon Doe', 'after' => 'John Doe'],
-        ], audit_correction_rows($correctionData));
-        self::assertNotNull(audit_correction_data(json_encode($correctionData, JSON_THROW_ON_ERROR)));
-    }
-
-    public function testFuneralAuditSnapshotTracksCorrectionsWithoutCauseOfDeath(): void
-    {
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->exec(
-            'CREATE TABLE persons (
-                id INTEGER PRIMARY KEY,
-                first_name TEXT,
-                middle_name TEXT,
-                last_name TEXT,
-                suffix TEXT,
-                is_deceased INTEGER,
-                death_date TEXT
-            )'
-        );
-        $pdo->exec(
-            'CREATE TABLE funeral_records (
-                id INTEGER PRIMARY KEY,
-                person_id INTEGER,
-                date_of_death TEXT,
-                date_of_burial TEXT,
-                age_at_death INTEGER,
-                civil_status TEXT,
-                spouse_name TEXT,
-                parents_name TEXT,
-                sacraments_received TEXT,
-                cause_of_death TEXT,
-                place_of_burial TEXT,
-                service_type TEXT,
-                service_date TEXT,
-                service_time TEXT,
-                minister_name TEXT,
-                book_no TEXT,
-                page_no TEXT,
-                line_no TEXT,
-                contact_number TEXT,
-                contact_email TEXT
-            )'
-        );
-        $pdo->exec(
-            "INSERT INTO persons VALUES (1, 'Maria', '', 'Santos', '', 1, '2026-01-01')"
-        );
-        $pdo->exec(
-            "INSERT INTO funeral_records VALUES (
-                7, 1, '2026-01-01', NULL, 80, 'widowed', NULL, 'Juan Santos',
-                '[\"baptism\"]', 'Private cause', 'Parish cemetery', 'mass',
-                '2026-01-03', '10:00:00', 'Fr. Peter', '1', '2', '3',
-                '09170000000', 'family@example.test'
-            )"
-        );
-
-        $before = funeral_record_audit_snapshot($pdo, 7);
-        $pdo->exec(
-            "UPDATE funeral_records
-             SET date_of_death = '2026-01-02', contact_email = 'updated@example.test',
-                 cause_of_death = 'Changed private cause'
-             WHERE id = 7"
-        );
-        $pdo->exec("UPDATE persons SET death_date = '2026-01-02' WHERE id = 1");
-        $after = funeral_record_audit_snapshot($pdo, 7);
-        $changes = funeral_record_audit_changes($before, $after);
-
-        self::assertSame('Maria Santos', $before['person_name']);
-        self::assertSame(
-            ['before' => '2026-01-01', 'after' => '2026-01-02'],
-            $changes['date_of_death']
-        );
-        self::assertSame(
-            ['before' => 'family@example.test', 'after' => 'updated@example.test'],
-            $changes['contact_email']
-        );
-        self::assertArrayNotHasKey('cause_of_death', $before);
-        self::assertArrayNotHasKey('cause_of_death', $changes);
-
-        $pdo->exec("INSERT INTO persons VALUES (2, 'Juan', '', 'Cruz', '', 0, NULL)");
-        $beforeReassignment = funeral_record_audit_snapshot($pdo, 7, 1);
-        $pdo->exec('UPDATE funeral_records SET person_id = 2 WHERE id = 7');
-        $pdo->exec("UPDATE persons SET is_deceased = 0, death_date = NULL WHERE id = 1");
-        $pdo->exec("UPDATE persons SET is_deceased = 1, death_date = '2026-01-02' WHERE id = 2");
-        $afterReassignment = funeral_record_audit_snapshot($pdo, 7, 1);
-        $reassignmentChanges = funeral_record_audit_changes($beforeReassignment, $afterReassignment);
-
-        self::assertSame(
-            ['before' => 'Maria Santos', 'after' => 'Juan Cruz'],
-            $reassignmentChanges['person_name']
-        );
-        self::assertSame(
-            ['before' => true, 'after' => false],
-            $reassignmentChanges['previous_person_is_deceased']
-        );
-        self::assertSame(
-            ['before' => '2026-01-02', 'after' => null],
-            $reassignmentChanges['previous_person_death_date']
-        );
-    }
-
     public function testOutstandingRequirementKeys(): void
     {
         $json = '{"catechism_completion":{"status":"not_received","note":""},"baptismal_certificate":{"status":"not_applicable"},"x":{"status":"verified"}}';
         self::assertSame(['catechism_completion'], application_outstanding_requirement_keys($json));
         self::assertSame([], application_outstanding_requirement_keys(null));
         self::assertSame([], application_outstanding_requirement_keys('not json'));
-        self::assertSame(
-            ['psa_birth_certificate', 'godparent_eligibility'],
-            application_outstanding_requirement_keys(null, ['psa_birth_certificate', 'godparent_eligibility'])
-        );
-        self::assertSame(
-            ['psa_birth_certificate'],
-            application_outstanding_requirement_keys('not json', ['psa_birth_certificate'])
-        );
-        self::assertSame(
-            ['godparent_eligibility'],
-            application_outstanding_requirement_keys(
-                '{"psa_birth_certificate":{"status":"received"}}',
-                ['psa_birth_certificate', 'godparent_eligibility']
-            )
-        );
-        self::assertSame(
-            [],
-            application_outstanding_requirement_keys(
-                '{"psa_birth_certificate":{"status":"verified"},"godparent_eligibility":{"status":"received"}}',
-                ['psa_birth_certificate', 'godparent_eligibility']
-            )
-        );
     }
 
     public function testSacramentFormationIntakeAcceptsBatchAndCatchUpChoices(): void
     {
         self::assertNull(sacrament_formation_input_error('batch', 'grade_3', '2026-2027'));
         self::assertNull(sacrament_formation_input_error('individual_catchup', 'grade_6', '2026-2027'));
+        self::assertNull(sacrament_formation_input_error('not_sure', 'not_enrolled', '2026-2027'));
         self::assertNull(sacrament_formation_input_error('individual_catchup', 'not_enrolled', 'N/A'));
     }
 
     public function testSacramentFormationIntakeRejectsInvalidGradeOrSchoolYear(): void
     {
-        self::assertSame(
-            'Choose a formation pathway.',
-            sacrament_formation_input_error('not_sure', 'not_enrolled', '2026-2027')
-        );
         self::assertSame(
             'Choose a valid current grade level.',
             sacrament_formation_input_error('batch', 'grade_13', '2026-2027')
@@ -1481,40 +947,6 @@ final class FunctionsTest extends TestCase
             'A school year is required for a group request, for example 2026-2027.',
             sacrament_formation_input_error('batch', 'grade_3', '')
         );
-    }
-
-    public function testConfirmationAgeGateBlocksUnderageApplicantsAndAcceptsEligibleApplicants(): void
-    {
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE settings (setting_key TEXT, setting_value TEXT)');
-        $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)');
-        $stmt->execute(['confirmation_min_age', '12']);
-
-        $today = new DateTimeImmutable('today');
-        $underageBirthdate = $today->modify('-11 years')->format('Y-m-d');
-        $eligibleBirthdate = $today->modify('-12 years')->format('Y-m-d');
-
-        self::assertStringContainsString(
-            'not yet age-eligible for Confirmation',
-            sacrament_age_submission_error($pdo, 'confirmation', $underageBirthdate)
-        );
-        self::assertNull(sacrament_age_submission_error($pdo, 'confirmation', $eligibleBirthdate));
-        self::assertSame(
-            'Enter a valid date of birth.',
-            sacrament_age_submission_error($pdo, 'confirmation', '2023-02-29')
-        );
-        self::assertSame(
-            "The applicant's date of birth cannot be in the future.",
-            sacrament_age_submission_error($pdo, 'confirmation', $today->modify('+1 day')->format('Y-m-d'))
-        );
-    }
-
-    public function testConfirmationCertificateTransactionQuestionRequiresYesOrNo(): void
-    {
-        self::assertNull(confirmation_certificate_transaction_error('confirmation', 'yes'));
-        self::assertNull(confirmation_certificate_transaction_error('confirmation', 'no'));
-        self::assertNotNull(confirmation_certificate_transaction_error('confirmation', ''));
-        self::assertNull(confirmation_certificate_transaction_error('baptism', ''));
     }
 
     public function testFuneralValidationAcceptsAValidRecord(): void
@@ -1623,83 +1055,114 @@ final class FunctionsTest extends TestCase
         self::assertNull(funeral_calculated_age('2026-11-15', '2026-11-14'));
     }
 
-    public function testFuneralMarriageSuggestionFindsLinkedSpouseInEitherRecordRole(): void
+    public function testFuneralCertificationLinesIncludeFullRecordDetails(): void
     {
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE persons (
-            id INTEGER PRIMARY KEY,
-            first_name TEXT,
-            middle_name TEXT,
-            last_name TEXT,
-            suffix TEXT
-        )');
-        $pdo->exec('CREATE TABLE sacrament_records (
-            id INTEGER PRIMARY KEY,
-            sacrament_type TEXT,
-            person_id INTEGER,
-            spouse_person_id INTEGER,
-            event_date TEXT
-        )');
-        $pdo->exec("INSERT INTO persons VALUES
-            (1, 'Mara', NULL, 'Santos', NULL),
-            (2, 'Leo', 'R.', 'Reyes', 'Jr.'),
-            (3, 'Una', NULL, 'Cruz', NULL)");
-        $pdo->exec("INSERT INTO sacrament_records VALUES
-            (1, 'marriage', 1, 2, '2000-01-01')");
-
-        self::assertSame(
-            ['has_marriage_record' => true, 'spouse_name' => 'Leo R. Reyes Jr.'],
-            funeral_person_marriage_suggestion($pdo, 1)
-        );
-        self::assertSame(
-            ['has_marriage_record' => true, 'spouse_name' => 'Mara Santos'],
-            funeral_person_marriage_suggestion($pdo, 2)
-        );
-        self::assertSame(
-            ['has_marriage_record' => false, 'spouse_name' => ''],
-            funeral_person_marriage_suggestion($pdo, 3)
-        );
-    }
-
-    public function testFuneralContactEmailIsOptionalButValidatedWhenProvided(): void
-    {
-        self::assertNull(funeral_contact_email_error(''));
-        self::assertNull(funeral_contact_email_error('family@example.com'));
-        self::assertSame(
-            'Enter a valid family contact email address.',
-            funeral_contact_email_error('not-an-email')
-        );
-        self::assertSame(
-            'Enter a valid family contact email address.',
-            funeral_contact_email_error(str_repeat('a', 250) . '@example.com')
-        );
-    }
-
-    public function testFuneralScheduleEmailIsDueForNewOrChangedConfirmedSchedule(): void
-    {
-        $existing = [
+        self::assertSame([
+            'This is to certify that, according to the Liber Defunctorum of this parish, Ramon Elias Santos, 76 years old, Widowed, spouse of Lucia Santos, son of Pedro Santos and Ana Cruz, died on March 4, 2026 of pneumonia.',
+            'A Funeral Mass was held on March 5, 2026 at 9:30 AM, officiated by Rev. Tomas, and the remains were laid to rest on March 6, 2026 at St. Patrick\'s Cemetery.',
+            'This is recorded in the Liber Defunctorum, Book 4, Page 18, Line 6.',
+            'Issued this March 7, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora, upon request of Maria Santos for SSS claim purposes.',
+        ], funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'age_at_death' => 76,
+            'civil_status' => 'widowed',
+            'spouse_name' => 'Lucia Santos',
+            'parents_name' => 'Pedro Santos and Ana Cruz',
+            'cause_of_death' => 'pneumonia',
             'service_type' => 'mass',
-            'service_date' => '2026-12-10',
+            'service_date' => '2026-03-05',
             'service_time' => '09:30:00',
-            'contact_email' => 'family@example.com',
-        ];
-        $sameSchedule = [
-            'service_type' => 'mass',
-            'service_date' => '2026-12-10',
-            'service_time' => '09:30',
-            'contact_email' => 'family@example.com',
-        ];
+            'minister_name' => 'Rev. Tomas',
+            'date_of_burial' => '2026-03-06',
+            'place_of_burial' => 'St. Patrick\'s Cemetery',
+            'book_no' => '4',
+            'page_no' => '18',
+            'line_no' => '6',
+        ], [
+            'first_name' => 'Ramon',
+            'middle_name' => 'Elias',
+            'last_name' => 'Santos',
+            'sex' => 'male',
+        ], 'SSS claim', 'Maria Santos', '2026-03-07'));
+    }
 
-        self::assertFalse(funeral_schedule_notification_due($existing, $sameSchedule));
-        self::assertTrue(funeral_schedule_notification_due(null, $sameSchedule));
-        self::assertTrue(funeral_schedule_notification_due($existing, array_merge(
-            $sameSchedule,
-            ['service_date' => '2026-12-11']
-        )));
-        self::assertFalse(funeral_schedule_notification_due($existing, array_merge(
-            $sameSchedule,
-            ['contact_email' => '']
-        )));
+    public function testFuneralCertificationLinesOmitEmptyOptionalClauses(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'service_type' => 'mass',
+        ], [
+            'first_name' => 'Jane',
+            'last_name' => 'Doe',
+        ], 'Insurance', '', '2026-03-05');
+
+        self::assertSame([
+            'This is to certify that, according to the Liber Defunctorum of this parish, Jane Doe died on March 4, 2026.',
+            'A Funeral Mass was held.',
+            'This is recorded in the Liber Defunctorum.',
+            'Issued this March 5, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora for Insurance purposes.',
+        ], $lines);
+        self::assertStringNotContainsString('—', implode(' ', $lines));
+        self::assertStringNotContainsString('[]', implode(' ', $lines));
+        self::assertStringNotContainsString('years old', implode(' ', $lines));
+        self::assertStringNotContainsString('officiated by', implode(' ', $lines));
+        self::assertStringNotContainsString('laid to rest', implode(' ', $lines));
+    }
+
+    public function testFuneralCertificationLinesOmitRequesterAndPurposeWhenEmpty(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'service_type' => 'mass',
+        ], [
+            'first_name' => 'Jane',
+            'last_name' => 'Doe',
+        ], '', '', '2026-03-05');
+
+        self::assertSame(
+            'Issued this March 5, 2026 at St. Patrick\'s Parish Office, Dingalan, Aurora.',
+            $lines[3]
+        );
+        self::assertStringNotContainsString('upon request', $lines[3]);
+        self::assertStringNotContainsString('purposes', $lines[3]);
+    }
+
+    public function testFuneralCertificationLinesDistinguishMassAndBlessing(): void
+    {
+        $record = ['date_of_death' => '2026-03-04', 'service_type' => 'mass'];
+        $person = ['first_name' => 'Jane', 'last_name' => 'Doe'];
+
+        self::assertSame('A Funeral Mass was held.', funeral_certification_lines(
+            $record,
+            $person,
+            'Legal claim',
+            '',
+            '2026-03-05'
+        )[1]);
+        $record['service_type'] = 'blessing';
+        self::assertSame('A Funeral Blessing was held.', funeral_certification_lines(
+            $record,
+            $person,
+            'Legal claim',
+            '',
+            '2026-03-05'
+        )[1]);
+    }
+
+    public function testFuneralCertificationLinesReturnRawTextForPageEscaping(): void
+    {
+        $lines = funeral_certification_lines([
+            'date_of_death' => '2026-03-04',
+            'cause_of_death' => '<script>alert(1)</script>',
+            'service_type' => 'blessing',
+        ], [
+            'first_name' => '<b>Jane</b>',
+            'last_name' => 'Doe',
+        ], 'Other <em>claim</em>', '', '2026-03-05');
+
+        self::assertStringContainsString('<b>Jane</b>', $lines[0]);
+        self::assertStringContainsString('<script>alert(1)</script>', $lines[0]);
+        self::assertStringContainsString('Other <em>claim</em>', $lines[3]);
     }
 
 }

@@ -83,8 +83,8 @@ The person-registry sequence documents the original rollout:
    family, and preparation fields to existing Confirmation applications to
    match the canonical schema.
 9. `047_add_person_profile_observanda.sql` adds the optional person-level
-   Profile Notes field (stored as `persons.observanda`). It is separate from
-   Remarks on individual sacrament register entries.
+   Observanda note. It is separate from remarks on individual sacrament
+   register entries.
 10. `048_add_sacrament_application_assignment.sql` adds the optional current
     staff assignee for each sacrament pre-application. Assignment and handoff
     history is recorded in `audit_logs`; back up and review existing databases
@@ -103,9 +103,9 @@ public page settings (007), request review fields (012), and retention support
 may need them, but they are not blindly executed by the application. For an
 existing database, compare its schema with the required application version;
 do not rerun historical scripts just because their files are present.
-Existing V2 databases that need person-level Profile Notes must be backed up
-and reviewed before applying migration 047; the protected upgrade page does
-not apply it.
+Existing V2 databases that need person-level Observanda must be backed up and
+reviewed before applying migration 047; the protected upgrade page does not
+apply it.
 Existing V2 databases using the sacrament pre-application queue must also
 apply migration 048 before deploying the staff assignment controls.
 Migration `051_certificate_request_retention.sql` adds the closed certificate
@@ -123,13 +123,6 @@ register's parents' union classifications, maps existing `legitimate` and
 `natural` values to `canonical` and `unmarried`, and adds the optional
 `parents_marriage_parish` column. Back up and review the target database before
 applying this manual migration.
-
-Migration `055_marriage_schedule_proposals.sql` adds the non-booking marriage
-schedule proposal fields and the staff audit link for recording both
-applicants' agreement. Existing V2 databases must apply it before using the
-Marriage Schedule Proposal workflow. Drafts do not create calendar events;
-final confirmation still checks availability before booking. Back up and
-review the target database before applying this manual migration.
 
 `database/migration_notifications.sql` is a legacy one-off copy of a table
 definition already present in the canonical schema. It is not needed for a

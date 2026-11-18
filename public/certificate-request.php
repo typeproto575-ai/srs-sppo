@@ -93,14 +93,14 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
             $result = [
                 'id' => (int) $person['id'],
-                'first_name' => format_name_part((string) $person['first_name']),
-                'middle_name' => format_name_part((string) ($person['middle_name'] ?? '')),
-                'last_name' => format_name_part((string) $person['last_name']),
-                'suffix' => format_name_part((string) ($person['suffix'] ?? ''), true),
+                'first_name' => $person['first_name'],
+                'middle_name' => $person['middle_name'] ?? '',
+                'last_name' => $person['last_name'],
+                'suffix' => $person['suffix'] ?? '',
                 'birth_date' => $person['birth_date'],
                 'birth_place' => $person['birth_place'] ?? '',
-                'father_name' => format_full_name((string) ($person['father_name'] ?? '')),
-                'mother_maiden_name' => format_full_name((string) ($person['mother_maiden_name'] ?? '')),
+                'father_name' => $person['father_name'] ?? '',
+                'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
             ];
             if ($preapplicationLookup) {
                 $result['sacrament_records'] = public_person_lookup_record_summary(
@@ -129,7 +129,6 @@ if ($submitted && is_string($_SESSION['certificate_success'] ?? null)) {
 
 $values = [
     'certificate_type' => '',
-    'has_confirmation_transaction' => '',
     'subject_name' => '',
     'person_id' => '',
     'spouse_name' => '',
@@ -253,9 +252,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if ($values['requester_relationship'] === 'self') {
             $values['requester_name'] = $values['subject_name'];
         }
-        foreach (['subject_name', 'spouse_name', 'requester_name', 'father_name', 'mother_maiden_name'] as $nameField) {
-            $values[$nameField] = format_full_name($values[$nameField]);
-        }
         $honeypot = (isset($_POST['website']) && is_string($_POST['website'])) ? trim($_POST['website']) : '';
         if ($honeypot !== '') {
             header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
@@ -263,16 +259,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         }
 
         $purposeLabels = ['School', 'Employment', 'Passport', 'Marriage', 'Personal records', 'Other'];
-        $relationships = ['self', 'spouse', 'father', 'mother', 'son', 'daughter', 'grandparent', 'grandchild', 'other'];
+        $relationships = ['self', 'parent', 'sibling', 'child', 'other'];
 
         if (!isset($certificateTypes[$values['certificate_type']])) {
             $errors[] = 'Choose a certificate type.';
-        }
-        if (($e = confirmation_certificate_transaction_error(
-            $values['certificate_type'],
-            $values['has_confirmation_transaction']
-        )) !== null) {
-            $errors[] = $e;
         }
         if ($values['subject_name'] === '') {
             $errors[] = 'Enter the full name on the certificate.';
@@ -302,9 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if ($values['requester_email'] === '' || !filter_var($values['requester_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Enter a valid email address.';
         }
-        if ($values['requester_contact_number'] === '') {
-            $errors[] = 'Enter a contact number.';
-        } elseif (strlen($values['requester_contact_number']) > 30) {
+        if ($values['requester_contact_number'] !== '' && strlen($values['requester_contact_number']) > 30) {
             $errors[] = 'The contact number must be 30 characters or fewer.';
         }
         if (!in_array($values['purpose'], $purposeLabels, true)) {
@@ -363,9 +351,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 }
                 if ($values['event_date'] !== '') {
                     $details['event_date'] = $values['event_date'];
-                }
-                if ($values['certificate_type'] === 'confirmation') {
-                    $details['has_confirmation_transaction'] = $values['has_confirmation_transaction'];
                 }
                 if ($values['certificate_type'] === 'marriage') {
                     if ($values['spouse_name'] !== '') {
@@ -488,6 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $personReference,
                                 $pdo,
                                 $requestId,
+                                $values['requester_relationship'] === 'self',
                                 $requestNo
                             );
                         } catch (Throwable $e) {
@@ -525,6 +511,9 @@ require_once __DIR__ . '/../includes/header.php';
             'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];
+        if ($values['requester_relationship'] === 'self') {
+            $successRequiredDocuments[] = 'A valid ID with a name matching the person on the certificate.';
+        }
         require __DIR__ . '/../includes/submission-success.php';
         ?>
     <?php else: ?>
@@ -568,15 +557,6 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endforeach; ?>
         </select>
 
-        <div id="confirmation-transaction" <?= $values['certificate_type'] === 'confirmation' ? '' : 'hidden' ?>>
-            <label for="has_confirmation_transaction">Do you already have an existing Confirmation certificate request or transaction with the Parish Office? *</label>
-            <select id="has_confirmation_transaction" name="has_confirmation_transaction" <?= $values['certificate_type'] === 'confirmation' ? 'required' : '' ?>>
-                <option value="">-- Select --</option>
-                <option value="yes" <?= $values['has_confirmation_transaction'] === 'yes' ? 'selected' : '' ?>>Yes</option>
-                <option value="no" <?= $values['has_confirmation_transaction'] === 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-        </div>
-
         <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
         <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
             <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Choose a certificate type and review what to prepare' ?></strong>
@@ -603,11 +583,11 @@ require_once __DIR__ . '/../includes/header.php';
         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
 
         <h3 class="form-subheading">Person on the certificate</h3>
-        <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
-        <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
-
         <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
         <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
+
+        <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
+        <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
 
         <div id="marriage-only" <?= $values['certificate_type'] === 'marriage' ? '' : 'hidden' ?>>
             <label for="spouse_name">Bride's full name *</label>
@@ -635,23 +615,19 @@ require_once __DIR__ . '/../includes/header.php';
         <select id="requester_relationship" name="requester_relationship" required>
             <option value="" <?= $values['requester_relationship'] === '' ? 'selected' : '' ?>>-- Select --</option>
             <option value="self" <?= $values['requester_relationship'] === 'self' ? 'selected' : '' ?>>Self</option>
-            <option value="spouse" <?= $values['requester_relationship'] === 'spouse' ? 'selected' : '' ?>>Spouse</option>
-            <option value="father" <?= $values['requester_relationship'] === 'father' ? 'selected' : '' ?>>Father</option>
-            <option value="mother" <?= $values['requester_relationship'] === 'mother' ? 'selected' : '' ?>>Mother</option>
-            <option value="son" <?= $values['requester_relationship'] === 'son' ? 'selected' : '' ?>>Son</option>
-            <option value="daughter" <?= $values['requester_relationship'] === 'daughter' ? 'selected' : '' ?>>Daughter</option>
-            <option value="grandparent" <?= $values['requester_relationship'] === 'grandparent' ? 'selected' : '' ?>>Grandparent</option>
-            <option value="grandchild" <?= $values['requester_relationship'] === 'grandchild' ? 'selected' : '' ?>>Grandchild</option>
+            <option value="parent" <?= $values['requester_relationship'] === 'parent' ? 'selected' : '' ?>>Parent</option>
+            <option value="sibling" <?= $values['requester_relationship'] === 'sibling' ? 'selected' : '' ?>>Sibling</option>
+            <option value="child" <?= $values['requester_relationship'] === 'child' ? 'selected' : '' ?>>Child</option>
             <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Authorized Representative</option>
         </select>
+        <p class="field-hint" data-self-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>If you selected Self, bring a valid ID with a name matching the person on the certificate when collecting it.</p>
         <p class="field-hint" data-representative-note <?= $values['requester_relationship'] === 'other' ? '' : 'hidden' ?>>If an authorized representative collects the certificate, bring a signed authorization letter from the person named on the certificate.</p>
 
-        <label for="requester_email">Best email for this request *</label>
+        <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
 
-        <label for="requester_contact_number">Best contact number for this request *</label>
-        <input type="tel" id="requester_contact_number" name="requester_contact_number" autocomplete="tel" maxlength="30" required value="<?= e($values['requester_contact_number']) ?>">
-        <p class="field-hint">These details are saved with this request, not the person named on the certificate. Use a Philippine mobile number, such as 09171234567 or +639171234567.</p>
+        <label for="requester_contact_number">Contact number (optional)</label>
+        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>">
         </div>
 
         <div data-certificate-phase="purpose">
@@ -692,7 +668,7 @@ require_once __DIR__ . '/../includes/header.php';
         <ol>
             <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
             <li>If asked to proceed, handle payment at the Parish Office.</li>
-            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
+            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
             <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
         </ol>
         <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
@@ -701,30 +677,13 @@ require_once __DIR__ . '/../includes/header.php';
         (function () {
             var typeSelect = document.getElementById('certificate_type');
             var marriageOnly = document.getElementById('marriage-only');
-            var confirmationTransaction = document.getElementById('confirmation-transaction');
-            var confirmationTransactionField = document.getElementById('has_confirmation_transaction');
             var subjectLabel = document.querySelector('label[for="subject_name"]');
             var preparationHeading = document.getElementById('certificate-preparation-heading');
             var preparationList = document.getElementById('certificate-preparation-list');
             var preparationDetails = <?= json_encode($certificatePreparation, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
             function updateType() {
                 var isMarriage = typeSelect.value === 'marriage';
-                var isConfirmation = typeSelect.value === 'confirmation';
-                var eventDate = document.getElementById('event_date');
-                var eventDateLabel = document.querySelector('label[for="event_date"]');
                 marriageOnly.hidden = !isMarriage;
-                confirmationTransaction.hidden = !isConfirmation;
-                confirmationTransactionField.required = isConfirmation;
-                if (!isConfirmation) confirmationTransactionField.value = '';
-                if (eventDate) {
-                    eventDate.hidden = isMarriage;
-                    eventDate.disabled = isMarriage;
-                    if (isMarriage) eventDate.value = '';
-                }
-                if (eventDateLabel) {
-                    eventDateLabel.hidden = isMarriage;
-                    eventDateLabel.style.display = isMarriage ? 'none' : '';
-                }
                 document.getElementById('spouse_name').required = isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
                 preparationHeading.textContent = typeSelect.value
@@ -745,12 +704,14 @@ require_once __DIR__ . '/../includes/header.php';
             var relationship = document.getElementById('requester_relationship');
             var requesterName = document.getElementById('requester_name');
             var subjectName = document.getElementById('subject_name');
+            var selfNote = document.querySelector('[data-self-note]');
             var representativeNote = document.querySelector('[data-representative-note]');
             var autoFilledRequesterName = relationship && requesterName && relationship.value === 'self'
                 ? requesterName.value
                 : null;
             if (relationship && requesterName && subjectName) {
                 relationship.addEventListener('change', function () {
+                    if (selfNote) selfNote.hidden = this.value !== 'self';
                     if (representativeNote) representativeNote.hidden = this.value !== 'other';
                     if (this.value === 'self') {
                         requesterName.value = subjectName.value;
@@ -762,6 +723,7 @@ require_once __DIR__ . '/../includes/header.php';
                         autoFilledRequesterName = null;
                     }
                 });
+                if (selfNote) selfNote.hidden = relationship.value !== 'self';
                 subjectName.addEventListener('input', function () {
                     if (relationship.value === 'self') {
                         requesterName.value = this.value;

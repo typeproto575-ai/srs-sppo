@@ -850,7 +850,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 <label>Officiating Minister's full name<?= !$isEdit ? ' *' : '' ?>
                     <input type="text" name="minister_name" maxlength="150" value="<?= e($formValues['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
                 </label>
-                <label>Remarks <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
+                <label>Remarks / Observanda <textarea name="remarks"><?= e($formValues['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
 <?php if ($isEdit): ?>
 <label>Reason for change <textarea name="reason_change" minlength="5" maxlength="500"><?= e($formValues['reason_change'] ?? '') ?></textarea></label>
 <p class="field-hint">Required if you change anything. Saving will clear book verification.</p>

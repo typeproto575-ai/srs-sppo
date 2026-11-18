@@ -12,7 +12,6 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/audit-history.php';
 require_role('secretary');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
@@ -80,24 +79,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Disposition: attachment; filename="srs-sppo-audit-log-' . date('Y-m-d-His') . '.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Timestamp', 'User', 'Role', 'Action', 'Module', 'Target ID', 'Description', 'IP Address', 'User Agent', 'Reason']);
-    foreach ($logs as $log) {
-        $correctionData = audit_correction_data((string) ($log['description'] ?? ''));
-        $description = $correctionData === null
-            ? ($log['description'] ?? '')
-            : audit_correction_full_summary($correctionData);
-        fputcsv($out, [
-            $log['created_at'],
-            $log['user_name'] ?? 'System / Public Form',
-            $log['role_snapshot'] ?? '',
-            $log['action'],
-            $log['target_table'] ?? '',
-            $log['target_id'] ?? '',
-            $description,
-            $log['ip_address'] ?? '',
-            $log['user_agent'] ?? '',
-            $log['reason'] ?? '',
-        ]);
-    }
+    foreach ($logs as $log) fputcsv($out, [$log['created_at'], $log['user_name'] ?? 'System / Public Form', $log['role_snapshot'] ?? '', $log['action'], $log['target_table'] ?? '', $log['target_id'] ?? '', $log['description'] ?? '', $log['ip_address'] ?? '', $log['user_agent'] ?? '', $log['reason'] ?? '']);
     fclose($out);
     exit;
 }
@@ -129,21 +111,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </thead>
             <tbody>
                 <?php foreach ($logs as $log): ?>
-                    <?php $correctionData = audit_correction_data((string) ($log['description'] ?? '')); ?>
                     <tr>
                         <td><?= e(date('M j, Y g:i A', strtotime($log['created_at']))) ?></td>
                         <td><?= e($log['user_name'] ?? 'System / Public Form') ?><br><small><?= e($log['role_snapshot'] ?? 'System') ?></small></td>
                         <td><?= e($log['action']) ?></td>
                         <td><?= $log['target_table'] ? e($log['target_table']) . ' #' . (int) $log['target_id'] : '—' ?></td>
-                        <td>
-                            <?php if ($correctionData !== null): ?>
-                                <?= e(audit_correction_summary($correctionData)) ?>
-                                <?php audit_render_correction_details($correctionData); ?>
-                            <?php else: ?>
-                                <?= e($log['description']) ?>
-                            <?php endif; ?>
-                            <?php if ($log['reason']): ?><br><small>Reason: <?= e($log['reason']) ?></small><?php endif; ?>
-                        </td>
+                        <td><?= e($log['description']) ?><?php if ($log['reason']): ?><br><small>Reason: <?= e($log['reason']) ?></small><?php endif; ?></td>
                         <td><?= e($log['ip_address'] ?? '—') ?></td>
                     </tr>
                 <?php endforeach; ?>

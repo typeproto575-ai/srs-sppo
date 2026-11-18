@@ -18,9 +18,6 @@ if (!defined('APPLICATION_CLOSE_REASONS')) {
     define('APPLICATION_CLOSE_REASONS', [
         'Entered by mistake',
         'No response after a long time',
-        'Information does not match parish records',
-        'Required supporting documents are missing or invalid',
-        'No matching parish record could be verified',
     ]);
 }
 $sacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
@@ -63,32 +60,18 @@ function application_queue_label(string $value): string
     $labels = [
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
-        'late_baptism' => 'Late Baptism (age 7+)',
         'birth_place' => 'Place of Birth',
         'baptized_here' => 'Baptism Location',
-        'baptism_parish' => 'Baptism Parish/Church and Location',
-        'communion_place' => 'First Communion Place',
-        'communion_place_other' => 'Other First Communion Place',
-        'godparent_sponsor_names' => 'Godparents / Sponsors',
         'formation_path' => 'Requested Formation Pathway',
-        'formation_path_note' => 'Preparation Question / Additional Information',
-        'school_based' => 'School-based group (school batch / parochial school)',
-        'parish_based' => 'Parish-based / Sunday Catechism group',
         'school_grade' => 'Current Grade Level',
-        'school_grade_other' => 'Grade Level Details',
         'school_year' => 'School Year',
         'sponsor_names' => 'Proposed Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Declared at Submission',
         'guardian_relationship' => 'Guardian Relationship',
-        'guardian_authorization_confirmed' => 'Guardian Authority Confirmed',
-        'parent_guardian_name' => 'Guardian',
+        'parent_guardian_name' => 'Guardian / Authorized Representative',
         'batch' => 'Regular parish group',
         'individual_catchup' => 'Individual / catch-up pathway',
         'not_sure' => 'Not sure — please advise',
-        'other' => 'Other',
-        'not_enrolled' => 'Out-of-School Youth (OSY)',
-        'not_applicable' => 'Adult / Not in school',
-        'parish_church' => "St. Patrick's Parish Church",
         'this_parish' => 'This parish',
         'elsewhere' => 'Another parish / church',
     ];
@@ -153,7 +136,7 @@ function application_queue_render_detail_value(mixed $value): void
     }
 
     $text = (string) $value;
-    $knownValueLabels = ['batch', 'individual_catchup', 'not_sure', 'other', 'this_parish', 'elsewhere'];
+    $knownValueLabels = ['batch', 'individual_catchup', 'not_sure', 'this_parish', 'elsewhere'];
     echo e(str_contains($text, '_') || in_array($text, $knownValueLabels, true)
         ? application_queue_label($text)
         : $text);
@@ -163,53 +146,6 @@ function application_queue_details(array $application): array
 {
     $details = json_decode((string) ($application['details'] ?? ''), true);
     return is_array($details) ? $details : [];
-}
-
-function application_queue_flatten_corrections(array $value, string $prefix = '', array &$fields = []): void
-{
-    foreach ($value as $key => $item) {
-        $path = $prefix === '' ? (string) $key : $prefix . '.' . (string) $key;
-        if (is_array($item)) {
-            $participantList = array_is_list($item);
-            if ($participantList) {
-                foreach ($item as $participantIndex => $participant) {
-                    if (!is_array($participant)
-                        || !array_key_exists('full_name', $participant)
-                        || !array_key_exists('role', $participant)) {
-                        $participantList = false;
-                        break;
-                    }
-                }
-            }
-            if ($participantList) {
-                foreach ($item as $participantIndex => $participant) {
-                    $fields[$path . '.' . $participantIndex . '.full_name'] = (string) ($participant['full_name'] ?? '');
-                    $fields[$path . '.' . $participantIndex . '.role'] = (string) ($participant['role'] ?? '');
-                }
-            } else {
-                application_queue_flatten_corrections($item, $path, $fields);
-            }
-        } elseif (is_scalar($item) || $item === null) {
-            $fields[$path] = $item === null ? '' : (string) $item;
-        }
-    }
-}
-
-function application_queue_set_correction_path(array &$value, string $path, mixed $newValue): void
-{
-    $keys = explode('.', $path);
-    $target =& $value;
-    foreach ($keys as $index => $key) {
-        $isLast = $index === count($keys) - 1;
-        if ($isLast) {
-            $target[$key] = $newValue;
-            return;
-        }
-        if (!isset($target[$key]) || !is_array($target[$key])) {
-            $target[$key] = [];
-        }
-        $target =& $target[$key];
-    }
 }
 
 function application_queue_has_verified_baptism_record(PDO $pdo, int $personId): bool
@@ -333,95 +269,6 @@ function application_queue_return_url_from_post(array $allowedKeys): string
     return $url;
 }
 
-function application_queue_linked_schedule_events(PDO $pdo, int $applicationId): array
-{
-    $stmt = $pdo->prepare(
-        'SELECT id, event_date, start_time, end_time
-         FROM schedule_events
-         WHERE application_id = ?
-         ORDER BY id
-         FOR UPDATE'
-    );
-    $stmt->execute([$applicationId]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-function application_queue_upsert_schedule_event(
-    PDO $pdo,
-    array $application,
-    string $date,
-    ?string $startTime,
-    ?string $endTime,
-    ?array $existingSchedule
-): int {
-    $eventType = match ($application['sacrament_type']) {
-        'baptism' => 'baptism',
-        'marriage' => 'wedding',
-        default => 'other',
-    };
-    $eventTitle = match ($application['sacrament_type']) {
-        'baptism' => 'Baptism',
-        'first_communion' => 'First Communion',
-        'confirmation' => 'Confirmation',
-        'marriage' => 'Wedding',
-        default => 'Parish Sacrament',
-    };
-
-    if ($existingSchedule === null) {
-        $insert = $pdo->prepare(
-            'INSERT INTO schedule_events
-                (event_type, title, public_details, event_date, start_time, end_time, application_id, notes, created_by)
-             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)'
-        );
-        $insert->execute([
-            $eventType,
-            $eventTitle,
-            $date,
-            $startTime,
-            $endTime,
-            (int) $application['id'],
-            'Linked to pre-application ' . (string) $application['request_no'] . '.',
-            (int) current_user()['id'],
-        ]);
-        return (int) $pdo->lastInsertId();
-    }
-
-    $update = $pdo->prepare(
-        'UPDATE schedule_events
-         SET event_type = ?, event_date = ?, start_time = ?, end_time = ?
-         WHERE id = ?'
-    );
-    $update->execute([
-        $eventType,
-        $date,
-        $startTime,
-        $endTime,
-        (int) $existingSchedule['id'],
-    ]);
-
-    return (int) $existingSchedule['id'];
-}
-
-function application_queue_marriage_proposal_recipients(array $application): array
-{
-    $details = application_queue_details($application);
-    $emails = [
-        $application['applicant_email'] ?? null,
-        $details['groom']['email'] ?? null,
-        $details['bride']['email'] ?? null,
-        $details['groom_email'] ?? null,
-        $details['bride_email'] ?? null,
-    ];
-    $recipients = [];
-    foreach ($emails as $email) {
-        if (is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $recipients[strtolower($email)] = $email;
-        }
-    }
-
-    return array_values($recipients);
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postReturnUrl = application_queue_return_url_from_post($returnKeys);
     if (!csrf_verify()) {
@@ -439,11 +286,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
         $lock = $pdo->prepare(
-            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements, assigned_to,
-                    details, applicant_name, applicant_email, preferred_date, preferred_time,
-                    proposed_schedule_date, proposed_schedule_start_time, proposed_schedule_end_time,
-                    schedule_proposal_status, schedule_proposal_sent_at, schedule_proposal_accepted_at,
-                    schedule_proposal_accepted_by
+            'SELECT id, request_no, sacrament_type, person_id, spouse_person_id, status, requirements, assigned_to
              FROM sacrament_applications
              WHERE id = ?
              FOR UPDATE'
@@ -456,19 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to($postReturnUrl);
         }
 
-        if (in_array($action, [
-            'link_person',
-            'update_requirement',
-            'assign_staff',
-            'set_schedule',
-            'set_formation_path',
-            'save_schedule_proposal',
-            'send_schedule_proposal',
-            'mark_schedule_proposal_sent',
-            'record_schedule_agreement',
-            'confirm_schedule_proposal',
-            'correct_application',
-        ], true)
+        if (in_array($action, ['link_person', 'update_requirement', 'assign_staff', 'set_schedule', 'set_formation_path'], true)
             && in_array($application['status'], ['completed', 'rejected'], true)) {
             $pdo->rollBack();
             $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications cannot be reassigned or edited.';
@@ -476,11 +307,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'set_schedule') {
-            if ($application['sacrament_type'] === 'marriage') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Marriage schedules must be proposed, agreed to by both parties, and then confirmed.';
-                redirect_to($postReturnUrl);
-            }
             $applicationDetails = json_decode((string) ($application['details'] ?? ''), true);
             $formationPath = is_array($applicationDetails)
                 ? (string) ($applicationDetails['formation_path'] ?? '')
@@ -520,7 +346,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect_to($postReturnUrl);
             }
 
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
+            $scheduleEventStmt = $pdo->prepare(
+                'SELECT id, event_date, start_time, end_time
+                 FROM schedule_events
+                 WHERE application_id = ?
+                 ORDER BY id
+                 FOR UPDATE'
+            );
+            $scheduleEventStmt->execute([(int) $applicationId]);
+            $linkedScheduleEvents = $scheduleEventStmt->fetchAll(PDO::FETCH_ASSOC);
             if (count($linkedScheduleEvents) > 1) {
                 $pdo->rollBack();
                 $_SESSION['application_queue_error'] = 'This pre-application has multiple linked calendar events. Resolve the duplicates before changing its schedule.';
@@ -538,21 +372,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 || (string) $existingSchedule['event_date'] !== $scheduledDate
                 || $existingStartTime !== $scheduledStartTime
                 || $existingEndTime !== $scheduledEndTime;
-            $preservingExistingSchedule = $existingSchedule !== null
-                && !$scheduleChanged
-                && $scheduledStartTime !== ''
-                && $scheduledEndTime !== '';
-            if (!$preservingExistingSchedule && !parish_schedule_slot_is_available(
-                $pdo,
-                $scheduledDate,
-                $scheduledStartTime,
-                $scheduledEndTime,
-                (int) ($existingSchedule['id'] ?? 0)
-            )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'That 60-minute time is no longer available. Choose an open time from the schedule list.';
-                redirect_to($postReturnUrl);
-            }
             $statusChanged = $application['status'] !== 'scheduled';
             if (!$scheduleChanged && !$statusChanged) {
                 $pdo->rollBack();
@@ -560,16 +379,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect_to($postReturnUrl);
             }
 
+            $eventType = match ($application['sacrament_type']) {
+                'baptism' => 'baptism',
+                'marriage' => 'wedding',
+                default => 'other',
+            };
+            $eventTitle = match ($application['sacrament_type']) {
+                'baptism' => 'Baptism',
+                'first_communion' => 'First Communion',
+                'confirmation' => 'Confirmation',
+                'marriage' => 'Wedding',
+                default => 'Parish Sacrament',
+            };
             $startTimeValue = $scheduledStartTime !== '' ? $scheduledStartTime : null;
             $endTimeValue = $scheduledEndTime !== '' ? $scheduledEndTime : null;
-            application_queue_upsert_schedule_event(
-                $pdo,
-                $application,
-                $scheduledDate,
-                $startTimeValue,
-                $endTimeValue,
-                $existingSchedule
-            );
+
+            if ($existingSchedule === null) {
+                $insertSchedule = $pdo->prepare(
+                    'INSERT INTO schedule_events
+                        (event_type, title, public_details, event_date, start_time, end_time, application_id, notes, created_by)
+                     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)'
+                );
+                $insertSchedule->execute([
+                    $eventType,
+                    $eventTitle,
+                    $scheduledDate,
+                    $startTimeValue,
+                    $endTimeValue,
+                    (int) $applicationId,
+                    'Linked to pre-application ' . (string) $application['request_no'] . '.',
+                    (int) current_user()['id'],
+                ]);
+            } else {
+                $updateSchedule = $pdo->prepare(
+                    'UPDATE schedule_events
+                     SET event_type = ?, event_date = ?, start_time = ?, end_time = ?
+                     WHERE id = ?'
+                );
+                $updateSchedule->execute([
+                    $eventType,
+                    $scheduledDate,
+                    $startTimeValue,
+                    $endTimeValue,
+                    (int) $existingSchedule['id'],
+                ]);
+            }
 
             if ($statusChanged) {
                 $updateStatus = $pdo->prepare(
@@ -607,451 +461,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['application_queue_success'] = $statusChanged
                 ? 'Confirmed schedule saved and the application is now Scheduled.'
                 : 'Confirmed schedule updated.';
-        } elseif ($action === 'save_schedule_proposal') {
-            if ($application['sacrament_type'] !== 'marriage') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Tentative schedule proposals are only used for marriage applications.';
-                redirect_to($postReturnUrl);
-            }
-
-            $proposalDate = is_string($_POST['proposed_schedule_date'] ?? null)
-                ? trim($_POST['proposed_schedule_date'])
-                : '';
-            $proposalStart = is_string($_POST['proposed_schedule_start_time'] ?? null)
-                ? trim($_POST['proposed_schedule_start_time'])
-                : '';
-            $proposalEnd = is_string($_POST['proposed_schedule_end_time'] ?? null)
-                ? trim($_POST['proposed_schedule_end_time'])
-                : '';
-            $proposalError = application_schedule_input_error($proposalDate, $proposalStart, $proposalEnd);
-            if ($proposalStart === '' || $proposalEnd === '') {
-                $proposalError = 'Choose an available 60-minute time before saving the proposal.';
-            }
-            if ($proposalError !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = $proposalError;
-                redirect_to($postReturnUrl);
-            }
-
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
-            if (count($linkedScheduleEvents) > 1) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'This wedding has multiple linked calendar events. Resolve the duplicates before proposing a change.';
-                redirect_to($postReturnUrl);
-            }
-            $existingSchedule = $linkedScheduleEvents[0] ?? null;
-            if (!parish_schedule_slot_is_available(
-                $pdo,
-                $proposalDate,
-                $proposalStart,
-                $proposalEnd,
-                (int) ($existingSchedule['id'] ?? 0)
-            )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'That 60-minute time is no longer available. Choose an open time before saving the proposal.';
-                redirect_to($postReturnUrl);
-            }
-
-            $savedProposalDate = (string) ($application['proposed_schedule_date'] ?? '');
-            $savedProposalStart = $application['proposed_schedule_start_time'] !== null
-                ? substr((string) $application['proposed_schedule_start_time'], 0, 5)
-                : '';
-            $savedProposalEnd = $application['proposed_schedule_end_time'] !== null
-                ? substr((string) $application['proposed_schedule_end_time'], 0, 5)
-                : '';
-            if ($savedProposalDate === $proposalDate
-                && $savedProposalStart === $proposalStart
-                && $savedProposalEnd === $proposalEnd
-                && $application['schedule_proposal_status'] !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_success'] = 'No changes were needed; the saved proposal and its agreement status remain unchanged.';
-                redirect_to($postReturnUrl);
-            }
-
-            $saveProposal = $pdo->prepare(
-                "UPDATE sacrament_applications
-                 SET proposed_schedule_date = ?, proposed_schedule_start_time = ?,
-                     proposed_schedule_end_time = ?, schedule_proposal_status = 'draft',
-                     schedule_proposal_sent_at = NULL, schedule_proposal_accepted_at = NULL,
-                     schedule_proposal_accepted_by = NULL
-                 WHERE id = ?"
-            );
-            $saveProposal->execute([$proposalDate, $proposalStart, $proposalEnd, (int) $applicationId]);
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'marriage_schedule_proposal_saved',
-                'sacrament_applications',
-                (int) $applicationId,
-                'Tentative wedding schedule saved for ' . date('F j, Y', strtotime($proposalDate))
-                    . ' at ' . format_event_time_range($proposalStart, $proposalEnd)
-                    . '. It does not reserve the calendar slot.'
-            );
-            $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Tentative schedule saved as a draft. It is not reserved, sent, or final.';
-        } elseif ($action === 'send_schedule_proposal') {
-            if ($application['sacrament_type'] !== 'marriage'
-                || !in_array($application['status'], ['approved', 'scheduled'], true)) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Approve the marriage pre-application before sending a schedule proposal.';
-                redirect_to($postReturnUrl);
-            }
-            $outstandingRequirements = application_outstanding_requirement_keys(
-                (string) ($application['requirements'] ?? ''),
-                $requirementKeys['marriage']
-            );
-            if ($outstandingRequirements !== []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Resolve the remaining marriage requirements before sending a schedule proposal.';
-                redirect_to($postReturnUrl);
-            }
-            if ($application['schedule_proposal_status'] !== 'draft') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Save the proposal as a draft before sending it.';
-                redirect_to($postReturnUrl);
-            }
-
-            $proposalDate = (string) ($application['proposed_schedule_date'] ?? '');
-            $proposalStart = $application['proposed_schedule_start_time'] !== null
-                ? substr((string) $application['proposed_schedule_start_time'], 0, 5)
-                : '';
-            $proposalEnd = $application['proposed_schedule_end_time'] !== null
-                ? substr((string) $application['proposed_schedule_end_time'], 0, 5)
-                : '';
-            $proposalError = application_schedule_input_error($proposalDate, $proposalStart, $proposalEnd);
-            if ($proposalStart === '' || $proposalEnd === '') {
-                $proposalError = 'Save an available 60-minute time before sending the proposal.';
-            }
-            if ($proposalError !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = $proposalError;
-                redirect_to($postReturnUrl);
-            }
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
-            if (count($linkedScheduleEvents) > 1) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'This wedding has multiple linked calendar events. Resolve the duplicates before sending a proposal.';
-                redirect_to($postReturnUrl);
-            }
-            $existingSchedule = $linkedScheduleEvents[0] ?? null;
-            if (!parish_schedule_slot_is_available(
-                $pdo,
-                $proposalDate,
-                $proposalStart,
-                $proposalEnd,
-                (int) ($existingSchedule['id'] ?? 0)
-            )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'That proposed time is no longer available. Save a new proposal before contacting the couple.';
-                redirect_to($postReturnUrl);
-            }
-
-            $recipientEmails = application_queue_marriage_proposal_recipients($application);
-            if ($recipientEmails === []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'No valid email address is recorded for either applicant.';
-                redirect_to($postReturnUrl);
-            }
-            $details = application_queue_details($application);
-            $groom = is_array($details['groom'] ?? null) ? $details['groom'] : [];
-            $bride = is_array($details['bride'] ?? null) ? $details['bride'] : [];
-            $venue = (string) ($details['preferred_wedding_venue'] ?? '');
-            if ($venue === 'other') {
-                $venue = trim((string) ($details['preferred_wedding_venue_other'] ?? ''));
-            } else {
-                $venue = "St. Patrick's Parish Church";
-            }
-            $proposalRequestNo = (string) $application['request_no'];
-            $pdo->commit();
-
-            $allEmailsSent = true;
-            foreach ($recipientEmails as $recipientEmail) {
-                $sent = mail_marriage_schedule_proposal(
-                    $recipientEmail,
-                    $proposalRequestNo,
-                    (string) ($groom['full_name'] ?? ''),
-                    (string) ($bride['full_name'] ?? ''),
-                    $venue,
-                    $proposalDate,
-                    $proposalStart,
-                    $proposalEnd,
-                    $pdo,
-                    (int) $applicationId
-                );
-                $allEmailsSent = $sent && $allEmailsSent;
-            }
-            if (!$allEmailsSent) {
-                $_SESSION['application_queue_error'] = 'The proposal email could not be delivered to every applicant. The proposal remains a draft; check email delivery history or contact them before marking it sent.';
-                redirect_to($postReturnUrl);
-            }
-
-            $pdo->beginTransaction();
-            $sendLock = $pdo->prepare(
-                'SELECT status, proposed_schedule_date, proposed_schedule_start_time,
-                        proposed_schedule_end_time, schedule_proposal_status
-                 FROM sacrament_applications
-                 WHERE id = ?
-                 FOR UPDATE'
-            );
-            $sendLock->execute([(int) $applicationId]);
-            $currentProposal = $sendLock->fetch(PDO::FETCH_ASSOC);
-            if (!$currentProposal
-                || !in_array($currentProposal['status'], ['approved', 'scheduled'], true)
-                || $currentProposal['schedule_proposal_status'] !== 'draft'
-                || (string) $currentProposal['proposed_schedule_date'] !== $proposalDate
-                || substr((string) $currentProposal['proposed_schedule_start_time'], 0, 5) !== $proposalStart
-                || substr((string) $currentProposal['proposed_schedule_end_time'], 0, 5) !== $proposalEnd) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'The proposal was emailed, but its saved details changed meanwhile. Review it and send it again if needed.';
-                redirect_to($postReturnUrl);
-            }
-            $markProposalSent = $pdo->prepare(
-                "UPDATE sacrament_applications
-                 SET schedule_proposal_status = 'sent', schedule_proposal_sent_at = NOW()
-                 WHERE id = ?"
-            );
-            $markProposalSent->execute([(int) $applicationId]);
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'marriage_schedule_proposal_sent',
-                'sacrament_applications',
-                (int) $applicationId,
-                'Tentative wedding schedule proposal emailed to the applicants.'
-            );
-            $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Tentative schedule emailed. It is still not reserved or final; record both parties’ agreement before confirming.';
-        } elseif ($action === 'mark_schedule_proposal_sent') {
-            if ($application['sacrament_type'] !== 'marriage'
-                || !in_array($application['status'], ['approved', 'scheduled'], true)
-                || $application['schedule_proposal_status'] !== 'draft'
-                || ($_POST['confirm_manual_sent'] ?? '') !== '1') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Confirm that the proposal was sent to both applicants outside the system.';
-                redirect_to($postReturnUrl);
-            }
-            $outstandingRequirements = application_outstanding_requirement_keys(
-                (string) ($application['requirements'] ?? ''),
-                $requirementKeys['marriage']
-            );
-            if ($outstandingRequirements !== []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Resolve the remaining marriage requirements before marking a proposal sent.';
-                redirect_to($postReturnUrl);
-            }
-            $proposalDate = (string) ($application['proposed_schedule_date'] ?? '');
-            $proposalStart = $application['proposed_schedule_start_time'] !== null
-                ? substr((string) $application['proposed_schedule_start_time'], 0, 5)
-                : '';
-            $proposalEnd = $application['proposed_schedule_end_time'] !== null
-                ? substr((string) $application['proposed_schedule_end_time'], 0, 5)
-                : '';
-            if ($proposalStart === '' || $proposalEnd !== date('H:i', strtotime($proposalStart . ' +60 minutes'))
-                || ($proposalError = application_schedule_input_error($proposalDate, $proposalStart, $proposalEnd)) !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = $proposalError ?? 'Save a valid 60-minute schedule proposal first.';
-                redirect_to($postReturnUrl);
-            }
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
-            $existingSchedule = $linkedScheduleEvents[0] ?? null;
-            if (count($linkedScheduleEvents) > 1 || !parish_schedule_slot_is_available(
-                $pdo,
-                $proposalDate,
-                $proposalStart,
-                $proposalEnd,
-                (int) ($existingSchedule['id'] ?? 0)
-            )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'The proposal has a calendar conflict. Choose an available time before marking it sent.';
-                redirect_to($postReturnUrl);
-            }
-            $updateProposal = $pdo->prepare(
-                "UPDATE sacrament_applications
-                 SET schedule_proposal_status = 'sent', schedule_proposal_sent_at = NOW()
-                 WHERE id = ?"
-            );
-            $updateProposal->execute([(int) $applicationId]);
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'marriage_schedule_proposal_marked_sent',
-                'sacrament_applications',
-                (int) $applicationId,
-                'Staff recorded that the tentative wedding schedule was sent to both applicants outside the system.'
-            );
-            $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Proposal marked as sent. It remains tentative until both parties agree and staff confirms it.';
-        } elseif ($action === 'record_schedule_agreement') {
-            $agreementMethod = is_string($_POST['agreement_method'] ?? null)
-                ? trim($_POST['agreement_method'])
-                : '';
-            $agreementNote = is_string($_POST['agreement_note'] ?? null)
-                ? trim($_POST['agreement_note'])
-                : '';
-            if ($application['sacrament_type'] !== 'marriage'
-                || !in_array($application['status'], ['approved', 'scheduled'], true)
-                || $application['schedule_proposal_status'] !== 'sent'
-                || ($_POST['couple_agreed'] ?? '') !== '1'
-                || !in_array($agreementMethod, ['phone', 'email', 'in_person', 'other'], true)
-                || strlen($agreementNote) > 500) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Confirm that both applicants agreed to the exact proposal and enter how they confirmed.';
-                redirect_to($postReturnUrl);
-            }
-            if ($agreementMethod === 'other' && $agreementNote === '') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Describe the other way both applicants confirmed their agreement.';
-                redirect_to($postReturnUrl);
-            }
-            $outstandingRequirements = application_outstanding_requirement_keys(
-                (string) ($application['requirements'] ?? ''),
-                $requirementKeys['marriage']
-            );
-            if ($outstandingRequirements !== []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Resolve the remaining marriage requirements before recording agreement.';
-                redirect_to($postReturnUrl);
-            }
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
-            $existingSchedule = $linkedScheduleEvents[0] ?? null;
-            $proposalDate = (string) ($application['proposed_schedule_date'] ?? '');
-            $proposalStart = $application['proposed_schedule_start_time'] !== null
-                ? substr((string) $application['proposed_schedule_start_time'], 0, 5)
-                : '';
-            $proposalEnd = $application['proposed_schedule_end_time'] !== null
-                ? substr((string) $application['proposed_schedule_end_time'], 0, 5)
-                : '';
-            if (count($linkedScheduleEvents) > 1) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'This wedding has multiple linked calendar events. Resolve the duplicates before recording agreement.';
-                redirect_to($postReturnUrl);
-            }
-            $proposalError = application_schedule_input_error($proposalDate, $proposalStart, $proposalEnd);
-            if ($proposalStart === '' || $proposalError !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = $proposalError ?? 'Save a valid 60-minute schedule proposal before recording agreement.';
-                redirect_to($postReturnUrl);
-            }
-            if (!parish_schedule_slot_is_available(
-                    $pdo,
-                    $proposalDate,
-                    $proposalStart,
-                    $proposalEnd,
-                    (int) ($existingSchedule['id'] ?? 0)
-                )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'The proposed time is no longer available. Save and send a new proposal before recording agreement.';
-                redirect_to($postReturnUrl);
-            }
-            $acceptProposal = $pdo->prepare(
-                "UPDATE sacrament_applications
-                 SET schedule_proposal_status = 'accepted',
-                     schedule_proposal_accepted_at = NOW(),
-                     schedule_proposal_accepted_by = ?
-                 WHERE id = ?"
-            );
-            $acceptProposal->execute([(int) current_user()['id'], (int) $applicationId]);
-            $agreementDescription = 'Staff recorded both applicants’ agreement to the proposed wedding schedule via '
-                . str_replace('_', ' ', $agreementMethod) . '.';
-            if ($agreementNote !== '') {
-                $agreementDescription .= ' Note: ' . $agreementNote;
-            }
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'marriage_schedule_agreement_recorded',
-                'sacrament_applications',
-                (int) $applicationId,
-                $agreementDescription
-            );
-            $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Both applicants’ agreement was recorded. The proposal is still not a confirmed booking.';
-        } elseif ($action === 'confirm_schedule_proposal') {
-            if ($application['sacrament_type'] !== 'marriage'
-                || !in_array($application['status'], ['approved', 'scheduled'], true)
-                || $application['schedule_proposal_status'] !== 'accepted') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Record both applicants’ agreement before confirming the wedding schedule.';
-                redirect_to($postReturnUrl);
-            }
-            $outstandingRequirements = application_outstanding_requirement_keys(
-                (string) ($application['requirements'] ?? ''),
-                $requirementKeys['marriage']
-            );
-            if ($outstandingRequirements !== []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Resolve the remaining marriage requirements before final confirmation.';
-                redirect_to($postReturnUrl);
-            }
-            $proposalDate = (string) ($application['proposed_schedule_date'] ?? '');
-            $proposalStart = $application['proposed_schedule_start_time'] !== null
-                ? substr((string) $application['proposed_schedule_start_time'], 0, 5)
-                : '';
-            $proposalEnd = $application['proposed_schedule_end_time'] !== null
-                ? substr((string) $application['proposed_schedule_end_time'], 0, 5)
-                : '';
-            $proposalError = application_schedule_input_error($proposalDate, $proposalStart, $proposalEnd);
-            if ($proposalStart === '' || $proposalEnd === '') {
-                $proposalError = 'Save a valid 60-minute schedule proposal before final confirmation.';
-            }
-            if ($proposalError !== null) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = $proposalError;
-                redirect_to($postReturnUrl);
-            }
-            $linkedScheduleEvents = application_queue_linked_schedule_events($pdo, (int) $applicationId);
-            if (count($linkedScheduleEvents) > 1) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'This wedding has multiple linked calendar events. Resolve the duplicates before final confirmation.';
-                redirect_to($postReturnUrl);
-            }
-            $existingSchedule = $linkedScheduleEvents[0] ?? null;
-            if (!parish_schedule_slot_is_available(
-                $pdo,
-                $proposalDate,
-                $proposalStart,
-                $proposalEnd,
-                (int) ($existingSchedule['id'] ?? 0)
-            )) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'The agreed time is no longer available. Save and send a new proposal for both applicants to agree to.';
-                redirect_to($postReturnUrl);
-            }
-
-            application_queue_upsert_schedule_event(
-                $pdo,
-                $application,
-                $proposalDate,
-                $proposalStart,
-                $proposalEnd,
-                $existingSchedule
-            );
-            $confirmSchedule = $pdo->prepare(
-                "UPDATE sacrament_applications
-                 SET status = 'scheduled', schedule_proposal_status = 'confirmed'
-                 WHERE id = ?"
-            );
-            $confirmSchedule->execute([(int) $applicationId]);
-            $scheduleDateLabel = date('F j, Y', strtotime($proposalDate));
-            $scheduleTimeLabel = format_event_time_range($proposalStart, $proposalEnd);
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'marriage_schedule_confirmed',
-                'sacrament_applications',
-                (int) $applicationId,
-                'Wedding schedule confirmed for ' . $scheduleDateLabel . ' at ' . $scheduleTimeLabel
-                    . ' after both applicants’ agreement.'
-            );
-            $pdo->commit();
-            notify_sacrament_application_status(
-                $pdo,
-                'scheduled',
-                'marriage',
-                (string) $application['request_no'],
-                'Your wedding date and time are confirmed: ' . $scheduleDateLabel . ' at ' . $scheduleTimeLabel . '.'
-            );
-            $_SESSION['application_queue_success'] = 'The agreed wedding date is now confirmed and booked on the parish calendar.';
         } elseif ($action === 'assign_staff') {
             $assigneeInput = (string) ($_POST['assignee_id'] ?? '');
             $assigneeId = null;
@@ -1182,177 +591,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $pdo->commit();
             $_SESSION['application_queue_success'] = 'Formation pathway updated.';
-        } elseif ($action === 'correct_application') {
-            if (in_array($application['status'], ['completed', 'rejected'], true)) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Completed or rejected pre-applications cannot be corrected here.';
-                redirect_to($postReturnUrl);
-            }
-
-            $outstandingKeys = application_outstanding_requirement_keys(
-                (string) ($application['requirements'] ?? ''),
-                $requirementKeys[$application['sacrament_type']] ?? []
-            );
-            if ($outstandingKeys !== []) {
-                $outstandingLabels = array_map(
-                    static fn(string $key): string => application_queue_requirement_label((string) $application['sacrament_type'], $key),
-                    $outstandingKeys
-                );
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Submitted data can be corrected only after every requirement is marked Received or Verified. Still missing: ' . implode(', ', $outstandingLabels) . '.';
-                redirect_to($postReturnUrl);
-            }
-
-            $confirmation = is_string($_POST['applicant_confirmed_correction'] ?? null)
-                ? trim($_POST['applicant_confirmed_correction'])
-                : '';
-            $reason = is_string($_POST['correction_reason'] ?? null)
-                ? trim($_POST['correction_reason'])
-                : '';
-            if ($confirmation !== '1') {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Confirm that the applicant, parent, or representative agreed to each corrected value before saving.';
-                redirect_to($postReturnUrl);
-            }
-            if (strlen($reason) < 5 || strlen($reason) > 500) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Enter a correction reason between 5 and 500 characters.';
-                redirect_to($postReturnUrl);
-            }
-
-            $applicantName = is_string($_POST['correction_applicant_name'] ?? null)
-                ? trim($_POST['correction_applicant_name'])
-                : '';
-            $applicantEmail = is_string($_POST['correction_applicant_email'] ?? null)
-                ? trim($_POST['correction_applicant_email'])
-                : '';
-            $applicantContact = is_string($_POST['correction_applicant_contact'] ?? null)
-                ? trim($_POST['correction_applicant_contact'])
-                : '';
-            if ($applicantName === '' || strlen($applicantName) > 150) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Enter a valid applicant or submitter name of 150 characters or fewer.';
-                redirect_to($postReturnUrl);
-            }
-            if ($applicantEmail !== '' && !filter_var($applicantEmail, FILTER_VALIDATE_EMAIL)) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'Enter a valid contact email for the applicant or submitter.';
-                redirect_to($postReturnUrl);
-            }
-            if (strlen($applicantEmail) > 150 || strlen($applicantContact) > 30) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_error'] = 'The corrected email or contact number is too long.';
-                redirect_to($postReturnUrl);
-            }
-
-            $beforeDetails = application_queue_details($application);
-            $afterDetails = $beforeDetails;
-            $submittedCorrections = is_array($_POST['correction_details'] ?? null)
-                ? $_POST['correction_details']
-                : [];
-            foreach ($submittedCorrections as $path => $rawValue) {
-                if (!is_string($path) || !is_string($rawValue)
-                    || strlen($rawValue) > 500
-                    || str_starts_with((string) $path, '_')) {
-                    continue;
-                }
-                $newValue = trim($rawValue);
-                $beforeFields = [];
-                application_queue_flatten_corrections($beforeDetails, '', $beforeFields);
-                if (!array_key_exists($path, $beforeFields)) {
-                    $pdo->rollBack();
-                    $_SESSION['application_queue_error'] = 'The submitted detail could not be found. Refresh the page and try again.';
-                    redirect_to($postReturnUrl);
-                }
-                application_queue_set_correction_path($afterDetails, $path, $newValue);
-            }
-
-            $preferredDate = '';
-            $preferredTime = '';
-            foreach (['preferred_wedding_date', 'preferred_date'] as $detailKey) {
-                if (array_key_exists($detailKey, $afterDetails) && is_scalar($afterDetails[$detailKey])) {
-                    $preferredDate = trim((string) $afterDetails[$detailKey]);
-                    break;
-                }
-            }
-            foreach (['preferred_wedding_time', 'preferred_time'] as $detailKey) {
-                if (array_key_exists($detailKey, $afterDetails) && is_scalar($afterDetails[$detailKey])) {
-                    $preferredTime = trim((string) $afterDetails[$detailKey]);
-                    break;
-                }
-            }
-
-            $beforeFields = [];
-            $afterFields = [];
-            application_queue_flatten_corrections($beforeDetails, '', $beforeFields);
-            application_queue_flatten_corrections($afterDetails, '', $afterFields);
-            $detailChanges = [];
-            foreach (array_unique(array_merge(array_keys($beforeFields), array_keys($afterFields))) as $fieldPath) {
-                $beforeValue = $beforeFields[$fieldPath] ?? null;
-                $afterValue = $afterFields[$fieldPath] ?? null;
-                if ($beforeValue !== $afterValue) {
-                    $detailChanges[$fieldPath] = ['before' => $beforeValue, 'after' => $afterValue];
-                }
-            }
-
-            $topBefore = [
-                'applicant_name' => (string) ($application['applicant_name'] ?? ''),
-                'applicant_email' => (string) ($application['applicant_email'] ?? ''),
-                'applicant_contact' => (string) ($application['applicant_contact'] ?? ''),
-            ];
-            $topAfter = [
-                'applicant_name' => $applicantName,
-                'applicant_email' => $applicantEmail,
-                'applicant_contact' => $applicantContact,
-            ];
-            $changes = [];
-            foreach ($topBefore as $field => $beforeValue) {
-                if ($beforeValue !== $topAfter[$field]) {
-                    $changes[$field] = ['before' => $beforeValue, 'after' => $topAfter[$field]];
-                }
-            }
-            if ($detailChanges !== []) {
-                $changes['submitted_details'] = $detailChanges;
-            }
-
-            if ($changes === []) {
-                $pdo->rollBack();
-                $_SESSION['application_queue_success'] = 'No corrected values were changed.';
-                redirect_to($postReturnUrl);
-            }
-
-            $encodedDetails = json_encode($afterDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-            $update = $pdo->prepare(
-                'UPDATE sacrament_applications
-                 SET applicant_name = ?, applicant_email = ?, applicant_contact = ?,
-                     preferred_date = ?, preferred_time = ?, details = ?
-                 WHERE id = ?'
-            );
-            $update->execute([
-                $applicantName,
-                $applicantEmail !== '' ? $applicantEmail : null,
-                $applicantContact !== '' ? $applicantContact : null,
-                $preferredDate !== '' ? $preferredDate : null,
-                $preferredTime !== '' ? $preferredTime : null,
-                $encodedDetails,
-                (int) $applicationId,
-            ]);
-
-            $description = json_encode([
-                'format' => 'application-correction-v1',
-                'changes' => $changes,
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            log_activity(
-                $pdo,
-                (int) current_user()['id'],
-                'sacrament_application_corrected',
-                'sacrament_applications',
-                (int) $applicationId,
-                $description,
-                $reason
-            );
-            $pdo->commit();
-            $_SESSION['application_queue_success'] = 'Confirmed corrections saved and recorded in the application audit history.';
         } elseif ($action === 'update_requirement') {
             $requirementKey = (string) ($_POST['requirement_key'] ?? '');
             $requirementStatus = (string) ($_POST['requirement_status'] ?? '');
@@ -1395,10 +633,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
             $update->execute([$newStatus, (int) $applicationId]);
             if ($newStatus === 'approved') {
-                $outstandingKeys = application_outstanding_requirement_keys(
-                    (string) ($application['requirements'] ?? ''),
-                    $requirementKeys[$application['sacrament_type']] ?? []
-                );
+                $outstandingKeys = application_outstanding_requirement_keys((string) ($application['requirements'] ?? ''));
                 if ($application['sacrament_type'] === 'first_communion'
                     && (int) ($application['person_id'] ?? 0) > 0
                     && application_queue_has_verified_baptism_record($pdo, (int) $application['person_id'])) {
@@ -1416,22 +651,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $closeReason = '';
             if ($newStatus === 'rejected') {
-                $closeReasonChoice = is_string($_POST['close_reason'] ?? null)
-                    ? trim($_POST['close_reason'])
-                    : '';
-                if ($closeReasonChoice === 'other') {
-                    $otherCloseReason = is_string($_POST['close_reason_other'] ?? null)
-                        ? trim($_POST['close_reason_other'])
-                        : '';
-                    if ($otherCloseReason === '') {
-                        $pdo->rollBack();
-                        $_SESSION['application_queue_error'] = 'Describe the other reason for closing this application.';
-                        redirect_to($postReturnUrl);
-                    }
-                    $closeReason = 'Other: ' . $otherCloseReason;
-                } elseif (in_array($closeReasonChoice, APPLICATION_CLOSE_REASONS, true)) {
-                    $closeReason = $closeReasonChoice;
-                } else {
+                $closeReason = (string) ($_POST['close_reason'] ?? '');
+                if (!in_array($closeReason, APPLICATION_CLOSE_REASONS, true)) {
                     $pdo->rollBack();
                     $_SESSION['application_queue_error'] = 'Choose a reason for closing this application.';
                     redirect_to($postReturnUrl);
@@ -1488,8 +709,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $selfUrl = $basePath . '/admin/requests/applications-queue.php';
 $rfConfig = [
     'date_column' => 'DATE(sa.created_at)',
-    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)', 'applicant_profile.public_reference', 'spouse_profile.public_reference'],
-    'placeholder' => 'Search reference number, applicant, or application details...',
+    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)'],
+    'placeholder' => 'Search request number, applicant, or application details...',
     'ranges' => ['today', 'week', 'month', 'year'],
     'filters' => [
         'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
@@ -1515,8 +736,6 @@ if ($filterStatus === 'in_progress') {
 } elseif (in_array($filterStatus, $statuses, true)) {
     $whereSql .= ' AND sa.status = ?';
     $params[] = $filterStatus;
-} else {
-    $whereSql .= " AND sa.status <> 'rejected'";
 }
 if (in_array($filterSacrament, $sacraments, true)) {
     $whereSql .= ' AND sa.sacrament_type = ?';
@@ -1533,13 +752,7 @@ if ($filterAssignee === 'unassigned') {
     $params[] = (int) $filterAssignee;
 }
 
-$countStmt = $pdo->prepare(
-    "SELECT COUNT(*)
-     FROM sacrament_applications sa
-     LEFT JOIN persons applicant_profile ON applicant_profile.id = sa.person_id
-     LEFT JOIN persons spouse_profile ON spouse_profile.id = sa.spouse_person_id
-     {$whereSql}"
-);
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications sa{$whereSql}");
 $countStmt->execute($params);
 $totalRows = (int) $countStmt->fetchColumn();
 $page = min($rf['page'], max(1, (int) ceil($totalRows / $rf['per_page'])));
@@ -1550,22 +763,13 @@ $rf['page'] = $page;
 $rf['offset'] = $offset;
 $stmt = $pdo->prepare(
     "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.batch_id, sa.spouse_person_id,
-            sa.applicant_name, sa.applicant_email, sa.applicant_contact, sa.preferred_date, sa.preferred_time,
-            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at,
+            sa.applicant_name, sa.applicant_email, sa.preferred_date, sa.preferred_time,
+            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at, 
             sa.updated_at, sa.rejection_reason, sa.assigned_to, 
-            sa.proposed_schedule_date, sa.proposed_schedule_start_time, sa.proposed_schedule_end_time,
-            sa.schedule_proposal_status, sa.schedule_proposal_sent_at, sa.schedule_proposal_accepted_at,
-            sa.schedule_proposal_accepted_by,
-            assignee.full_name AS assigned_to_name, proposal_acceptor.full_name AS schedule_proposal_accepted_by_name,
-            batch.batch_name,
-            applicant_profile.public_reference AS applicant_public_reference,
-            spouse_profile.public_reference AS spouse_public_reference
+            assignee.full_name AS assigned_to_name, batch.batch_name
      FROM sacrament_applications sa
      LEFT JOIN users assignee ON assignee.id = sa.assigned_to
-     LEFT JOIN users proposal_acceptor ON proposal_acceptor.id = sa.schedule_proposal_accepted_by
      LEFT JOIN sacrament_batches batch ON batch.id = sa.batch_id
-     LEFT JOIN persons applicant_profile ON applicant_profile.id = sa.person_id
-     LEFT JOIN persons spouse_profile ON spouse_profile.id = sa.spouse_person_id
      {$whereSql}
      ORDER BY sa.created_at DESC, sa.id DESC
      LIMIT {$limit} OFFSET {$offset}"
@@ -1766,12 +970,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if ($queueError !== ''): ?><p class="alert alert-error" role="alert"><?= e($queueError) ?></p><?php endif; ?>
     <?php if ($queueSuccess !== ''): ?><p class="alert alert-success"><?= e($queueSuccess) ?></p><?php endif; ?>
 
-    <div class="admin-list-toolbar">
-        <div class="application-queue-filter-wrap">
-            <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-        </div>
-        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
+    <div class="application-queue-filter-wrap">
+        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
     </div>
+    <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
     <?php if ($applications === []): ?>
         <p class="admin-queue-empty">No pre-applications match your search or filters.</p>
@@ -1780,12 +982,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <table class="admin-table application-queue-table">
                 <thead>
                     <tr>
-                        <th>Reference No.</th>
+                        <th>Request No.</th>
                         <th>Sacrament</th>
                         <th>Applicant(s)</th>
-                        <th class="column-date">Submitted</th>
+                        <th>Submitted</th>
                         <th>Status</th>
-                        <th class="row-actions">Review</th>
+                        <th>Review</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1929,24 +1131,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 }
             ?>
                 <tr>
-                    <?php
-                    $queueReferenceNumbers = array_values(array_unique(array_filter([
-                        trim((string) ($app['applicant_public_reference'] ?? '')),
-                        $app['sacrament_type'] === 'marriage'
-                            ? trim((string) ($app['spouse_public_reference'] ?? ''))
-                            : '',
-                    ])));
-                    ?>
-                    <td>
-                        <?php if ($queueReferenceNumbers !== []): ?>
-                            <?php foreach ($queueReferenceNumbers as $queueReferenceNumber): ?>
-                                <strong><?= e($queueReferenceNumber) ?></strong><?php if ($queueReferenceNumber !== end($queueReferenceNumbers)): ?><br><?php endif; ?>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <strong><?= e($app['request_no']) ?></strong>
-                            <br><small>Internal request No.</small>
-                        <?php endif; ?>
-                    </td>
+                    <td><strong><?= e($app['request_no']) ?></strong></td>
                     <td><?= e(application_queue_label($app['sacrament_type'])) ?></td>
                     <td>
                         <?= e(implode(' · ', $subjectNames)) ?>
@@ -1966,7 +1151,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <span class="application-queue-submitter"><?= e($baptismCheckLabel) ?></span>
                         <?php endif; ?>
                     </td>
-                    <td class="column-date">
+                    <td>
                         <?= e(application_queue_label($app['channel'])) ?><br>
                         <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
                     </td>
@@ -1974,7 +1159,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php if ($app['status'] === 'requirements_pending'): $pendingDays = (int) floor((time() - strtotime((string) $app['updated_at'])) / 86400); ?>
                         <br><small><?= $pendingDays >= APPLICATION_STALE_DAYS ? 'Stale: no activity for ' . $pendingDays . ' days' : 'Pending for ' . $pendingDays . ' days' ?></small>
                     <?php endif; ?></td>
-                    <td class="row-actions">
+                    <td>
                         <button
                             type="button"
                             class="btn btn-small"
@@ -1992,56 +1177,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <details
                             class="application-queue-review"
                             id="application-review-<?= (int) $app['id'] ?>"
-                            aria-label="Review <?= e($queueReferenceNumbers[0] ?? $app['request_no']) ?>"
+                            aria-label="Review <?= e($app['request_no']) ?>"
                             <?= $openApplicationId === (int) $app['id'] || $matchSearchApplicationId === (int) $app['id'] ? 'open' : '' ?>
                         >
-                            <summary aria-hidden="true" tabindex="-1">Review details for <?= e($queueReferenceNumbers[0] ?? $app['request_no']) ?></summary>
+                            <summary aria-hidden="true" tabindex="-1">Review details for <?= e($app['request_no']) ?></summary>
                             <article class="application-review-card">
                     <header class="admin-queue-heading">
                         <div>
                             <p class="admin-queue-kicker"><?= e(application_queue_label($app['sacrament_type'])) ?> · <?= e(application_queue_label($app['channel'])) ?></p>
-                            <h2><?= e(implode(' / ', $queueReferenceNumbers) ?: $app['request_no']) ?></h2>
-                            <p class="field-hint">Internal request No.: <?= e($app['request_no']) ?></p>
-                            <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
-                            <p><strong>Best contact for this request:</strong> <?= e($app['applicant_email']) ?> · <?= e(trim((string) ($app['applicant_contact'] ?? '')) ?: 'No phone number provided') ?></p>
+                            <h2><?= e($app['request_no']) ?></h2>
+                            <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e($app['applicant_email']) ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
                         </div>
                         <span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span>
                     </header>
 
                     <?php
                     $scheduleEvent = $scheduleEventsByApplication[(int) $app['id']] ?? null;
-                    $marriageAgeReview = null;
-                    if ($app['sacrament_type'] === 'marriage') {
-                        $ageReferenceDate = is_scalar($scheduleEvent['event_date'] ?? null)
-                            ? (string) $scheduleEvent['event_date']
-                            : '';
-                        $hasConfirmedAgeDate = parish_schedule_date_is_valid($ageReferenceDate);
-                        if (!$hasConfirmedAgeDate) {
-                            $ageReferenceDate = date('Y-m-d');
-                        }
-                        $groomDetails = is_array($details['groom'] ?? null) ? $details['groom'] : [];
-                        $brideDetails = is_array($details['bride'] ?? null) ? $details['bride'] : [];
-                        $groomBirthDate = $groomDetails['birth_date'] ?? $details['groom_birthdate'] ?? null;
-                        $brideBirthDate = $brideDetails['birth_date'] ?? $details['bride_birthdate'] ?? null;
-                        if (!is_string($groomBirthDate) || trim($groomBirthDate) === '') {
-                            $groomBirthDate = $linkedPersons[(int) ($app['person_id'] ?? 0)]['birth_date'] ?? null;
-                        }
-                        if (!is_string($brideBirthDate) || trim($brideBirthDate) === '') {
-                            $brideBirthDate = $linkedPersons[(int) ($app['spouse_person_id'] ?? 0)]['birth_date'] ?? null;
-                        }
-                        $marriageAgeReview = [
-                            'as_of' => $ageReferenceDate,
-                            'date_source' => $hasConfirmedAgeDate ? 'Confirmed marriage schedule' : 'Today (no confirmed schedule)',
-                            'groom' => marriage_party_age_eligibility(
-                                is_string($groomBirthDate) ? $groomBirthDate : null,
-                                $ageReferenceDate
-                            ),
-                            'bride' => marriage_party_age_eligibility(
-                                is_string($brideBirthDate) ? $brideBirthDate : null,
-                                $ageReferenceDate
-                            ),
-                        ];
-                    }
                     $isFormationSacrament = in_array($app['sacrament_type'], ['first_communion', 'confirmation'], true);
                     $formationPath = (string) ($details['formation_path'] ?? '');
                     $isBatchPath = $isFormationSacrament && $formationPath === 'batch';
@@ -2049,27 +1200,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         || $formationPath === ''
                         || $formationPath === 'individual_catchup';
                     ?>
-                    <?php if ($marriageAgeReview !== null): ?>
-                        <section class="marriage-age-review" aria-label="Marriage age eligibility review">
-                            <h3>Age Eligibility Review</h3>
-                            <p class="field-hint">Calculated as of <?= e(date('M j, Y', strtotime($marriageAgeReview['as_of']))) ?> · <?= e($marriageAgeReview['date_source']) ?>.</p>
-                            <dl class="application-details-list">
-                                <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $partyKey => $partyLabel):
-                                    $partyReview = $marriageAgeReview[$partyKey];
-                                    ?>
-                                    <div class="alert alert-<?= e($partyReview['tone']) ?>">
-                                        <dt><?= e($partyLabel) ?></dt>
-                                        <dd>
-                                            <strong><?= $partyReview['age'] === null ? 'Age not available' : e((string) $partyReview['age'] . ' years old') ?></strong>
-                                            <br><?= e($partyReview['label']) ?>
-                                        </dd>
-                                    </div>
-                                <?php endforeach; ?>
-                            </dl>
-                            <p class="field-hint">Age screening only: verify required consent or advice at the marriage-license stage. This does not replace checking canonical requirements and supporting documents.</p>
-                        </section>
-                    <?php endif; ?>
-
                     <section class="application-schedule-panel" aria-label="Application schedule">
                         <h3>Schedule</h3>
                         <?php if ($isBatchPath): ?>
@@ -2078,7 +1208,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <?php if (!empty($app['batch_id'])): ?>
                                     <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => (int) $app['batch_id']])) ?>"><?= e((string) $app['batch_name']) ?></a>
                                 <?php else: ?>
-                                    Awaiting Parish Office assignment · <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Open Sacrament Groups</a>
+                                    Awaiting Parish Office assignment
                                 <?php endif; ?>
                             </p>
                         <?php endif; ?>
@@ -2111,196 +1241,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             </p>
                         <?php elseif ($app['status'] === 'rejected'): ?>
                             <p class="field-hint">This application was rejected, so no schedule can be set.</p>
-                        <?php elseif ($app['sacrament_type'] === 'marriage'): ?>
-                            <?php
-                            $proposalStatus = (string) ($app['schedule_proposal_status'] ?? '');
-                            $proposalHasSavedDate = !empty($app['proposed_schedule_date']);
-                            $proposalDateValue = $proposalHasSavedDate
-                                ? (string) $app['proposed_schedule_date']
-                                : (string) ($scheduleEvent['event_date'] ?? $app['preferred_date'] ?? '');
-                            $proposalStartValue = $proposalHasSavedDate
-                                ? substr((string) ($app['proposed_schedule_start_time'] ?? ''), 0, 5)
-                                : substr((string) ($scheduleEvent['start_time'] ?? $app['preferred_time'] ?? ''), 0, 5);
-                            $proposalEndValue = $proposalHasSavedDate
-                                ? substr((string) ($app['proposed_schedule_end_time'] ?? ''), 0, 5)
-                                : substr((string) ($scheduleEvent['end_time'] ?? ''), 0, 5);
-                            $proposalRequirementsOutstanding = application_outstanding_requirement_keys(
-                                (string) ($app['requirements'] ?? ''),
-                                $requirementKeys['marriage']
-                            );
-                            $proposalReadyToSend = in_array($app['status'], ['approved', 'scheduled'], true)
-                                && $proposalRequirementsOutstanding === [];
-                            $proposalStatusLabels = [
-                                'draft' => 'Draft — not sent or reserved',
-                                'sent' => 'Sent — waiting for both applicants',
-                                'accepted' => 'Both applicants agreed — not yet booked',
-                                'confirmed' => 'Final schedule confirmed',
-                            ];
-                            ?>
-                            <p><strong>Schedule proposal:</strong>
-                                <?= e($proposalStatusLabels[$proposalStatus] ?? 'No proposal saved') ?>
-                            </p>
-                            <?php if ($scheduleEvent && $proposalStatus === 'draft'): ?>
-                                <p class="field-hint">The currently confirmed booking remains active unless and until a revised proposal is agreed to and confirmed.</p>
-                            <?php endif; ?>
-                            <?php if ($proposalStatus === 'accepted' && !empty($app['schedule_proposal_accepted_at'])): ?>
-                                <p class="field-hint">
-                                    Agreement recorded by <?= e($app['schedule_proposal_accepted_by_name'] ?? 'staff') ?>
-                                    on <?= e(date('M j, Y g:i A', strtotime((string) $app['schedule_proposal_accepted_at']))) ?>.
-                                </p>
-                            <?php elseif ($proposalStatus === 'sent' && !empty($app['schedule_proposal_sent_at'])): ?>
-                                <p class="field-hint">
-                                    Proposal sent <?= e(date('M j, Y g:i A', strtotime((string) $app['schedule_proposal_sent_at']))) ?>.
-                                </p>
-                            <?php endif; ?>
-                            <form method="post" class="inline-fields application-schedule-form marriage-schedule-proposal-form">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                <input type="hidden" name="action" value="save_schedule_proposal">
-                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <div
-                                    class="parish-schedule-picker"
-                                    data-parish-schedule-picker
-                                    data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
-                                    data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
-                                    data-current-only-if-available="1"
-                                    data-current-date="<?= e($proposalDateValue) ?>"
-                                    data-current-start="<?= e($proposalStartValue) ?>"
-                                    data-current-end="<?= e($proposalEndValue) ?>"
-                                >
-                                    <label>Proposed wedding date *
-                                        <input
-                                            type="date"
-                                            name="proposed_schedule_date"
-                                            min="<?= e(date('Y-m-d')) ?>"
-                                            value="<?= e($proposalDateValue) ?>"
-                                            data-schedule-date
-                                            required
-                                        >
-                                    </label>
-                                    <label>Available 60-minute time *
-                                        <select data-schedule-slot required disabled>
-                                            <option value="">Choose a date first</option>
-                                        </select>
-                                    </label>
-                                    <input type="hidden" name="proposed_schedule_start_time" value="<?= e($proposalStartValue) ?>" data-schedule-start>
-                                    <input type="hidden" name="proposed_schedule_end_time" value="<?= e($proposalEndValue) ?>" data-schedule-end>
-                                    <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view current availability.</p>
-                                    <div data-schedule-event-panel hidden>
-                                        <strong>Schedules already booked that day</strong>
-                                        <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
-                                        <ul class="parish-schedule-picker__events" data-schedule-events></ul>
-                                    </div>
-                                </div>
-                                <p class="field-hint">
-                                    The applicant’s preferred date and time are prefilled when available. If the preferred time is no longer open, choose another available slot. Saving only keeps a draft selection; it does not reserve the slot, email the couple, or change the application status. Availability is checked again before sending and final confirmation.
-                                </p>
-                                <button type="submit" class="btn btn-small">
-                                    <?= $proposalStatus === '' ? 'Save tentative selection' : 'Save updated proposal draft' ?>
-                                </button>
-                            </form>
-
-                            <?php if ($proposalStatus === 'draft'): ?>
-                                <?php if ($proposalReadyToSend): ?>
-                                    <div class="application-proposal-actions">
-                                        <form method="post" class="inline-fields">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                            <input type="hidden" name="action" value="send_schedule_proposal">
-                                            <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                            <button type="submit" class="btn btn-primary btn-small">Email proposal to both applicants</button>
-                                        </form>
-                                        <form method="post" class="inline-fields">
-                                            <?= csrf_field() ?>
-                                            <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                            <input type="hidden" name="action" value="mark_schedule_proposal_sent">
-                                            <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" name="confirm_manual_sent" value="1" required>
-                                                I sent this proposal to both applicants outside the system.
-                                            </label>
-                                            <button type="submit" class="btn btn-secondary btn-small">Record manual sending</button>
-                                        </form>
-                                    </div>
-                                <?php else: ?>
-                                    <p class="field-hint">You can save a draft during review. Sending is enabled after the pre-application is approved and all required documents are recorded as received or verified.</p>
-                                <?php endif; ?>
-                            <?php elseif ($proposalStatus === 'sent'): ?>
-                                <?php if ($proposalReadyToSend): ?>
-                                    <form method="post" class="inline-fields application-proposal-agreement-form">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                        <input type="hidden" name="action" value="record_schedule_agreement">
-                                        <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                        <label>How did both applicants confirm?
-                                            <select name="agreement_method" required>
-                                                <option value="">-- Select --</option>
-                                                <option value="phone">Phone call</option>
-                                                <option value="email">Email</option>
-                                                <option value="in_person">In person</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </label>
-                                        <label>Note (optional)
-                                            <input type="text" name="agreement_note" maxlength="500">
-                                        </label>
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" name="couple_agreed" value="1" required>
-                                            I confirmed that both applicants agree to this exact date, time, and venue.
-                                        </label>
-                                        <button type="submit" class="btn btn-primary btn-small">Record both parties’ agreement</button>
-                                    </form>
-                                <?php else: ?>
-                                    <p class="field-hint">The proposal was sent, but final processing is not currently ready. Resolve outstanding requirements before recording agreement.</p>
-                                <?php endif; ?>
-                            <?php elseif ($proposalStatus === 'accepted'): ?>
-                                <?php if ($proposalReadyToSend): ?>
-                                    <form method="post" class="inline-fields application-proposal-confirm-form">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                        <input type="hidden" name="action" value="confirm_schedule_proposal">
-                                        <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                        <p class="field-hint">Final confirmation rechecks availability, books the slot on the parish calendar, and emails the confirmed schedule. If the time is no longer available, save and send a new proposal for both applicants to agree to.</p>
-                                        <button type="submit" class="btn btn-primary btn-small">Confirm and book the agreed schedule</button>
-                                    </form>
-                                <?php else: ?>
-                                    <p class="field-hint">Agreement is recorded, but final confirmation is blocked until all marriage requirements are complete.</p>
-                                <?php endif; ?>
-                            <?php elseif ($proposalStatus === 'confirmed'): ?>
-                                <p class="field-hint">This schedule is on the parish calendar. To change it, save a new proposal; both applicants must agree again before staff confirms the change.</p>
-                            <?php endif; ?>
                         <?php elseif ($isBatchPath): ?>
-                            <p class="field-hint">This regular parish group is scheduled once for everyone assigned. Open the group above or visit <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a> to choose its date and available time.</p>
-                            <?php
-                            $availabilityPreviewDate = (string) ($scheduleEvent['event_date'] ?? $app['preferred_date'] ?? '');
-                            if ($availabilityPreviewDate < date('Y-m-d')) {
-                                $availabilityPreviewDate = '';
-                            }
-                            ?>
-                            <div
-                                class="parish-schedule-picker"
-                                data-parish-schedule-picker
-                                data-preview-only="1"
-                                data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
-                                data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
-                            >
-                                <label>Check availability for a date
-                                    <input type="date" min="<?= e(date('Y-m-d')) ?>" value="<?= e($availabilityPreviewDate) ?>" data-schedule-date>
-                                </label>
-                                <label>Tentative available time
-                                    <select data-schedule-slot disabled>
-                                        <option value="">Choose a date first</option>
-                                    </select>
-                                </label>
-                                <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
-                                <p class="field-hint">Choosing a time here is only a preview and does not reserve it. Set the confirmed time for everyone assigned in <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a>.</p>
-                                <ul class="parish-schedule-picker__events" data-schedule-slot-list aria-label="Available 60-minute times"></ul>
-                                <div data-schedule-event-panel hidden>
-                                    <strong>Schedules already booked that day</strong>
-                                    <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
-                                    <ul class="parish-schedule-picker__events" data-schedule-events></ul>
-                                </div>
-                            </div>
+                            <p class="field-hint">The group schedule is managed once for everyone assigned. The Parish Office will notify each family when the date is confirmed.</p>
                         <?php elseif (!$canScheduleIndividually): ?>
                             <p class="field-hint">Confirm whether this should follow a batch or individual catch-up path before setting a schedule.</p>
                             <form method="post" class="inline-fields">
@@ -2323,76 +1265,36 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
                                 <input type="hidden" name="action" value="set_schedule">
                                 <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <div
-                                    class="parish-schedule-picker"
-                                    data-parish-schedule-picker
-                                    data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
-                                    data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
-                                    data-current-date="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
-                                    data-current-start="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(substr((string) $scheduleEvent['start_time'], 0, 5)) : '' ?>"
-                                    data-current-end="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(substr((string) $scheduleEvent['end_time'], 0, 5)) : '' ?>"
-                                >
-                                    <label>Confirmed date *
-                                        <input
-                                            type="date"
-                                            name="scheduled_date"
-                                            min="<?= e(date('Y-m-d')) ?>"
-                                            value="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
-                                            data-schedule-date
-                                            required
-                                        >
-                                    </label>
-                                    <label>Available 60-minute time *
-                                        <select data-schedule-slot required disabled>
-                                            <option value="">Choose a date first</option>
-                                        </select>
-                                    </label>
-                                    <input type="hidden" name="scheduled_start_time" value="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(substr((string) $scheduleEvent['start_time'], 0, 5)) : '' ?>" data-schedule-start>
-                                    <input type="hidden" name="scheduled_end_time" value="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(substr((string) $scheduleEvent['end_time'], 0, 5)) : '' ?>" data-schedule-end>
-                                    <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
-                                    <div data-schedule-event-panel hidden>
-                                        <strong>Schedules already booked that day</strong>
-                                        <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
-                                        <ul class="parish-schedule-picker__events" data-schedule-events></ul>
-                                    </div>
-                                </div>
+                                <label>Confirmed date *
+                                    <input
+                                        type="date"
+                                        name="scheduled_date"
+                                        min="<?= e(date('Y-m-d')) ?>"
+                                        value="<?= e((string) ($scheduleEvent['event_date'] ?? '')) ?>"
+                                        required
+                                    >
+                                </label>
+                                <label>Start time
+                                    <input
+                                        type="time"
+                                        name="scheduled_start_time"
+                                        value="<?= $scheduleEvent && $scheduleEvent['start_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['start_time']))) : '' ?>"
+                                    >
+                                </label>
+                                <label>End time
+                                    <input
+                                        type="time"
+                                        name="scheduled_end_time"
+                                        value="<?= $scheduleEvent && $scheduleEvent['end_time'] ? e(date('H:i', strtotime((string) $scheduleEvent['end_time']))) : '' ?>"
+                                    >
+                                </label>
                                 <button type="submit" class="btn btn-small">
                                     <?= $scheduleEvent ? 'Update confirmed schedule' : 'Set confirmed schedule' ?>
                                 </button>
                             </form>
-                            <p class="field-hint">The applicant’s preferred date stays unchanged. Select an open time from 8:00 AM to 5:00 PM; bookings are checked again when saved. Saving this schedule moves the application to Scheduled and emails the confirmed date and time.</p>
+                            <p class="field-hint">The applicant’s preferred date stays unchanged. Saving this schedule moves the application to Scheduled and emails the confirmed date and time. Check the parish calendar for availability before confirming.</p>
                         <?php else: ?>
-                            <?php
-                            $availabilityPreviewDate = (string) ($scheduleEvent['event_date'] ?? $app['preferred_date'] ?? '');
-                            if ($availabilityPreviewDate < date('Y-m-d')) {
-                                $availabilityPreviewDate = '';
-                            }
-                            ?>
-                            <div
-                                class="parish-schedule-picker"
-                                data-parish-schedule-picker
-                                data-preview-only="1"
-                                data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
-                                data-exclude-event-id="<?= (int) ($scheduleEvent['id'] ?? 0) ?>"
-                            >
-                                <label>Check availability for a date
-                                    <input type="date" min="<?= e(date('Y-m-d')) ?>" value="<?= e($availabilityPreviewDate) ?>" data-schedule-date>
-                                </label>
-                                <label>Tentative available time
-                                    <select data-schedule-slot disabled>
-                                        <option value="">Choose a date first</option>
-                                    </select>
-                                </label>
-                                <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
-                                <p class="field-hint">Choosing a time here is only a preview and does not reserve it. After approval, choose the time again under Confirmed schedule to book it.</p>
-                                <ul class="parish-schedule-picker__events" data-schedule-slot-list aria-label="Available 60-minute times"></ul>
-                                <div data-schedule-event-panel hidden>
-                                    <strong>Schedules already booked that day</strong>
-                                    <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
-                                    <ul class="parish-schedule-picker__events" data-schedule-events></ul>
-                                </div>
-                            </div>
-                            <p class="field-hint">Schedule editing becomes available after approval. Use <a href="#application-review-actions">Next Step below</a> to move this request through review and approve it first. Regular First Communion and Confirmation group schedules are managed in <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>">Sacrament Groups</a>.</p>
+                            <p class="field-hint">Approve the application before setting its confirmed schedule.</p>
                         <?php endif; ?>
                     </section>
 
@@ -2401,23 +1303,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <dl class="application-details-list">
                             <?php if ($details !== []): ?>
                                 <?php foreach ($details as $key => $value): ?>
-                                    <?php if (in_array((string) $key, ['child_sex_as_recorded', 'applicant_sex_as_recorded'], true)) continue; ?>
-                                    <?php
-                                    $detailKey = (string) $key;
-                                    if ($detailKey === 'preferred_wedding_venue_other'
-                                        && (($details['preferred_wedding_venue'] ?? '') === 'church'
-                                            || !is_scalar($value)
-                                            || trim((string) $value) === '')) {
-                                        continue;
-                                    }
-                                    ?>
                                     <div>
                                         <?php
+                                        $detailKey = (string) $key;
                                         $detailLabel = $detailKey === 'preferred_wedding_venue_other'
                                             ? 'Other venue name'
-                                            : ($detailKey === 'school_year' && ($application['sacrament_type'] ?? '') === 'first_communion'
-                                                ? 'Target sacrament year'
-                                                : application_queue_label($detailKey));
+                                            : application_queue_label($detailKey);
                                         if ($detailKey === 'preferred_wedding_venue') {
                                             $value = match ($value) {
                                                 'church' => "St. Patrick's Parish Church",
@@ -2434,100 +1325,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php else: ?>
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
                             <?php endif; ?>
-                            <?php if (in_array(($app['sacrament_type'] ?? ''), ['baptism', 'first_communion', 'confirmation'], true)): ?>
-                                <?php
-                                $reportedSex = $details['child_sex_as_recorded']
-                                    ?? $details['applicant_sex_as_recorded']
-                                    ?? '';
-                                $reportedSex = is_string($reportedSex) ? $reportedSex : '';
-                                $reportedSexLabel = match ($reportedSex) {
-                                    'female' => 'Female',
-                                    'male' => 'Male',
-                                    default => 'Not provided',
-                                };
-                                ?>
-                                <div>
-                                    <dt>Sex as recorded on PSA/LCR birth certificate</dt>
-                                    <dd>
-                                        <?= e($reportedSexLabel) ?><br>
-                                        <small class="field-hint">Applicant-reported. Verify against the PSA/LCR document before updating the person profile; this value is not verified automatically.</small>
-                                    </dd>
-                                </div>
-                            <?php endif; ?>
                                     </dl>
-                    </section>
-
-                    <?php
-                    $correctionOutstandingKeys = application_outstanding_requirement_keys(
-                        (string) ($app['requirements'] ?? ''),
-                        $requirementKeys[$app['sacrament_type']] ?? []
-                    );
-                    $correctionEligible = $correctionOutstandingKeys === []
-                        && !in_array($app['status'], ['completed', 'rejected'], true);
-                    $correctionFields = [];
-                    application_queue_flatten_corrections($details, '', $correctionFields);
-                    ?>
-                    <section class="application-correction-panel" aria-label="Correct submitted pre-application data">
-                        <h3>Correct submitted data</h3>
-                        <?php if (!$correctionEligible): ?>
-                            <p class="field-hint">
-                                Corrections become available only after all requirements are marked Received or Verified and only while the pre-application can still proceed.
-                            </p>
-                        <?php else: ?>
-                            <p class="field-hint">Use this only after confirming the correction by phone, email, or in person with the applicant or parent/representative. Changed values and the correction reason will be recorded in the audit history.</p>
-                            <form method="post" class="application-correction-form">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="application_id" value="<?= (int) $app['id'] ?>">
-                                <input type="hidden" name="action" value="correct_application">
-                                <input type="hidden" name="return_query" value="<?= e($applicationReturnQuery) ?>">
-                                <div class="application-correction-grid">
-                                    <label>Applicant / submitter name *
-                                        <input type="text" name="correction_applicant_name" maxlength="150" value="<?= e((string) ($app['applicant_name'] ?? '')) ?>" required>
-                                    </label>
-                                    <label>Applicant / submitter email
-                                        <input type="email" name="correction_applicant_email" maxlength="150" value="<?= e((string) ($app['applicant_email'] ?? '')) ?>">
-                                    </label>
-                                    <label>Applicant / submitter contact number
-                                        <input type="tel" name="correction_applicant_contact" maxlength="30" value="<?= e((string) ($app['applicant_contact'] ?? '')) ?>">
-                                    </label>
-                                </div>
-                                <?php if ($correctionFields !== []): ?>
-                                    <h4>Submitted form details</h4>
-                                    <div class="application-correction-grid">
-                                        <?php foreach ($correctionFields as $fieldPath => $fieldValue): ?>
-                                            <?php
-                                            $fieldParts = array_values(array_filter(explode('.', $fieldPath), static fn(string $part): bool => $part !== ''));
-                                            $fieldLabelParts = array_map(
-                                                static fn(string $part): string => ctype_digit($part)
-                                                    ? 'Entry ' . ((int) $part + 1)
-                                                    : application_queue_label($part),
-                                                $fieldParts
-                                            );
-                                            $fieldLabel = implode(' · ', $fieldLabelParts);
-                                            $fieldInputType = str_contains($fieldPath, 'email')
-                                                ? 'email'
-                                                : (str_contains($fieldPath, 'contact') || str_contains($fieldPath, 'phone')
-                                                    ? 'tel'
-                                                    : (str_contains($fieldPath, 'date') || str_contains($fieldPath, 'birth')
-                                                        ? 'text'
-                                                        : 'text'));
-                                            ?>
-                                            <label><?= e($fieldLabel) ?>
-                                                <input type="<?= e($fieldInputType) ?>" name="correction_details[<?= e($fieldPath) ?>]" maxlength="500" value="<?= e((string) $fieldValue) ?>">
-                                            </label>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; ?>
-                                <label>Correction reason *
-                                    <textarea name="correction_reason" minlength="5" maxlength="500" rows="3" required placeholder="Example: Applicant confirmed by phone that the middle name is Reyes, not Reye."></textarea>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="applicant_confirmed_correction" value="1" required>
-                                    I confirmed the corrected value(s) with the applicant or their parent/authorized representative.
-                                </label>
-                                <button type="submit" class="btn btn-primary btn-small">Save confirmed corrections</button>
-                            </form>
-                        <?php endif; ?>
                     </section>
                                                 <?php if ($prerequisiteChecks !== []): ?>
                         <aside class="alert alert-success" role="note">
@@ -2697,7 +1495,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         </div>
                     </section>
 
-                    <footer class="application-review-actions" id="application-review-actions">
+                    <footer class="application-review-actions">
                         <?php if (in_array($app['status'], ['approved', 'scheduled'], true)): ?>
                             <?php if ($canPrefill && $prefillUrl !== null): ?>
                                 <a class="btn btn-small" href="<?= e($prefillUrl) ?>">Open prefilled register form</a>
@@ -2729,22 +1527,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     </select>
                                 </label>
                                 <?php if (in_array('rejected', $validNextStatuses, true)): ?>
-                                    <div class="close-reason" style="display:none">
-                                        <label>Reason for closing
-                                            <select name="close_reason">
-                                                <option value="">Choose a reason…</option>
-                                                <?php foreach (APPLICATION_CLOSE_REASONS as $closeOption): ?>
-                                                    <option value="<?= e($closeOption) ?>"><?= e($closeOption) ?></option>
-                                                <?php endforeach; ?>
-                                                <option value="other">Other</option>
-                                            </select>
-                                        </label>
-                                        <div data-show-if="close_reason=other">
-                                            <label>Describe the reason
-                                                <textarea name="close_reason_other" rows="3"></textarea>
-                                            </label>
-                                        </div>
-                                    </div>
+                                    <label class="close-reason" style="display:none">Reason for closing
+                                        <select name="close_reason">
+                                            <option value="">Choose a reason…</option>
+                                            <?php foreach (APPLICATION_CLOSE_REASONS as $closeOption): ?>
+                                                <option value="<?= e($closeOption) ?>"><?= e($closeOption) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </label>
                                 <?php endif; ?>
                                 <button type="submit" class="btn btn-small">Update status</button>
                             </form>

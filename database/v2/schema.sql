@@ -172,13 +172,6 @@ CREATE TABLE sacrament_applications (
   applicant_contact  VARCHAR(30)  NULL,
   preferred_date     DATE NULL,
   preferred_time     TIME NULL,
-  proposed_schedule_date       DATE NULL,
-  proposed_schedule_start_time TIME NULL,
-  proposed_schedule_end_time   TIME NULL,
-  schedule_proposal_status ENUM('draft','sent','accepted','confirmed') NULL,
-  schedule_proposal_sent_at DATETIME NULL,
-  schedule_proposal_accepted_at DATETIME NULL,
-  schedule_proposal_accepted_by INT UNSIGNED NULL,
   status             ENUM('new','reviewing','requirements_pending','approved','scheduled','completed','rejected') NOT NULL DEFAULT 'new',
   details            JSON NULL,
   requirements       JSON NULL,
@@ -196,20 +189,15 @@ CREATE TABLE sacrament_applications (
   INDEX idx_sa_status (status),
   INDEX idx_sa_type (sacrament_type, preferred_date),
   INDEX idx_sa_name (applicant_name),
-  INDEX idx_sacr_person (person_id),
-  INDEX idx_sacr_spouse_person (spouse_person_id),
   INDEX idx_sa_assigned (assigned_to),
   INDEX idx_sa_batch (batch_id),
-  INDEX idx_sa_schedule_proposal (sacrament_type, schedule_proposal_status),
   CONSTRAINT fk_sa_person    FOREIGN KEY (person_id)        REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_sa_batch     FOREIGN KEY (batch_id)         REFERENCES sacrament_batches(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_spouse    FOREIGN KEY (spouse_person_id) REFERENCES persons(id)           ON DELETE SET NULL,
   CONSTRAINT fk_sa_record    FOREIGN KEY (record_id)        REFERENCES sacrament_records(id) ON DELETE SET NULL,
   CONSTRAINT fk_sa_paid_by   FOREIGN KEY (paid_by)          REFERENCES users(id)             ON DELETE SET NULL,
   CONSTRAINT fk_sa_processed FOREIGN KEY (processed_by)     REFERENCES users(id)             ON DELETE SET NULL,
-  CONSTRAINT fk_sa_assigned  FOREIGN KEY (assigned_to)       REFERENCES users(id)             ON DELETE SET NULL,
-  CONSTRAINT fk_sa_schedule_proposal_acceptor FOREIGN KEY (schedule_proposal_accepted_by)
-      REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_sa_assigned  FOREIGN KEY (assigned_to)      REFERENCES users(id)             ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -251,7 +239,7 @@ CREATE TABLE certificate_requests (
   claimant_type              ENUM('self','representative') NULL,
   representative_name        VARCHAR(150) NULL,
   representative_relationship VARCHAR(120) NULL,
-  id_verified                TINYINT(1) NOT NULL DEFAULT 0, -- retained for legacy compatibility; does not gate release
+  id_verified                TINYINT(1) NOT NULL DEFAULT 0, -- "I verified valid ID at counter"
   claimant_notes             TEXT NULL,
   released_by                INT UNSIGNED NULL,
   released_at                DATETIME NULL,

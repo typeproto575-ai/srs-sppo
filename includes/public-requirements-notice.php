@@ -17,4 +17,10 @@ $applicationRequirements = sacrament_application_requirements($applicationType);
             <li><?= e($requirement) ?></li>
         <?php endforeach; ?>
     </ul>
+    <strong>After submission: parish review and preparation</strong>
+    <ol>
+        <?php foreach ($applicationRequirements['after'] as $step): ?>
+            <li><?= e($step) ?></li>
+        <?php endforeach; ?>
+    </ol>
 </section>

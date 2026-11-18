@@ -13,10 +13,10 @@ if (!function_exists('person_identity_choices')) {
     function person_identity_label(array $person): string
     {
         $label = trim(implode(' ', array_filter([
-            format_name_part((string) ($person['first_name'] ?? '')),
-            format_name_part((string) ($person['middle_name'] ?? '')),
-            format_name_part((string) ($person['last_name'] ?? '')),
-            format_name_part((string) ($person['suffix'] ?? ''), true),
+            $person['first_name'] ?? '',
+            $person['middle_name'] ?? '',
+            $person['last_name'] ?? '',
+            $person['suffix'] ?? '',
         ])));
         if (!empty($person['birth_date'])) $label .= ' - born ' . date('Y-m-d', strtotime($person['birth_date']));
         return $label;
@@ -38,19 +38,7 @@ if (!function_exists('person_identity_choices')) {
     {
         $name = static function (string $key) use ($identity): ?string {
             $value = trim((string) ($identity[$key] ?? ''));
-            if ($value === '') {
-                return null;
-            }
-            if (in_array($key, ['first_name', 'middle_name', 'last_name'], true)) {
-                return format_name_part($value);
-            }
-            if ($key === 'suffix') {
-                return format_name_part($value, true);
-            }
-            if (in_array($key, ['father_name', 'mother_maiden_name'], true)) {
-                return format_full_name($value);
-            }
-            return $value;
+            return $value === '' ? null : $value;
         };
         $firstName = $name('first_name');
         $lastName = $name('last_name');

@@ -13,70 +13,6 @@ $pageTitle = 'Database Backup / Export';
 $error = null;
 $backupCounts = [];
 $backupPassphrase = '';
-$restorePreview = null;
-$restoreError = null;
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_backup'])) {
-    if (!csrf_verify()) {
-        $restoreError = 'The security token expired. Please refresh the page and try again.';
-    } else {
-        $user = current_user();
-        $password = (string) ($_POST['password_restore'] ?? '');
-        $passphrase = (string) ($_POST['restore_passphrase'] ?? '');
-        $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = ? AND role = ? AND is_active = 1 LIMIT 1');
-        $stmt->execute([(int) $user['id'], 'secretary']);
-        $authRow = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$authRow || !password_verify($password, (string) $authRow['password_hash'])) {
-            $restoreError = 'Your staff password is incorrect.';
-        } elseif (strlen($passphrase) < 12) {
-            $restoreError = 'Enter the backup passphrase used when the backup was created.';
-        } elseif (!isset($_FILES['restore_file']) || !is_array($_FILES['restore_file'])) {
-            $restoreError = 'Choose an encrypted backup file.';
-        } else {
-            $uploaded = $_FILES['restore_file'];
-            if (($uploaded['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                $restoreError = 'The backup file could not be uploaded.';
-            } elseif (($uploaded['size'] ?? 0) > 32 * 1024 * 1024) {
-                $restoreError = 'The encrypted backup exceeds the 32 MB upload limit.';
-            } elseif (!is_uploaded_file((string) $uploaded['tmp_name'])) {
-                $restoreError = 'The uploaded file could not be verified.';
-            } else {
-                $payload = file_get_contents((string) $uploaded['tmp_name']);
-                @unlink((string) $uploaded['tmp_name']);
-                if ($payload === false) {
-                    $restoreError = 'The backup file could not be read.';
-                } else {
-                    try {
-                        $sql = decrypt_backup_payload($payload, $passphrase);
-                        $sql = prepare_live_restore_sql($sql);
-                        $summary = validate_restore_sql($sql);
-                        $restorePreview = $summary;
-                        $restorePreview['preview_only'] = true;
-                        $_SESSION['restore_preview'] = [
-                            'summary' => $summary,
-                            'created_at' => date('c'),
-                            'staff_user_id' => (int) $user['id'],
-                        ];
-                        log_activity(
-                            $pdo,
-                            (int) $user['id'],
-                            'database_restore_previewed',
-                            null,
-                            null,
-                            sprintf(
-                                'tables=%d inserted_rows=%d staff_accounts_preserved=yes',
-                                $summary['create_table_count'],
-                                $summary['insert_count']
-                            )
-                        );
-                    } catch (Throwable $exception) {
-                        $restoreError = 'The restore preview failed: ' . $exception->getMessage();
-                    }
-                }
-            }
-        }
-    }
-}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['backup_passphrase'])) {
     if (!csrf_verify()) {
@@ -205,43 +141,4 @@ $extraHead = '';
             <button type="submit" name="download" value="1" class="btn">Download Encrypted Backup (.sql.enc)</button>
         </form>
         <p class="field-hint">OpenSSL AES-256-GCM encryption is used. The passphrase is never stored or logged.</p>
-
-        <hr>
-        <h2>Restore preview</h2>
-        <p class="alert alert-warning">
-            Live restoration is intentionally not performed from this browser page. A validated backup can only be previewed here. The designated technical administrator must run the command-line staging or live restore procedure.
-        </p>
-        <?php if ($restoreError !== null): ?>
-            <p class="alert alert-error"><?= e($restoreError) ?></p>
-        <?php endif; ?>
-        <?php if ($restorePreview !== null): ?>
-            <div class="alert alert-success">
-                <strong>Restore preview validated</strong>
-                <p><?= (int) $restorePreview['create_table_count'] ?> tables and <?= (int) $restorePreview['insert_count'] ?> inserted rows were found. Staff accounts and password hashes will be preserved during a live restore.</p>
-            </div>
-            <div class="table-scroll">
-                <table class="admin-table" style="max-width:700px;">
-                    <thead><tr><th>Table</th><th>Included</th></tr></thead>
-                    <tbody>
-                        <?php foreach ($restorePreview['tables'] as $tableName): ?>
-                            <tr><td><?= e($tableName) ?></td><td><?= $tableName === 'users' ? 'Preserved from live system' : 'Restored from backup' ?></td></tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-        <form autocomplete="off" method="post" enctype="multipart/form-data" style="margin-top:1.5rem;">
-            <?= csrf_field() ?>
-            <input type="hidden" name="restore_backup" value="1">
-            <label>Administrator password
-                <input type="password" name="password_restore" autocomplete="current-password" required>
-            </label>
-            <label>Encrypted backup file
-                <input type="file" name="restore_file" accept=".enc,application/octet-stream" required>
-            </label>
-            <label>Backup passphrase
-                <input type="password" name="restore_passphrase" autocomplete="off" minlength="12" required>
-            </label>
-            <button type="submit" class="btn btn-secondary">Validate restore only</button>
-        </form>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>

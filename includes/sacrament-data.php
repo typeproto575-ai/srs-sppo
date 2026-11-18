@@ -62,7 +62,7 @@ function sd_full_name(array $person): string
     foreach (['first_name', 'middle_name', 'last_name', 'suffix'] as $key) {
         $v = trim((string) ($person[$key] ?? ''));
         if ($v !== '') {
-            $parts[] = format_name_part($v, $key === 'suffix');
+            $parts[] = $v;
         }
     }
     return implode(' ', $parts);
@@ -365,126 +365,6 @@ function sd_filter_age_eligible_persons(
     ));
 }
 
-/**
- * List active marriage applications with the same advisory age review used
- * in the application queue.
- */
-function sd_get_active_marriage_age_reviews(PDO $pdo): array
-{
-    $stmt = $pdo->query(
-        'SELECT a.id, a.request_no, a.status, a.created_at, a.details,
-                a.person_id, a.spouse_person_id,
-                groom.first_name AS groom_first_name,
-                groom.middle_name AS groom_middle_name,
-                groom.last_name AS groom_last_name,
-                groom.suffix AS groom_suffix,
-                groom.birth_date AS groom_linked_birth_date,
-                bride.first_name AS bride_first_name,
-                bride.middle_name AS bride_middle_name,
-                bride.last_name AS bride_last_name,
-                bride.suffix AS bride_suffix,
-                bride.birth_date AS bride_linked_birth_date,
-                schedule.event_date AS schedule_date
-         FROM sacrament_applications a
-         LEFT JOIN persons groom ON groom.id = a.person_id
-         LEFT JOIN persons bride ON bride.id = a.spouse_person_id
-         LEFT JOIN schedule_events schedule ON schedule.id = (
-             SELECT MAX(scheduled.id)
-             FROM schedule_events scheduled
-             WHERE scheduled.application_id = a.id
-         )
-         WHERE a.sacrament_type = \'marriage\'
-           AND a.status IN (\'new\', \'reviewing\', \'requirements_pending\', \'approved\', \'scheduled\')
-           AND a.anonymized_at IS NULL
-         ORDER BY a.created_at DESC, a.id DESC'
-    );
-
-    $applications = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $details = json_decode((string) ($row['details'] ?? ''), true);
-        $details = is_array($details) ? $details : [];
-        $ageReferenceDate = trim((string) ($row['schedule_date'] ?? ''));
-        $hasConfirmedAgeDate = parish_schedule_date_is_valid($ageReferenceDate);
-        if (!$hasConfirmedAgeDate) {
-            $ageReferenceDate = date('Y-m-d');
-        }
-
-        $parties = [];
-        foreach (['groom', 'bride'] as $partyKey) {
-            $partyDetails = is_array($details[$partyKey] ?? null) ? $details[$partyKey] : [];
-            $linkedName = sd_full_name([
-                'first_name' => $row[$partyKey . '_first_name'] ?? null,
-                'middle_name' => $row[$partyKey . '_middle_name'] ?? null,
-                'last_name' => $row[$partyKey . '_last_name'] ?? null,
-                'suffix' => $row[$partyKey . '_suffix'] ?? null,
-            ]);
-            $name = trim((string) ($partyDetails['full_name'] ?? ''));
-            if ($name === '') {
-                $name = $linkedName;
-            }
-
-            $birthDate = $partyDetails['birth_date'] ?? $details[$partyKey . '_birthdate'] ?? null;
-            if (!is_string($birthDate) || trim($birthDate) === '') {
-                $birthDate = $row[$partyKey . '_linked_birth_date'] ?? null;
-            }
-            $birthDate = is_string($birthDate) ? trim($birthDate) : null;
-
-            $parties[$partyKey] = [
-                'name' => $name !== '' ? $name : 'Name not recorded',
-                'birth_date' => $birthDate,
-                'age_review' => marriage_party_age_eligibility($birthDate, $ageReferenceDate),
-            ];
-        }
-
-        $applications[] = [
-            'id' => (int) $row['id'],
-            'request_no' => (string) $row['request_no'],
-            'status' => (string) $row['status'],
-            'created_at' => (string) $row['created_at'],
-            'date_source' => $hasConfirmedAgeDate
-                ? 'Confirmed marriage schedule'
-                : 'Today (no confirmed schedule)',
-            'age_reference_date' => $ageReferenceDate,
-            'groom' => $parties['groom'],
-            'bride' => $parties['bride'],
-        ];
-    }
-
-    return $applications;
-}
-
-/**
- * Apply the age review page's optional minimum age to both marriage parties.
- */
-function sd_filter_marriage_age_review_applications(
-    array $applications,
-    string $ageGroup,
-    ?int $minimumAge = null
-): array {
-    if ($ageGroup === 'all') {
-        return $applications;
-    }
-    if ($ageGroup !== 'custom') {
-        throw new InvalidArgumentException('Choose a valid age group.');
-    }
-    if ($minimumAge === null || $minimumAge < 0 || $minimumAge > 120) {
-        throw new InvalidArgumentException('Enter a valid minimum age from 0 to 120.');
-    }
-
-    return array_values(array_filter(
-        $applications,
-        static function (array $application) use ($minimumAge): bool {
-            $groomAge = $application['groom']['age_review']['age'] ?? null;
-            $brideAge = $application['bride']['age_review']['age'] ?? null;
-
-            return is_int($groomAge)
-                && is_int($brideAge)
-                && $groomAge >= $minimumAge
-                && $brideAge >= $minimumAge;
-        }
-    ));
-}
-
 /** Linked family: ['father' => person|null, 'mother' => person|null, 'children' => [persons]]. */
 function sd_get_family(PDO $pdo, int $personId): array
 {
@@ -611,16 +491,6 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
     foreach ($allowed as $key) {
         if (array_key_exists($key, $data)) {
             $values[$key] = sd_clean($data[$key]);
-        }
-    }
-    foreach (['first_name', 'middle_name', 'last_name', 'suffix'] as $key) {
-        if (array_key_exists($key, $values) && $values[$key] !== null) {
-            $values[$key] = format_name_part((string) $values[$key], $key === 'suffix');
-        }
-    }
-    foreach (['father_name', 'mother_maiden_name'] as $key) {
-        if (array_key_exists($key, $values) && $values[$key] !== null) {
-            $values[$key] = format_full_name((string) $values[$key]);
         }
     }
     if ($id === null) {

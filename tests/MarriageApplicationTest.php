@@ -171,22 +171,6 @@ final class MarriageApplicationTest extends TestCase
         self::assertFalse(in_array(self::BLOCK_MESSAGE, $result['errors'], true));
     }
 
-    public function testContactNumbersAreRequiredForBothParties(): void
-    {
-        $post = $this->baseStepData();
-        $post = array_merge($post, $this->validPartyData('groom', 'single', 'no'));
-        $post = array_merge($post, $this->validPartyData('bride', 'single', 'no'));
-        $post['groom_contact_number'] = '';
-        $post['bride_contact_number'] = '';
-        $post['_action'] = 'final_submit';
-
-        $result = $this->runPage($post, 5);
-
-        self::assertSame(5, $result['step']);
-        self::assertContains("Groom's contact number is required.", $result['errors']);
-        self::assertContains("Bride's contact number is required.", $result['errors']);
-    }
-
     public function testCraftedFinalSubmitWithBlockedPartyIsRejectedAndSavesNothing(): void
     {
         $beforeApps = (int) $this->pdo->query('SELECT COUNT(*) FROM sacrament_applications')->fetchColumn();

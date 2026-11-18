@@ -42,10 +42,17 @@ $applicationsPendingCount = (int) $pdo->query(
     "SELECT COUNT(*) c FROM sacrament_applications WHERE status = 'new'"
 )->fetch()['c'];
 
+$readyForPickupCount = (int) $pdo->query(
+    "SELECT COUNT(*) c FROM certificate_requests WHERE status = 'ready'"
+)->fetch()['c'];
+
+$underReviewCount = (int) $pdo->query(
+    "SELECT COUNT(*) c FROM sacrament_applications
+     WHERE status IN ('reviewing','requirements_pending','approved','scheduled')"
+)->fetch()['c'];
+
 // ---- Registry counts (via sacrament-data.php, no raw SQL here) --------------
 $registryCounts = sd_count_records_by_type($pdo);
-$recordedSacramentsCount = array_sum(array_map('intval', $registryCounts));
-$registeredProfilesCount = (int) $pdo->query('SELECT COUNT(*) FROM persons')->fetchColumn();
 
 require_once __DIR__ . '/../includes/admin-header.php';
 ?>
@@ -126,21 +133,25 @@ require_once __DIR__ . '/../includes/admin-header.php';
             <p>Select a count to open the corresponding filtered queue.</p>
         </div>
         <div class="stat-cards dashboard-metrics">
-            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=new">
-                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10v4H7z"/><path d="M5 5H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1"/><path d="M8 13h8M8 17h5"/></svg></span>
-                <span class="stat-copy"><span class="stat-number"><?= (int) $applicationsPendingCount ?></span><span class="stat-label">Pending pre-applications</span></span>
-            </a>
             <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/queue.php?status=pending">
-                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-                <span class="stat-copy"><span class="stat-number"><?= (int) $pendingCount ?></span><span class="stat-label">Pending certificate requests</span></span>
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                <p class="stat-number"><?= (int) $pendingCount ?></p>
+                <p class="stat-label">Certificates needing action</p>
             </a>
-            <a class="stat-card stat-tone-green" href="<?= e($basePath) ?>/admin/records/index.php">
-                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 0 4 22z"/><path d="M4 4v18M8 6h8M8 10h8"/></svg></span>
-                <span class="stat-copy"><span class="stat-number"><?= (int) $recordedSacramentsCount ?></span><span class="stat-label">Recorded sacraments</span></span>
+            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=new">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+                <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
+                <p class="stat-label">New pre-applications</p>
             </a>
-            <a class="stat-card stat-tone-blue" href="<?= e($basePath) ?>/admin/dashboard.php#dashboard-person-search">
-                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20v-1a6 6 0 0 1 12 0v1M16 5.5a3 3 0 0 1 0 5.8M18 14a4 4 0 0 1 3 4v2"/></svg></span>
-                <span class="stat-copy"><span class="stat-number"><?= (int) $registeredProfilesCount ?></span><span class="stat-label">Registered profiles</span></span>
+            <a class="stat-card stat-tone-blue" href="<?= e($basePath) ?>/admin/requests/queue.php?status=ready">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+                <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
+                <p class="stat-label">Ready for pickup</p>
+            </a>
+            <a class="stat-card stat-tone-green" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=in_progress">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+                <p class="stat-number"><?= (int) $underReviewCount ?></p>
+                <p class="stat-label">Pre-applications in progress</p>
             </a>
         </div>
     </section>

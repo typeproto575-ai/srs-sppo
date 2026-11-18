@@ -256,18 +256,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 }
 
-                $preservingExistingSchedule = $existingEvent !== null
-                    && !$scheduleChanged
-                    && $startTime !== ''
-                    && $endTime !== '';
-                if (!$preservingExistingSchedule && !parish_schedule_slot_is_available(
-                    $pdo,
+                $conflictStmt = $pdo->prepare(
+                    'SELECT start_time, end_time FROM schedule_events WHERE event_date = ? AND (? IS NULL OR id <> ?)'
+                );
+                $conflictStmt->execute([
                     $eventDate,
-                    $startTime,
-                    $endTime,
-                    (int) ($existingEvent['id'] ?? 0)
-                )) {
-                    throw new RuntimeException('That 60-minute time is no longer available. Choose an open time from the schedule list.');
+                    $existingEvent['id'] ?? null,
+                    $existingEvent['id'] ?? null,
+                ]);
+                $hasConflict = false;
+                foreach ($conflictStmt->fetchAll(PDO::FETCH_ASSOC) as $existingTime) {
+                    if (event_times_overlap(
+                        $startTime !== '' ? $startTime : null,
+                        $endTime !== '' ? $endTime : null,
+                        $existingTime['start_time'],
+                        $existingTime['end_time']
+                    )) {
+                        $hasConflict = true;
+                        break;
+                    }
                 }
 
                 $startValue = $startTime !== '' ? $startTime : null;
@@ -337,7 +344,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
                 $_SESSION['sacrament_batches_flash'] = [
-                    'success' => 'The shared schedule was saved. Status notifications were attempted for all assigned families; check the email log for delivery results.',
+                    'success' => 'The shared schedule was saved. Status notifications were attempted for all assigned families; check the email log for delivery results.'
+                        . ($hasConflict ? ' Check the calendar: this time overlaps another event.' : ''),
                 ];
                 redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => $batchId]) . '#group-management');
                 exit;
@@ -577,32 +585,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="save_schedule">
                     <input type="hidden" name="batch_id" value="<?= $batchId ?>">
-                    <div
-                        class="parish-schedule-picker"
-                        data-parish-schedule-picker
-                        data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
-                        data-exclude-event-id="<?= (int) ($batchEvent['event_id'] ?? 0) ?>"
-                        data-current-date="<?= e((string) ($batchEvent['event_date'] ?? '')) ?>"
-                        data-current-start="<?= $batchEvent && $batchEvent['start_time'] ? e(substr((string) $batchEvent['start_time'], 0, 5)) : '' ?>"
-                        data-current-end="<?= $batchEvent && $batchEvent['end_time'] ? e(substr((string) $batchEvent['end_time'], 0, 5)) : '' ?>"
-                    >
-                        <label>Confirmed date *
-                            <input type="date" name="event_date" min="<?= e(date('Y-m-d')) ?>" value="<?= e((string) ($batchEvent['event_date'] ?? '')) ?>" data-schedule-date required>
-                        </label>
-                        <label>Available 60-minute time *
-                            <select data-schedule-slot required disabled>
-                                <option value="">Choose a date first</option>
-                            </select>
-                        </label>
-                        <input type="hidden" name="start_time" value="<?= $batchEvent && $batchEvent['start_time'] ? e(substr((string) $batchEvent['start_time'], 0, 5)) : '' ?>" data-schedule-start>
-                        <input type="hidden" name="end_time" value="<?= $batchEvent && $batchEvent['end_time'] ? e(substr((string) $batchEvent['end_time'], 0, 5)) : '' ?>" data-schedule-end>
-                        <p class="field-hint" data-schedule-status aria-live="polite">Choose a date to view parish schedules and open times.</p>
-                        <div data-schedule-event-panel hidden>
-                            <strong>Schedules already booked that day</strong>
-                            <p class="field-hint" data-schedule-event-empty>No schedules are booked on this date.</p>
-                            <ul class="parish-schedule-picker__events" data-schedule-events></ul>
-                        </div>
-                    </div>
+                    <label>Confirmed date *
+                        <input type="date" name="event_date" min="<?= e(date('Y-m-d')) ?>" value="<?= e((string) ($batchEvent['event_date'] ?? '')) ?>" required>
+                    </label>
+                    <label>Start time
+                        <input type="time" name="start_time" value="<?= $batchEvent && $batchEvent['start_time'] ? e(date('H:i', strtotime((string) $batchEvent['start_time']))) : '' ?>">
+                    </label>
+                    <label>End time
+                        <input type="time" name="end_time" value="<?= $batchEvent && $batchEvent['end_time'] ? e(date('H:i', strtotime((string) $batchEvent['end_time']))) : '' ?>">
+                    </label>
                     <button type="submit" class="btn"><?= $batchEvent === null ? 'Confirm and notify families' : 'Update and notify families' ?></button>
                 </form>
                 </section>

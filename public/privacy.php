@@ -88,16 +88,16 @@ require_once __DIR__ . '/../includes/header.php';
             <h2 class="legal-clause__title">How Long We Keep It</h2>
             <ol class="legal-subclauses">
                 <li>The permanent parish sacramental registers — persons, baptismal records, confirmation records, First Communion records, marriage records, and marriage witnesses — are never purged, anonymized, or flagged as disposable.</li>
-                <li>Online requests and pre-applications are kept as part of the parish's administrative history and remain linked to the person's profile. Completed or closed ones never block a new request.</li>
-                <li>Unmatched online certificate requests that were never linked to a parish record may be closed and anonymized by the Parish Office after 90 days.</li>
-                <li>Audit and security logs are kept for security and accountability. The parish sets the retention period; no automatic deletion is promised.</li>
-                <li>Operational logs (such as rate-limit attempts, email delivery records, notifications, and password-reset tokens) may be retained for service operation and security; no automatic deletion period is specified.</li>
+                <li>Online requests and applications are anonymized after <strong>60 months</strong> (5 years) from completion or cancellation.</li>
+                <li>Audit and security logs (including IP addresses) are retained for <strong>36 months</strong> (3 years); once the period ends, IP addresses and user agents are removed and only the action and date remain.</li>
+                <li>Disposable operational logs (rate-limit attempts, email delivery log, notifications, expired or used password reset tokens) are deleted when they become older than <strong>30 days</strong> (rate-limit attempts) or <strong>36 months</strong> (all other listed logs).</li>
+                <li>When a retention period ends, the affected data is either deleted or anonymized as described above.</li>
             </ol>
         </section>
 
         <section class="legal-clause" id="security">
             <h2 class="legal-clause__title">How We Protect It</h2>
-            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Keep your person reference private: anyone who enters it on a sacrament pre-application can view the matching profile's biographical details and a summary of linked sacrament records. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message documents or other personal papers.</p>
+            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Keep your person reference private: anyone who enters it on a sacrament pre-application can view the matching profile's biographical details and a summary of linked sacrament records. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
             <p>If a breach puts your data at risk of serious harm, we will notify you and the National Privacy Commission as the law requires.</p>
         </section>
 

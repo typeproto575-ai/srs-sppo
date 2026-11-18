@@ -115,59 +115,6 @@ function funeral_suggested_sacraments(PDO $pdo, int $personId): array
     ));
 }
 
-/**
- * @return array{has_marriage_record:bool,spouse_name:string}
- */
-function funeral_person_marriage_suggestion(PDO $pdo, int $personId): array
-{
-    if ($personId < 1) {
-        throw new InvalidArgumentException('A valid person ID is required.');
-    }
-
-    $marriageStmt = $pdo->prepare(
-        "SELECT person_id, spouse_person_id
-         FROM sacrament_records
-         WHERE sacrament_type = 'marriage'
-           AND (person_id = ? OR spouse_person_id = ?)
-         ORDER BY event_date DESC, id DESC
-         LIMIT 1"
-    );
-    $marriageStmt->execute([$personId, $personId]);
-    $marriage = $marriageStmt->fetch(PDO::FETCH_ASSOC);
-    if (!$marriage) {
-        return ['has_marriage_record' => false, 'spouse_name' => ''];
-    }
-
-    $spouseId = (int) $marriage['person_id'] === $personId
-        ? (int) ($marriage['spouse_person_id'] ?? 0)
-        : (int) $marriage['person_id'];
-    if ($spouseId < 1) {
-        return ['has_marriage_record' => true, 'spouse_name' => ''];
-    }
-
-    $spouseStmt = $pdo->prepare(
-        'SELECT first_name, middle_name, last_name, suffix
-         FROM persons
-         WHERE id = ?
-         LIMIT 1'
-    );
-    $spouseStmt->execute([$spouseId]);
-    $spouse = $spouseStmt->fetch(PDO::FETCH_ASSOC);
-    if (!$spouse) {
-        return ['has_marriage_record' => true, 'spouse_name' => ''];
-    }
-
-    $spouseName = trim(implode(' ', array_filter(
-        array_map(
-            static fn($part): string => trim((string) $part),
-            [$spouse['first_name'], $spouse['middle_name'], $spouse['last_name'], $spouse['suffix']]
-        ),
-        static fn(string $part): bool => $part !== ''
-    )));
-
-    return ['has_marriage_record' => true, 'spouse_name' => $spouseName];
-}
-
 function funeral_calculated_age(?string $birth, string $death): ?int
 {
     $birthDate = funeral_parse_date($birth);
@@ -179,140 +126,133 @@ function funeral_calculated_age(?string $birth, string $death): ?int
     return $birthDate->diff($deathDate)->y;
 }
 
-function funeral_contact_email_error(string $email): ?string
-{
-    if ($email === '') {
-        return null;
-    }
+function funeral_certification_lines(
+    array $record,
+    array $person,
+    string $purpose,
+    string $requesterName,
+    string $issuedOn
+): array {
+    $value = static function (array $source, string $key): string {
+        $raw = $source[$key] ?? '';
+        return is_scalar($raw) ? trim((string) $raw) : '';
+    };
+    $formatDate = static function (mixed $raw): string {
+        $date = funeral_parse_date($raw);
+        return $date?->format('F j, Y') ?? '';
+    };
 
-    return strlen($email) <= 254 && filter_var($email, FILTER_VALIDATE_EMAIL)
-        ? null
-        : 'Enter a valid family contact email address.';
-}
-
-function funeral_schedule_notification_due(?array $existing, array $values): bool
-{
-    $email = funeral_input_string($values['contact_email'] ?? '');
-    $serviceDate = funeral_input_string($values['service_date'] ?? '');
-    if ($serviceDate === '' || $email === '' || funeral_contact_email_error($email) !== null) {
-        return false;
-    }
-    if ($existing === null) {
-        return true;
-    }
-
-    return $serviceDate !== funeral_input_string($existing['service_date'] ?? '')
-        || substr(funeral_input_string($values['service_time'] ?? ''), 0, 5)
-            !== substr(funeral_input_string($existing['service_time'] ?? ''), 0, 5)
-        || funeral_input_string($values['service_type'] ?? '')
-            !== funeral_input_string($existing['service_type'] ?? '')
-        || strcasecmp($email, funeral_input_string($existing['contact_email'] ?? '')) !== 0;
-}
-
-function funeral_record_audit_snapshot(PDO $pdo, int $recordId, ?int $formerPersonId = null): array
-{
-    if ($recordId < 1) {
-        throw new InvalidArgumentException('A valid death record ID is required.');
-    }
-
-    $stmt = $pdo->prepare(
-        'SELECT fr.*, p.first_name, p.middle_name, p.last_name, p.suffix,
-                p.is_deceased, p.death_date
-         FROM funeral_records fr
-         JOIN persons p ON p.id = fr.person_id
-         WHERE fr.id = ?
-         LIMIT 1'
-    );
-    $stmt->execute([$recordId]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row) {
-        throw new RuntimeException('The death record no longer exists.');
-    }
-
-    $nameParts = array_map(
-        static fn($part): string => trim((string) $part),
-        [$row['first_name'] ?? '', $row['middle_name'] ?? '', $row['last_name'] ?? '', $row['suffix'] ?? '']
-    );
-    $sacraments = json_decode((string) ($row['sacraments_received'] ?? ''), true);
-    $snapshot = [
-        'person_id' => (int) $row['person_id'],
-        'person_name' => implode(' ', array_filter($nameParts, static fn(string $part): bool => $part !== '')),
-        'person_is_deceased' => (bool) ($row['is_deceased'] ?? false),
-        'person_death_date' => $row['death_date'] ?? null,
-        'date_of_death' => $row['date_of_death'] ?? null,
-        'date_of_burial' => $row['date_of_burial'] ?? null,
-        'age_at_death' => $row['age_at_death'] ?? null,
-        'civil_status' => $row['civil_status'] ?? null,
-        'spouse_name' => $row['spouse_name'] ?? null,
-        'parents_name' => $row['parents_name'] ?? null,
-        'sacraments_received' => is_array($sacraments) ? $sacraments : ($row['sacraments_received'] ?? null),
-        'place_of_burial' => $row['place_of_burial'] ?? null,
-        'service_type' => $row['service_type'] ?? null,
-        'service_date' => $row['service_date'] ?? null,
-        'service_time' => isset($row['service_time']) ? substr((string) $row['service_time'], 0, 5) : null,
-        'minister_name' => $row['minister_name'] ?? null,
-        'book_no' => $row['book_no'] ?? null,
-        'page_no' => $row['page_no'] ?? null,
-        'line_no' => $row['line_no'] ?? null,
-        'contact_number' => $row['contact_number'] ?? null,
-    ];
-    if ($formerPersonId !== null && $formerPersonId > 0) {
-        if ($formerPersonId === (int) $row['person_id']) {
-            $formerPerson = $row;
-        } else {
-            $formerStmt = $pdo->prepare(
-                'SELECT id, first_name, middle_name, last_name, suffix, is_deceased, death_date
-                 FROM persons
-                 WHERE id = ?
-                 LIMIT 1'
-            );
-            $formerStmt->execute([$formerPersonId]);
-            $formerPerson = $formerStmt->fetch(PDO::FETCH_ASSOC);
-            if (!$formerPerson) {
-                throw new RuntimeException('The former person profile no longer exists.');
-            }
-        }
-        $formerNameParts = array_map(
-            static fn($part): string => trim((string) $part),
+    $name = $value($person, 'full_name');
+    if ($name === '') {
+        $name = implode(' ', array_filter(array_map(
+            static fn(string $part): string => trim($part),
             [
-                $formerPerson['first_name'] ?? '',
-                $formerPerson['middle_name'] ?? '',
-                $formerPerson['last_name'] ?? '',
-                $formerPerson['suffix'] ?? '',
+                $value($person, 'first_name'),
+                $value($person, 'middle_name'),
+                $value($person, 'last_name'),
+                $value($person, 'suffix'),
             ]
+        ), static fn(string $part): bool => $part !== ''));
+    }
+
+    $descriptors = [];
+    $age = $value($record, 'age_at_death');
+    if ($age !== '') {
+        $descriptors[] = $age . ' years old';
+    }
+    $civilStatus = $value($record, 'civil_status');
+    if ($civilStatus !== '') {
+        $descriptors[] = ucfirst(strtolower($civilStatus));
+    }
+    $spouse = $value($record, 'spouse_name');
+    if ($spouse !== '') {
+        $descriptors[] = 'spouse of ' . $spouse;
+    }
+    $parents = $value($record, 'parents_name');
+    if ($parents !== '') {
+        $relation = match (strtolower($value($person, 'sex'))) {
+            'male' => 'son',
+            'female' => 'daughter',
+            default => 'child',
+        };
+        $descriptors[] = $relation . ' of ' . $parents;
+    }
+
+    $subject = $name;
+    if ($descriptors !== []) {
+        $subject .= ($subject !== '' ? ', ' : '') . implode(', ', $descriptors);
+    }
+    $deathDate = $formatDate($record['date_of_death'] ?? null);
+    $first = 'This is to certify that, according to the Liber Defunctorum of this parish, ' . $subject;
+    $deathClause = $descriptors !== [] ? ', died' : ' died';
+    $first .= $deathClause . ($deathDate !== '' ? ' on ' . $deathDate : '');
+    $cause = $value($record, 'cause_of_death');
+    if ($cause !== '') {
+        $first .= ' of ' . $cause;
+    }
+
+    $serviceType = strtolower($value($record, 'service_type'));
+    $serviceName = $serviceType === 'blessing' ? 'Blessing' : 'Mass';
+    $service = 'A Funeral ' . $serviceName . ' was held';
+    $serviceDate = $formatDate($record['service_date'] ?? null);
+    if ($serviceDate !== '') {
+        $service .= ' on ' . $serviceDate;
+    }
+    $serviceTime = $value($record, 'service_time');
+    if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/D', $serviceTime)) {
+        $time = DateTimeImmutable::createFromFormat(
+            '!H:i:s',
+            strlen($serviceTime) === 5 ? $serviceTime . ':00' : $serviceTime
         );
-        $snapshot['previous_person_id'] = $formerPersonId;
-        $snapshot['previous_person_name'] = implode(
-            ' ',
-            array_filter($formerNameParts, static fn(string $part): bool => $part !== '')
-        );
-        $snapshot['previous_person_is_deceased'] = (bool) ($formerPerson['is_deceased'] ?? false);
-        $snapshot['previous_person_death_date'] = $formerPerson['death_date'] ?? null;
+        if ($time !== false) {
+            $service .= ' at ' . $time->format('g:i A');
+        }
     }
-    if (array_key_exists('contact_email', $row)) {
-        $snapshot['contact_email'] = $row['contact_email'];
+    $minister = $value($record, 'minister_name');
+    if ($minister !== '') {
+        $service .= ', officiated by ' . $minister;
     }
 
-    return $snapshot;
-}
-
-function funeral_record_audit_changes(array $before, array $after): array
-{
-    $changes = [];
-    foreach (array_unique(array_merge(array_keys($before), array_keys($after))) as $field) {
-        $beforeValue = $before[$field] ?? null;
-        $afterValue = $after[$field] ?? null;
-        if (is_string($beforeValue)) {
-            $beforeValue = trim($beforeValue) === '' ? null : trim($beforeValue);
-        }
-        if (is_string($afterValue)) {
-            $afterValue = trim($afterValue) === '' ? null : trim($afterValue);
-        }
-        if ($beforeValue === $afterValue) {
-            continue;
-        }
-        $changes[$field] = ['before' => $beforeValue, 'after' => $afterValue];
+    $burialDetails = [];
+    $burialDate = $formatDate($record['date_of_burial'] ?? null);
+    if ($burialDate !== '') {
+        $burialDetails[] = 'on ' . $burialDate;
+    }
+    $burialPlace = $value($record, 'place_of_burial');
+    if ($burialPlace !== '') {
+        $burialDetails[] = 'at ' . $burialPlace;
+    }
+    if ($burialDetails !== []) {
+        $service .= ', and the remains were laid to rest ' . implode(' ', $burialDetails);
     }
 
-    return $changes;
+    $register = ['This is recorded in the Liber Defunctorum'];
+    foreach ([
+        'book_no' => 'Book',
+        'page_no' => 'Page',
+        'line_no' => 'Line',
+    ] as $key => $label) {
+        $entryValue = $value($record, $key);
+        if ($entryValue !== '') {
+            $register[] = $label . ' ' . $entryValue;
+        }
+    }
+
+    $issue = 'Issued this ' . $formatDate($issuedOn)
+        . " at St. Patrick's Parish Office, Dingalan, Aurora";
+    $requesterName = trim($requesterName);
+    if ($requesterName !== '') {
+        $issue .= ', upon request of ' . $requesterName;
+    }
+    $purpose = trim($purpose);
+    if ($purpose !== '') {
+        $issue .= ' for ' . $purpose . ' purposes';
+    }
+
+    return [
+        $first . '.',
+        $service . '.',
+        implode(', ', $register) . '.',
+        $issue . '.',
+    ];
 }
