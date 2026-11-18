@@ -234,6 +234,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     $witnessNames = compose_person_name_rows_by_index($_POST, 'witness');
     $witnessResidences = $_POST['witness_residence'] ?? [];
     if (!is_array($witnessResidences)) $witnessResidences = [];
+    foreach ($witnessNames as $name) {
+        if (!is_string($name)) {
+            $errors[] = 'Witness names must be text.';
+            break;
+        }
+        if (mb_strlen(trim($name)) > 150) {
+            $errors[] = 'Witness names must be 150 characters or fewer.';
+            break;
+        }
+    }
+    foreach ($witnessResidences as $residence) {
+        if (!is_string($residence)) {
+            $errors[] = 'Witness residence must be text.';
+            break;
+        }
+        if (mb_strlen(trim($residence)) > 150) {
+            $errors[] = 'Witness residence must be 150 characters or fewer.';
+            break;
+        }
+    }
 
     if ($marriageDate === '') $errors[] = 'Marriage date is required.';
     if (!$isUpdate && $place === '') $errors[] = 'Enter the actual place of marriage.';
@@ -859,7 +879,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                         <label>Witness full name
                                             <input autocomplete="name" type="text" name="witness_full_name[]" maxlength="150" value="<?= e(is_string($rowName) ? $rowName : '') ?>">
                                         </label>
-                                        <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" value="<?= e(isset($witnessResidences[$index]) && is_string($witnessResidences[$index]) ? $witnessResidences[$index] : '') ?>"></label>
+                                        <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" maxlength="150" value="<?= e(isset($witnessResidences[$index]) && is_string($witnessResidences[$index]) ? $witnessResidences[$index] : '') ?>"></label>
                                     </div>
                                     <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $index === 0 ? ' hidden' : '' ?>>Remove</button>
                                 </div>

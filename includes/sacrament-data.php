@@ -778,6 +778,166 @@ function sd_log_person_edit(
     );
 }
 
+/** Persist a baptism register row and its godparent rows. */
+function sd_save_baptismal_register_record(
+    PDO $pdo,
+    array $record,
+    array $godparents,
+    ?int $userId,
+    ?int $recordId = null
+): int {
+    $personId = (int) ($record['person_id'] ?? 0);
+    if ($personId <= 0) {
+        throw new InvalidArgumentException('A valid person is required.');
+    }
+
+    $eventDate = $record['event_date'] ?? null;
+    if (!is_string($eventDate)
+        || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eventDate)
+        || !checkdate((int) substr($eventDate, 5, 2), (int) substr($eventDate, 8, 2), (int) substr($eventDate, 0, 4))) {
+        throw new InvalidArgumentException('Enter a valid baptism date.');
+    }
+
+    $optionalText = static function (string $key, int $maxLength) use ($record): ?string {
+        $value = sd_clean($record[$key] ?? null);
+        if ($value !== null && !is_string($value)) {
+            throw new InvalidArgumentException('Baptism record fields must be text.');
+        }
+        if ($value !== null && mb_strlen($value) > $maxLength) {
+            throw new InvalidArgumentException('Baptism record fields exceed the allowed length.');
+        }
+        return $value;
+    };
+
+    $unionType = $record['parents_union_type'] ?? null;
+    if ($unionType !== null && !is_string($unionType)) {
+        throw new InvalidArgumentException('Choose a valid parents’ union type.');
+    }
+    $unionType = $unionType === null || trim($unionType) === ''
+        ? null
+        : normalize_parents_union_type($unionType);
+    if ($unionType !== null && !in_array($unionType, ['canonical', 'civil', 'common_law', 'unmarried'], true)) {
+        throw new InvalidArgumentException('Choose a valid parents’ union type.');
+    }
+
+    $parentsMarriageParish = $unionType === 'canonical'
+        ? $optionalText('parents_marriage_parish', 255)
+        : null;
+    $details = $record['details'] ?? null;
+    if ($details !== null && !is_array($details)) {
+        throw new InvalidArgumentException('Baptism record details must be an array.');
+    }
+    if (is_array($details)) {
+        $details = sd_strip_parent_birthplaces($details);
+    }
+    $detailsJson = is_array($details) && $details !== []
+        ? json_encode($details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)
+        : null;
+
+    $participantRows = [];
+    foreach ($godparents as $godparent) {
+        if (!is_array($godparent)) {
+            throw new InvalidArgumentException('Godparent details must be valid.');
+        }
+        $role = $godparent['role'] ?? null;
+        $fullName = $godparent['full_name'] ?? null;
+        $residence = $godparent['residence'] ?? null;
+        if (!in_array($role, ['godfather', 'godmother'], true)
+            || !is_string($fullName)
+            || trim($fullName) === ''
+            || mb_strlen(trim($fullName)) > 150) {
+            throw new InvalidArgumentException('Godparent names must be valid and 150 characters or fewer.');
+        }
+        if ($residence !== null && !is_string($residence)) {
+            throw new InvalidArgumentException('Godparent residence must be text.');
+        }
+        $residence = $residence === null ? null : trim($residence);
+        if ($residence === '') {
+            $residence = null;
+        }
+        if ($residence !== null && mb_strlen($residence) > 150) {
+            throw new InvalidArgumentException('Godparent residence must be 150 characters or fewer.');
+        }
+        $participantRows[] = [$role, trim($fullName), $residence, count($participantRows) + 1];
+    }
+
+    if ($recordId !== null && $recordId < 1) {
+        throw new InvalidArgumentException('Invalid baptism record selected for update.');
+    }
+    $place = $optionalText('place', 150);
+    $ministerName = $optionalText('minister_name', 150);
+    $entryNo = $optionalText('entry_no', 20);
+    $bookNo = $optionalText('book_no', 20);
+    $pageNo = $optionalText('page_no', 20);
+    $lineNo = $optionalText('line_no', 20);
+    $remarks = sd_clean($record['remarks'] ?? null);
+    if ($remarks !== null && !is_string($remarks)) {
+        throw new InvalidArgumentException('Baptism record remarks must be text.');
+    }
+
+    $own = !$pdo->inTransaction();
+    try {
+        if ($own) {
+            $pdo->beginTransaction();
+        }
+        if ($recordId === null) {
+            $stmt = $pdo->prepare(
+                "INSERT INTO sacrament_records
+                    (sacrament_type, person_id, source, event_date, place, minister_name,
+                     entry_no, book_no, page_no, line_no, parents_union_type, parents_marriage_parish, legitimacy,
+                     details, remarks, encoded_by)
+                 VALUES ('baptism', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $personId, $eventDate, $place, $ministerName,
+                $entryNo, $bookNo, $pageNo, $lineNo, $unionType,
+                $parentsMarriageParish, $detailsJson, $remarks, $userId,
+            ]);
+            $recordId = (int) $pdo->lastInsertId();
+        } else {
+            $exists = $pdo->prepare(
+                "SELECT id FROM sacrament_records WHERE id = ? AND sacrament_type = 'baptism'"
+            );
+            $exists->execute([$recordId]);
+            if (!$exists->fetchColumn()) {
+                throw new InvalidArgumentException('The baptism record could not be found.');
+            }
+
+            $stmt = $pdo->prepare(
+                "UPDATE sacrament_records
+                 SET person_id = ?, source = 'this_parish', event_date = ?, place = ?, minister_name = ?,
+                     entry_no = ?, book_no = ?, page_no = ?, line_no = ?, parents_union_type = ?,
+                     parents_marriage_parish = ?, legitimacy = NULL, details = ?, remarks = ?, encoded_by = ?
+                 WHERE id = ? AND sacrament_type = 'baptism'"
+            );
+            $stmt->execute([
+                $personId, $eventDate, $place, $ministerName,
+                $entryNo, $bookNo, $pageNo, $lineNo, $unionType,
+                $parentsMarriageParish, $detailsJson, $remarks, $userId, $recordId,
+            ]);
+        }
+
+        $pdo->prepare('DELETE FROM sacrament_participants WHERE record_id = ?')->execute([$recordId]);
+        $participantInsert = $pdo->prepare(
+            'INSERT INTO sacrament_participants (record_id, role, full_name, residence, sort_order)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        foreach ($participantRows as [$role, $fullName, $residence, $sortOrder]) {
+            $participantInsert->execute([$recordId, $role, $fullName, $residence, $sortOrder]);
+        }
+        if ($own) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return $recordId;
+}
+
 /**
  * Create or update a sacrament record (+ its participants) in one transaction.
  *

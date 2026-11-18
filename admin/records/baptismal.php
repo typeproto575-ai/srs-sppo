@@ -345,13 +345,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
             if ($name === '') {
                 continue;
             }
+            if (mb_strlen($name) > 150) {
+                $errors[] = 'Godparent names must be 150 characters or fewer.';
+            }
             if (($nameError = validate_full_name($name)) !== null) {
                 $errors[] = 'Godparent name: ' . $nameError;
+            }
+            $residence = $residences[$index] ?? '';
+            if (!is_string($residence)) {
+                $errors[] = 'Godparent residence must be text.';
+                continue;
+            }
+            $residence = trim($residence);
+            if (mb_strlen($residence) > 150) {
+                $errors[] = 'Godparent residence must be 150 characters or fewer.';
             }
             $godparents[] = [
                 'role' => $role,
                 'full_name' => $name,
-                'residence' => trim((string) ($residences[$index] ?? '')) ?: null,
+                'residence' => $residence !== '' ? $residence : null,
                 'sort_order' => count($godparents) + 1,
             ];
         }
@@ -444,79 +456,40 @@ $shiftedCount = 0;
             if (!$isPostEdit && $entryNo !== '' && ($_POST['entry_conflict'] ?? 'shift') === 'shift') {
                 $shiftedCount = baptismal_shift_entry_numbers($pdo, $entryNo);
             }
+            $recordData = [
+                'person_id' => $savePersonId,
+                'event_date' => $baptismDate,
+                'place' => $baptismPlace ?: null,
+                'minister_name' => $ministerName ?: null,
+                'entry_no' => $entryNo ?: null,
+                'book_no' => $bookNo ?: null,
+                'page_no' => $pageNo ?: null,
+                'line_no' => $lineNo ?: null,
+                'parents_union_type' => $unionType !== '' ? $unionType : null,
+                'parents_marriage_parish' => $parentsMarriageParish !== '' ? $parentsMarriageParish : null,
+                'details' => $parentDetails !== [] ? $parentDetails : null,
+                'remarks' => $remarks ?: null,
+            ];
             if ($isPostEdit) {
                 $recordId = (int) $editRecord['id'];
                 $oldParticipants = $pdo->prepare('SELECT role, full_name, residence, sort_order FROM sacrament_participants WHERE record_id = ?');
                 $oldParticipants->execute([$recordId]);
                 $oldRecord = array_merge($editRecord, ['participants' => $oldParticipants->fetchAll(PDO::FETCH_ASSOC)]);
-                $newRecord = [
-                    'person_id' => $savePersonId,
-                    'source' => 'this_parish',
-                    'event_date' => $baptismDate,
-                    'place' => $baptismPlace ?: null,
-                    'minister_name' => $ministerName ?: null,
-                    'entry_no' => $entryNo ?: null,
-                    'book_no' => $bookNo ?: null,
-                    'page_no' => $pageNo ?: null,
-                    'line_no' => $lineNo ?: null,
-                    'parents_union_type' => $unionType !== '' ? $unionType : null,
-                    'parents_marriage_parish' => $parentsMarriageParish !== '' ? $parentsMarriageParish : null,
-                    'details' => $parentDetails !== [] ? $parentDetails : null,
-                    'remarks' => $remarks ?: null,
-                    'participants' => $godparents,
-                ];
+                $newRecord = array_merge($recordData, ['participants' => $godparents]);
                 $changed = sd_record_changes($oldRecord, $newRecord);
                 if ($changed === []) {
                     $pdo->commit();
                     redirect_to($editReturnUrl ?: $selfUrl . '&nochange=1');
                     exit;
                 }
-                $stmt = $pdo->prepare(
-                    "UPDATE sacrament_records
-                     SET person_id = ?, source = 'this_parish', event_date = ?, place = ?, minister_name = ?,
-                         entry_no = ?, book_no = ?, page_no = ?, line_no = ?, parents_union_type = ?,
-                         parents_marriage_parish = ?,
-                         legitimacy = NULL, details = ?, remarks = ?, encoded_by = ?
-                     WHERE id = ? AND sacrament_type = 'baptism'"
-                );
-                $stmt->execute([
-                    $savePersonId, $baptismDate, $baptismPlace ?: null, $ministerName ?: null,
-                    $entryNo ?: null, $bookNo ?: null, $pageNo ?: null, $lineNo ?: null,
-                    $unionType !== '' ? $unionType : null,
-                    $parentsMarriageParish !== '' ? $parentsMarriageParish : null,
-                    $parentDetails !== [] ? json_encode($parentDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) : null,
-                    $remarks ?: null, current_user()['id'], $recordId,
-                ]);
-                $pdo->prepare('DELETE FROM sacrament_participants WHERE record_id = ?')->execute([$recordId]);
-            } else {
-                $stmt = $pdo->prepare(
-                    "INSERT INTO sacrament_records
-                        (sacrament_type, person_id, source, event_date, place, minister_name,
-                         entry_no, book_no, page_no, line_no, parents_union_type, parents_marriage_parish, legitimacy,
-                         details, remarks, encoded_by)
-                     VALUES ('baptism', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)"
-                );
-                $stmt->execute([
-                    $savePersonId, $baptismDate, $baptismPlace ?: null, $ministerName ?: null,
-                    $entryNo ?: null, $bookNo ?: null, $pageNo ?: null, $lineNo ?: null,
-                    $unionType !== '' ? $unionType : null,
-                    $parentsMarriageParish !== '' ? $parentsMarriageParish : null,
-                    $parentDetails !== [] ? json_encode($parentDetails, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE) : null,
-                    $remarks ?: null, current_user()['id'],
-                ]);
-                $recordId = (int) $pdo->lastInsertId();
             }
-
-            $participantInsert = $pdo->prepare(
-                'INSERT INTO sacrament_participants (record_id, role, full_name, residence, sort_order)
-                 VALUES (?, ?, ?, ?, ?)'
+            $recordId = sd_save_baptismal_register_record(
+                $pdo,
+                $recordData,
+                $godparents,
+                (int) current_user()['id'],
+                $isPostEdit ? $recordId : null
             );
-            foreach ($godparents as $godparent) {
-                $participantInsert->execute([
-                    $recordId, $godparent['role'], $godparent['full_name'],
-                    $godparent['residence'], $godparent['sort_order'],
-                ]);
-            }
 
             $completedApplicationRequestNo = null;
             if (!$isPostEdit && !empty($_POST['from_application'])) {
@@ -571,7 +544,12 @@ $shiftedCount = 0;
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            error_log('Baptism record save failed: ' . $e->getMessage());
+            error_log(sprintf(
+                'Baptism record save failed: %s (%s:%d)',
+                $e->getMessage(),
+                basename($e->getFile()),
+                $e->getLine()
+            ));
             $errors[] = 'Something went wrong while saving this record. Please try again.';
         }
     }
@@ -806,7 +784,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                                     <label><?= $role === 'godfather' ? 'Godfather full name' : 'Godmother full name' ?>
                                         <input type="text" name="<?= e($role) ?>_full_name[]" maxlength="150" value="<?= e($participant['full_name'] ?? '') ?>" autocomplete="name">
                                     </label>
-                                    <label>Residence <input type="text" name="<?= e($role) ?>_residence[]" value="<?= e($formValues[$role . '_residence'][$index] ?? $participant['residence'] ?? '') ?>"></label>
+                                    <label>Residence <input type="text" name="<?= e($role) ?>_residence[]" maxlength="150" value="<?= e($formValues[$role . '_residence'][$index] ?? $participant['residence'] ?? '') ?>"></label>
                                 </div>
                                 <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $index === 0 ? ' hidden' : '' ?>>Remove</button>
                             </div>

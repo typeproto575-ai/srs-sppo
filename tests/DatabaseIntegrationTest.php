@@ -464,6 +464,89 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
+    public function testBaptismRegisterSaveMatchesSchemaAndPersistsGodparentRows(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Baptism',
+                'last_name' => 'Register Save',
+                'birth_date' => '2025-02-14',
+            ]);
+
+            $recordId = sd_save_baptismal_register_record($this->pdo, [
+                'person_id' => $personId,
+                'event_date' => '2025-03-10',
+                'place' => 'Saint Patrick Parish',
+                'minister_name' => 'Integration Priest',
+                'entry_no' => 'BT-01',
+                'book_no' => 'I',
+                'page_no' => '1',
+                'line_no' => '1',
+                'parents_union_type' => 'canonical',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+                'details' => ['parents_residence' => 'Dingalan, Aurora'],
+                'remarks' => 'Integration save',
+            ], [[
+                'role' => 'godfather',
+                'full_name' => 'Integration Godparent',
+                'residence' => str_repeat('R', 150),
+            ]], $userId);
+
+            $recordQuery = $this->pdo->prepare(
+                'SELECT person_id, event_date, place, minister_name, entry_no, book_no, page_no, line_no,
+                        parents_union_type, parents_marriage_parish, legitimacy
+                 FROM sacrament_records WHERE id = ?'
+            );
+            $recordQuery->execute([$recordId]);
+            self::assertSame([
+                'person_id' => $personId,
+                'event_date' => '2025-03-10',
+                'place' => 'Saint Patrick Parish',
+                'minister_name' => 'Integration Priest',
+                'entry_no' => 'BT-01',
+                'book_no' => 'I',
+                'page_no' => '1',
+                'line_no' => '1',
+                'parents_union_type' => 'canonical',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+                'legitimacy' => null,
+            ], $recordQuery->fetch(PDO::FETCH_ASSOC));
+
+            $participantQuery = $this->pdo->prepare(
+                'SELECT role, full_name, residence, sort_order
+                 FROM sacrament_participants WHERE record_id = ?'
+            );
+            $participantQuery->execute([$recordId]);
+            self::assertSame([[
+                'role' => 'godfather',
+                'full_name' => 'Integration Godparent',
+                'residence' => str_repeat('R', 150),
+                'sort_order' => 1,
+            ]], $participantQuery->fetchAll(PDO::FETCH_ASSOC));
+
+            try {
+                sd_save_baptismal_register_record($this->pdo, [
+                    'person_id' => $personId,
+                    'event_date' => '2025-03-10',
+                ], [[
+                    'role' => 'godmother',
+                    'full_name' => 'Too Long Residence',
+                    'residence' => str_repeat('R', 151),
+                ]], $userId);
+                self::fail('An overlong godparent residence should be rejected before insertion.');
+            } catch (InvalidArgumentException $exception) {
+                self::assertSame(
+                    'Godparent residence must be 150 characters or fewer.',
+                    $exception->getMessage()
+                );
+            }
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
     public function testScheduleEventsAllowOverlappingBaptismsAndFlagOtherConflicts(): void
     {
         $this->pdo->beginTransaction();
