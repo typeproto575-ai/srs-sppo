@@ -127,14 +127,19 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     ? 'Review online requests for copies of existing parish register entries. Start walk-in requests from the person profile.'
                     : 'Track requests for certificates of sacraments already recorded in the parish registers. This queue is separate from the official register records. Start walk-in requests from the person profile.' ?></p>
             </div>
+                <div class="admin-queue-actions">
+                    <a class="btn btn-primary" href="<?= e($basePath) ?>/admin/dashboard.php#dashboard-person-search">Find a person</a>
+                </div>
             <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> requests match the current filters">
                 <strong><?= (int) $totalRows ?></strong>
                 <span><?= $totalRows === 1 ? 'request' : 'requests' ?></span>
             </div>
         </header>
 
+        <div class="admin-list-toolbar">
                 <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
-        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
+                <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
+        </div>
 
         <?php if (empty($requests)): ?>
             <p class="admin-queue-empty">No certificate requests match your search or filters. Try broadening your search.</p>
@@ -149,9 +154,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'requester') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'requester', $sort)) ?>">Requester<?= admin_sort_indicator('requester', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'purpose') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'purpose', $sort)) ?>">Requested use<?= admin_sort_indicator('purpose', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'channel') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'channel', $sort)) ?>">Channel<?= admin_sort_indicator('channel', $sort) ?></a></th>
-                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
+                    <th class="column-date"><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'date', $sort)) ?>">Submitted<?= admin_sort_indicator('date', $sort) ?></a></th>
                     <th><a class="table-sort-link<?= str_starts_with($sort, 'status') ? ' is-active' : '' ?>" href="<?= e(admin_sort_url($selfUrl, 'status', $sort)) ?>">Status<?= admin_sort_indicator('status', $sort) ?></a></th>
-                    <th>Actions</th>
+                    <th class="row-actions">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -163,8 +168,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <td><?= e($req['requester_name']) ?><br><small><?= e($req['requester_email']) ?></small></td>
                         <td><?= empty($req['purpose']) ? 'Not specified' : e(humanize_label($req['purpose'])) ?><?= $req['purpose'] === 'other' ? ' — ' . e($req['purpose_other']) : '' ?></td>
                         <td><?= e(ucfirst($req['channel'])) ?></td>
-                        <td><?= e(date('M j, Y', strtotime($req['created_at']))) ?></td>
-                        <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(humanize_label($req['status'])) ?></span></td>
+                        <td class="column-date"><time datetime="<?= e(date('c', strtotime($req['created_at']))) ?>"><?= e(date('M j, Y', strtotime($req['created_at']))) ?></time></td>
+                        <td><span class="status-badge status-<?= e($req['status']) ?>"><?= e(status_label('certificate', (string) $req['status'])) ?></span></td>
                         <td class="row-actions">
                             <a href="<?= e($basePath . '/admin/requests/certificate-detail.php?id=' . (int) $req['id']) ?>" class="btn btn-small">Review</a>
                         </td>

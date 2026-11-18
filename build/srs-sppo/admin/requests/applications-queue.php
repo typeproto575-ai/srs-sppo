@@ -18,6 +18,9 @@ if (!defined('APPLICATION_CLOSE_REASONS')) {
     define('APPLICATION_CLOSE_REASONS', [
         'Entered by mistake',
         'No response after a long time',
+        'Information does not match parish records',
+        'Required supporting documents are missing or invalid',
+        'No matching parish record could be verified',
     ]);
 }
 $sacraments = ['baptism', 'first_communion', 'confirmation', 'marriage'];
@@ -364,7 +367,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
             $update->execute([$newStatus, (int) $applicationId]);
             if ($newStatus === 'approved') {
-                $outstandingKeys = application_outstanding_requirement_keys((string) ($application['requirements'] ?? ''));
+                $outstandingKeys = application_outstanding_requirement_keys(
+                    (string) ($application['requirements'] ?? ''),
+                    $requirementKeys[$application['sacrament_type']] ?? []
+                );
                 if ($outstandingKeys !== []) {
                     $outstandingLabels = array_map(
                         static fn(string $key): string => application_queue_requirement_label((string) $application['sacrament_type'], $key),
@@ -377,8 +383,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $closeReason = '';
             if ($newStatus === 'rejected') {
-                $closeReason = (string) ($_POST['close_reason'] ?? '');
-                if (!in_array($closeReason, APPLICATION_CLOSE_REASONS, true)) {
+                $closeReasonChoice = is_string($_POST['close_reason'] ?? null)
+                    ? trim($_POST['close_reason'])
+                    : '';
+                if ($closeReasonChoice === 'other') {
+                    $otherCloseReason = is_string($_POST['close_reason_other'] ?? null)
+                        ? trim($_POST['close_reason_other'])
+                        : '';
+                    if ($otherCloseReason === '') {
+                        $pdo->rollBack();
+                        $_SESSION['application_queue_error'] = 'Describe the other reason for closing this application.';
+                        redirect_to($postReturnUrl);
+                    }
+                    $closeReason = 'Other: ' . $otherCloseReason;
+                } elseif (in_array($closeReasonChoice, APPLICATION_CLOSE_REASONS, true)) {
+                    $closeReason = $closeReasonChoice;
+                } else {
                     $pdo->rollBack();
                     $_SESSION['application_queue_error'] = 'Choose a reason for closing this application.';
                     redirect_to($postReturnUrl);
@@ -630,10 +650,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php if ($queueError !== ''): ?><p class="alert alert-error" role="alert"><?= e($queueError) ?></p><?php endif; ?>
     <?php if ($queueSuccess !== ''): ?><p class="alert alert-success"><?= e($queueSuccess) ?></p><?php endif; ?>
 
-    <div class="application-queue-filter-wrap">
-        <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+    <div class="admin-list-toolbar">
+        <div class="application-queue-filter-wrap">
+            <?php rf_render_bar($selfUrl, $rfConfig, $rf); ?>
+        </div>
+        <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
     </div>
-    <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
     <?php if ($applications === []): ?>
         <p class="admin-queue-empty">No pre-applications match your search or filters.</p>
@@ -645,9 +667,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <th>Request No.</th>
                         <th>Sacrament</th>
                         <th>Applicant(s)</th>
-                        <th>Submitted</th>
+                        <th class="column-date">Submitted</th>
                         <th>Status</th>
-                        <th>Review</th>
+                        <th class="row-actions">Review</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -726,7 +748,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <?= e(implode(' · ', $subjectNames)) ?>
                         <span class="application-queue-submitter">Submitted by <?= e($app['applicant_name']) ?></span>
                     </td>
-                    <td>
+                    <td class="column-date">
                         <?= e(application_queue_label($app['channel'])) ?><br>
                         <time datetime="<?= e(date('c', strtotime($app['created_at']))) ?>"><?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></time>
                     </td>
@@ -734,7 +756,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php if ($app['status'] === 'requirements_pending'): $pendingDays = (int) floor((time() - strtotime((string) $app['updated_at'])) / 86400); ?>
                         <br><small><?= $pendingDays >= APPLICATION_STALE_DAYS ? 'Stale: no activity for ' . $pendingDays . ' days' : 'Pending for ' . $pendingDays . ' days' ?></small>
                     <?php endif; ?></td>
-                    <td>
+                    <td class="row-actions">
                         <button
                             type="button"
                             class="btn btn-small"
@@ -776,6 +798,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <dl class="application-details-list">
                             <?php if ($details !== []): ?>
                                 <?php foreach ($details as $key => $value): ?>
+                                    <?php if (in_array((string) $key, ['child_sex_as_recorded', 'applicant_sex_as_recorded'], true)) continue; ?>
                                     <div>
                                         <?php
                                         $detailKey = (string) $key;
@@ -797,6 +820,26 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <div><dt>Details</dt><dd>No additional submitted details.</dd></div>
+                            <?php endif; ?>
+                            <?php if (in_array(($app['sacrament_type'] ?? ''), ['baptism', 'first_communion', 'confirmation'], true)): ?>
+                                <?php
+                                $reportedSex = $details['child_sex_as_recorded']
+                                    ?? $details['applicant_sex_as_recorded']
+                                    ?? '';
+                                $reportedSex = is_string($reportedSex) ? $reportedSex : '';
+                                $reportedSexLabel = match ($reportedSex) {
+                                    'female' => 'Female',
+                                    'male' => 'Male',
+                                    default => 'Not provided',
+                                };
+                                ?>
+                                <div>
+                                    <dt>Sex as recorded on PSA/LCR birth certificate</dt>
+                                    <dd>
+                                        <?= e($reportedSexLabel) ?><br>
+                                        <small class="field-hint">Applicant-reported. Verify against the PSA/LCR document before updating the person profile; this value is not verified automatically.</small>
+                                    </dd>
+                                </div>
                             <?php endif; ?>
                         </dl>
                     </section>
@@ -921,14 +964,22 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     </select>
                                 </label>
                                 <?php if (in_array('rejected', $validNextStatuses, true)): ?>
-                                    <label class="close-reason" style="display:none">Reason for closing
-                                        <select name="close_reason">
-                                            <option value="">Choose a reason…</option>
-                                            <?php foreach (APPLICATION_CLOSE_REASONS as $closeOption): ?>
-                                                <option value="<?= e($closeOption) ?>"><?= e($closeOption) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </label>
+                                    <div class="close-reason" style="display:none">
+                                        <label>Reason for closing
+                                            <select name="close_reason">
+                                                <option value="">Choose a reason…</option>
+                                                <?php foreach (APPLICATION_CLOSE_REASONS as $closeOption): ?>
+                                                    <option value="<?= e($closeOption) ?>"><?= e($closeOption) ?></option>
+                                                <?php endforeach; ?>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </label>
+                                        <div data-show-if="close_reason=other">
+                                            <label>Describe the reason
+                                                <textarea name="close_reason_other" rows="3"></textarea>
+                                            </label>
+                                        </div>
+                                    </div>
                                 <?php endif; ?>
                                 <button type="submit" class="btn btn-small">Update status</button>
                             </form>

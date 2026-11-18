@@ -944,6 +944,79 @@ textarea {
     flex: 1 1 100%;
 }
 
+.marriage-schedule-proposal-form > .field-hint {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
+.marriage-schedule-proposal-form > button,
+.application-proposal-actions .btn,
+.application-proposal-agreement-form > button,
+.application-proposal-confirm-form > button {
+    flex: 0 0 auto;
+    align-self: flex-start;
+}
+
+.application-proposal-actions {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.application-proposal-actions > form,
+.application-proposal-agreement-form,
+.application-proposal-confirm-form {
+    padding: 0.85rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-panel-weak);
+}
+
+.application-proposal-actions > form {
+    align-items: center;
+}
+
+.application-proposal-actions .checkbox-label,
+.application-proposal-agreement-form .checkbox-label {
+    flex: 1 1 100%;
+}
+
+.application-proposal-agreement-form > label,
+.application-proposal-confirm-form > .field-hint {
+    flex: 1 1 100%;
+}
+
+.application-correction-panel {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.application-correction-form {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.95rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-panel-weak);
+}
+
+.application-correction-form h4 {
+    margin: 0.25rem 0 0;
+}
+
+.application-correction-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 0.75rem;
+}
+
+.application-correction-grid label {
+    margin: 0;
+}
+
+.application-correction-form > button {
+    justify-self: start;
+}
+
 .parish-schedule-picker label {
     margin: 0;
 }
@@ -1146,6 +1219,32 @@ textarea {
     color: var(--admin-green);
     font-size: 0.85rem;
     font-weight: 700;
+}
+
+.audit-correction-details {
+    margin-top: 0.5rem;
+}
+
+.audit-correction-details > summary {
+    color: var(--admin-green);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.audit-correction-table {
+    min-width: 32rem;
+    margin-top: 0.5rem;
+}
+
+.audit-correction-table th[scope="row"] {
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.audit-correction-table td {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
 }
 
 @media (max-width: 760px) {
@@ -4273,7 +4372,7 @@ textarea {
 .age-eligibility-notice__mark { display: grid; flex: 0 0 1.45rem; width: 1.45rem; height: 1.45rem; place-items: center; border-radius: 50%; color: #fff; background: #9a7836; font-family: Georgia, serif; font-size: .9rem; font-weight: 700; }
 .age-eligibility-notice strong { color: #4b402a; font-size: .83rem; }
 .age-eligibility-notice p { margin: .15rem 0 0; color: #685e49; font-size: .81rem; line-height: 1.5; }
-.age-eligibility-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.age-eligibility-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
 .age-eligibility-tab { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 76px; padding: .9rem 1rem; border: 1px solid #deded3; border-radius: 12px; color: var(--admin-ink); background: #fff; text-decoration: none; box-shadow: 0 3px 10px rgba(31,48,38,.025); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .age-eligibility-tab:hover { transform: translateY(-2px); border-color: #97ad94; box-shadow: 0 9px 20px rgba(31,48,38,.08); }
 .age-eligibility-tab.is-active { border-color: #2f5e3f; box-shadow: inset 4px 0 #c6a45e, 0 8px 18px rgba(31,70,46,.1); }
@@ -4326,6 +4425,16 @@ textarea {
 .age-eligibility-in-range { color: #356342; font-size: .77rem; font-weight: 700; }
 .age-eligibility-baptism > span { margin-right: .25rem; color: #51815b; }
 .age-eligibility-review-flag { display: inline-block; padding: .3rem .55rem; border: 1px solid #eadbb5; border-radius: 999px; color: #755818; background: #fbf5e5; font-size: .72rem; font-weight: 750; }
+.age-eligibility-review-flag--error { border-color: #e6c6c3; color: #8c342d; background: #fbefed; }
+.age-eligibility-review-flag--success { border-color: #c9e2cd; color: #28643a; background: #edf7ee; }
+.age-eligibility-review-flag--info { border-color: #cddce8; color: #365b76; background: #f0f6fa; }
+.age-eligibility-application,
+.age-eligibility-party { display: grid; justify-items: start; gap: .38rem; min-width: 180px; }
+.age-eligibility-application > strong,
+.age-eligibility-party > strong { color: #243d2d; font-weight: 750; }
+.age-eligibility-application > span { color: var(--admin-muted); font-size: .75rem; line-height: 1.4; }
+.age-eligibility-party__detail { color: var(--admin-muted); font-size: .77rem; line-height: 1.4; }
+.age-eligibility-party .age-eligibility-review-flag { line-height: 1.4; }
 .age-eligibility-open { display: inline-flex; align-items: center; gap: .35rem; color: #2f6041; font-size: .8rem; font-weight: 800; text-decoration: none; }
 .age-eligibility-open span { transition: transform 140ms ease; }
 .age-eligibility-open:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -4343,6 +4452,7 @@ textarea {
 
 @media (max-width: 900px) {
     .person-profile-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .age-eligibility-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 680px) {

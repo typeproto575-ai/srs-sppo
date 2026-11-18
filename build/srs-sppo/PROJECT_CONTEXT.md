@@ -21,7 +21,7 @@ It is a **digital index and office workflow** for sacramental records that still
 ## Non-negotiable rules
 
 1. **No monetary/fee/currency data anywhere.** The system never takes money or stores amounts. Payment is made outside the system and recorded only as a manual status (`paid_at` + `paid_by`). The secretary may match and pre-verify an online certificate request before payment; the online processing gate and certificate release require payment to be recorded. Legacy `awaiting_payment` requests remain supported. Sacrament applications in `awaiting_payment` cannot proceed until payment is recorded.
-2. **Identity verification is in person.** No public form collects a photo or scan of a valid ID. The claimant presents ID at the office. This keeps ID images out of the database (RA 10173).
+2. **No identity-document requirement.** Public forms do not collect identity-document images, and certificate pickup does not require an ID. The Parish Office verifies the request and payment; representatives still need the signed authorization letter.
 3. **Eligibility/prerequisite checks flag, never auto-block.** Age ranges and prior-sacrament checks warn the secretary. They must not silently reject a submission. See `is_outside_eligibility()` in `includes/functions.php`.
 4. **No parishioner accounts.** Visitors never log in. The parish office contacts them using the contact details they provided.
 5. **No priest login.** Canonical clearance (banns, pre-Cana, interview) is data the secretary records after confirming with the priest outside the system. There is no `/priest/` app. (`audit_logs.role_snapshot` may still contain a leftover `'priest'` enum value from older rows; do not revive a priest user role.)

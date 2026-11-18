@@ -101,7 +101,7 @@ function fa(string $key, array $data): array {
 
 function compose_godparent_names(array $data, string $prefix): array {
     return array_values(array_filter(
-        array_map(static fn($name) => is_scalar($name) ? trim((string) $name) : '', fa($prefix . '_full_name', $data)),
+        array_map(static fn($name) => is_scalar($name) ? format_full_name((string) $name) : '', fa($prefix . '_full_name', $data)),
         static fn($name) => $name !== ''
     ));
 }
@@ -158,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childName       = compose_person_name($_POST, 'child');
                 $childBirthdate  = $_POST['child_birthdate'] ?? '';
                 $childBirthplace = fd('child_birthplace',      $_POST);
+                $childReportedSex = $_POST['child_sex_as_recorded'] ?? '';
 
                 if (fd('child_first', $_POST) === '') $errors[] = "First name is required.";
                 if (fd('child_last', $_POST) === '') $errors[] = "Last name is required.";
@@ -170,6 +171,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($childBirthdate !== '' && is_future_date($childBirthdate)) $errors[] = "Birthdate cannot be in the future.";
                 if ($childBirthplace === '') $errors[] = "Birthplace is required.";
+                if (!is_string($childReportedSex) || !in_array($childReportedSex, ['male', 'female'], true)) {
+                    $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+                }
             }
 
             if ($currentStep === STEP_FAMILY_REQS) {
@@ -254,6 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $childName       = compose_person_name($formData, 'child');
             $childBirthdate  = $formData['child_birthdate'] ?? '';
             $childBirthplace = fd('child_birthplace',      $formData);
+            $childReportedSex = $formData['child_sex_as_recorded'] ?? '';
             $fatherName      = compose_person_name($formData, 'father');
             $motherMaidenName = compose_person_name($formData, 'mother');
             $parentGuardian  = compose_person_name($formData, 'parent_guardian');
@@ -279,6 +284,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($childBirthdate !== '' && is_future_date($childBirthdate)) $errors[] = "Birthdate cannot be in the future.";
             if ($childBirthplace === '') $errors[] = "Birthplace is required.";
+            if (!is_string($childReportedSex) || !in_array($childReportedSex, ['male', 'female'], true)) {
+                $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+            }
             $errors = array_merge($errors, validate_baptism_parent_guardian($formData));
             if ($contactNumber === '') {
                 $errors[] = 'Please enter a contact number.';
@@ -360,6 +368,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'parent_guardian_name' => $parentGuardian,
                             'godparents' => $godparents,
                         ];
+                        if ($childReportedSex !== '') {
+                            $details['child_sex_as_recorded'] = $childReportedSex;
+                        }
                         if ($isLateBaptism) {
                             $details['late_baptism'] = true;
                             $details['age_at_submission'] = $applicantAge;
@@ -460,7 +471,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         $successHeading = 'Keep this reference number';
         $successIsApplication = true;
         $successRequestNumber = $requestNo;
-        $successRequiredDocuments = sacrament_application_requirements('baptism')['before'];
+        $successAfterSteps = sacrament_application_requirements('baptism')['after'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
         <?php if ($isLateBaptism): ?>
@@ -522,6 +533,15 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
                 <span class="field-hint">A reference fills this from parish records when available. The date determines whether this is marked as Late Baptism.</span>
             </label>
+            <?php $reportedSexValue = is_string($formData['child_sex_as_recorded'] ?? null) ? $formData['child_sex_as_recorded'] : ''; ?>
+            <label>Sex as recorded on PSA/LCR birth certificate *
+                <select name="child_sex_as_recorded" required>
+                    <option value="">-- Select --</option>
+                    <option value="female"<?= $reportedSexValue === 'female' ? ' selected' : '' ?>>Female</option>
+                    <option value="male"<?= $reportedSexValue === 'male' ? ' selected' : '' ?>>Male</option>
+                </select>
+                <span class="field-hint">Copy this from the PSA/LCR birth certificate. The Parish Office will verify it against the document; it will not update the parish profile automatically.</span>
+            </label>
             <input type="hidden" name="child_person_id" value="<?= e(fd('child_person_id', $formData)) ?>">
             <input type="hidden" name="selected_father_name" value="<?= e(fd('selected_father_name', $formData)) ?>">
             <input type="hidden" name="selected_mother_maiden_name" value="<?= e(fd('selected_mother_maiden_name', $formData)) ?>">
@@ -556,13 +576,13 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter the first and maiden last name, or tick Not applicable', false, true) ?>
             <?= person_name_fields(
                 'parent_guardian',
-                'Guardian',
+                'Legal Guardian / Authorized Representative',
                 $formData,
                 false,
                 null,
                 'optional; leave blank if no guardian should be listed'
             ) ?>
-            <p class="field-hint">The Guardian field is optional. Adults applying for themselves may leave it blank.</p>
+            <p class="field-hint">The Legal Guardian / Authorized Representative field is optional. Adults applying for themselves may leave it blank.</p>
             <label class="checkbox-label">
                 <input type="checkbox" name="guardian_authorization_confirmed" value="1" <?= fd('guardian_authorization_confirmed', $formData) === '1' ? 'checked' : '' ?>>
                 If I list a guardian, I confirm they are the child's legal guardian or have permission from the child's parent to submit this baptism pre-application.
@@ -664,14 +684,16 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <fieldset>
             <legend>Review Your Information</legend>
             <?php $reviewIsLateBaptism = baptism_application_is_late(fd('child_birthdate', $formData)) === true; ?>
+            <?php $reviewReportedSex = $formData['child_sex_as_recorded'] ?? ''; ?>
             <table class="review-table">
                 <tr><th>Applicant's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
                 <tr><th>Date of Birth</th><td><?= e($formData['child_birthdate'] ?? '') ?></td></tr>
+                <tr><th>Sex as recorded on PSA/LCR birth certificate</th><td><?= $reviewReportedSex === 'female' ? 'Female' : ($reviewReportedSex === 'male' ? 'Male' : 'Not provided') ?></td></tr>
                 <tr><th>Baptism Pathway</th><td><?= $reviewIsLateBaptism ? 'Late Baptism (age 7+)' : 'Regular Baptism (under 7)' ?></td></tr>
                 <tr><th>Place of Birth</th><td><?= e(fd('child_birthplace', $formData)) ?></td></tr>
                 <tr><th>Father's Name</th><td><?= e(compose_person_name($formData, 'father')) ?></td></tr>
                 <tr><th>Mother's Maiden Name</th><td><?= e(compose_person_name($formData, 'mother')) ?></td></tr>
-                <tr><th>Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian') ?: 'Not provided') ?></td></tr>
+                <tr><th>Legal Guardian / Authorized Representative</th><td><?= e(compose_person_name($formData, 'parent_guardian') ?: 'Not provided') ?></td></tr>
                 <?php if (compose_person_name($formData, 'parent_guardian') !== ''): ?>
                     <tr><th>Guardian Authority Confirmed</th><td>Yes</td></tr>
                 <?php endif; ?>

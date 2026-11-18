@@ -621,7 +621,7 @@ CREATE TABLE certificate_generation_log (
   claimant_name          VARCHAR(255),            -- who picked up the certificate (see 010)
   claimant_relationship  VARCHAR(120),            -- relationship to the subject (see 010)
   claimant_notes         TEXT,                    -- optional release notes (see 010)
-  id_verified            TINYINT(1) NOT NULL DEFAULT 0, -- whether valid ID was verified (see 010)
+  id_verified            TINYINT(1) NOT NULL DEFAULT 0, -- retained for legacy compatibility; does not gate release
   superseded_at          DATETIME,                -- set when replaced by a newer regeneration (see 009)
   superseded_by          INT UNSIGNED,            -- staff who performed the regeneration (see 009)
   KEY idx_cgl_request_active (certificate_request_id, superseded_at),

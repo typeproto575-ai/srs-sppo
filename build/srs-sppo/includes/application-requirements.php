@@ -6,7 +6,6 @@ function sacrament_application_requirements(string $type): array
         'baptism' => [
             'before' => [
                 'The child’s PSA birth certificate or birth certificate from the local civil registrar.',
-                'A valid ID for the parent or guardian, as currently requested by this form; ask the Parish Office which IDs it accepts.',
             ],
             'after' => [
                 'The Parish Office reviews the pre-application and confirms the baptism preparation seminar and available schedule.',

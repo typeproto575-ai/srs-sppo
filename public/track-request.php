@@ -276,7 +276,7 @@ require_once __DIR__ . '/../includes/header.php';
                                     : ($statusLabels[$item['status']] ?? ucfirst(str_replace('_', ' ', (string) $item['status'])));
                                 ?>
                                 <tr>
-                                    <td><?= e($requestType) ?><br><small class="tracker-request-number">Request no.: <?= e((string) $item['request_no']) ?></small></td>
+                                    <td><?= e($requestType) ?></td>
                                     <td><?= e($status) ?></td>
                                     <td><?= e((string) $item['created_at']) ?></td>
                                     <td><?= e((string) ($item['preferred_date'] ?? '—') ?: '—') ?></td>

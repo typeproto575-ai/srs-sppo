@@ -90,7 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new DomainException('A valid record ID is required.');
                 }
                 $verifyRecord = sd_get_record($pdo, (int) $verifyRecordId);
-                if (!$verifyRecord || (int) ($verifyRecord['id'] ?? 0) !== (int) $req['record_id']) {
+                if (!$verifyRecord
+                    || (int) ($verifyRecord['id'] ?? 0) !== (int) ($current['record_id'] ?? 0)
+                    || (string) ($verifyRecord['sacrament_type'] ?? '') !== (string) $current['sacrament_type']) {
                     throw new DomainException('The record does not match this request.');
                 }
                 sd_verify_book_entry($pdo, (int) $verifyRecordId, $userId);
@@ -112,7 +114,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new DomainException('Print the certificate before marking it as awaiting the priest signature.');
                 }
                 $linkedRecord = sd_get_record($pdo, (int) $current['record_id']);
-                if (!sd_can_print_certificate($linkedRecord ?: [])) {
+                if (!$linkedRecord
+                    || (string) ($linkedRecord['sacrament_type'] ?? '') !== (string) $current['sacrament_type']) {
+                    throw new DomainException('The linked record is not for this certificate\'s sacrament type.');
+                }
+                if (!sd_can_print_certificate($linkedRecord)) {
                     throw new DomainException('Verify the book entry first (this-parish records only).');
                 }
                 $update = $pdo->prepare(
@@ -137,12 +143,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $representativeRelationship = certificate_detail_post_string('representative_relationship');
                 $claimantNotes = certificate_detail_post_string('claimant_notes');
                 $repDocsReceived = certificate_detail_post_string('rep_docs_received') === '1';
-                $idVerified = certificate_detail_post_string('id_verified') === '1';
                 $releaseGate = cert_request_release_gate(
                     $current,
                     $claimantType,
                     $representativeName,
-                    $idVerified,
                     $repDocsReceived
                 );
                 if (!$releaseGate['ok']) {
@@ -154,14 +158,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'representative_name = ?',
                     'representative_relationship = ?',
                     'claimant_notes = ?',
-                    'id_verified = ?',
                 ];
                 $params = [
                     $claimantType,
                     $claimantType === 'representative' ? $representativeName : null,
                     $claimantType === 'representative' ? ($representativeRelationship !== '' ? $representativeRelationship : null) : null,
                     $claimantNotes !== '' ? $claimantNotes : null,
-                    1,
                 ];
 
                 $setParts[] = 'released_by = ?';
@@ -174,17 +176,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update->execute($params);
                 $claimantDescription = $claimantType === 'representative' ? 'an authorized representative' : 'the requester/subject';
                 $releaseEvidence = $claimantType === 'representative'
-                    ? 'Recorded payment and claimant ID verified; signed authorization letter confirmed.'
-                    : 'Recorded payment and claimant ID verified.';
+                    ? 'Recorded payment; signed authorization letter confirmed.'
+                    : 'Recorded payment.';
                 log_activity($pdo, $userId, 'certificate.release', 'certificate_requests', $requestId, 'Certificate released to ' . $claimantDescription . '. ' . $releaseEvidence);
                 $message = 'The certificate request is marked Released.';
             } elseif ($action === 'reject') {
-                $reason = certificate_detail_post_string('rejection_reason');
+                $reasonChoice = certificate_detail_post_string('rejection_reason');
+                $reasonLabels = [
+                    'information_mismatch' => 'Information does not match parish records',
+                    'missing_documents' => 'Required supporting documents are missing or invalid',
+                    'no_matching_record' => 'No matching parish record could be verified',
+                ];
                 if (!cert_request_transition_valid($current['status'], 'rejected')) {
                     throw new DomainException('This request cannot be rejected from its current status.');
                 }
-                if ($reason === '') {
-                    throw new DomainException('Enter a reason for rejecting this request.');
+                if ($reasonChoice === 'other') {
+                    $otherReason = certificate_detail_post_string('rejection_reason_other');
+                    if ($otherReason === '') {
+                        throw new DomainException('Describe the other reason for rejecting this request.');
+                    }
+                    $reason = 'Other: ' . $otherReason;
+                } elseif (isset($reasonLabels[$reasonChoice])) {
+                    $reason = $reasonLabels[$reasonChoice];
+                } else {
+                    throw new DomainException('Choose a valid reason for rejecting this request.');
                 }
                 $update = $pdo->prepare("UPDATE certificate_requests SET status = 'rejected', rejection_reason = ? WHERE id = ?");
                 $update->execute([$reason, $requestId]);
@@ -193,6 +208,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'mark_paid') {
                 if (!empty($current['paid_at']) || in_array($current['status'], ['released', 'rejected'], true)) {
                     throw new DomainException('Payment cannot be recorded for this request in its current state.');
+                }
+                $paymentRecord = !empty($current['record_id'])
+                    ? sd_get_record($pdo, (int) $current['record_id'])
+                    : null;
+                $paymentRecordGate = cert_request_payment_record_gate($current, $paymentRecord);
+                if (!$paymentRecordGate['ok']) {
+                    throw new DomainException($paymentRecordGate['reason'] ?? 'Link a matching parish register record before recording payment.');
                 }
                 $update = $pdo->prepare('UPDATE certificate_requests SET paid_at = NOW(), paid_by = ? WHERE id = ? AND paid_at IS NULL');
                 $update->execute([$userId, $requestId]);
@@ -307,6 +329,7 @@ if (!empty($req['record_id'])) {
         $record = null;
     }
 }
+$paymentRecordGate = cert_request_payment_record_gate($req, $record);
 
 $details = [];
 if (!empty($req['subject_details'])) {
@@ -387,7 +410,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php if (!empty($req['representative_name'])): ?>
                 <dt>Representative</dt><dd><?= e($req['representative_name']) ?> (<?= e($req['representative_relationship']) ?>)</dd>
             <?php endif; ?>
-            <dt>ID verification</dt><dd><?= (int) $req['id_verified'] === 1 ? 'Verified at the counter' : 'Not recorded' ?></dd>
         <?php endif; ?>
     </dl>
     <?php if (!empty($req['notes'])): ?>
@@ -538,7 +560,6 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <option value="representative">Authorized representative</option>
             </select>
             <p id="claimant-guidance" class="field-hint">Verify the request and recorded payment. A claim stub can help locate the request but is not required; the Acknowledgment Receipt goes in the certificate folder.</p>
-            <label class="certificate-checkbox-label"><input type="checkbox" name="id_verified" value="1" required> I verified the claimant's valid ID at the counter.</label>
             <div id="representative-fields">
                 <label for="representative_name">Representative name</label>
                 <input type="text" id="representative_name" name="representative_name" maxlength="150">
@@ -561,11 +582,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php endif; ?>
 
     <?php if (empty($req['paid_at']) && !in_array($req['status'], ['released', 'rejected'], true)): ?>
-        <form method="post" action="<?= e($detailUrl) ?>">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="mark_paid">
-            <button type="submit" class="btn btn-secondary">Record Payment Received</button>
-        </form>
+        <?php if ($paymentRecordGate['ok']): ?>
+            <form method="post" action="<?= e($detailUrl) ?>">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="mark_paid">
+                <button type="submit" class="btn btn-secondary">Record Payment Received</button>
+            </form>
+        <?php else: ?>
+            <button type="button" class="btn btn-secondary" disabled>Record Payment Received</button>
+            <p class="field-hint"><?= e($paymentRecordGate['reason'] ?? 'Link a matching parish register record before recording payment.') ?></p>
+        <?php endif; ?>
     <?php endif; ?>
 
     <?php if (cert_request_transition_valid((string) $req['status'], 'rejected')): ?>
@@ -573,7 +599,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="reject">
             <label for="rejection_reason">Reason for rejection</label>
-            <textarea id="rejection_reason" name="rejection_reason" rows="3" required></textarea>
+            <select id="rejection_reason" name="rejection_reason" required>
+                <option value="">-- Select a reason --</option>
+                <option value="information_mismatch">Information does not match parish records</option>
+                <option value="missing_documents">Required supporting documents are missing or invalid</option>
+                <option value="no_matching_record">No matching parish record could be verified</option>
+                <option value="other">Other</option>
+            </select>
+            <div data-show-if="rejection_reason=other">
+                <label for="rejection_reason_other">Please describe the reason</label>
+                <textarea id="rejection_reason_other" name="rejection_reason_other" rows="3"></textarea>
+            </div>
             <button type="submit" class="btn btn-danger">Reject Request</button>
         </form>
     <?php endif; ?>

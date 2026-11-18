@@ -155,6 +155,9 @@ if ($isWizardNavigation && $csrfValid && !$hasMalformedPost) {
             } elseif ($value('applicant_birthdate') > date('Y-m-d')) {
                 $errors[] = "Applicant's birthdate cannot be in the future.";
             }
+            if (!in_array($value('applicant_sex_as_recorded'), ['male', 'female'], true)) {
+                $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+            }
             if (($e = first_communion_formation_input_error(
                 $value('formation_path'),
                 $value('school_grade'),
@@ -228,6 +231,7 @@ if ($isPostRequest && !$isWizardNavigation && $csrfValid && !$hasMalformedPost
     }
     $name = compose_person_name($formData, 'applicant');
     $birthdate = $scalarString($formData, 'applicant_birthdate');
+    $reportedSex = $scalarString($formData, 'applicant_sex_as_recorded');
     $parent = compose_person_name($formData, 'parent_guardian');
     $father = compose_person_name($formData, 'father');
     $mother = compose_person_name($formData, 'mother');
@@ -258,7 +262,10 @@ if ($isPostRequest && !$isWizardNavigation && $csrfValid && !$hasMalformedPost
     } elseif ($birthdate > date('Y-m-d')) {
         $errors[] = "Applicant's birthdate cannot be in the future.";
     }
-    if ($parent === '') $errors[] = 'Parent/Guardian name is required.';
+    if (!in_array($reportedSex, ['male', 'female'], true)) {
+        $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+    }
+    if ($parent === '') $errors[] = 'Parent / Legal Guardian name is required.';
     if (($e = validate_full_name($parent)) !== null) $errors[] = $e;
     foreach (['father' => "Father's name", 'mother' => "Mother's maiden name"] as $prefix => $label) {
         if (($e = validate_parent_name_or_na($_POST, $prefix, $label, $prefix !== 'mother')) !== null) $errors[] = $e;
@@ -355,6 +362,7 @@ if ($isPostRequest && !$isWizardNavigation && $csrfValid && !$hasMalformedPost
             $details = [
                 'candidate_name' => $name,
                 'candidate_birth_date' => $birthdate,
+                'applicant_sex_as_recorded' => $reportedSex,
                 'age_at_submission' => $ageAssessment['age'],
                 'age_eligibility_status' => $ageAssessment['status'],
                 'father_name' => $father,
@@ -466,13 +474,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
         $successIsApplication = true;
         $successFormationGuidance = 'The Parish Office will review the submitted grade, target sacrament year, and requested pathway, then assign a group or individual catch-up path. First Reconciliation and parent/guardian formation commitment are follow-up preparation steps; this submission does not confirm a group or date.';
         $successRequestNumber = $requestNo;
-        $successRequiredDocuments = sacrament_application_requirements('first_communion')['before'];
-        if ($hasVerifiedBaptismRecord) {
-            $successRequiredDocuments = array_values(array_filter(
-                $successRequiredDocuments,
-                static fn(string $document): bool => !str_contains($document, 'Baptismal Certificate')
-            ));
-        }
+        $successAfterSteps = sacrament_application_requirements('first_communion')['after'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
     <?php else: ?>
@@ -512,6 +514,13 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         </div>
                         <label>Date of birth * <span class="field-hint">A reference fills this from parish records when available; the date is needed for eligibility checks.</span>
                             <input type="date" name="applicant_birthdate" max="<?= date('Y-m-d') ?>" value="<?= oldv('applicant_birthdate') ?>" required>
+                        </label>
+                        <label>Sex as recorded on PSA/LCR birth certificate *
+                            <select name="applicant_sex_as_recorded" required>
+                                <option value="">-- Select --</option>
+                                <option value="male" <?= selectedv('applicant_sex_as_recorded', 'male') ?>>Male</option>
+                                <option value="female" <?= selectedv('applicant_sex_as_recorded', 'female') ?>>Female</option>
+                            </select>
                         </label>
                         <h3 class="form-subheading">School and preparation</h3>
                         <?php
@@ -572,7 +581,8 @@ function selectedv(string $key, string $value): string { global $formData; retur
                                 <input type="checkbox" data-guardian-quick-fill="mother"> Same as Mother
                             </label>
                         </div>
-                        <div class="inline-fields"><label>Contact Number * <input type="tel" name="contact_number" autocomplete="tel" value="<?= oldv('contact_number') ?>" required></label><label>Email * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
+                        <div class="inline-fields"><label>Best Contact Number for This Request * <input type="tel" name="contact_number" autocomplete="tel" value="<?= oldv('contact_number') ?>" required></label><label>Best Email for This Request * <input type="email" name="email" value="<?= oldv('email') ?>" required></label></div>
+                        <p class="field-hint">These details are saved with this request only. Changing them here will not update the parishioner's profile.</p>
                     </fieldset>
                 <?php elseif ($currentStep === 3): ?>
                     <fieldset><legend>Phase 3 of 5 — Baptism &amp; Communion Details</legend>
@@ -622,6 +632,7 @@ function selectedv(string $key, string $value): string { global $formData; retur
                         <table class="review-table">
                             <tr><th>Full name</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                             <tr><th>Date of birth</th><td><?= oldv('applicant_birthdate') ?></td></tr>
+                            <tr><th>Sex as recorded on PSA/LCR birth certificate</th><td><?= match ($scalarString($formData, 'applicant_sex_as_recorded')) { 'male' => 'Male', 'female' => 'Female', default => 'Not selected' } ?></td></tr>
                             <tr><th>Formation pathway</th><td><?= e(match ((string) ($formData['formation_path'] ?? '')) { 'school_based' => 'School-based group (school batch / parochial school)', 'parish_based' => 'Parish-based / Sunday Catechism group', 'individual_catchup' => 'Individual catch-up / adult / special preparation', default => 'Not sure — please advise' }) ?></td></tr>
                             <?php if (($formData['formation_path'] ?? '') === 'not_sure' && oldv('formation_path_note') !== ''): ?><tr><th>Preparation question</th><td><?= oldv('formation_path_note') ?></td></tr><?php endif; ?>
                             <tr><th>Current grade</th><td><?= e(first_communion_grade_options()[(string) ($formData['school_grade'] ?? '')] ?? '') ?></td></tr>

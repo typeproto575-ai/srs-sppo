@@ -168,8 +168,7 @@ function mail_request_documents(string $kind): array
         'Marriage Application',
         'Holy Matrimony Application' => sacrament_application_requirements('marriage')['before'],
         default => [
-            'Valid ID matching the person or applicant record.',
-            'For an authorized representative, a signed authorization letter and the required IDs.',
+            'For an authorized representative, a signed authorization letter from the person named on the certificate.',
             'Original supporting documents and origin parish transfer or permission letters when requested.',
         ],
     };
@@ -307,15 +306,11 @@ function mail_certificate_request_received(
     string $personReference,
     ?PDO $pdo = null,
     ?int $requestId = null,
-    bool $requesterIsSubject = false,
     string $requestNumber = ''
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
-    $selfPickupRequirement = $requesterIsSubject
-        ? "- A valid ID with a name matching the person on the certificate.\r\n"
-        : '';
     $intro = "The parish office received your request for a " . $certificateType . " certificate.";
     $referenceText = "REFERENCE NUMBER:\r\n" . $personReference . "\r\n"
         . "Keep this number. It works for every sacrament and request.\r\n"
@@ -325,7 +320,6 @@ function mail_certificate_request_received(
     $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
-        . $selfPickupRequirement
         . "If someone else picks it up for you, they must bring:\r\n"
         . "- A signed authorization letter from the person named on the certificate.\r\n"
         . "- For a record from another parish, bring the original supporting document and transfer or permission letter when requested.\r\n\r\n"

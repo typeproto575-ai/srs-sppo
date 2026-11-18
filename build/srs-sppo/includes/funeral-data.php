@@ -115,6 +115,59 @@ function funeral_suggested_sacraments(PDO $pdo, int $personId): array
     ));
 }
 
+/**
+ * @return array{has_marriage_record:bool,spouse_name:string}
+ */
+function funeral_person_marriage_suggestion(PDO $pdo, int $personId): array
+{
+    if ($personId < 1) {
+        throw new InvalidArgumentException('A valid person ID is required.');
+    }
+
+    $marriageStmt = $pdo->prepare(
+        "SELECT person_id, spouse_person_id
+         FROM sacrament_records
+         WHERE sacrament_type = 'marriage'
+           AND (person_id = ? OR spouse_person_id = ?)
+         ORDER BY event_date DESC, id DESC
+         LIMIT 1"
+    );
+    $marriageStmt->execute([$personId, $personId]);
+    $marriage = $marriageStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$marriage) {
+        return ['has_marriage_record' => false, 'spouse_name' => ''];
+    }
+
+    $spouseId = (int) $marriage['person_id'] === $personId
+        ? (int) ($marriage['spouse_person_id'] ?? 0)
+        : (int) $marriage['person_id'];
+    if ($spouseId < 1) {
+        return ['has_marriage_record' => true, 'spouse_name' => ''];
+    }
+
+    $spouseStmt = $pdo->prepare(
+        'SELECT first_name, middle_name, last_name, suffix
+         FROM persons
+         WHERE id = ?
+         LIMIT 1'
+    );
+    $spouseStmt->execute([$spouseId]);
+    $spouse = $spouseStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$spouse) {
+        return ['has_marriage_record' => true, 'spouse_name' => ''];
+    }
+
+    $spouseName = trim(implode(' ', array_filter(
+        array_map(
+            static fn($part): string => trim((string) $part),
+            [$spouse['first_name'], $spouse['middle_name'], $spouse['last_name'], $spouse['suffix']]
+        ),
+        static fn(string $part): bool => $part !== ''
+    )));
+
+    return ['has_marriage_record' => true, 'spouse_name' => $spouseName];
+}
+
 function funeral_calculated_age(?string $birth, string $death): ?int
 {
     $birthDate = funeral_parse_date($birth);

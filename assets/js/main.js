@@ -1023,6 +1023,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var label = toggle.querySelector('[data-sidebar-toggle-label]');
         var storageKey = 'sppo-sidebar-collapsed';
         var collapsed = false;
+        var mobileExpanded = false;
         try {
             collapsed = window.localStorage.getItem(storageKey) === 'true';
         } catch (err) {
@@ -1030,20 +1031,34 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function renderSidebar() {
-            var compact = collapsed && window.innerWidth > 980;
+            var mobile = window.innerWidth <= 980;
+            var compact = collapsed && !mobile;
+            var expanded = mobile ? mobileExpanded : !compact;
+            var labelText = mobile
+                ? (mobileExpanded ? 'Hide menu' : 'Show menu')
+                : (compact ? 'Show full menu' : 'Hide menu');
+            layout.classList.add('has-sidebar-controller');
             layout.classList.toggle('is-sidebar-collapsed', compact);
-            toggle.setAttribute('aria-expanded', compact ? 'false' : 'true');
-            toggle.setAttribute('aria-label', compact ? 'Show full menu' : 'Hide menu');
-            toggle.title = compact ? 'Show full menu' : 'Hide menu';
-            if (label) label.textContent = compact ? 'Show menu' : 'Hide menu';
+            layout.classList.toggle('is-mobile-nav-collapsed', mobile && !mobileExpanded);
+            layout.classList.toggle('is-mobile-nav-open', mobile && mobileExpanded);
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            toggle.setAttribute('aria-label', labelText);
+            toggle.title = labelText;
+            if (label) label.textContent = mobile
+                ? (mobileExpanded ? 'Hide menu' : 'Show menu')
+                : (compact ? 'Show menu' : 'Hide menu');
         }
 
         toggle.addEventListener('click', function () {
-            collapsed = !collapsed;
-            try {
-                window.localStorage.setItem(storageKey, collapsed ? 'true' : 'false');
-            } catch (err) {
-                // The preference still applies until the page is reloaded.
+            if (window.innerWidth <= 980) {
+                mobileExpanded = !mobileExpanded;
+            } else {
+                collapsed = !collapsed;
+                try {
+                    window.localStorage.setItem(storageKey, collapsed ? 'true' : 'false');
+                } catch (err) {
+                    // The preference still applies until the page is reloaded.
+                }
             }
             renderSidebar();
         });
@@ -2545,9 +2560,11 @@ document.addEventListener('DOMContentLoaded', function () {
                         }
                     }
                     if (date === currentDate && currentStart && currentEnd && !currentIncluded) {
-                        var currentLabel = 'Current schedule: ' + timeLabel(currentStart)
-                            + '–' + timeLabel(currentEnd);
-                        appendOption(currentLabel, currentValue, true);
+                        if (picker.dataset.currentOnlyIfAvailable !== '1') {
+                            var currentLabel = 'Current schedule: ' + timeLabel(currentStart)
+                                + '–' + timeLabel(currentEnd);
+                            appendOption(currentLabel, currentValue, true);
+                        }
                     }
                     slotSelect.disabled = payload.slots.length === 0;
                     renderEvents(payload.events || []);
@@ -2555,7 +2572,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         ? payload.slots.length + ' available 60-minute schedule' + (payload.slots.length === 1 ? '' : 's')
                             + ' between 8:00 AM and 5:00 PM. Existing parish and death schedules are listed below.'
                         : 'No 60-minute times are available between 8:00 AM and 5:00 PM. Choose another date.';
-                    if (!previewOnly && date === currentDate && currentStart) {
+                    if (!previewOnly && date === currentDate && currentStart
+                        && (picker.dataset.currentOnlyIfAvailable !== '1' || currentIncluded)) {
                         slotSelect.value = currentValue;
                         if (slotSelect.value === currentValue) {
                             startInput.value = currentStart;

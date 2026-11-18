@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
+require_once __DIR__ . '/../../includes/person-activity.php';
 require_role('secretary');
 
 $basePath = $basePath ?? base_path();
@@ -92,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $recs = sd_get_person_records($pdo, $personId);
+$activityHistory = sd_get_person_activity_history($pdo, $personId);
 $family = sd_get_family($pdo, $personId);
 $funeralStmt = $pdo->prepare(
     'SELECT id, date_of_death, service_type, service_date, place_of_burial,
@@ -260,11 +262,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         </div>
         <div class="person-profile-detail">
             <span class="person-profile-detail__label">Father</span>
-            <span class="person-profile-detail__value"><?= e($person['father_name'] ?: 'Not specified') ?></span>
+            <span class="person-profile-detail__value"><?= e($person['father_name'] ? format_full_name((string) $person['father_name']) : 'Not specified') ?></span>
         </div>
         <div class="person-profile-detail">
             <span class="person-profile-detail__label">Mother's maiden name</span>
-            <span class="person-profile-detail__value"><?= e($person['mother_maiden_name'] ?: 'Not specified') ?></span>
+            <span class="person-profile-detail__value"><?= e($person['mother_maiden_name'] ? format_full_name((string) $person['mother_maiden_name']) : 'Not specified') ?></span>
         </div>
         <div class="person-profile-detail person-profile-detail--wide">
             <span class="person-profile-detail__label">Address</span>
@@ -379,6 +381,130 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 </li>
             <?php endforeach; ?>
         </ul>
+    <?php endif; ?>
+</section>
+
+<section class="panel-card person-profile-section" aria-labelledby="activity-history-heading">
+    <div class="person-profile-section__heading">
+        <div>
+            <p class="person-profile-section__eyebrow">Linked activity</p>
+            <h2 id="activity-history-heading">Activity &amp; transaction history</h2>
+        </div>
+        <span class="person-profile-count"><?= count($activityHistory) ?> <?= count($activityHistory) === 1 ? 'event' : 'events' ?></span>
+    </div>
+    <p class="field-hint">Only requests linked to this person profile are shown. Unlinked or anonymized requests are not included.</p>
+    <?php if ($activityHistory === []): ?>
+        <p class="person-profile-empty">No sacrament applications, certificate requests, or sacramental records are linked to this profile yet.</p>
+    <?php else: ?>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Person activity and transaction history; scroll horizontally to view all columns">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="column-date">Date</th>
+                        <th scope="col">Activity</th>
+                        <th scope="col">Reference</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($activityHistory as $event): ?>
+                        <?php
+                        $sacramentLabel = $event['sacrament_type'] === 'marriage'
+                            ? 'Holy Matrimony'
+                            : sd_type_label((string) $event['sacrament_type']);
+                        $summary = '';
+                        $referenceUrl = '';
+                        $referenceLabel = '';
+                        $statusValue = '';
+                        $statusLabel = '';
+                        $meta = '';
+                        if ($event['activity_type'] === 'application') {
+                            $summary = $sacramentLabel . ' Pre-Application';
+                            if ($event['sacrament_type'] === 'marriage' && !empty($event['partner_name'])) {
+                                $summary .= ' with ' . (string) $event['partner_name'];
+                            }
+                            $referenceUrl = $basePath . '/admin/requests/applications-queue.php?' . http_build_query([
+                                'q' => (string) $event['reference_no'],
+                                'status' => (string) $event['status'],
+                                'open_application_id' => (int) $event['activity_id'],
+                            ]);
+                            $referenceLabel = (string) $event['reference_no'];
+                            $statusValue = (string) $event['status'];
+                            $statusLabel = status_label('application', $statusValue);
+                        } elseif ($event['activity_type'] === 'certificate') {
+                            $summary = $sacramentLabel . ' Certificate Request';
+                            $referenceUrl = $basePath . '/admin/requests/certificate-detail.php?id=' . (int) $event['activity_id'];
+                            $referenceLabel = (string) $event['reference_no'];
+                            $statusValue = (string) $event['status'];
+                            $statusLabel = status_label('certificate', $statusValue);
+                            $purpose = trim((string) ($event['purpose_other'] ?? ''));
+                            if ($purpose === '') {
+                                $purpose = trim((string) ($event['purpose'] ?? ''));
+                            }
+                            if ($purpose !== '') {
+                                $meta = 'Purpose: ' . humanize_label_local($purpose);
+                            }
+                            $relationship = (string) ($event['requester_relationship'] ?? '');
+                            if ($relationship !== '' && $relationship !== 'self') {
+                                $relationshipLabel = $relationship === 'other'
+                                    && trim((string) ($event['requester_relationship_other'] ?? '')) !== ''
+                                    ? trim((string) $event['requester_relationship_other'])
+                                    : humanize_label_local($relationship);
+                                $requester = trim((string) ($event['requester_name'] ?? '')) ?: 'Name not recorded';
+                                $meta .= ($meta === '' ? '' : ' · ') . 'Requested by ' . $requester . ' (' . $relationshipLabel . ')';
+                            }
+                        } else {
+                            $summary = $sacramentLabel . ' received';
+                            if ($event['sacrament_type'] === 'marriage' && !empty($event['partner_name'])) {
+                                $summary .= ' with ' . (string) $event['partner_name'];
+                            }
+                            $recordType = $event['sacrament_type'] === 'baptism'
+                                ? 'baptismal'
+                                : (string) $event['sacrament_type'];
+                            $referenceUrl = $basePath . '/admin/records/view.php?' . http_build_query([
+                                'type' => $recordType,
+                                'id' => (int) $event['activity_id'],
+                                'return' => '/admin/system/person-profile.php?id=' . (int) $personId,
+                            ]);
+                            $referenceLabel = 'Record #' . (int) $event['activity_id'];
+                            $statusValue = 'completed';
+                            $statusLabel = 'Recorded';
+                            $registerParts = [];
+                            foreach ([
+                                'book_no' => 'Book',
+                                'page_no' => 'Page',
+                                'line_no' => 'Line',
+                            ] as $key => $label) {
+                                $value = trim((string) ($event[$key] ?? ''));
+                                if ($value !== '') {
+                                    $registerParts[] = $label . ' ' . $value;
+                                }
+                            }
+                            if ($registerParts !== []) {
+                                $meta = implode(' · ', $registerParts);
+                            }
+                        }
+                        $eventTimestamp = strtotime((string) $event['event_at']);
+                        ?>
+                        <tr>
+                            <td class="column-date">
+                                <?php if ($eventTimestamp !== false): ?>
+                                    <time datetime="<?= e(date('c', $eventTimestamp)) ?>"><?= e(date('M j, Y', $eventTimestamp)) ?></time>
+                                <?php else: ?>
+                                    Not recorded
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <strong><?= e($summary) ?></strong>
+                                <?php if ($meta !== ''): ?><br><small><?= e($meta) ?></small><?php endif; ?>
+                            </td>
+                            <td><a href="<?= e($referenceUrl) ?>"><?= e($referenceLabel) ?></a></td>
+                            <td><span class="status-badge status-<?= e($statusValue) ?>"><?= e($statusLabel) ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     <?php endif; ?>
 </section>
 

@@ -158,6 +158,66 @@ function mail_death_record_schedule_update(
     );
 }
 
+function mail_marriage_schedule_proposal(
+    string $toEmail,
+    string $requestNo,
+    string $groomName,
+    string $brideName,
+    string $venue,
+    string $date,
+    string $startTime,
+    string $endTime,
+    ?PDO $pdo = null,
+    ?int $applicationId = null
+): bool {
+    $dateValue = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    $startValue = DateTimeImmutable::createFromFormat('!H:i', $startTime);
+    $endValue = DateTimeImmutable::createFromFormat('!H:i', $endTime);
+    if (!$dateValue || $dateValue->format('Y-m-d') !== $date
+        || !$startValue || $startValue->format('H:i') !== $startTime
+        || !$endValue || $endValue->format('H:i') !== $endTime
+        || $endValue->getTimestamp() - $startValue->getTimestamp() !== 3600) {
+        throw new InvalidArgumentException('A valid 60-minute wedding schedule proposal is required.');
+    }
+
+    $groomName = trim($groomName) !== '' ? trim($groomName) : 'Groom';
+    $brideName = trim($brideName) !== '' ? trim($brideName) : 'Bride';
+    $venue = trim($venue) !== '' ? trim($venue) : "St. Patrick's Parish Church";
+    $dateLabel = $dateValue->format('F j, Y');
+    $timeLabel = $startValue->format('g:i A') . '–' . $endValue->format('g:i A');
+    $subject = 'Proposed wedding schedule — response requested';
+    $body = "Dear {$groomName} and {$brideName},\r\n\r\n"
+        . "The Parish Office proposes the following wedding schedule for request {$requestNo}:\r\n\r\n"
+        . "Date: {$dateLabel}\r\n"
+        . "Time: {$timeLabel}\r\n"
+        . "Venue: {$venue}\r\n\r\n"
+        . "This is a proposal only. It does not reserve the date or time and is not a final confirmation. Please make sure you both agree to these details, then reply or contact the Parish Office. Staff will check availability again before confirming the wedding. If either of you needs a change, please tell the Parish Office; a revised proposal must be agreed to by both of you.\r\n\r\n"
+        . "Keep request number {$requestNo} for reference.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $htmlBody = '<p>Dear ' . $escape($groomName) . ' and ' . $escape($brideName) . ',</p>'
+        . '<p>The Parish Office proposes this wedding schedule for request <strong>' . $escape($requestNo) . '</strong>:</p>'
+        . '<div style="margin:18px 0;padding:16px;border:1px solid #c8dfce;border-radius:8px;background:#f3faf3">'
+        . '<p style="margin:0 0 6px"><strong>Date:</strong> ' . $escape($dateLabel) . '</p>'
+        . '<p style="margin:0 0 6px"><strong>Time:</strong> ' . $escape($timeLabel) . '</p>'
+        . '<p style="margin:0"><strong>Venue:</strong> ' . $escape($venue) . '</p></div>'
+        . '<p><strong>This is a proposal only.</strong> It does not reserve the date or time and is not a final confirmation. Please make sure you both agree, then reply or contact the Parish Office. Staff will recheck availability before confirming. Any revised proposal must also be agreed to by both of you.</p>'
+        . '<p>Keep request number ' . $escape($requestNo) . ' for reference.</p>'
+        . '<p>God bless,<br>St. Patrick\'s Parish Office — Dingalan, Aurora</p>';
+
+    return send_mail(
+        $toEmail,
+        $subject,
+        $body,
+        $pdo,
+        'marriage_schedule_proposal',
+        'sacrament_application',
+        $applicationId,
+        $requestNo,
+        $htmlBody
+    );
+}
+
 function mail_request_documents(string $kind): array
 {
     return match ($kind) {
@@ -168,8 +228,7 @@ function mail_request_documents(string $kind): array
         'Marriage Application',
         'Holy Matrimony Application' => sacrament_application_requirements('marriage')['before'],
         default => [
-            'Valid ID matching the person or applicant record.',
-            'For an authorized representative, a signed authorization letter and the required IDs.',
+            'For an authorized representative, a signed authorization letter from the person named on the certificate.',
             'Original supporting documents and origin parish transfer or permission letters when requested.',
         ],
     };
@@ -206,10 +265,7 @@ function mail_reference_block_html(string $personReference, string $requestNumbe
     $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $displayReference = $personReference !== '' ? $personReference : $requestNumber;
     $referenceLabel = $personReference !== '' ? 'Reference number' : 'Request number';
-    $requestNumberHtml = $requestNumber !== ''
-        && $personReference !== ''
-        ? '<p style="margin:0 0 16px;color:#52605a;font-size:13px">Request no.: ' . $escape($requestNumber) . '</p>'
-        : '';
+    $requestNumberHtml = '';
 
     return '<div style="margin:20px 0;padding:20px;border:1px solid #c8dfce;border-radius:8px;background:#f3faf3">'
         . '<p style="margin:0 0 6px;color:#315b3b;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">' . $escape($referenceLabel) . '</p>'
@@ -254,7 +310,7 @@ function mail_request_received(string $to, string $trackingNumber, string $kind,
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
     $trackingUrl = mail_public_url('/public/track-request.php');
-    $requestNumberText = $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '';
+    $requestNumberText = '';
     $formationGuidance = in_array($kind, ['First Communion Application', 'Confirmation Application'], true)
         ? "For First Communion and Confirmation, the Parish Office uses the submitted grade and school year to review group placement or an individual catch-up path. The office assigns the group and date; this form does not reserve one.\r\n\r\n"
         : '';
@@ -346,27 +402,21 @@ function mail_certificate_request_received(
     string $personReference,
     ?PDO $pdo = null,
     ?int $requestId = null,
-    bool $requesterIsSubject = false,
     string $requestNumber = ''
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $trackingUrl = mail_public_url('/public/track-request.php');
-    $selfPickupRequirement = $requesterIsSubject
-        ? "- A valid ID with a name matching the person on the certificate.\r\n"
-        : '';
     $intro = "The parish office received your request for a " . $certificateType . " certificate.";
     $displayReference = $personReference !== '' ? $personReference : $requestNumber;
     $referenceLabel = $personReference !== '' ? 'REFERENCE NUMBER' : 'REQUEST NUMBER';
     $referenceText = $referenceLabel . ":\r\n" . $displayReference . "\r\n"
         . "Keep this number to track your request.\r\n"
-        . ($personReference !== '' && $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '')
         . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
         . "Enter this number and the email address used on the request.\r\n\r\n";
     $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
-        . $selfPickupRequirement
         . "If someone else picks it up for you, they must bring:\r\n"
         . "- A signed authorization letter from the person named on the certificate.\r\n"
         . "- For a record from another parish, bring the original supporting document and transfer or permission letter when requested.\r\n\r\n"

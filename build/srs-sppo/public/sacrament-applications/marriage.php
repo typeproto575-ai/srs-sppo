@@ -429,7 +429,7 @@ $successHeading = 'Your pre-application has been submitted';
 $successIsApplication = true;
 $successRequestNumber = $requestNo;
 $successPersonReferences = $personReferences;
-$successRequiredDocuments = sacrament_application_requirements('marriage')['before'];
+$successAfterSteps = sacrament_application_requirements('marriage')['after'];
 require __DIR__ . '/../../includes/submission-success.php';
 ?>
 <?php else: ?>

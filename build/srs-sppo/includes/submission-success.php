@@ -36,6 +36,9 @@ $successIsApplication = $successIsApplication ?? false;
 $successFormationGuidance = isset($successFormationGuidance) && is_string($successFormationGuidance)
     ? trim($successFormationGuidance)
     : '';
+$successAfterSteps = isset($successAfterSteps) && is_array($successAfterSteps)
+    ? $successAfterSteps
+    : [];
 $successRequiredDocuments = isset($successRequiredDocuments) && is_array($successRequiredDocuments)
     ? $successRequiredDocuments
     : [];
@@ -72,7 +75,7 @@ $basePath       = $basePath ?? base_path();
                 <h3>After submission: what happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
-                    <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. Use your person reference and the email address you used to view requests linked to that profile. You may also contact the office or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
+                    <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. Use your person reference and the email address you used to view requests linked to that profile. You may also contact the office or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger.</li>
                     <?php if ($successFormationGuidance !== ''): ?>
                     <li><?= e($successFormationGuidance) ?></li>
                     <?php endif; ?>
@@ -87,6 +90,17 @@ $basePath       = $basePath ?? base_path();
                     <?php endif; ?>
                 </ol>
             </div>
+
+            <?php if ($successIsApplication && $successAfterSteps !== []): ?>
+                <section class="submission-documents" aria-label="Parish review and preparation steps">
+                    <h3>After submission: parish review and preparation</h3>
+                    <ol>
+                        <?php foreach ($successAfterSteps as $step): ?>
+                            <?php if (is_string($step)): ?><li><?= e($step) ?></li><?php endif; ?>
+                        <?php endforeach; ?>
+                    </ol>
+                </section>
+            <?php endif; ?>
 
             <?php if ($successRequiredDocuments !== []): ?>
                 <section class="submission-documents" aria-label="Documents to prepare">

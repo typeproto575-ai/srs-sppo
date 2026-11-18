@@ -60,7 +60,7 @@ function sd_full_name(array $person): string
     foreach (['first_name', 'middle_name', 'last_name', 'suffix'] as $key) {
         $v = trim((string) ($person[$key] ?? ''));
         if ($v !== '') {
-            $parts[] = $v;
+            $parts[] = format_name_part($v, $key === 'suffix');
         }
     }
     return implode(' ', $parts);
@@ -489,6 +489,16 @@ function sd_save_person(PDO $pdo, array $data, ?int $id = null): int
     foreach ($allowed as $key) {
         if (array_key_exists($key, $data)) {
             $values[$key] = sd_clean($data[$key]);
+        }
+    }
+    foreach (['first_name', 'middle_name', 'last_name', 'suffix'] as $key) {
+        if (array_key_exists($key, $values) && $values[$key] !== null) {
+            $values[$key] = format_name_part((string) $values[$key], $key === 'suffix');
+        }
+    }
+    foreach (['father_name', 'mother_maiden_name'] as $key) {
+        if (array_key_exists($key, $values) && $values[$key] !== null) {
+            $values[$key] = format_full_name((string) $values[$key]);
         }
     }
     if ($id === null) {

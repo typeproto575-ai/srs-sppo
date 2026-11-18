@@ -23,7 +23,7 @@ The system consists of two primary operational interfaces:
 
 ### 2. Streamlined Request & Tracking Workflow
 - **Upfront Document Requirements:**
-  - On the online confirmation screen and email notifications, display all required documents explicitly (e.g., Valid ID, Authorization Letter if picking up for someone else, Original Copy of External Documents).
+  - On the online confirmation screen and email notifications, display required documents explicitly (e.g., Authorization Letter if picking up for someone else, Original Copy of External Documents).
   - Do not surprise clients with unstated document requirements when they arrive at the office.
 - **Status Lifecycle:**
   - Maintain a clean request lifecycle with unambiguous statuses:
@@ -39,7 +39,7 @@ The system consists of two primary operational interfaces:
 ### 3. Business Logic & Interface Rules
 - **Requester Relationship Dropdown:**
   - Support choices: `Self`, `Spouse`, `Father`, `Mother`, `Son`, `Daughter`, `Grandparent`, `Grandchild`, `Authorized Representative`.
-  - When `Self` is selected, auto-fill applicant fields from the user's profile and flag that a Valid ID matching the record is required upon pickup.
+  - When `Self` is selected, auto-fill applicant fields from the user's profile; do not require identity documents for pickup.
 - **External / Out-of-Parish Applicants:**
   - Handle parishioners who completed prior sacraments at external/other parishes (e.g., baptized in another province).
   - Include fields and status gates for external documentation: Origin Parish Transfer/Permission Letter, Origin Parish Baptismal Certificate, and PSA CENOMAR for Marriage applications.

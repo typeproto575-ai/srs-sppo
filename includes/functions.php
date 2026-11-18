@@ -136,7 +136,7 @@ function generate_request_no(PDO $pdo, string $table = 'certificate_requests'): 
     return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
 }
 
-function public_request_throttled(PDO $pdo, string $email, int $max = 3, int $minutes = 60): bool
+function public_request_throttled(PDO $pdo, string $email, int $max = 10, int $minutes = 60): bool
 {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM certificate_requests '
         . 'WHERE LOWER(requester_email) = LOWER(?) AND created_at >= (NOW() - INTERVAL ' . (int) $minutes . ' MINUTE)');
@@ -193,15 +193,18 @@ function public_selected_person_id(
 function public_person_reference(PDO $pdo, ?int $personId, array $identity): array
 {
     $name = [
-        'first_name' => trim((string) ($identity['first_name'] ?? '')),
-        'middle_name' => trim((string) ($identity['middle_name'] ?? '')),
-        'last_name' => trim((string) ($identity['last_name'] ?? '')),
-        'suffix' => trim((string) ($identity['suffix'] ?? '')),
+        'first_name' => format_name_part(trim((string) ($identity['first_name'] ?? ''))),
+        'middle_name' => format_name_part(trim((string) ($identity['middle_name'] ?? ''))),
+        'last_name' => format_name_part(trim((string) ($identity['last_name'] ?? ''))),
+        'suffix' => format_name_part(trim((string) ($identity['suffix'] ?? '')), true),
         'birth_date' => trim((string) ($identity['birth_date'] ?? '')),
     ];
     foreach (['father_name', 'mother_maiden_name', 'birth_place'] as $parentKey) {
-        if (strcasecmp(trim((string) ($identity[$parentKey] ?? '')), 'N/A') === 0) {
+        $parentValue = trim((string) ($identity[$parentKey] ?? ''));
+        if (strcasecmp($parentValue, 'N/A') === 0) {
             $identity[$parentKey] = '';
+        } elseif ($parentKey !== 'birth_place') {
+            $identity[$parentKey] = format_full_name($parentValue);
         }
     }
     if ($name['first_name'] === '' || $name['last_name'] === '') {
@@ -604,22 +607,36 @@ function sacrament_formation_input_error(string $path, string $grade, string $sc
 }
 
 /**
- * Keys of requirements still marked "not_received" in an application's
- * requirements JSON. Rows marked not applicable, received or verified do not count.
+ * Return missing requirements, including configured keys absent from stored JSON.
+ * Rows marked not applicable, received or verified count as satisfied.
+ *
+ * @param list<string> $requiredKeys
+ * @return list<string>
  */
-function application_outstanding_requirement_keys(?string $requirementsJson): array
+function application_outstanding_requirement_keys(?string $requirementsJson, array $requiredKeys = []): array
 {
+    $requiredKeys = array_values(array_unique(array_map('strval', $requiredKeys)));
     $requirements = json_decode((string) $requirementsJson, true);
     if (!is_array($requirements)) {
-        return [];
+        return $requiredKeys;
     }
+
     $outstanding = [];
+    foreach ($requiredKeys as $key) {
+        $item = $requirements[$key] ?? null;
+        $status = is_array($item) ? ($item['status'] ?? '') : '';
+        if (!in_array($status, ['received', 'verified', 'not_applicable'], true)) {
+            $outstanding[] = $key;
+        }
+    }
     foreach ($requirements as $key => $item) {
-        if (is_array($item) && ($item['status'] ?? '') === 'not_received') {
+        if (!in_array((string) $key, $requiredKeys, true)
+            && is_array($item)
+            && ($item['status'] ?? '') === 'not_received') {
             $outstanding[] = (string) $key;
         }
     }
-    return $outstanding;
+    return array_values(array_unique($outstanding));
 }
 
 /**
@@ -1337,6 +1354,29 @@ function format_name_part(string $value, bool $isSuffix = false): string
     return implode(' ', $words);
 }
 
+function format_full_name(string $value): string
+{
+    $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+    if ($value === '' || strcasecmp($value, 'N/A') === 0) {
+        return $value;
+    }
+
+    [$first, $middle, $last, $suffix] = structured_name_parts($value);
+    $parts = [];
+    foreach ([$first, $middle, $last] as $part) {
+        $formatted = format_name_part($part);
+        if ($formatted !== '') {
+            $parts[] = $formatted;
+        }
+    }
+    $formattedSuffix = format_name_part($suffix, true);
+    if ($formattedSuffix !== '') {
+        $parts[] = $formattedSuffix;
+    }
+
+    return implode(' ', $parts);
+}
+
 function compose_person_name(array $values, string $prefix): string
 {
     $parts = [];
@@ -1371,7 +1411,7 @@ function compose_person_name_rows_by_index(array $values, string $prefix): array
             if (!is_scalar($fullName)) {
                 continue;
             }
-            $name = trim((string) $fullName);
+            $name = format_full_name((string) $fullName);
             if ($name !== '') {
                 $names[$rowIndex] = $name;
             }
@@ -2570,6 +2610,33 @@ function cert_request_payment_gate(array $req, string $to): array
 }
 
 /**
+ * Require a same-sacrament record match before certificate-request payment.
+ *
+ * @param array<string, mixed>      $req
+ * @param array<string, mixed>|null $record
+ * @return array{ok: bool, reason?: string}
+ */
+function cert_request_payment_record_gate(array $req, ?array $record): array
+{
+    $recordId = (int) ($req['record_id'] ?? 0);
+    $requestType = (string) ($req['sacrament_type'] ?? '');
+    $recordType = (string) ($record['sacrament_type'] ?? '');
+
+    if ($recordId < 1
+        || $record === null
+        || (int) ($record['id'] ?? 0) !== $recordId
+        || $requestType === ''
+        || $recordType !== $requestType) {
+        return [
+            'ok' => false,
+            'reason' => 'Link a matching parish register record before recording payment.',
+        ];
+    }
+
+    return ['ok' => true];
+}
+
+/**
  * Validate the counter requirements before releasing a certificate.
  *
  * @return array{ok: bool, reason?: string}
@@ -2578,7 +2645,6 @@ function cert_request_release_gate(
     array $req,
     string $claimantType,
     string $representativeName,
-    bool $idVerified,
     bool $authorizationReceived
 ): array {
     if (!cert_request_transition_valid((string) ($req['status'] ?? ''), 'released')) {
@@ -2590,9 +2656,6 @@ function cert_request_release_gate(
     }
     if (empty($req['paid_at'])) {
         return ['ok' => false, 'reason' => 'Payment has not been recorded.'];
-    }
-    if (!$idVerified) {
-        return ['ok' => false, 'reason' => 'Confirm that the claimant presented a valid ID at the counter.'];
     }
     if ($claimantType === 'representative' && !$authorizationReceived) {
         return ['ok' => false, 'reason' => 'Confirm that the signed authorization letter was received.'];
@@ -2710,15 +2773,11 @@ function log_certificate_released(
     int $userId,
     string $claimantName,
     string $claimantRelationship,
-    string $claimantNotes,
-    bool $idVerified
+    string $claimantNotes
 ): array {
     $claimantName = trim($claimantName);
     if ($claimantName === '') {
         return ['ok' => false, 'reason' => 'The claimant name is required.'];
-    }
-    if (!$idVerified) {
-        return ['ok' => false, 'reason' => "Verify the claimant's valid ID before releasing the certificate."];
     }
 
     $ownsTransaction = !$pdo->inTransaction();
@@ -2772,8 +2831,7 @@ function log_certificate_released(
                  pickup_date = NOW(),
                  claimant_name = ?,
                  claimant_relationship = ?,
-                 claimant_notes = ?,
-                 id_verified = 1
+                 claimant_notes = ?
              WHERE id = ? AND print_status = 'printed' AND superseded_at IS NULL"
         );
         $updateGeneration->execute([

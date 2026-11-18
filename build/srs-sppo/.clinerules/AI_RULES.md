@@ -41,7 +41,7 @@ Legacy compatibility helpers for `certificate_generation_log` and `workflow_requ
 2. **Public forms write only to `sacrament_applications` or `certificate_requests`.** They never write to `persons` or `sacrament_records`. Only the secretary's approval does. The same forms may be used by a logged-in secretary; in that case `channel` is derived server-side from the session (`onsite`), never from a POST field or query string.
 3. **`sacrament_records.legitimacy` is internal.** Never select it into any public page, email, certificate, PDF, JSON response for the public site or default staff list. New entries store NULL: staff never type it and it is NOT derived from `parents_union_type`.
 4. **Certificates print only** for `source = 'this_parish'` records with `book_verified_at` set.
-5. **Release requires** `claimant_type` and `id_verified = 1`. A representative also needs `representative_name`.
+5. **Release requires** recorded payment and a valid `claimant_type`. A representative also needs `representative_name` and a received authorization letter.
 6. **The Person Matcher widget stays** on the application and online-request review screens. Search `persons` by surname and birth date; link in one click; allow two links for marriage (groom and bride).
 7. **Prefill is one click.** "Prefill Register Form" carries `from_application=<id>` plus the linked `person_id`s into the register form. No retyping of identity.
 8. **No money amounts anywhere.** Payment is the manual `paid_at` / `paid_by` stamp. The secretary may match and pre-verify an online request before payment; the online processing gate and certificate release require payment to be recorded.

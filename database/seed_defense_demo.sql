@@ -510,14 +510,6 @@ WHERE NOT EXISTS (SELECT 1 FROM workflow_requirements
                     AND requirement_key = 'authorization_letter');
 INSERT INTO workflow_requirements
   (entity_type, entity_id, requirement_key, requirement_label, status, notes)
-SELECT 'certificate_request', @c4, 'valid_id',
-       'Valid government ID matching the requester', 'verified',
-       'DEMO ONLY: fictional document review sample.'
-WHERE NOT EXISTS (SELECT 1 FROM workflow_requirements
-                  WHERE entity_type = 'certificate_request' AND entity_id = @c4
-                    AND requirement_key = 'valid_id');
-INSERT INTO workflow_requirements
-  (entity_type, entity_id, requirement_key, requirement_label, status, notes)
 SELECT 'certificate_request', @c4, 'authorization_letter',
        'Authorization letter for representative pickup', 'not_applicable',
        'DEMO ONLY: requester collects their own certificate.'

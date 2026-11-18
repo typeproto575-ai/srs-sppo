@@ -161,10 +161,11 @@ fabricated by this seed. It is repeatable and inserts no duplicates.
 
 1. Open a person profile such as
    `/admin/system/person-profile.php?id=<person-id>` from the person search.
-2. Show the profile-level Observanda field and save a person-wide note directly
-   from the profile. Changes are recorded in Correction History.
+2. Show Profile Notes and save a person-wide note directly from the profile.
+   The correction reason is recorded separately from the automatic before/after
+   values in Correction History.
 3. Show the linked sacramental history and register references. Each register
-   card also displays its own Observanda, kept separate from the profile note.
+   card also displays its own Remarks, kept separate from the profile note.
 4. Explain that matching is staff-confirmed and that the physical register
    remains the authority for historical details.
 

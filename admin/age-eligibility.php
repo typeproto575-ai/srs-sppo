@@ -1,6 +1,6 @@
 <?php
 /**
- * Advisory staff review list for age-based First Communion and Confirmation alerts.
+ * Advisory staff review list for sacrament age-based alerts.
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -12,6 +12,7 @@ $basePath = $basePath ?? base_path();
 $labels = [
     'first_communion' => 'First Communion',
     'confirmation' => 'Confirmation',
+    'marriage' => 'Marriage',
 ];
 $type = (string) ($_GET['type'] ?? 'first_communion');
 if (!isset($labels[$type])) {
@@ -30,17 +31,20 @@ if ($ageGroup === 'custom') {
 $peopleByType = [];
 $ranges = [];
 foreach ($labels as $sacramentType => $label) {
-    $peopleByType[$sacramentType] = sd_get_age_eligible_persons($pdo, $sacramentType);
-    $ranges[$sacramentType] = sacrament_eligibility_range($pdo, $sacramentType);
+    if ($sacramentType === 'marriage') {
+        $peopleByType[$sacramentType] = sd_get_active_marriage_age_reviews($pdo);
+        $ranges[$sacramentType] = null;
+    } else {
+        $peopleByType[$sacramentType] = sd_get_age_eligible_persons($pdo, $sacramentType);
+        $ranges[$sacramentType] = sacrament_eligibility_range($pdo, $sacramentType);
+    }
 }
 try {
     $filteredPeopleByType = [];
     foreach ($peopleByType as $sacramentType => $candidates) {
-        $filteredPeopleByType[$sacramentType] = sd_filter_age_eligible_persons(
-            $candidates,
-            $ageGroup,
-            $minimumAge
-        );
+        $filteredPeopleByType[$sacramentType] = $sacramentType === 'marriage'
+            ? sd_filter_marriage_age_review_applications($candidates, $ageGroup, $minimumAge)
+            : sd_filter_age_eligible_persons($candidates, $ageGroup, $minimumAge);
     }
 } catch (InvalidArgumentException $e) {
     $filterError = $e->getMessage();
@@ -49,6 +53,7 @@ try {
 $people = $filteredPeopleByType[$type];
 $range = $ranges[$type];
 $totalPeople = count($people);
+$isMarriageReview = $type === 'marriage';
 $perPage = (int) ($_GET['per_page'] ?? 25);
 if (!in_array($perPage, [10, 25, 50], true)) {
     $perPage = 25;
@@ -87,11 +92,13 @@ require_once __DIR__ . '/../includes/admin-header.php';
         <div class="age-eligibility-heading__copy">
             <p class="age-eligibility-eyebrow">Secretary review</p>
             <h1>Age Eligibility Review</h1>
-            <p>A focused shortlist of baptized people who have reached the configured minimum age and do not yet have this sacrament recorded.</p>
+            <p><?= $isMarriageReview
+                ? 'Review active marriage pre-applications for both parties’ age, birthdate, and consent or advice indicators.'
+                : 'A focused shortlist of baptized people who have reached the configured minimum age and do not yet have this sacrament recorded.' ?></p>
         </div>
-        <div class="age-eligibility-heading__stat" aria-label="<?= $totalPeople ?> people shown">
+        <div class="age-eligibility-heading__stat" aria-label="<?= $totalPeople ?> <?= $isMarriageReview ? 'applications' : 'people' ?> shown">
             <strong><?= $totalPeople ?></strong>
-            <span>people shown</span>
+            <span><?= $isMarriageReview ? 'applications shown' : 'people shown' ?></span>
         </div>
     </header>
 
@@ -139,7 +146,7 @@ require_once __DIR__ . '/../includes/admin-header.php';
             <div id="custom-age-range" class="age-eligibility-custom-range" data-custom-age-fields role="group" aria-labelledby="custom-age-range-heading">
                 <strong id="custom-age-range-heading">Custom minimum age</strong>
                 <div class="age-eligibility-custom-range__inputs">
-                    <label>Minimum age <input type="number" name="min_age" min="0" max="120" value="<?= e((string) ($_GET['min_age'] ?? '')) ?>"></label>
+                    <label><?= $isMarriageReview ? 'Minimum age per party' : 'Minimum age' ?> <input type="number" name="min_age" min="0" max="120" value="<?= e((string) ($_GET['min_age'] ?? '')) ?>"></label>
                 </div>
             </div>
             <div class="age-eligibility-filters__actions">
@@ -149,17 +156,24 @@ require_once __DIR__ . '/../includes/admin-header.php';
                 <?php endif; ?>
             </div>
         </div>
-        <p class="age-eligibility-filter-hint">Preset groups: 7–9, 10–12, 13–17, and 18+. Select Custom range to enter your own bounds.</p>
+        <p class="age-eligibility-filter-hint"><?= $isMarriageReview
+            ? 'The custom minimum age includes couples only when both parties meet it. Choose All ages to keep underage or unverified cases visible.'
+            : 'Use a custom minimum age to narrow the list. Filters do not change eligibility.' ?></p>
     </form>
 
     <section class="panel-card age-eligibility-results" aria-labelledby="age-eligibility-results-heading">
         <div class="age-eligibility-results__heading">
             <div>
                 <p class="person-profile-section__eyebrow"><?= e($labels[$type]) ?> · <?= e($ageGroupLabels[$ageGroup] ?? 'Age group') ?></p>
-                <h2 id="age-eligibility-results-heading">People to review</h2>
+                <h2 id="age-eligibility-results-heading"><?= $isMarriageReview ? 'Marriage applications to review' : 'People to review' ?></h2>
             </div>
             <div class="age-eligibility-results__tools">
-                <p><strong><?= $totalPeople ?></strong> matching candidates · minimum age <?= (int) $range['min_age'] ?></p>
+                <p>
+                    <strong><?= $totalPeople ?></strong>
+                    <?= $isMarriageReview
+                        ? 'matching active applications · both parties reviewed'
+                        : 'matching candidates · minimum age ' . (int) $range['min_age'] ?>
+                </p>
                 <form method="get" action="<?= e($basePath . '/admin/age-eligibility.php') ?>" class="per-page-form">
                     <input type="hidden" name="type" value="<?= e($type) ?>">
                     <input type="hidden" name="age_group" value="<?= e($ageGroup) ?>">
@@ -182,9 +196,83 @@ require_once __DIR__ . '/../includes/admin-header.php';
         <?php elseif ($people === []): ?>
             <div class="age-eligibility-empty">
                 <span class="age-eligibility-empty__mark" aria-hidden="true">0</span>
-                <strong>No people match this age filter</strong>
-                <p>Try another age group or clear the filter to see all candidates.</p>
+                <strong><?= $isMarriageReview ? 'No marriage applications match this age filter' : 'No people match this age filter' ?></strong>
+                <p>Try another age group or clear the filter to see all <?= $isMarriageReview ? 'active applications' : 'candidates' ?>.</p>
             </div>
+        <?php elseif ($isMarriageReview): ?>
+            <div class="table-scroll">
+                <table class="admin-table age-eligibility-table age-eligibility-marriage-table">
+                    <thead>
+                        <tr>
+                            <th>Application</th>
+                            <th>Groom</th>
+                            <th>Bride</th>
+                            <th>Age review date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($people as $application): ?>
+                            <tr>
+                                <td>
+                                    <div class="age-eligibility-application">
+                                        <a class="age-eligibility-open"
+                                           href="<?= e($basePath . '/admin/requests/applications-queue.php?' . http_build_query([
+                                               'q' => $application['request_no'],
+                                               'open_application_id' => (int) $application['id'],
+                                           ]) . '#application-review-' . (int) $application['id']) ?>"
+                                           aria-label="Open marriage application <?= e($application['request_no']) ?>">
+                                            <?= e($application['request_no']) ?><span aria-hidden="true">→</span>
+                                        </a>
+                                        <span class="status-badge status-<?= e($application['status']) ?>"><?= e(status_label('application', $application['status'])) ?></span>
+                                        <span>Submitted <?= e(date('M j, Y', strtotime($application['created_at']))) ?></span>
+                                    </div>
+                                </td>
+                                <?php foreach (['groom', 'bride'] as $partyKey):
+                                    $party = $application[$partyKey];
+                                    $ageReview = $party['age_review'];
+                                    $birthDate = $party['birth_date'];
+                                    $birthDateLabel = is_string($birthDate) && parish_schedule_date_is_valid($birthDate)
+                                        ? date('M j, Y', strtotime($birthDate))
+                                        : 'Birthdate unavailable';
+                                    ?>
+                                    <td>
+                                        <div class="age-eligibility-party">
+                                            <strong><?= e($party['name']) ?></strong>
+                                            <span class="age-eligibility-party__detail">
+                                                <?= e($birthDateLabel) ?> ·
+                                                <?= $ageReview['age'] === null ? 'Age unavailable' : e((string) $ageReview['age'] . ' years old') ?>
+                                            </span>
+                                            <span class="age-eligibility-review-flag age-eligibility-review-flag--<?= e($ageReview['tone']) ?>">
+                                                <?= e($ageReview['label']) ?>
+                                            </span>
+                                        </div>
+                                    </td>
+                                <?php endforeach; ?>
+                                <td>
+                                    <div class="age-eligibility-application">
+                                        <strong><?= e(date('M j, Y', strtotime($application['age_reference_date']))) ?></strong>
+                                        <span><?= e($application['date_source']) ?></span>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <nav class="record-pagination age-eligibility-pagination" aria-label="Age eligibility pages">
+                <span class="pagination-info">Showing <?= $offset + 1 ?>&ndash;<?= min($totalPeople, $offset + $perPage) ?> of <?= $totalPeople ?> applications</span>
+                <?php if ($totalPages > 1): ?>
+                    <div class="pagination-btns">
+                        <?php if ($page > 1): ?>
+                            <a class="btn btn-secondary btn-small" href="<?= e($paginationUrl($page - 1)) ?>">Previous</a>
+                        <?php endif; ?>
+                        <span>Page <?= (int) $page ?> of <?= (int) $totalPages ?></span>
+                        <?php if ($page < $totalPages): ?>
+                            <a class="btn btn-secondary btn-small" href="<?= e($paginationUrl($page + 1)) ?>">Next</a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            </nav>
         <?php else: ?>
             <div class="table-scroll">
                 <table class="admin-table age-eligibility-table">
@@ -211,7 +299,7 @@ require_once __DIR__ . '/../includes/admin-header.php';
                 </table>
             </div>
             <nav class="record-pagination age-eligibility-pagination" aria-label="Age eligibility pages">
-                <span class="pagination-info">Showing <?= $totalPeople === 0 ? 0 : $offset + 1 ?>&ndash;<?= min($totalPeople, $offset + $perPage) ?> of <?= $totalPeople ?> people</span>
+                <span class="pagination-info">Showing <?= $offset + 1 ?>&ndash;<?= min($totalPeople, $offset + $perPage) ?> of <?= $totalPeople ?> people</span>
                 <?php if ($totalPages > 1): ?>
                     <div class="pagination-btns">
                         <?php if ($page > 1): ?>

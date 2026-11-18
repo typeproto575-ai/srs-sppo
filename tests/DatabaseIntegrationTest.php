@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/backup.php';
 require_once __DIR__ . '/../includes/person-linking.php';
+require_once __DIR__ . '/../includes/person-activity.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
 
 final class DatabaseIntegrationTest extends TestCase
@@ -67,6 +68,9 @@ final class DatabaseIntegrationTest extends TestCase
         $columns = $this->pdo->query('SHOW COLUMNS FROM persons')->fetchAll(PDO::FETCH_COLUMN);
         self::assertContains('observanda', $columns);
         self::assertContains('public_reference', $columns);
+        $applicationIndexes = $this->pdo->query('SHOW INDEX FROM sacrament_applications')->fetchAll(PDO::FETCH_COLUMN, 2);
+        self::assertContains('idx_sacr_person', $applicationIndexes);
+        self::assertContains('idx_sacr_spouse_person', $applicationIndexes);
     }
 
     public function testPublicPersonReferenceIsStableAcrossMatchingApplications(): void
@@ -74,12 +78,14 @@ final class DatabaseIntegrationTest extends TestCase
         $this->pdo->beginTransaction();
         try {
             $identity = [
-                'first_name' => 'Reference',
-                'middle_name' => 'Test',
-                'last_name' => 'Parishioner',
-                'suffix' => '',
+                'first_name' => 'reference',
+                'middle_name' => 'McDonald',
+                'last_name' => 'parishioner',
+                'suffix' => 'iii',
                 'birth_date' => '2001-02-03',
                 'birth_place' => 'Dingalan',
+                'father_name' => "juan o'neil",
+                'mother_maiden_name' => 'rosa cruz',
             ];
             $first = public_person_reference($this->pdo, null, $identity);
             $second = public_person_reference($this->pdo, null, $identity);
@@ -87,6 +93,19 @@ final class DatabaseIntegrationTest extends TestCase
             self::assertSame($first['person_id'], $second['person_id']);
             self::assertSame($first['reference'], $second['reference']);
             self::assertMatchesRegularExpression('/^SPPO-P-[A-Z2-9]{16}$/', $first['reference']);
+            $profile = $this->pdo->prepare(
+                'SELECT first_name, middle_name, last_name, suffix, father_name, mother_maiden_name
+                 FROM persons WHERE id = ?'
+            );
+            $profile->execute([$first['person_id']]);
+            self::assertSame([
+                'first_name' => 'Reference',
+                'middle_name' => 'McDonald',
+                'last_name' => 'Parishioner',
+                'suffix' => 'III',
+                'father_name' => "Juan O'Neil",
+                'mother_maiden_name' => 'Rosa Cruz',
+            ], $profile->fetch(PDO::FETCH_ASSOC));
         } finally {
             $this->pdo->rollBack();
         }
@@ -224,6 +243,74 @@ final class DatabaseIntegrationTest extends TestCase
                     "Missing foreign key: {$table}.{$column} -> {$expectedTable}"
                 );
             }
+        }
+    }
+
+    public function testPersonActivityHistoryCombinesLinkedEventsAndIncludesMarriagePartner(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $personInsert = $this->pdo->prepare(
+                'INSERT INTO persons (first_name, last_name) VALUES (?, ?)'
+            );
+            $personInsert->execute(['Taro', 'Uzumaki']);
+            $groomId = (int) $this->pdo->lastInsertId();
+            $personInsert->execute(['Hinata', 'Hyuga']);
+            $brideId = (int) $this->pdo->lastInsertId();
+
+            $applicationInsert = $this->pdo->prepare(
+                'INSERT INTO sacrament_applications
+                    (request_no, sacrament_type, person_id, spouse_person_id,
+                     applicant_name, applicant_email, details, created_at)
+                 VALUES (?, \'marriage\', ?, ?, ?, ?, ?, ?)'
+            );
+            $applicationInsert->execute([
+                generate_request_no($this->pdo, 'sacrament_applications'),
+                $groomId,
+                $brideId,
+                'Taro Uzumaki',
+                'taro@example.test',
+                json_encode([
+                    'groom' => ['full_name' => 'Taro Uzumaki'],
+                    'bride' => ['full_name' => 'Hinata Hyuga'],
+                ], JSON_THROW_ON_ERROR),
+                '2024-03-01 12:00:00',
+            ]);
+
+            $certificateInsert = $this->pdo->prepare(
+                'INSERT INTO certificate_requests
+                    (request_no, sacrament_type, subject_name, requester_name,
+                     requester_relationship, requester_relationship_other,
+                     requester_email, purpose, person_id, created_at)
+                 VALUES (?, \'baptism\', ?, ?, \'other\', ?, ?, ?, ?, ?)'
+            );
+            $certificateInsert->execute([
+                generate_request_no($this->pdo, 'certificate_requests'),
+                'Hinata Hyuga',
+                'Taro Uzumaki',
+                'Authorized representative',
+                'representative@example.test',
+                'personal',
+                $brideId,
+                '2024-04-01 12:00:00',
+            ]);
+
+            $recordInsert = $this->pdo->prepare(
+                'INSERT INTO sacrament_records
+                    (sacrament_type, person_id, spouse_person_id, event_date, book_no, page_no, line_no)
+                 VALUES (\'marriage\', ?, ?, \'2015-05-06\', \'12\', \'4\', \'7\')'
+            );
+            $recordInsert->execute([$groomId, $brideId]);
+
+            $history = sd_get_person_activity_history($this->pdo, $brideId);
+
+            self::assertSame(['certificate', 'application', 'record'], array_column($history, 'activity_type'));
+            self::assertSame('Taro Uzumaki', $history[1]['partner_name']);
+            self::assertSame('Taro Uzumaki', $history[2]['partner_name']);
+            self::assertSame('12', $history[2]['book_no']);
+            self::assertSame('other', $history[0]['requester_relationship']);
+        } finally {
+            $this->pdo->rollBack();
         }
     }
 
@@ -380,7 +467,7 @@ final class DatabaseIntegrationTest extends TestCase
 
             $this->pdo->prepare(
                 "UPDATE certificate_requests
-                 SET status = 'released', claimant_type = 'self', id_verified = 1,
+                 SET status = 'released', claimant_type = 'self',
                      released_by = ?, released_at = NOW()
                  WHERE id = ?"
             )->execute([$userId, $requestId]);
@@ -411,7 +498,7 @@ final class DatabaseIntegrationTest extends TestCase
 
             $result = $this->pdo->prepare(
                 'SELECT cr.status, cr.printed_at, cr.signed_at, cr.released_at,
-                        cr.claimant_type, cr.id_verified, al.action, n.delivery_status
+                        cr.claimant_type, al.action, n.delivery_status
                  FROM certificate_requests cr
                  JOIN audit_logs al ON al.target_id = cr.id AND al.target_table = ?
                  JOIN notifications n ON n.entity_id = cr.id AND n.channel = ?
@@ -425,7 +512,6 @@ final class DatabaseIntegrationTest extends TestCase
             self::assertNotNull($row['signed_at']);
             self::assertNotNull($row['released_at']);
             self::assertSame('self', $row['claimant_type']);
-            self::assertSame(1, (int) $row['id_verified']);
             self::assertSame('certificate.release', $row['action']);
             self::assertSame('disabled', $row['delivery_status']);
         } finally {

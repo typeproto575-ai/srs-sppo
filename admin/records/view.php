@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
+require_once __DIR__ . '/../../includes/audit-history.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -364,9 +365,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php
                             $correctionData = null;
                             if (($entry['action'] ?? '') === 'record.updated') {
-                                $decodedDescription = json_decode((string) ($entry['description'] ?? ''), true);
-                                if (is_array($decodedDescription)
-                                    && ($decodedDescription['format'] ?? '') === 'record-correction-v1') {
+                                $decodedDescription = audit_correction_data((string) ($entry['description'] ?? ''));
+                                if (($decodedDescription['format'] ?? '') === 'record-correction-v1') {
                                     $correctionData = $decodedDescription;
                                 }
                             }
@@ -382,18 +382,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     <?php if ($correctionData === null && !empty($entry['description'])): ?><br><?= e($entry['description']) ?><?php endif; ?>
                                     <?php if (!empty($entry['reason'])): ?><br>Reason: <?= e($entry['reason']) ?><?php endif; ?>
                                 </small>
-                                <?php if (!empty($correctionData['changes']) && is_array($correctionData['changes'])): ?>
-                                    <details>
-                                        <summary>Before-and-after values (<?= count($correctionData['changes']) ?> sections)</summary>
-                                        <?php foreach ($correctionData['changes'] as $section => $change): ?>
-                                            <?php if (!is_array($change) || !array_key_exists('before', $change) || !array_key_exists('after', $change)) continue; ?>
-                                            <h3><?= e(record_view_label((string) $section)) ?></h3>
-                                            <dl class="record-detail-list">
-                                                <div><dt>Before</dt><dd><pre><?= e(json_encode($change['before'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
-                                                <div><dt>After</dt><dd><pre><?= e(json_encode($change['after'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: 'Not recorded') ?></pre></dd></div>
-                                            </dl>
-                                        <?php endforeach; ?>
-                                    </details>
+                                <?php if ($correctionData !== null): ?>
+                                    <small><?= e(audit_correction_summary($correctionData)) ?></small>
+                                    <?php audit_render_correction_details($correctionData); ?>
                                 <?php endif; ?>
                             </li>
                         <?php endforeach; ?>

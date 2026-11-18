@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_once __DIR__ . '/../../includes/funeral-data.php';
+require_once __DIR__ . '/../../includes/audit-history.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -40,12 +41,26 @@ if ($editId > 0) {
 }
 
 $isEdit = $editRecord !== null;
+$funeralHistory = [];
+if ($isEdit) {
+    $historyStmt = $pdo->prepare(
+        "SELECT al.*, u.full_name AS user_name
+         FROM audit_logs al
+         LEFT JOIN users u ON u.id = al.user_id
+         WHERE al.target_table = 'funeral_records' AND al.target_id = ?
+         ORDER BY al.created_at DESC, al.id DESC
+         LIMIT 20"
+    );
+    $historyStmt->execute([$editId]);
+    $funeralHistory = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
+}
 $createMode = $isPost
     ? (funeral_input_string($_POST['create_person'] ?? '') === '1' && !$isEdit)
     : false;
 $errors = [];
 $duplicateFuneralId = 0;
 $newPersonMatches = [];
+$correctionReason = funeral_input_string($_POST['correction_reason'] ?? '');
 
 $personId = 0;
 $invalidPersonId = false;
@@ -82,6 +97,9 @@ if ($personId > 0 && !$createMode) {
     $personStmt->execute([$personId]);
     $selectedPerson = $personStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
+$marriageSuggestion = $selectedPerson
+    ? funeral_person_marriage_suggestion($pdo, $personId)
+    : ['has_marriage_record' => false, 'spouse_name' => ''];
 
 $newPerson = [
     'first_name' => funeral_input_string($_POST['new_first_name'] ?? ''),
@@ -98,9 +116,15 @@ $sacramentOptions = ['baptism', 'confirmation', 'marriage', 'anointing'];
 $savedSacraments = [];
 if ($isEdit) {
     $decodedSacraments = json_decode((string) ($editRecord['sacraments_received'] ?? ''), true);
-    $savedSacraments = is_array($decodedSacraments)
-        ? array_values(array_intersect($sacramentOptions, $decodedSacraments))
-        : [];
+    if (is_array($decodedSacraments)) {
+        foreach ($sacramentOptions as $sacrament) {
+            if (in_array($sacrament, $decodedSacraments, true) || !empty($decodedSacraments[$sacrament])) {
+                $savedSacraments[] = $sacrament;
+            }
+        }
+    } elseif (empty($editRecord['sacraments_received']) && $selectedPerson) {
+        $savedSacraments = funeral_suggested_sacraments($pdo, $personId);
+    }
 } elseif ($selectedPerson) {
     $savedSacraments = funeral_suggested_sacraments($pdo, $personId);
 }
@@ -146,15 +170,26 @@ if ($isPost) {
             )
         ))
         : [];
-} elseif (!$isEdit && $selectedPerson) {
-    $parents = [];
-    if (trim((string) ($selectedPerson['father_name'] ?? '')) !== '') {
-        $parents[] = 'Father: ' . trim((string) $selectedPerson['father_name']);
+} elseif ($selectedPerson) {
+    if (!$isEdit) {
+        $parents = [];
+        if (trim((string) ($selectedPerson['father_name'] ?? '')) !== '') {
+            $parents[] = 'Father: ' . trim((string) $selectedPerson['father_name']);
+        }
+        if (trim((string) ($selectedPerson['mother_maiden_name'] ?? '')) !== '') {
+            $parents[] = 'Mother: ' . trim((string) $selectedPerson['mother_maiden_name']);
+        }
+        $values['parents_name'] = implode('; ', $parents);
+        $values['spouse_name'] = $marriageSuggestion['spouse_name'];
+        $values['civil_status'] = $marriageSuggestion['has_marriage_record'] ? 'married' : '';
+    } else {
+        if ($values['spouse_name'] === '') {
+            $values['spouse_name'] = $marriageSuggestion['spouse_name'];
+        }
+        if ($values['civil_status'] === '' && $marriageSuggestion['has_marriage_record']) {
+            $values['civil_status'] = 'married';
+        }
     }
-    if (trim((string) ($selectedPerson['mother_maiden_name'] ?? '')) !== '') {
-        $parents[] = 'Mother: ' . trim((string) $selectedPerson['mother_maiden_name']);
-    }
-    $values['parents_name'] = implode('; ', $parents);
 }
 
 $newPersonBirthDate = null;
@@ -194,10 +229,17 @@ if ($isPost) {
             'new_birth_place' => 'new person birthplace',
             'new_father_name' => 'new person father name',
             'new_mother_maiden_name' => 'new person mother name',
+            'correction_reason' => 'correction reason',
         ] as $field => $label) {
             if (array_key_exists($field, $_POST) && !is_scalar($_POST[$field])) {
                 $errors[] = "Enter a valid {$label}.";
             }
+        }
+
+        if ($isEdit && trim($correctionReason) === '') {
+            $errors[] = 'Enter why this death record is being corrected.';
+        } elseif (strlen($correctionReason) > 2000) {
+            $errors[] = 'Correction reason must be 2000 characters or fewer.';
         }
 
         if ($createMode) {
@@ -221,8 +263,8 @@ if ($isPost) {
             }
         } elseif (!$selectedPerson) {
             $errors[] = $invalidPersonId
-                ? 'Select a valid person from the master person search.'
-                : 'Select a person from the master person search before saving.';
+                ? 'Select a valid person profile or create a new profile for the deceased.'
+                : 'Search for an existing profile or choose "Create a person profile" to enter the deceased before saving.';
         } else {
             $duplicateCheck = $pdo->prepare(
                 'SELECT id FROM funeral_records WHERE person_id = ? AND id <> ? LIMIT 1'
@@ -283,6 +325,8 @@ if ($isPost) {
                 }
 
                 $oldPersonId = 0;
+                $formerPersonId = null;
+                $beforeSnapshot = null;
                 if ($isEdit) {
                     $editLock = $pdo->prepare('SELECT person_id FROM funeral_records WHERE id = ? FOR UPDATE');
                     $editLock->execute([$editId]);
@@ -291,6 +335,8 @@ if ($isPost) {
                         throw new RuntimeException('The death record no longer exists.');
                     }
                     $oldPersonId = (int) $lockedPersonId;
+                    $formerPersonId = $oldPersonId !== $targetPersonId ? $oldPersonId : null;
+                    $beforeSnapshot = funeral_record_audit_snapshot($pdo, $editId, $formerPersonId);
                 }
 
                 $duplicateStmt = $pdo->prepare(
@@ -379,13 +425,26 @@ if ($isPost) {
                     $pdo->prepare('UPDATE persons SET is_deceased = 1, death_date = ? WHERE id = ?')
                         ->execute([$values['date_of_death'], $targetPersonId]);
 
+                    $description = 'Funeral record ' . ($isEdit ? 'updated' : 'created') . " for person #{$targetPersonId}.";
+                    $reason = null;
+                    if ($isEdit) {
+                        $description = json_encode([
+                            'format' => 'funeral-correction-v1',
+                            'changes' => funeral_record_audit_changes(
+                                $beforeSnapshot ?? [],
+                                funeral_record_audit_snapshot($pdo, $recordId, $formerPersonId)
+                            ),
+                        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        $reason = trim($correctionReason);
+                    }
                     log_activity(
                         $pdo,
                         (int) current_user()['id'],
                         $isEdit ? 'funeral_record_updated' : 'funeral_record_created',
                         'funeral_records',
                         $recordId,
-                        'Funeral record ' . ($isEdit ? 'updated' : 'created') . " for person #{$targetPersonId}."
+                        $description,
+                        $reason
                     );
                     $pdo->commit();
 
@@ -513,13 +572,14 @@ foreach ([
 $pageTitle = $isEdit ? 'Edit Death Record' : 'New Death Record';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
-<div class="page-heading">
+<div class="funeral-form-page">
+<div class="page-heading funeral-form-heading">
     <div>
         <p class="hero-eyebrow">Liber Defunctorum</p>
         <h1><?= $isEdit ? 'Edit Death Record #' . $editId : 'New Death Record' ?></h1>
     </div>
     <div class="page-heading-actions">
-        <a class="btn btn-secondary" href="#death-service-schedule">Go to service schedule</a>
+        <a class="btn btn-primary" href="#death-service-schedule">Go to service schedule</a>
         <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Back to Death Records</a>
     </div>
 </div>
@@ -537,16 +597,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <div class="alert alert-success"><p>Death record updated.</p></div>
 <?php endif; ?>
 
-<form method="post" class="form-grid" data-funeral-form>
+<form method="post" class="funeral-record-form" data-funeral-form>
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= $editId > 0 ? $editId : '' ?>">
     <input type="hidden" name="create_person" value="<?= $createMode ? '1' : '0' ?>" data-create-person-flag>
 
-    <section class="panel-card">
+    <section class="panel-card funeral-form-card funeral-person-card">
         <h2>Person</h2>
-        <p><strong>Name (linked person):</strong> <span data-person-name><?= e($personDisplayName !== '' ? $personDisplayName : 'No person selected') ?></span></p>
+        <p class="field-hint">Linking an existing profile is optional. If no profile exists, create one here to encode this walk-in record; the deceased's name and details can be entered manually.</p>
         <div class="person-finder" data-person-finder data-name-prefix="person" data-birth-field="birth_date"
-             data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>"<?= $createMode ? ' hidden' : '' ?>>
+             data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>"
+             data-details-endpoint="<?= e($basePath . '/admin/api/funeral-person-details.php') ?>"<?= $createMode ? ' hidden' : '' ?>>
             <label>Search the master person index
                 <input type="search" data-person-search autocomplete="off" placeholder="Enter a name to find a person">
             </label>
@@ -567,35 +628,36 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </div>
             <div class="person-finder-results" data-person-results aria-live="polite"></div>
         </div>
+        <p class="field-hint funeral-person-autofill-status" data-person-autofill-status aria-live="polite" hidden></p>
         <?php if (!$isEdit): ?>
-            <button type="button" class="btn btn-secondary btn-small" data-create-person-toggle>
-                <?= $createMode ? 'Search for an existing person instead' : 'Can\'t find them? Create a person profile' ?>
+            <button type="button" class="btn btn-secondary btn-small funeral-create-person-toggle" data-create-person-toggle>
+                <?= $createMode ? 'Search for an existing person instead' : 'No profile found? Create the person\'s profile' ?>
             </button>
-            <fieldset data-create-person-panel<?= $createMode ? '' : ' hidden' ?>>
+            <fieldset class="funeral-create-person-panel" data-create-person-panel<?= $createMode ? '' : ' hidden' ?>>
                 <legend>Create a person profile</legend>
-                <div class="form-grid view-grid">
-                    <label>First name *
+                <div class="funeral-create-person-grid">
+                    <label class="funeral-new-first">First name *
                         <input type="text" name="new_first_name" maxlength="150" value="<?= e($newPerson['first_name']) ?>"<?= $createMode ? ' required' : '' ?>>
                     </label>
-                    <label>Middle name
+                    <label class="funeral-new-middle">Middle name
                         <input type="text" name="new_middle_name" maxlength="100" value="<?= e($newPerson['middle_name']) ?>">
                     </label>
-                    <label>Last name *
+                    <label class="funeral-new-last">Last name *
                         <input type="text" name="new_last_name" maxlength="100" value="<?= e($newPerson['last_name']) ?>"<?= $createMode ? ' required' : '' ?>>
                     </label>
-                    <label>Suffix
+                    <label class="funeral-new-suffix">Suffix
                         <input type="text" name="new_suffix" maxlength="20" value="<?= e($newPerson['suffix']) ?>">
                     </label>
-                    <label>Date of birth
+                    <label class="funeral-new-birth-date">Date of birth
                         <input type="date" name="new_birth_date" value="<?= e($newPerson['birth_date']) ?>" data-new-person-birth>
                     </label>
-                    <label>Birthplace
+                    <label class="funeral-new-birth-place">Birthplace
                         <input type="text" name="new_birth_place" maxlength="150" value="<?= e($newPerson['birth_place']) ?>">
                     </label>
-                    <label>Father's name
+                    <label class="funeral-new-father">Father's name
                         <input type="text" name="new_father_name" maxlength="150" value="<?= e($newPerson['father_name']) ?>">
                     </label>
-                    <label>Mother's maiden name
+                    <label class="funeral-new-mother">Mother's maiden name
                         <input type="text" name="new_mother_maiden_name" maxlength="150" value="<?= e($newPerson['mother_maiden_name']) ?>">
                     </label>
                 </div>
@@ -617,19 +679,19 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php endif; ?>
     </section>
 
-    <section class="panel-card">
+    <section class="panel-card funeral-form-card">
         <h2>Death and Burial</h2>
-        <div class="form-grid view-grid">
-            <label>Date of Death *
+        <div class="funeral-death-grid">
+            <label class="funeral-date-death">Date of Death *
                 <input type="date" name="date_of_death" value="<?= e($values['date_of_death']) ?>" required>
             </label>
-            <label>Date of Burial
+            <label class="funeral-date-burial">Date of Burial
                 <input type="date" name="date_of_burial" value="<?= e($values['date_of_burial']) ?>">
             </label>
-            <label>Age at Death
+            <label class="funeral-age">Age at Death
                 <input type="number" name="age_at_death" min="0" max="130" step="1" value="<?= e($values['age_at_death']) ?>" data-age-at-death data-auto-age="<?= $ageIsAuto ? '1' : '0' ?>">
             </label>
-            <label>Civil Status
+            <label class="funeral-civil-status">Civil Status
                 <select name="civil_status">
                     <option value="">Not recorded</option>
                     <?php foreach (['single' => 'Single', 'married' => 'Married', 'widowed' => 'Widowed'] as $value => $label): ?>
@@ -637,51 +699,55 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php endforeach; ?>
                 </select>
             </label>
-            <label>Name of Spouse
+            <label class="funeral-spouse">Name of Spouse
                 <input type="text" name="spouse_name" maxlength="150" value="<?= e($values['spouse_name']) ?>">
             </label>
-            <label>Name of Parents
+            <label class="funeral-parents">Name of Parents
                 <input type="text" name="parents_name" maxlength="255" value="<?= e($values['parents_name']) ?>" data-parents-name>
             </label>
-            <fieldset>
+            <fieldset class="funeral-sacraments">
                 <legend>Sacraments Received</legend>
-                <?php foreach ([
-                    'baptism' => 'Baptism',
-                    'confirmation' => 'Confirmation',
-                    'marriage' => 'Matrimony',
-                    'anointing' => 'Anointing',
-                ] as $value => $label): ?>
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="sacraments_received[]" value="<?= e($value) ?>"<?= in_array($value, $values['sacraments_received'], true) ? ' checked' : '' ?>>
-                        <?= e($label) ?>
-                    </label>
-                <?php endforeach; ?>
+                <div class="funeral-sacrament-options">
+                    <?php foreach ([
+                        'baptism' => 'Baptism',
+                        'confirmation' => 'Confirmation',
+                        'marriage' => 'Matrimony',
+                        'anointing' => 'Anointing',
+                    ] as $value => $label): ?>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="sacraments_received[]" value="<?= e($value) ?>"<?= in_array($value, $values['sacraments_received'], true) ? ' checked' : '' ?>>
+                            <?= e($label) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
                 <p class="field-hint">Suggested from sacramental records when a person is selected. Review and adjust as needed.</p>
             </fieldset>
-            <label>Cause of Death
+            <label class="funeral-cause">Cause of Death
                 <textarea name="cause_of_death" maxlength="255" rows="2"><?= e($values['cause_of_death']) ?></textarea>
                 <span class="field-hint">Staff-only. This information is not included in public notices or audit details.</span>
             </label>
-            <label>Place of Burial
+            <label class="funeral-place-burial">Place of Burial
                 <input type="text" name="place_of_burial" maxlength="150" value="<?= e($values['place_of_burial']) ?>">
             </label>
         </div>
     </section>
 
-    <section class="panel-card" id="death-service-schedule">
+    <section class="panel-card funeral-form-card funeral-service-card" id="death-service-schedule">
         <h2>Service and Register</h2>
-        <fieldset>
+        <fieldset class="funeral-service-type">
             <legend>Blessing or Mass *</legend>
-            <?php foreach (['mass' => 'Mass', 'blessing' => 'Blessing'] as $value => $label): ?>
-                <label class="radio-label">
-                    <input type="radio" name="service_type" value="<?= e($value) ?>" required<?= $values['service_type'] === $value ? ' checked' : '' ?>>
-                    <?= e($label) ?>
-                </label>
-            <?php endforeach; ?>
+            <div class="funeral-service-options">
+                <?php foreach (['mass' => 'Mass', 'blessing' => 'Blessing'] as $value => $label): ?>
+                    <label class="radio-label">
+                        <input type="radio" name="service_type" value="<?= e($value) ?>" required<?= $values['service_type'] === $value ? ' checked' : '' ?>>
+                        <?= e($label) ?>
+                    </label>
+                <?php endforeach; ?>
+            </div>
         </fieldset>
-        <div class="form-grid view-grid">
+        <div class="funeral-service-fields">
             <div
-                class="parish-schedule-picker"
+                class="parish-schedule-picker funeral-schedule-picker"
                 data-parish-schedule-picker
                 data-require-slot-on-date="1"
                 data-availability-url="<?= e($basePath . '/admin/api/schedule-availability.php') ?>"
@@ -708,30 +774,73 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label>Minister
                 <input type="text" name="minister_name" maxlength="150" value="<?= e($values['minister_name']) ?>">
             </label>
-            <label>Book
-                <input type="text" name="book_no" maxlength="20" value="<?= e($values['book_no']) ?>">
-            </label>
-            <label>Page
-                <input type="text" name="page_no" maxlength="20" value="<?= e($values['page_no']) ?>">
-            </label>
-            <label>Line
-                <input type="text" name="line_no" maxlength="20" value="<?= e($values['line_no']) ?>">
-            </label>
-            <label>Contact Number
-                <input type="tel" name="contact_number" maxlength="30" value="<?= e($values['contact_number']) ?>">
-            </label>
-            <label>Family Contact Email (optional)
-                <input type="email" name="contact_email" maxlength="254" value="<?= e($values['contact_email']) ?>">
-            </label>
+            <div class="funeral-register-grid">
+                <label>Book
+                    <input type="text" name="book_no" maxlength="20" value="<?= e($values['book_no']) ?>">
+                </label>
+                <label>Page
+                    <input type="text" name="page_no" maxlength="20" value="<?= e($values['page_no']) ?>">
+                </label>
+                <label>Line
+                    <input type="text" name="line_no" maxlength="20" value="<?= e($values['line_no']) ?>">
+                </label>
+            </div>
+            <div class="funeral-contact-grid">
+                <label>Contact Number
+                    <input type="tel" name="contact_number" maxlength="30" value="<?= e($values['contact_number']) ?>">
+                </label>
+                <label>Family Contact Email (optional)
+                    <input type="email" name="contact_email" maxlength="254" value="<?= e($values['contact_email']) ?>">
+                </label>
+            </div>
         </div>
         <p class="field-hint">Choose an open 60-minute time between 8:00 AM and 5:00 PM. Existing parish, sacrament, and death schedules are shown for the selected date. If provided, the family email receives the confirmed schedule or any changes.</p>
     </section>
 
-    <div>
+    <?php if ($isEdit): ?>
+        <section class="panel-card funeral-form-card">
+            <h2>Correction reason</h2>
+            <label for="funeral-correction-reason">Why is this death record being corrected? *
+                <textarea id="funeral-correction-reason" name="correction_reason" rows="3" maxlength="2000" required><?= e($correctionReason) ?></textarea>
+            </label>
+            <p class="field-hint">Changed fields are recorded automatically. Cause of death remains excluded from audit details.</p>
+        </section>
+    <?php endif; ?>
+
+    <div class="funeral-form-actions">
         <button type="submit" class="btn btn-primary"><?= $isEdit ? 'Save Changes' : 'Save Death Record' ?></button>
         <a class="btn btn-secondary" href="<?= e($basePath . '/admin/funerals/index.php') ?>">Cancel</a>
     </div>
 </form>
+<?php if ($isEdit): ?>
+    <section class="panel-card funeral-form-card" aria-labelledby="funeral-history-heading">
+        <h2 id="funeral-history-heading">Correction history</h2>
+        <?php if ($funeralHistory === []): ?>
+            <p class="field-hint">No history recorded for this death record yet.</p>
+        <?php else: ?>
+            <ul class="record-person-link-list record-history-list">
+                <?php foreach ($funeralHistory as $entry): ?>
+                    <?php $correctionData = audit_correction_data((string) ($entry['description'] ?? '')); ?>
+                    <li class="record-person-link">
+                        <div>
+                            <span class="field-hint"><?= e(date('M j, Y g:i A', strtotime($entry['created_at']))) ?></span>
+                            <strong><?= e(ucwords(str_replace('_', ' ', (string) $entry['action']))) ?></strong>
+                        </div>
+                        <small>
+                            <?= e($entry['user_name'] ?? $entry['actor_name'] ?? 'System / Public Form') ?>
+                            <?php if ($correctionData === null && !empty($entry['description'])): ?><br><?= e($entry['description']) ?><?php endif; ?>
+                            <?php if (!empty($entry['reason'])): ?><br>Reason: <?= e($entry['reason']) ?><?php endif; ?>
+                        </small>
+                        <?php if ($correctionData !== null): ?>
+                            <?php audit_render_correction_details($correctionData); ?>
+                        <?php endif; ?>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
+</div>
 
 <script>
 (function () {
@@ -741,15 +850,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     var results = finder.querySelector('[data-person-results]');
     var search = finder.querySelector('[data-person-search]');
     var personId = form.querySelector('[data-person-id]');
-    var personName = form.querySelector('[data-person-name]');
     var birthDate = form.querySelector('[data-person-birth]');
     var deathDate = form.querySelector('[name="date_of_death"]');
     var age = form.querySelector('[data-age-at-death]');
     var parentsName = form.querySelector('[data-parents-name]');
+    var spouseName = form.querySelector('[name="spouse_name"]');
+    var civilStatus = form.querySelector('[name="civil_status"]');
+    var autofillStatus = form.querySelector('[data-person-autofill-status]');
+    var sacramentInputs = Array.prototype.slice.call(
+        form.querySelectorAll('[name="sacraments_received[]"]')
+    );
     var createToggle = form.querySelector('[data-create-person-toggle]');
     var createPanel = form.querySelector('[data-create-person-panel]');
     var createFlag = form.querySelector('[data-create-person-flag]');
     var ageIsAuto = age.dataset.autoAge === '1';
+    var detailsRequestId = 0;
 
     function calculateAge() {
         if (!ageIsAuto || !birthDate.value || !deathDate.value) return;
@@ -762,9 +877,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         if (years >= 0 && years <= 130) age.value = String(years);
     }
 
+    function setAutofillStatus(message, visible) {
+        autofillStatus.textContent = message;
+        autofillStatus.hidden = !visible;
+    }
+
+    function clearLinkedSuggestions() {
+        spouseName.value = '';
+        civilStatus.value = '';
+        sacramentInputs.forEach(function (input) {
+            input.checked = false;
+        });
+        setAutofillStatus('', false);
+    }
+
     function clearSelectedProfile() {
+        detailsRequestId++;
         personId.value = '';
-        personName.textContent = 'No person selected';
         ['person_first_name', 'person_middle_name', 'person_last_name', 'person_suffix', 'birth_date',
             'father_first', 'father_middle', 'father_last', 'father_suffix',
             'mother_first', 'mother_middle', 'mother_last', 'mother_suffix'].forEach(function (name) {
@@ -772,17 +901,56 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             if (input) input.value = '';
         });
         parentsName.value = '';
+        clearLinkedSuggestions();
         age.value = '';
         ageIsAuto = true;
         age.dataset.autoAge = '1';
     }
 
+    function loadLinkedSuggestions() {
+        var selectedId = personId.value;
+        var requestId = ++detailsRequestId;
+        var endpoint = finder.dataset.detailsEndpoint;
+        if (!selectedId || !endpoint) return;
+
+        setAutofillStatus('Loading linked marriage and sacramental history...', true);
+        fetch(endpoint + '?person_id=' + encodeURIComponent(selectedId), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin'
+        }).then(function (response) {
+            return response.json().then(function (payload) {
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Linked parish details could not be loaded.');
+                }
+                return payload;
+            });
+        }).then(function (payload) {
+            if (requestId !== detailsRequestId || personId.value !== selectedId) return;
+            spouseName.value = typeof payload.spouse_name === 'string' ? payload.spouse_name : '';
+            civilStatus.value = payload.civil_status === 'married' ? 'married' : '';
+            var suggested = Array.isArray(payload.sacraments_received)
+                ? payload.sacraments_received
+                : [];
+            sacramentInputs.forEach(function (input) {
+                input.checked = suggested.indexOf(input.value) !== -1;
+            });
+            setAutofillStatus(
+                'Linked parish history suggestions loaded. Review them; these fields remain editable.',
+                true
+            );
+        }).catch(function (error) {
+            if (requestId !== detailsRequestId || personId.value !== selectedId) return;
+            setAutofillStatus(
+                error && error.message
+                    ? error.message
+                    : 'Linked parish details could not be loaded. Complete the fields manually or try again.',
+                true
+            );
+        });
+    }
+
     function syncSelectedProfile() {
         if (!personId.value) return;
-        var fullName = ['person_first_name', 'person_middle_name', 'person_last_name', 'person_suffix']
-            .map(function (name) { return form.querySelector('[name="' + name + '"]').value.trim(); })
-            .filter(Boolean).join(' ');
-        personName.textContent = fullName || 'Person profile #' + personId.value;
         var parentLabels = [];
         ['father', 'mother'].forEach(function (side) {
             var full = ['first', 'middle', 'last', 'suffix'].map(function (part) {
@@ -795,6 +963,28 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         ageIsAuto = true;
         age.dataset.autoAge = '1';
         age.value = '';
+        calculateAge();
+        loadLinkedSuggestions();
+    }
+
+    function syncNewPersonParents() {
+        var parentLabels = [];
+        [
+            ['new_father_name', 'Father: '],
+            ['new_mother_maiden_name', 'Mother: ']
+        ].forEach(function (field) {
+            var input = createPanel.querySelector('[name="' + field[0] + '"]');
+            var value = input ? input.value.trim() : '';
+            if (value) parentLabels.push(field[1] + value);
+        });
+        parentsName.value = parentLabels.join('; ');
+    }
+
+    function recalculateAgeFromDeathDate() {
+        if (birthDate.value) {
+            ageIsAuto = true;
+            age.dataset.autoAge = '1';
+        }
         calculateAge();
     }
 
@@ -809,7 +999,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     results.addEventListener('click', function () {
         window.setTimeout(syncSelectedProfile, 0);
     });
-    deathDate.addEventListener('change', calculateAge);
+    deathDate.addEventListener('input', recalculateAgeFromDeathDate);
+    deathDate.addEventListener('change', recalculateAgeFromDeathDate);
     age.addEventListener('input', function () {
         ageIsAuto = age.value === '';
         age.dataset.autoAge = ageIsAuto ? '1' : '0';
@@ -818,12 +1009,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
     var newBirthDate = form.querySelector('[data-new-person-birth]');
     if (newBirthDate) {
-        newBirthDate.addEventListener('change', function () {
+        function syncNewPersonBirthDate() {
             birthDate.value = newBirthDate.value;
             ageIsAuto = true;
             age.dataset.autoAge = '1';
             calculateAge();
-        });
+        }
+        newBirthDate.addEventListener('input', syncNewPersonBirthDate);
+        newBirthDate.addEventListener('change', syncNewPersonBirthDate);
     }
 
     if (createToggle && createPanel) {
@@ -838,9 +1031,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             results.textContent = '';
             createToggle.textContent = showCreate
                 ? 'Search for an existing person instead'
-                : 'Can\'t find them? Create a person profile';
+                : 'No profile found? Create the person\'s profile';
             clearSelectedProfile();
             if (showCreate) {
+                birthDate.value = newBirthDate ? newBirthDate.value : '';
+                syncNewPersonParents();
                 var firstName = createPanel.querySelector('[name="new_first_name"]');
                 if (firstName) firstName.focus();
             }
@@ -848,18 +1043,17 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     }
 
     if (createPanel) {
-        ['new_first_name', 'new_middle_name', 'new_last_name', 'new_suffix'].forEach(function (name) {
+        ['new_father_name', 'new_mother_maiden_name'].forEach(function (name) {
             var input = createPanel.querySelector('[name="' + name + '"]');
-            if (input) input.addEventListener('input', function () {
-                personName.textContent = ['new_first_name', 'new_middle_name', 'new_last_name', 'new_suffix']
-                    .map(function (fieldName) { return createPanel.querySelector('[name="' + fieldName + '"]').value.trim(); })
-                    .filter(Boolean).join(' ') || 'No person selected';
-            });
+            if (input) input.addEventListener('input', syncNewPersonParents);
         });
     }
 
     if (newBirthDate && newBirthDate.value) {
         birthDate.value = newBirthDate.value;
+    }
+    if (createPanel && createFlag.value === '1' && parentsName.value === '') {
+        syncNewPersonParents();
     }
     calculateAge();
 }());

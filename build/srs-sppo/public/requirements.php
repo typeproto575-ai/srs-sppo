@@ -122,7 +122,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Your name and relationship to the person, if you are requesting for someone else.</li>
                     <li>Your email address and contact number for updates.</li>
                 </ul>
-                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring your person reference and any claim stub or payment slip the secretary gave you. If you are collecting a request made for yourself, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder. If someone else collects it, they must bring a signed authorization letter from the person named on the certificate.</p>
+                <p class="field-hint">If the record is not found online, you can still ask the secretary to search the parish register. Bring your person reference and any claim stub or payment slip the secretary gave you. The Acknowledgment Receipt is placed with the completed certificate in its folder. If someone else collects it, they must bring a signed authorization letter from the person named on the certificate.</p>
                 <a href="<?= e($basePath) ?>/public/certificate-request.php" class="btn btn-small">Request a Certificate</a>
             </div>
         </div>

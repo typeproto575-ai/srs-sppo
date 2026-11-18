@@ -198,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stepFields = [
             CONF_STEP_DETAILS => [
                 'applicant_first', 'applicant_middle', 'applicant_last', 'applicant_suffix',
-                'applicant_birthdate', 'applicant_birthplace', 'applicant_person_id',
+                'applicant_birthdate', 'applicant_birthplace', 'applicant_person_id', 'applicant_sex_as_recorded',
                 'formation_path', 'school_grade', 'school_year',
                 'father_first', 'father_middle', 'father_last', 'father_suffix',
                 'mother_first', 'mother_middle', 'mother_last', 'mother_suffix',
@@ -213,7 +213,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             CONF_STEP_CONTACT => ['contact_number', 'email'],
         ];
         foreach ($stepFields[$currentStep] ?? [] as $field) {
-            $formData[$field] = cfd($field, $_POST);
+            $value = cfd($field, $_POST);
+            $formData[$field] = in_array($field, ['sponsor1_full_name', 'sponsor2_full_name'], true)
+                ? format_full_name($value)
+                : $value;
         }
         if ($currentStep === CONF_STEP_DETAILS && cfd('guardian_relationship', $formData) !== 'other') {
             $formData['guardian_relationship_other'] = '';
@@ -231,6 +234,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (cfd('applicant_last', $formData) === '') $errors[] = "Applicant's last name is required.";
                 if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
                 if ($formData['applicant_birthdate'] === '') $errors[] = "Applicant's birthdate is required.";
+                if (!in_array(cfd('applicant_sex_as_recorded', $formData), ['male', 'female'], true)) {
+                    $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+                }
                 if (cfd('applicant_birthplace', $formData) === '') $errors[] = "Applicant's place of birth is required.";
                 if ($formData['applicant_birthdate'] !== ''
                     && ($e = sacrament_age_submission_error($pdo, 'confirmation', $formData['applicant_birthdate'])) !== null) {
@@ -286,6 +292,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (cfd('applicant_last', $formData) === '') $errors[] = "Applicant's last name is required.";
         if (($e = validate_full_name($applicantName)) !== null) $errors[] = $e;
         if ($applicantBirthdate === '') $errors[] = "Applicant's birthdate is required.";
+        if (!in_array(cfd('applicant_sex_as_recorded', $formData), ['male', 'female'], true)) {
+            $errors[] = 'Select Male or Female as shown on the PSA/LCR birth certificate.';
+        }
         if (cfd('applicant_birthplace', $formData) === '') $errors[] = "Applicant's place of birth is required.";
         if ($applicantBirthdate !== ''
             && ($e = sacrament_age_submission_error($pdo, 'confirmation', $applicantBirthdate)) !== null) {
@@ -391,6 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $details = [
                         'applicant_full_name' => $applicantName,
                         'birth_date' => $applicantBirthdate,
+                        'applicant_sex_as_recorded' => cfd('applicant_sex_as_recorded', $formData),
                         'age_at_submission' => $ageAssessment['age'],
                         'age_eligibility_status' => $ageAssessment['status'],
                         'father_name' => $fatherName,
@@ -494,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $successIsApplication = true;
         $successFormationGuidance = 'The Parish Office will review the submitted grade, school year, and requested pathway, then assign a group or individual catch-up path. Sponsor eligibility and parent/guardian formation commitment are follow-up preparation checks; this submission does not confirm a group or date.';
         $successRequestNumber = $requestNumber ?? '';
-        $successRequiredDocuments = sacrament_application_requirements('confirmation')['before'];
+        $successAfterSteps = sacrament_application_requirements('confirmation')['after'];
         require __DIR__ . '/../../includes/submission-success.php';
         ?>
         <a class="btn" href="confirmation.php?reset=1">Start a New Pre-Application</a>
@@ -555,6 +565,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label>Date of birth * <span class="field-hint">A reference fills this from parish records when available; the date is needed for eligibility checks.</span>
                 <input type="date" name="applicant_birthdate" max="<?= e(date('Y-m-d')) ?>" value="<?= $wv('applicant_birthdate') ?>" required>
             </label>
+            <label>Sex as recorded on PSA/LCR birth certificate *
+                <select name="applicant_sex_as_recorded" required>
+                    <option value="">-- Select --</option>
+                    <option value="male" <?= cfd('applicant_sex_as_recorded', $formData) === 'male' ? 'selected' : '' ?>>Male</option>
+                    <option value="female" <?= cfd('applicant_sex_as_recorded', $formData) === 'female' ? 'selected' : '' ?>>Female</option>
+                </select>
+            </label>
             <label>Place of birth * <span class="field-hint">(City/Municipality, Province; enter N/A if unknown)</span>
                 <input type="text" name="applicant_birthplace" autocomplete="off" value="<?= $wv('applicant_birthplace') ?>" required>
             </label>
@@ -585,7 +602,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?= person_name_fields('father', "Father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?>
             <?= person_name_fields('mother', "Mother's maiden name", $formData, true, null, 'required: enter first name and maiden last name', false) ?>
             <p class="field-hint">Parents are recorded as they appear on the birth certificate. A guardian is never entered as a parent.</p>
-            <?= person_name_fields('parent_guardian', 'Parent / Legal Guardian', $formData, false, null, 'optional; only if the parents are unavailable') ?>
+            <?= person_name_fields('parent_guardian', 'Legal Guardian / Authorized Representative', $formData, false, null, 'optional; only if the parents are unavailable') ?>
             <label>Relationship to applicant <span class="field-hint">(optional)</span>
                 <select name="guardian_relationship">
                     <option value="">-- Select --</option>
@@ -628,12 +645,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php elseif ($currentStep === CONF_STEP_CONTACT): ?>
             <fieldset>
                 <legend>Phase 3 of 4 — Contact &amp; Consent</legend>
-                <label>Contact Number *
+                <label>Best Contact Number for This Request *
                     <input type="tel" name="contact_number" autocomplete="tel" value="<?= $wv('contact_number') ?>" required>
                 </label>
-                <label>Email Address *
+                <label>Best Email for This Request *
                     <input type="email" name="email" autocomplete="email" value="<?= $wv('email') ?>" required>
                 </label>
+                <p class="field-hint">These details are saved with this request only. Changing them here will not update the parishioner's profile.</p>
                 <label class="checkbox-label">
                     <input type="checkbox" name="privacy_consent" value="1" <?= (($formData['privacy_consent'] ?? '') === '1') ? 'checked' : '' ?> required>
                     <span>Privacy Consent * <span class="field-hint">(agree to the <a href="<?= e($basePath . '/public/privacy.php') ?>" target="_blank" rel="noopener noreferrer">Privacy Notice</a> and parish use of these details for sacrament preparation)</span></span>
@@ -645,13 +663,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <table class="review-table">
                     <tr><th>Applicant</th><td><?= e(compose_person_name($formData, 'applicant')) ?></td></tr>
                     <tr><th>Date of birth</th><td><?= $wv('applicant_birthdate') ?></td></tr>
+                    <tr><th>Sex as recorded on PSA/LCR birth certificate</th><td><?= match (cfd('applicant_sex_as_recorded', $formData)) { 'male' => 'Male', 'female' => 'Female', default => 'Not selected' } ?></td></tr>
                     <tr><th>Place of birth</th><td><?= $wv('applicant_birthplace') ?></td></tr>
                     <tr><th>Formation pathway</th><td><?= e(match (cfd('formation_path', $formData)) { 'batch' => 'Regular parish group', 'individual_catchup' => 'Individual / catch-up pathway', default => 'Not selected' }) ?></td></tr>
                     <tr><th>Current grade</th><td><?= e(sacrament_formation_grade_options()[cfd('school_grade', $formData)] ?? '') ?></td></tr>
                     <tr><th>School year</th><td><?= $wv('school_year') !== '' ? $wv('school_year') : 'Not provided / not applicable' ?></td></tr>
                     <tr><th>Mother (maiden name)</th><td><?= e(conf_na_name($formData, 'mother')) ?></td></tr>
                     <tr><th>Father</th><td><?= e(compose_person_name($formData, 'father')) ?: '—' ?></td></tr>
-                    <tr><th>Parent / Legal Guardian</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?: '—' ?></td></tr>
+                    <tr><th>Legal Guardian / Authorized Representative</th><td><?= e(compose_person_name($formData, 'parent_guardian')) ?: '—' ?></td></tr>
                     <?php if (cfd('guardian_relationship', $formData) !== ''): ?>
                         <tr><th>Relationship to applicant</th><td><?= e(match (cfd('guardian_relationship', $formData)) {
                             'grandparent' => 'Grandparent',

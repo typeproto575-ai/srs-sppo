@@ -170,7 +170,7 @@ Unverified intake. Does not write sacramental register entries. It creates or re
 | signed_at | DATETIME | yes | Priest signed on paper; triggers the "ready" email |
 | claimant_type | ENUM('self','representative') | yes | Stage 2 at the counter |
 | representative_name, representative_relationship | VARCHAR | yes | Only when claimant is a representative |
-| id_verified | TINYINT(1) | no | "I verified valid ID at counter". Required before release |
+| id_verified | TINYINT(1) | no | Legacy compatibility field; no longer required for release |
 | claimant_notes | TEXT | yes | |
 | released_by, released_at | FK users, DATETIME | yes | |
 | paid_at, paid_by | DATETIME, FK users | yes | Fee collected in person |
@@ -229,7 +229,7 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 
 ## 5. Status flows
 
-**Certificate:** `new` (payment recorded first) → `matched` (secretary linked a person and record, book entry verified; refused until `paid_at` is set) → `for_signature` (printed) → `ready` (priest signed, email sent) → `released` (counter check done). `rejected` is possible before release. If an online search does not find a record, the applicant can ask the secretary to search the physical register; an online miss alone is not grounds to conclude the sacrament did not occur.
+**Certificate:** `new` → `matched` (secretary linked the person and a same-sacrament record) → `for_signature` (payment recorded, this-parish book entry verified, and certificate printed) → `ready` (priest signed, email sent) → `released` (counter check done). Payment cannot be recorded until the matching record is linked. `rejected` is possible before release. If an online search does not find a record, the applicant can ask the secretary to search the physical register; an online miss alone is not grounds to conclude the sacrament did not occur.
 
 **Application:** `new` → `reviewing` → `requirements_pending` (back and forth with `reviewing`) → `approved` → `scheduled` → `completed`. `rejected` is possible before completion.
 
@@ -240,8 +240,8 @@ Object keyed by requirement, each `{ "status": "not_received|received|verified|n
 4. A stable `persons.public_reference` is shared across that person's linked applications and certificate requests. The public status page requires a one-time code sent to the email address on a linked request.
 5. `legitimacy` is never exposed publicly, in email, or on certificates.
 6. A certificate can be printed only for a `this_parish` record whose `book_verified_at` is set.
-7. Release requires `claimant_type` and `id_verified = 1`; a representative also needs `representative_name`.
-8. Prerequisites and marriage requirements (CENOMAR, origin baptismal certificate, transfer letter, one party a registered parishioner) are flagged for the secretary, not auto-blocked.
-9. Identity verification is in two stages: Stage 1 the relationship choice plus the upfront pickup notice online; Stage 2 the counter ID check at release.
-10. No monetary amounts are stored. Payment is a manual `paid_at` stamp, recorded at the counter before processing starts (the parish's real rule).
+7. Release requires recorded payment and `claimant_type`. A representative also needs `representative_name` and a received authorization letter.
+8. Sacramental-history prerequisites (such as prior Baptism or First Communion records) and the one-party parishioner criterion are flagged for the secretary, not automatically blocked. Required document checklist items must be marked received, verified, or not applicable before an application can be approved.
+9. Pickup does not require identity documents. Representatives still need the signed authorization letter.
+10. No monetary amounts are stored. Certificate payment is a manual `paid_at` stamp, recorded only after a matching sacrament record is linked and before signature processing starts.
 11. Retention: the backend job sets `anonymized_at` on old requests; sacrament records are never purged.

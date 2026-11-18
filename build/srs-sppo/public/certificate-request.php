@@ -92,14 +92,14 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
             $results[] = [
                 'id' => (int) $person['id'],
-                'first_name' => $person['first_name'],
-                'middle_name' => $person['middle_name'] ?? '',
-                'last_name' => $person['last_name'],
-                'suffix' => $person['suffix'] ?? '',
+                'first_name' => format_name_part((string) $person['first_name']),
+                'middle_name' => format_name_part((string) ($person['middle_name'] ?? '')),
+                'last_name' => format_name_part((string) $person['last_name']),
+                'suffix' => format_name_part((string) ($person['suffix'] ?? ''), true),
                 'birth_date' => $person['birth_date'],
                 'birth_place' => $person['birth_place'] ?? '',
-                'father_name' => $person['father_name'] ?? '',
-                'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
+                'father_name' => format_full_name((string) ($person['father_name'] ?? '')),
+                'mother_maiden_name' => format_full_name((string) ($person['mother_maiden_name'] ?? '')),
             ];
         }
         echo json_encode(['results' => $results], JSON_UNESCAPED_UNICODE);
@@ -245,6 +245,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         }
         if ($values['requester_relationship'] === 'self') {
             $values['requester_name'] = $values['subject_name'];
+        }
+        foreach (['subject_name', 'spouse_name', 'requester_name', 'father_name', 'mother_maiden_name'] as $nameField) {
+            $values[$nameField] = format_full_name($values[$nameField]);
         }
         $honeypot = (isset($_POST['website']) && is_string($_POST['website'])) ? trim($_POST['website']) : '';
         if ($honeypot !== '') {
@@ -489,7 +492,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $personReference,
                                 $pdo,
                                 $requestId,
-                                $values['requester_relationship'] === 'self',
                                 $requestNo
                             );
                         } catch (Throwable $e) {
@@ -527,9 +529,6 @@ require_once __DIR__ . '/../includes/header.php';
             'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];
-        if ($values['requester_relationship'] === 'self') {
-            $successRequiredDocuments[] = 'A valid ID with a name matching the person on the certificate.';
-        }
         require __DIR__ . '/../includes/submission-success.php';
         ?>
     <?php else: ?>
@@ -608,11 +607,11 @@ require_once __DIR__ . '/../includes/header.php';
         <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
 
         <h3 class="form-subheading">Person on the certificate</h3>
-        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
-        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
-
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
+
+        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
 
         <div id="marriage-only" <?= $values['certificate_type'] === 'marriage' ? '' : 'hidden' ?>>
             <label for="spouse_name">Bride's full name *</label>
@@ -649,7 +648,6 @@ require_once __DIR__ . '/../includes/header.php';
             <option value="grandchild" <?= $values['requester_relationship'] === 'grandchild' ? 'selected' : '' ?>>Grandchild</option>
             <option value="other" <?= $values['requester_relationship'] === 'other' ? 'selected' : '' ?>>Authorized Representative</option>
         </select>
-        <p class="field-hint" data-self-note <?= $values['requester_relationship'] === 'self' ? '' : 'hidden' ?>>If you selected Self, bring a valid ID with a name matching the person on the certificate when collecting it.</p>
         <p class="field-hint" data-representative-note <?= $values['requester_relationship'] === 'other' ? '' : 'hidden' ?>>If an authorized representative collects the certificate, bring a signed authorization letter from the person named on the certificate.</p>
 
         <label for="requester_email">Email *</label>
@@ -698,7 +696,7 @@ require_once __DIR__ . '/../includes/header.php';
         <ol>
             <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
             <li>If asked to proceed, handle payment at the Parish Office.</li>
-            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
+            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
             <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
         </ol>
         <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
@@ -740,14 +738,12 @@ require_once __DIR__ . '/../includes/header.php';
             var relationship = document.getElementById('requester_relationship');
             var requesterName = document.getElementById('requester_name');
             var subjectName = document.getElementById('subject_name');
-            var selfNote = document.querySelector('[data-self-note]');
             var representativeNote = document.querySelector('[data-representative-note]');
             var autoFilledRequesterName = relationship && requesterName && relationship.value === 'self'
                 ? requesterName.value
                 : null;
             if (relationship && requesterName && subjectName) {
                 relationship.addEventListener('change', function () {
-                    if (selfNote) selfNote.hidden = this.value !== 'self';
                     if (representativeNote) representativeNote.hidden = this.value !== 'other';
                     if (this.value === 'self') {
                         requesterName.value = subjectName.value;
@@ -759,7 +755,6 @@ require_once __DIR__ . '/../includes/header.php';
                         autoFilledRequesterName = null;
                     }
                 });
-                if (selfNote) selfNote.hidden = relationship.value !== 'self';
                 subjectName.addEventListener('input', function () {
                     if (relationship.value === 'self') {
                         requesterName.value = this.value;

@@ -221,6 +221,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <p class="hero-eyebrow">Register index</p>
                 <h1>Sacramental Register Records</h1>
                 <p class="field-hint">These are completed sacrament entries already recorded in the parish register. Certificate requests and walk-in requests are managed separately.</p>
+            </div>
 <?php
 $editorTypeByRecordType = [
     'baptismal' => 'baptism',
@@ -229,16 +230,16 @@ $editorTypeByRecordType = [
     'marriage' => 'marriage',
 ];
 ?>
-<details style="display:inline-block;position:relative;margin-left:1rem;">
-    <summary class="btn btn-success btn-small" style="cursor:pointer;">+ Add record</summary>
-    <div style="position:absolute;z-index:10;background:#fff;border:1px solid #ccc;padding:.5rem;margin-top:.25rem;min-width:12rem;">
+<details class="record-add-menu">
+    <summary class="btn btn-primary btn-small">Add record</summary>
+    <div class="record-add-menu__items">
         <?php foreach ($editorTypeByRecordType as $rt => $editorType): ?>
-            <a class="btn btn-small" style="display:block;margin:.25rem 0;" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $editorType, 'new' => 1])) ?>"><?= e($labels[$rt] ?? ucfirst($rt)) ?></a>
+            <a class="record-add-menu__link" href="<?= e($basePath . '/admin/records/editor.php?' . http_build_query(['type' => $editorType, 'new' => 1])) ?>"><?= e($labels[$rt] ?? ucfirst($rt)) ?></a>
         <?php endforeach; ?>
     </div>
 </details>
-            </div>
         </div>
+        <div class="admin-records-toolbar">
         <p class="field-hint">Search names (words can be in any order), public person references, record IDs, or an exact register reference such as <code>b12 p1 l4</code>. You can also search one field, such as <code>p1</code> or <code>l4</code>; then open the register-specific editor to verify the physical logbook reference.</p>
 
         <div class="record-type-chips">
@@ -281,6 +282,13 @@ $editorTypeByRecordType = [
             <?php if ($totalRows > 0): ?>
                 <span>Page <?= (int) $page ?> of <?= (int) $totalPages ?></span>
             <?php endif; ?>
+            <?php if ($totalPages > 1): ?>
+                <nav class="record-pagination" aria-label="Record pages">
+                    <?php if ($page > 1): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['page' => $page - 1])) ?>">Previous</a><?php endif; ?>
+                    <?php if ($page < $totalPages): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['page' => $page + 1])) ?>">Next</a><?php endif; ?>
+                </nav>
+            <?php endif; ?>
+        </div>
         </div>
 
         <div class="table-scroll" tabindex="0" role="region" aria-label="All sacrament records; scroll horizontally to view all columns">
@@ -291,7 +299,7 @@ $editorTypeByRecordType = [
                         <th><a class="table-sort-link<?= $sort === 'page' ? ' is-active' : '' ?>" href="<?= e(unified_sort_url('page')) ?>">Page<?= unified_sort_indicator('page') ?></a></th>
                         <th><a class="table-sort-link<?= $sort === 'line' ? ' is-active' : '' ?>" href="<?= e(unified_sort_url('line')) ?>">Line<?= unified_sort_indicator('line') ?></a></th>
                         <th><a class="table-sort-link<?= $sort === 'name' ? ' is-active' : '' ?>" href="<?= e(unified_sort_url('name')) ?>">Full Name<?= unified_sort_indicator('name') ?></a></th>
-                        <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(unified_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date<?= unified_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
+                        <th class="column-date"><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(unified_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date<?= unified_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
                         <th>
                             <details class="table-filter-menu">
                                 <summary class="table-filter-summary<?= $type !== '' ? ' is-active' : '' ?>">SACRAMENT <span class="table-filter-caret">▾</span></summary>
@@ -310,7 +318,7 @@ $editorTypeByRecordType = [
                                 </form>
                             </details>
                         </th>
-                        <th>Options</th>
+                        <th class="row-actions">Options</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -361,7 +369,7 @@ $editorTypeByRecordType = [
                                     <br><small class="field-hint">Public person reference: <code><?= e($record['record_person_reference'] ?: 'Not assigned') ?></code></small>
                                 <?php endif; ?>
                             </td>
-                            <td><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
+                            <td class="column-date"><?= $record['event_date'] ? e(date('M j, Y', strtotime($record['event_date']))) : '—' ?></td>
                             <td><span class="record-type-badge record-type-<?= e($record['record_type']) ?>"><?= e($labels[$record['record_type']]) ?></span></td>
                             <?php
                         $editorType = $editorTypeByRecordType[$record['record_type']] ?? null;
@@ -381,11 +389,4 @@ $editorTypeByRecordType = [
                 </tbody>
             </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-            <nav class="record-pagination" aria-label="Record pages">
-                <?php if ($page > 1): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['page' => $page - 1])) ?>">Previous</a><?php endif; ?>
-                <span>Page <?= (int) $page ?> of <?= (int) $totalPages ?></span>
-                <?php if ($page < $totalPages): ?><a class="btn btn-secondary btn-small" href="<?= e(unified_records_url(['page' => $page + 1])) ?>">Next</a><?php endif; ?>
-            </nav>
-        <?php endif; ?>
 <?php require_once __DIR__ . '/../../includes/admin-footer.php'; ?>
