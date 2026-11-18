@@ -1,9 +1,0 @@
-User-agent: *
-Disallow: /admin/
-Disallow: /config/
-Disallow: /includes/
-Disallow: /migrations/
-Disallow: /scripts/
-Disallow: /storage/
-Disallow: /tests/
-Disallow: /vendor/
