@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/funeral-data.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -56,7 +57,7 @@ $page = min($page, $totalPages);
 $offset = ($page - 1) * $perPage;
 
 $listStmt = $pdo->prepare(
-    "SELECT fr.id, fr.date_of_death, fr.age_at_death, fr.service_type, fr.service_date,
+    "SELECT fr.id, fr.date_of_death, fr.age_at_death, fr.service_type, fr.service_date, fr.sacraments_received,
             fr.service_time, fr.place_of_burial, fr.book_no, fr.page_no, fr.line_no,
             CONCAT_WS(' ', p.first_name, p.middle_name, p.last_name, p.suffix) AS person_name
      FROM funeral_records fr
@@ -123,7 +124,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php else: ?>
                 <?php foreach ($records as $record): ?>
                     <?php
-                    $serviceLabel = $record['service_type'] === 'mass' ? 'Mass' : 'Blessing';
+                    $metadata = funeral_record_metadata($record['sacraments_received'] ?? null);
+                    $serviceLabel = match ($metadata['service_variant']) {
+                        'mass_with_wake' => 'Funeral Mass (With Wake)',
+                        'mass_death_anniversary' => 'Funeral Mass (Death Anniversary)',
+                        default => $record['service_type'] === 'mass'
+                            ? 'Funeral Mass (type not recorded)'
+                            : 'Funeral Blessing',
+                    };
                     $serviceDetails = $serviceLabel;
                     if (!empty($record['service_date'])) {
                         $serviceDetails .= ' - ' . $record['service_date'];

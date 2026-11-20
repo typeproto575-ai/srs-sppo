@@ -16,11 +16,12 @@ function sacrament_application_requirements(string $type): array
         'first_communion' => [
             'before' => [
                 'The candidate’s PSA birth certificate or birth certificate from the local civil registrar.',
+                'First Confession / First Reconciliation before Holy Communion.',
                 'If no verified Baptism record is already on file, bring a Baptismal Certificate from the parish where the candidate was baptized.',
             ],
             'after' => [
                 'The Parish Office reviews the pre-application and confirms the candidate’s preparation and schedule.',
-                'Complete the First Communion formation or seminar arranged by the Parish Office; ask whether it needs any additional proof of formation.',
+                'Complete the Holy Communion formation or seminar arranged by the Parish Office; ask whether it needs any additional proof of formation.',
                 'The Parish Office confirms the celebration schedule and any further instructions.',
             ],
         ],
@@ -32,7 +33,7 @@ function sacrament_application_requirements(string $type): array
             ],
             'after' => [
                 'The Parish Office reviews the pre-application and confirms the required preparation seminar.',
-                'The Parish Office schedules candidates according to their group, such as school candidates, adults, or people preparing for marriage.',
+                'The Parish Office schedules candidates according to their group or individual preparation plan.',
                 'Attend the confirmed preparation and Confirmation schedule.',
             ],
         ],
@@ -99,7 +100,49 @@ function marriage_preapplication_required_documents(string $groomStatus, string 
     return $documents;
 }
 
-function marriage_application_requirement_states(string $groomStatus, string $brideStatus, string $venue): array
+function verified_parish_record_requirement(PDO $pdo, int $personId, string $sacramentType): ?array
+{
+    if ($personId < 1) {
+        return null;
+    }
+
+    $recordStmt = $pdo->prepare(
+        'SELECT book_no, page_no, line_no
+         FROM sacrament_records
+         WHERE person_id = ? AND sacrament_type = ? AND source = \'this_parish\'
+           AND book_verified_at IS NOT NULL
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $recordStmt->execute([$personId, $sacramentType]);
+    $record = $recordStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$record) {
+        return null;
+    }
+
+    $reference = [];
+    foreach (['book_no' => 'Book', 'page_no' => 'Page', 'line_no' => 'Line'] as $column => $label) {
+        $value = trim((string) ($record[$column] ?? ''));
+        $reference[] = $label . ' ' . ($value !== '' ? $value : 'not recorded');
+    }
+
+    return [
+        'status' => 'verified',
+        'note' => 'Verified from the parish ' . str_replace('_', ' ', $sacramentType)
+            . ' record on file (' . implode(', ', $reference) . ').',
+    ];
+}
+
+function marriage_application_requirement_states(
+    string $groomStatus,
+    string $brideStatus,
+    string $venue,
+    ?PDO $pdo = null,
+    ?int $groomPersonId = null,
+    ?int $bridePersonId = null,
+    string $groomAddress = '',
+    string $brideAddress = ''
+): array
 {
     $requirementState = static fn(bool $required): array => [
         'status' => $required ? 'not_received' : 'not_applicable',
@@ -107,11 +150,23 @@ function marriage_application_requirement_states(string $groomStatus, string $br
     ];
     $isCivillyMarriedPair = $groomStatus === 'civilly_married' && $brideStatus === 'civilly_married';
     $requiresMarriageLicense = !$isCivillyMarriedPair;
-    $transferLetterRequirement = $venue === 'church'
-        ? ['status' => 'not_applicable', 'note' => "Wedding is at St. Patrick's Parish; missing sacramental records are reviewed separately."]
-        : ['status' => 'not_received', 'note' => 'Parish Office to confirm whether a transfer or permission letter is required.'];
+    $transferReasons = [];
+    if ($venue !== 'church') {
+        $transferReasons[] = 'the wedding venue is outside St. Patrick\'s Parish or has not been confirmed';
+    }
+    if (stripos($groomAddress, 'Dingalan') === false) {
+        $transferReasons[] = "the groom's current address is outside Dingalan or not specified";
+    }
+    if (stripos($brideAddress, 'Dingalan') === false) {
+        $transferReasons[] = "the bride's current address is outside Dingalan or not specified";
+    }
+    $transferLetterRequirement = $transferReasons === []
+        ? ['status' => 'not_applicable', 'note' => 'The wedding is at St. Patrick\'s Parish and both applicants\' current addresses include Dingalan.']
+        : ['status' => 'not_received', 'note' => 'Transfer or permission letter required for review because ' . implode('; ', $transferReasons) . '.'];
 
-    return [
+    $requirements = [
+        'psa_birth_certificate_groom' => ['status' => 'not_received', 'note' => ''],
+        'psa_birth_certificate_bride' => ['status' => 'not_received', 'note' => ''],
         'psa_cenomar_groom' => $requirementState($groomStatus === 'single'),
         'psa_cenomar_bride' => $requirementState($brideStatus === 'single'),
         'psa_marriage_certificate_couple' => $requirementState($isCivillyMarriedPair),
@@ -128,9 +183,34 @@ function marriage_application_requirement_states(string $groomStatus, string $br
         'origin_baptismal_certificate_groom' => ['status' => 'not_received', 'note' => ''],
         'origin_baptismal_certificate_bride' => ['status' => 'not_received', 'note' => ''],
         'transfer_letter' => $transferLetterRequirement,
+        'canonical_interview' => ['status' => 'not_received', 'note' => ''],
+        'marriage_banns' => ['status' => 'not_received', 'note' => ''],
         'pre_cana_seminar' => ['status' => 'not_received', 'note' => ''],
         'marriage_license_application' => $requirementState($requiresMarriageLicense),
         'origin_confirmation_certificate_groom' => ['status' => 'not_received', 'note' => ''],
         'origin_confirmation_certificate_bride' => ['status' => 'not_received', 'note' => ''],
     ];
+
+    if ($pdo !== null) {
+        foreach ([
+            'groom' => $groomPersonId,
+            'bride' => $bridePersonId,
+        ] as $party => $personId) {
+            if ($personId === null || $personId < 1) {
+                continue;
+            }
+
+            foreach ([
+                'baptism' => 'origin_baptismal_certificate',
+                'confirmation' => 'origin_confirmation_certificate',
+            ] as $recordType => $requirementPrefix) {
+                $recordRequirement = verified_parish_record_requirement($pdo, $personId, $recordType);
+                if ($recordRequirement !== null) {
+                    $requirements[$requirementPrefix . '_' . $party] = $recordRequirement;
+                }
+            }
+        }
+    }
+
+    return $requirements;
 }

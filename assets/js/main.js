@@ -10,9 +10,80 @@
       3. Modal encode dialogs ([data-open-dialog], [data-autoshow]).
       4. Record-list filter panel sync + click-outside close.
       5. Admin sidebar collapse preference (localStorage).
-   Every enhancement is opt-in via HTML attributes, so pages without
-   the attributes are unaffected.
+      6. Preserve scroll position after same-page POST actions. Multi-step
+         wizards and pages with custom restoration can opt out.
+   Most enhancements are opt-in via HTML attributes. Scroll restoration is
+   limited to same-page POSTs and can be disabled on multi-step forms.
    ===================================================================== */
+
+(function () {
+    var storageKey = 'srs-sppo:post-scroll-position';
+    var currentPath = window.location.pathname;
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+        if (form.dataset.preserveScroll === 'false') return;
+        if (form.closest('.application-queue-review')) return;
+
+        var submitter = event.submitter;
+        var method = submitter && submitter.formMethod
+            ? submitter.formMethod
+            : form.method;
+        var target = submitter && submitter.formTarget
+            ? submitter.formTarget
+            : form.target;
+        if (String(method).toLowerCase() !== 'post') return;
+        if (target && target.toLowerCase() !== '_self') return;
+
+        var action = submitter && submitter.formAction
+            ? submitter.formAction
+            : form.action;
+        try {
+            var actionUrl = new URL(action, window.location.href);
+            if (actionUrl.origin !== window.location.origin
+                || actionUrl.pathname !== currentPath) return;
+            sessionStorage.setItem(storageKey, JSON.stringify({
+                path: currentPath,
+                scrollY: window.scrollY,
+            }));
+        } catch (error) {
+            console.warn('Could not save the page scroll position.', error);
+        }
+    });
+
+    function restoreScrollPosition() {
+        var savedPosition = null;
+        try {
+            var stored = sessionStorage.getItem(storageKey);
+            if (!stored) return;
+            savedPosition = JSON.parse(stored);
+            sessionStorage.removeItem(storageKey);
+        } catch (error) {
+            console.warn('Could not restore the page scroll position.', error);
+            return;
+        }
+
+        if (!savedPosition
+            || savedPosition.path !== currentPath
+            || !Number.isFinite(savedPosition.scrollY)) return;
+
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                var previousScrollBehavior = document.documentElement.style.scrollBehavior;
+                document.documentElement.style.scrollBehavior = 'auto';
+                window.scrollTo(0, Math.max(0, savedPosition.scrollY));
+                document.documentElement.style.scrollBehavior = previousScrollBehavior;
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreScrollPosition, { once: true });
+    } else {
+        restoreScrollPosition();
+    }
+})();
 
 document.addEventListener('DOMContentLoaded', function () {
     // ---- Dashboard person search ----------------------------------------
@@ -900,8 +971,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (typeSelect) {
             var updateTypeFields = function () {
                 if (marriageFields) {
-                    marriageFields.hidden = typeSelect.value !== 'marriage';
-                    marriageFields.disabled = typeSelect.value !== 'marriage';
+                    var isMarriage = typeSelect.value === 'marriage';
+                    marriageFields.hidden = !isMarriage;
+                    marriageFields.disabled = !isMarriage;
                 }
                 if (baptismFields) baptismFields.hidden = typeSelect.value !== 'baptism';
             };
@@ -1817,156 +1889,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // ---- Dedicated walk-in counter forms ---------------------------------
-    document.querySelectorAll('form.walk-in-dedicated').forEach(function (form) {
-        var kind = form.getAttribute('data-walk-in-dedicated');
-        var isRequest = kind === 'request';
-        var steps = isRequest
-            ? [
-                { key: 'type', label: 'Certificate type' },
-                { key: 'subject', label: 'Certificate subject' },
-                { key: 'requester', label: 'Requester details' },
-                { key: 'review', label: 'Review & save' }
-            ]
-            : [
-                { key: 'type', label: 'Sacrament type' },
-                { key: 'person', label: 'Person details' },
-                { key: 'contact', label: 'Applicant details' },
-                { key: 'review', label: 'Review & save' }
-            ];
-        var current = form.querySelector('[data-dedicated-step]');
-        var submit = form.querySelector('[data-dedicated-submit]');
-        if (!current || !submit) return;
-
-        var shell = document.createElement('div');
-        shell.className = 'walk-in-dedicated-shell';
-        var progress = document.createElement('ol');
-        progress.className = 'walk-in-dedicated-progress';
-        progress.setAttribute('aria-label', isRequest ? 'Certificate request progress' : 'Pre-application progress');
-        var status = document.createElement('p');
-        status.className = 'walk-in-dedicated-status';
-        status.setAttribute('aria-live', 'polite');
-        var alert = document.createElement('p');
-        alert.className = 'walk-in-dedicated-error';
-        alert.setAttribute('role', 'alert');
-        alert.hidden = true;
-        var panels = {};
-
-        steps.forEach(function (step) {
-            var panel = document.createElement('section');
-            panel.className = 'walk-in-dedicated-panel';
-            panel.dataset.dedicatedActive = step.key;
-            panels[step.key] = panel;
-            shell.appendChild(panel);
-
-            var item = document.createElement('li');
-            var number = document.createElement('span');
-            number.textContent = String(progress.children.length + 1);
-            var label = document.createElement('span');
-            label.textContent = step.label;
-            item.append(number, label);
-            progress.appendChild(item);
-        });
-
-        form.querySelectorAll('[data-dedicated-panel]').forEach(function (node) {
-            var key = node.getAttribute('data-dedicated-panel');
-            if (panels[key]) panels[key].appendChild(node);
-        });
-        var spouse = form.querySelector('[data-dedicated-spouse]');
-        var subjectKey = isRequest ? 'subject' : 'person';
-        if (spouse && panels[subjectKey]) panels[subjectKey].appendChild(spouse);
-        var note = form.querySelector('[data-dedicated-note]');
-        if (note) panels.contact?.appendChild(note);
-
-        var review = form.querySelector('[data-dedicated-panel="review"]');
-        if (review) panels.review.appendChild(review);
-
-        var controls = document.createElement('div');
-        controls.className = 'walk-in-dedicated-actions';
-        var back = document.createElement('button');
-        back.type = 'button';
-        back.className = 'btn btn-secondary';
-        back.textContent = 'Back';
-        var next = document.createElement('button');
-        next.type = 'button';
-        next.className = 'btn';
-        next.textContent = 'Continue';
-        controls.append(back, next);
-        shell.insertBefore(progress, shell.firstChild);
-        shell.insertBefore(status, progress.nextSibling);
-        shell.insertBefore(alert, status.nextSibling);
-        shell.appendChild(controls);
-        controls.appendChild(submit);
-        form.appendChild(shell);
-
-        function requiredControls(panelKey) {
-            var panel = panels[panelKey];
-            if (!panel) return [];
-            return Array.from(panel.querySelectorAll('input[required], select[required], textarea[required]'))
-                .filter(function (field) { return !field.disabled && !field.closest('[hidden]'); });
-        }
-
-        function updateReview() {
-            var list = form.querySelector('[data-dedicated-review]');
-            if (!list) return;
-            list.textContent = '';
-            form.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function (field) {
-                if (field.disabled || field.hidden || field.type === 'submit' || field.type === 'button') return;
-                if (!field.value || !field.value.trim()) return;
-                var label = field.closest('label');
-                var name = label ? label.childNodes[0].textContent : '';
-                name = name ? name.trim().replace(/\s*\*$/, '') : field.name.replace(/[_\[\]]+/g, ' ');
-                if (!name) return;
-                var dt = document.createElement('dt');
-                var dd = document.createElement('dd');
-                dt.textContent = name;
-                dd.textContent = field.tagName === 'SELECT'
-                    ? field.options[field.selectedIndex].textContent
-                    : field.value;
-                list.append(dt, dd);
-            });
-        }
-
-        function showStep(index) {
-            index = Math.max(1, Math.min(steps.length, index));
-            current.value = String(index);
-            steps.forEach(function (step, stepIndex) {
-                panels[step.key].hidden = stepIndex + 1 !== index;
-            });
-            Array.from(progress.children).forEach(function (item, stepIndex) {
-                item.classList.toggle('is-current', stepIndex + 1 === index);
-                item.classList.toggle('is-done', stepIndex + 1 < index);
-                if (stepIndex + 1 === index) item.setAttribute('aria-current', 'step');
-                else item.removeAttribute('aria-current');
-            });
-            status.textContent = 'Step ' + index + ' of ' + steps.length + ' - ' + steps[index - 1].label;
-            back.hidden = index === 1;
-            next.hidden = index === steps.length;
-            submit.hidden = index !== steps.length;
-            alert.hidden = true;
-            if (index === steps.length) updateReview();
-        }
-
-        next.addEventListener('click', function () {
-            var index = Number(current.value);
-            var missing = requiredControls(steps[index - 1].key).filter(function (field) {
-                return !field.value.trim();
-            });
-            if (missing.length) {
-                alert.hidden = false;
-                alert.textContent = 'Please complete the required fields before continuing.';
-                missing[0].focus();
-                return;
-            }
-            showStep(index + 1);
-        });
-        back.addEventListener('click', function () { showStep(Number(current.value) - 1); });
-        form.addEventListener('submit', function (event) {
-            if (Number(current.value) !== steps.length) event.preventDefault();
-        });
-        showStep(1);
-    });
-
     // ---- 11) Phased walk-in request/application forms --------------------
     document.querySelectorAll('form.walk-in-wizard[data-walk-in-kind]').forEach(function (form) {
         var kind = form.getAttribute('data-walk-in-kind');
@@ -2430,6 +2352,15 @@ document.addEventListener('DOMContentLoaded', function () {
             return input ? input.value.trim() : '';
         }
 
+        function fillValue(name, nextValue) {
+            if (!name) return;
+            var input = field(name);
+            if (!input) return;
+            input.value = nextValue == null ? '' : String(nextValue);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
         function splitName(name) {
             var parts = name.trim().split(/\s+/).filter(Boolean);
             var suffix = '';
@@ -2521,6 +2452,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var searchTimer = null;
         var selected = false;
+        var selectedPerson = null;
         var idInput = field(personIdField);
         var selectionClear = document.createElement('button');
         selectionClear.type = 'button';
@@ -2533,7 +2465,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 .split(',').filter(Boolean)
                 .concat((widget.getAttribute('data-mother-inputs') || '').split(',').filter(Boolean));
             var birthPlaceField = widget.getAttribute('data-birth-place-field');
-            return nameInputs.concat([birthField], parentNames, birthPlaceField ? [birthPlaceField] : []);
+            var addressField = widget.getAttribute('data-address-field');
+            return nameInputs.concat(
+                [birthField],
+                parentNames,
+                birthPlaceField ? [birthPlaceField] : [],
+                addressField ? [addressField] : []
+            );
         }
 
         function setPublicIdentityReadOnly(readOnly) {
@@ -2560,6 +2498,7 @@ document.addEventListener('DOMContentLoaded', function () {
         selectionClear.addEventListener('click', function () {
             if (idInput) idInput.value = '';
             selected = false;
+            selectedPerson = null;
             referenceInput.value = '';
             referenceInput.readOnly = false;
             setPublicIdentityReadOnly(false);
@@ -2567,6 +2506,18 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.replaceChildren();
             resultsBox.textContent = 'Profile link cleared. Enter a person reference to search again.';
         });
+
+        var requesterNameField = widget.getAttribute('data-requester-name-field');
+        var relationshipFieldName = widget.getAttribute('data-relationship-field');
+        var requesterRelationship = relationshipFieldName ? field(relationshipFieldName) : null;
+        if (requesterRelationship) {
+            requesterRelationship.addEventListener('change', function () {
+                if (!selectedPerson || value(relationshipFieldName) !== 'self') return;
+                fillValue(requesterNameField, personName(selectedPerson));
+                fillValue(widget.getAttribute('data-requester-email-field'), selectedPerson.email || '');
+                fillValue(widget.getAttribute('data-requester-contact-field'), selectedPerson.contact_number || '');
+            });
+        }
 
         if (idInput && idInput.value) {
             selected = true;
@@ -2615,22 +2566,32 @@ document.addEventListener('DOMContentLoaded', function () {
                         button.className = 'public-person-result';
                         button.textContent = personName(person) + ' · ' + person.birth_date;
                         button.addEventListener('click', function () {
+                            selectedPerson = person;
                             fillName(nameInputs, personName(person));
                             var dob = field(birthField);
                             if (dob) dob.value = person.birth_date || '';
                             var birthPlaceField = widget.getAttribute('data-birth-place-field');
                             if (birthPlaceField) {
-                                var birthPlace = field(birthPlaceField);
-                                if (birthPlace) birthPlace.value = person.birth_place || '';
+                                fillValue(birthPlaceField, person.birth_place || '');
+                            }
+                            fillValue(widget.getAttribute('data-address-field'), person.address || '');
+                            fillValue(widget.getAttribute('data-contact-field'), person.contact_number || '');
+                            fillValue(widget.getAttribute('data-email-field'), person.email || '');
+                            var verifiedRecords = person.verified_records || {};
+                            if (verifiedRecords.baptism) {
+                                fillValue(widget.getAttribute('data-baptized-here-field'), 'this_parish');
+                                fillValue(widget.getAttribute('data-baptized-field'), 'yes');
+                            }
+                            if (verifiedRecords.confirmation) {
+                                fillValue(widget.getAttribute('data-confirmed-field'), 'yes');
                             }
                             if (idInput) idInput.value = String(person.id);
                             fillParent(person, 'father');
                             fillParent(person, 'mother');
-                            var requesterField = widget.getAttribute('data-requester-name-field');
-                            var relationshipField = widget.getAttribute('data-relationship-field');
-                            if (requesterField && relationshipField && value(relationshipField) === 'self') {
-                                var requester = field(requesterField);
-                                if (requester) requester.value = personName(person);
+                            if (requesterNameField && relationshipFieldName && value(relationshipFieldName) === 'self') {
+                                fillValue(requesterNameField, personName(person));
+                                fillValue(widget.getAttribute('data-requester-email-field'), person.email || '');
+                                fillValue(widget.getAttribute('data-requester-contact-field'), person.contact_number || '');
                             }
                             selected = true;
                             setPublicIdentityReadOnly(true);

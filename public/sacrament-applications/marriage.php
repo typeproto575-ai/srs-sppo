@@ -142,7 +142,9 @@ if ($isWizardNavigation) {
                 foreach (['baptism' => 'baptized', 'confirmation' => 'confirmed'] as $recordType => $answerType) {
                     $field = $prefix . '_' . $answerType;
                     if (($formData[$field] ?? '') === ''
-                        && is_array($history['records'][$recordType] ?? null)) {
+                        && is_array($history['records'][$recordType] ?? null)
+                        && ($history['records'][$recordType]['source'] ?? '') === 'this_parish'
+                        && !empty($history['records'][$recordType]['book_verified_at'])) {
                         $formData[$field] = 'yes';
                         $_POST[$field] = 'yes';
                     }
@@ -183,8 +185,9 @@ if ($isWizardNavigation) {
                 }
                 $venue = $value('preferred_wedding_venue');
                 if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
-                if ($venue === 'other' && $value('preferred_wedding_venue_other') === '') $errors[] = 'Enter the name of the other wedding venue.';
+                if ($venue === 'other' && $value('preferred_wedding_venue_other') === '') $errors[] = 'Enter the requested venue name and location.';
                 if (strlen($value('preferred_wedding_venue_other')) > 150) $errors[] = 'The other venue name must be 150 characters or fewer.';
+                if (mb_strlen($value('preferred_officiant')) > 150) $errors[] = 'Requested officiating priest name must be 150 characters or fewer.';
             } elseif ($currentStep === 2 || $currentStep === 3) {
                 $prefix = $currentStep === 2 ? 'groom' : 'bride';
                 $label = ucfirst($prefix);
@@ -372,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
         }
     }
     if (!in_array($venue, ['church', 'other'], true)) $errors[] = 'Please select a valid wedding venue.';
-    if ($venue === 'other' && $venueOther === '') $errors[] = 'Enter the name of the other wedding venue.';
+    if ($venue === 'other' && $venueOther === '') $errors[] = 'Enter the requested venue name and location.';
     if (strlen($venueOther) > 150) $errors[] = 'The other venue name must be 150 characters or fewer.';
     if (!in_array($g('groom_baptized'), ['yes', 'no'], true) || !in_array($g('bride_baptized'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are baptized Catholic.';
     if (!in_array($g('groom_confirmed'), ['yes', 'no'], true) || !in_array($g('bride_confirmed'), ['yes', 'no'], true)) $errors[] = 'Please answer whether both parties are confirmed Catholic.';
@@ -501,6 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
                 'preferred_wedding_time' => $weddingTime,
                 'preferred_wedding_venue' => $venue,
                 'preferred_wedding_venue_other' => $venueOther,
+                'preferred_officiant' => $g('preferred_officiant'),
                 'civilly_married' => $isCivillyMarriedPair ? 'yes' : 'no',
                 'civil_marriage_date' => $isCivillyMarriedPair ? $g('civil_marriage_date') : '',
                 'civil_marriage_place' => $isCivillyMarriedPair ? $g('civil_marriage_place') : '',
@@ -514,7 +518,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isWizardNavigation && ($_POST['_a
             if ($parishRecordCheckNotes !== []) {
                 $details['parish_record_check_notes'] = $parishRecordCheckNotes;
             }
-            $requirements = marriage_application_requirement_states($groomMaritalStatus, $brideMaritalStatus, $venue);
+            $requirements = marriage_application_requirement_states(
+                $groomMaritalStatus,
+                $brideMaritalStatus,
+                $venue,
+                $pdo,
+                $groomPersonId,
+                $bridePersonId,
+                $g('groom_current_address'),
+                $g('bride_current_address')
+            );
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_applications
                  (request_no, channel, sacrament_type, person_id, spouse_person_id, applicant_name,
@@ -674,12 +687,37 @@ require __DIR__ . '/../../includes/submission-success.php';
 <?php endforeach; ?>
 </ol>
 <h2 class="form-stage-heading">Pre-application form</h2>
-<form method="post" data-marriage-form data-step="<?= (int) $currentStep ?>" data-groom-status="<?= e($groomMaritalStatus) ?>" data-bride-status="<?= e($brideMaritalStatus) ?>">
+<p class="field-hint">Fields marked <span class="required-marker" aria-hidden="true">*</span> are required. Fields labeled optional may be left blank.</p>
+<form method="post" data-marriage-form data-step="<?= (int) $currentStep ?>" data-groom-status="<?= e($groomMaritalStatus) ?>" data-bride-status="<?= e($brideMaritalStatus) ?>" data-preserve-scroll="false">
 <?= csrf_field() ?>
 <input type="hidden" name="_action" value="<?= $currentStep < count($steps) ? 'next' : 'final_submit' ?>">
 <div class="alert alert-error" role="alert" aria-live="assertive" data-marriage-status-alert hidden style="display:none"></div>
 <?php if ($currentStep === 1): ?>
-<fieldset><legend>Phase 1 of 5 — Wedding Details</legend><p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p><div class="inline-fields"><label>Target Wedding Date * <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required></label><label>Time <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>"></label></div><label>Venue * <select name="preferred_wedding_venue" required><option value="">-- Select --</option><option value="church" <?= msel('preferred_wedding_venue','church') ?>>St. Patrick's Parish Church</option><option value="other" <?= msel('preferred_wedding_venue','other') ?>>Other</option></select></label><label data-show-if="preferred_wedding_venue=other">Other venue name * <input type="text" name="preferred_wedding_venue_other" maxlength="150" value="<?= mv('preferred_wedding_venue_other') ?>" placeholder="Enter the church or venue name"></label></fieldset>
+<fieldset>
+    <legend>Phase 1 of 5 — Wedding Details</legend>
+    <p class="field-hint">Your answers stay in this browser until you submit. A venue or date request is not a confirmed schedule.</p>
+    <div class="inline-fields">
+        <label>Target wedding date <span class="required-marker" aria-hidden="true">*</span>
+            <input type="date" name="preferred_wedding_date" value="<?= mv('preferred_wedding_date') ?>" required>
+        </label>
+        <label>Preferred time <span class="field-hint">(optional)</span>
+            <input type="time" name="preferred_wedding_time" value="<?= mv('preferred_wedding_time') ?>">
+        </label>
+    </div>
+    <label>Requested wedding venue <span class="required-marker" aria-hidden="true">*</span>
+        <select name="preferred_wedding_venue" required>
+            <option value="">-- Select --</option>
+            <option value="church" <?= msel('preferred_wedding_venue','church') ?>>St. Patrick's Parish Church</option>
+            <option value="other" <?= msel('preferred_wedding_venue','other') ?>>Another parish church, chapel, or community venue</option>
+        </select>
+    </label>
+    <label data-show-if="preferred_wedding_venue=other">Requested venue name and location <span class="required-marker" aria-hidden="true">*</span>
+        <input type="text" name="preferred_wedding_venue_other" maxlength="150" value="<?= mv('preferred_wedding_venue_other') ?>" placeholder="Venue name, barangay or municipality, province">
+    </label>
+    <label>Requested officiating priest or guest minister <span class="field-hint">(optional)</span>
+        <input type="text" name="preferred_officiant" maxlength="150" value="<?= mv('preferred_officiant') ?>">
+    </label>
+</fieldset>
 <?php elseif ($currentStep === 2): ?>
 <fieldset><legend>Phase 2 of 5 — Groom's Information</legend>
 <input type="hidden" name="groom_person_id" value="<?= mv('groom_person_id') ?>">
@@ -688,11 +726,15 @@ require __DIR__ . '/../../includes/submission-success.php';
      data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
      data-name-inputs="groom_first,groom_middle,groom_last,groom_suffix"
      data-birth-field="groom_birthdate" data-birth-place-field="groom_birthplace" data-person-id-field="groom_person_id"
+     data-address-field="groom_current_address" data-contact-field="groom_contact_number" data-email-field="groom_email"
+     data-baptized-field="groom_baptized" data-confirmed-field="groom_confirmed"
      data-father-inputs="groom_father_first,groom_father_middle,groom_father_last,groom_father_suffix"
      data-mother-inputs="groom_mother_first,groom_mother_middle,groom_mother_last,groom_mother_suffix">
     <p class="field-hint">Enter the groom’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
     <div data-person-results aria-live="polite"></div>
 </div>
+<input type="hidden" name="groom_baptized" value="<?= mv('groom_baptized') ?>">
+<input type="hidden" name="groom_confirmed" value="<?= mv('groom_confirmed') ?>">
 <div class="inline-fields">
 <label>First Name * <input name="groom_first" autocomplete="given-name" value="<?= mv('groom_first') ?>" required></label>
 <label>Middle Name <span class="field-hint">(optional)</span> <input name="groom_middle" autocomplete="additional-name" value="<?= mv('groom_middle') ?>"></label>
@@ -702,7 +744,7 @@ require __DIR__ . '/../../includes/submission-success.php';
 <label>Suffix <span class="field-hint">(optional)</span> <input name="groom_suffix" autocomplete="honorific-suffix" value="<?= mv('groom_suffix') ?>"></label>
 </div>
 <div class="inline-fields"><label>Date of Birth * <input type="date" name="groom_birthdate" value="<?= mv('groom_birthdate') ?>" required></label><label>Place of Birth * <span class="field-hint">(Enter N/A if unknown)</span><input name="groom_birthplace" value="<?= mv('groom_birthplace') ?>" required></label></div>
-<label>Current Address <input name="groom_current_address" value="<?= mv('groom_current_address') ?>"></label><label>Telephone / Mobile * <input name="groom_contact_number" value="<?= mv('groom_contact_number') ?>" required></label><label>Religion / Sect <input name="groom_religion" value="<?= mv('groom_religion') ?>"></label><label>Email * <input type="email" name="groom_email" value="<?= mv('groom_email') ?>" required></label><?= person_name_fields('groom_father', "Groom's father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?><?= person_name_fields('groom_mother', "Groom's mother's maiden name", $formData, true, null, 'required: enter the first and last name; N/A is not accepted', false, true) ?>
+<label>Current address <span class="field-hint">(optional)</span><input name="groom_current_address" value="<?= mv('groom_current_address') ?>"></label><label>Telephone / mobile <span class="required-marker" aria-hidden="true">*</span><input name="groom_contact_number" value="<?= mv('groom_contact_number') ?>" required></label><label>Religion / denomination <span class="field-hint">(optional)</span><input name="groom_religion" value="<?= mv('groom_religion') ?>"></label><label>Email address <span class="required-marker" aria-hidden="true">*</span><input type="email" name="groom_email" value="<?= mv('groom_email') ?>" required></label><?= person_name_fields('groom_father', "Groom's father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?><?= person_name_fields('groom_mother', "Groom's mother's maiden name", $formData, true, null, 'required: enter the first and last name; N/A is not accepted', false, true) ?>
 <div class="inline-fields">
     <label>Groom's marital status *
         <select name="groom_marital_status" required>
@@ -730,11 +772,15 @@ require __DIR__ . '/../../includes/submission-success.php';
      data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
      data-name-inputs="bride_first,bride_middle,bride_last,bride_suffix"
      data-birth-field="bride_birthdate" data-birth-place-field="bride_birthplace" data-person-id-field="bride_person_id"
+     data-address-field="bride_current_address" data-contact-field="bride_contact_number" data-email-field="bride_email"
+     data-baptized-field="bride_baptized" data-confirmed-field="bride_confirmed"
      data-father-inputs="bride_father_first,bride_father_middle,bride_father_last,bride_father_suffix"
      data-mother-inputs="bride_mother_first,bride_mother_middle,bride_mother_last,bride_mother_suffix">
     <p class="field-hint">Enter the bride’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
     <div data-person-results aria-live="polite"></div>
 </div>
+<input type="hidden" name="bride_baptized" value="<?= mv('bride_baptized') ?>">
+<input type="hidden" name="bride_confirmed" value="<?= mv('bride_confirmed') ?>">
 <div class="inline-fields">
 <label>First Name * <input name="bride_first" autocomplete="given-name" value="<?= mv('bride_first') ?>" required></label>
 <label>Middle Name <span class="field-hint">(optional)</span> <input name="bride_middle" autocomplete="additional-name" value="<?= mv('bride_middle') ?>"></label>
@@ -744,7 +790,7 @@ require __DIR__ . '/../../includes/submission-success.php';
 <label>Suffix <span class="field-hint">(optional)</span> <input name="bride_suffix" autocomplete="honorific-suffix" value="<?= mv('bride_suffix') ?>"></label>
 </div>
 <div class="inline-fields"><label>Date of Birth * <input type="date" name="bride_birthdate" value="<?= mv('bride_birthdate') ?>" required></label><label>Place of Birth * <span class="field-hint">(Enter N/A if unknown)</span><input name="bride_birthplace" value="<?= mv('bride_birthplace') ?>" required></label></div>
-<label>Current Address <input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><label>Telephone / Mobile * <input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>" required></label><label>Religion / Sect <input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Email * <input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><?= person_name_fields('bride_father', "Bride's father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?><?= person_name_fields('bride_mother', "Bride's mother's maiden name", $formData, true, null, 'required: enter the first and last name; N/A is not accepted', false, true) ?>
+<label>Current address <span class="field-hint">(optional)</span><input name="bride_current_address" value="<?= mv('bride_current_address') ?>"></label><label>Telephone / mobile <span class="required-marker" aria-hidden="true">*</span><input name="bride_contact_number" value="<?= mv('bride_contact_number') ?>" required></label><label>Religion / denomination <span class="field-hint">(optional)</span><input name="bride_religion" value="<?= mv('bride_religion') ?>"></label><label>Email address <span class="required-marker" aria-hidden="true">*</span><input type="email" name="bride_email" value="<?= mv('bride_email') ?>" required></label><?= person_name_fields('bride_father', "Bride's father's name", $formData, true, null, 'required: enter the name, or enter N/A if unknown', true) ?><?= person_name_fields('bride_mother', "Bride's mother's maiden name", $formData, true, null, 'required: enter the first and last name; N/A is not accepted', false, true) ?>
 <div class="inline-fields">
     <label>Bride's marital status *
         <select name="bride_marital_status" required>
@@ -795,7 +841,7 @@ require __DIR__ . '/../../includes/submission-success.php';
                                 'other_parish' => 'Another parish',
                                 default => null,
                             },
-                            !empty($marriageRecord['book_verified_at']) ? 'verified' : 'not yet verified',
+                            !empty($marriageRecord['book_verified_at']) ? 'Verified' : 'Not yet verified',
                         ], static fn($value): bool => is_scalar($value) && trim((string) $value) !== '');
                         $statusConflict = in_array($partyCheck['marital_status'], ['single', 'civilly_married'], true);
                         ?>
@@ -917,7 +963,7 @@ $godmotherRows = range(0, min(3, max(1, person_name_row_count($formData, 'godmot
     <legend>Principal Sponsors</legend>
     <p class="field-hint">At least one godfather and one godmother are required. Up to four principal sponsors may be entered in total.</p>
     <fieldset>
-        <legend>Godfathers (Ninong) *</legend>
+        <legend>Godfathers <span class="required-marker" aria-hidden="true">*</span></legend>
         <div data-repeat-group="godfather" data-repeat-max="4">
             <?php foreach ($godfatherRows as $i): ?>
                 <div class="godparent-row">
@@ -931,7 +977,7 @@ $godmotherRows = range(0, min(3, max(1, person_name_row_count($formData, 'godmot
         <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
     </fieldset>
     <fieldset>
-        <legend>Godmothers (Ninang) *</legend>
+        <legend>Godmothers <span class="required-marker" aria-hidden="true">*</span></legend>
         <div data-repeat-group="godmother" data-repeat-max="4">
             <?php foreach ($godmotherRows as $i): ?>
                 <div class="godparent-row">
@@ -948,14 +994,16 @@ $godmotherRows = range(0, min(3, max(1, person_name_row_count($formData, 'godmot
 <?php elseif ($currentStep === 5): ?>
 <fieldset><legend>Phase 5 of 5 — Review Your Pre-Application</legend>
 <table class="review-table">
-<tr><th>Wedding date</th><td><?= mv('preferred_wedding_date') ?> <?= mv('preferred_wedding_time') ?></td></tr>
-<tr><th>Venue</th><td><?= ($formData['preferred_wedding_venue'] ?? '') === 'other' ? 'Other: ' . mv('preferred_wedding_venue_other') : "St. Patrick's Parish Church" ?></td></tr>
+<tr><th>Target wedding date</th><td><?= mv('preferred_wedding_date') ?></td></tr>
+<tr><th>Preferred time</th><td><?= mv('preferred_wedding_time') !== '' ? mv('preferred_wedding_time') : '—' ?></td></tr>
+<tr><th>Requested wedding venue</th><td><?= ($formData['preferred_wedding_venue'] ?? '') === 'other' ? mv('preferred_wedding_venue_other') : "St. Patrick's Parish Church" ?><br><span class="field-hint">Requested only; the Parish Office will confirm the venue and schedule.</span></td></tr>
+<?php if (mv('preferred_officiant') !== ''): ?><tr><th>Requested officiant</th><td><?= mv('preferred_officiant') ?></td></tr><?php endif; ?>
 <tr><th>Groom</th><td><?= e(compose_person_name($formData, 'groom')) ?> · <?= mv('groom_birthdate') ?> · <?= mv('groom_email') ?> · <?= mv('groom_contact_number') ?></td></tr>
 <tr><th>Bride</th><td><?= e(compose_person_name($formData, 'bride')) ?> · <?= mv('bride_birthdate') ?> · <?= mv('bride_email') ?> · <?= mv('bride_contact_number') ?></td></tr>
 <tr><th>Groom's marital status</th><td><?= e(marriage_marital_status_label($groomMaritalStatus)) ?></td></tr>
 <tr><th>Bride's marital status</th><td><?= e(marriage_marital_status_label($brideMaritalStatus)) ?></td></tr>
-<tr><th>Baptism / confirmation</th><td>Groom: <?= mv('groom_baptized') ?> / <?= mv('groom_confirmed') ?>; Bride: <?= mv('bride_baptized') ?> / <?= mv('bride_confirmed') ?></td></tr>
-<tr><th>Civil marriage</th><td><?= mv('civilly_married') ?><?php if (($formData['civilly_married'] ?? '') === 'yes'): ?> <?= mv('civil_marriage_date') ?> <?= mv('civil_marriage_place') ?><?php endif; ?></td></tr>
+<tr><th>Baptism and confirmation</th><td><div><strong>Groom</strong> — Baptism: <?= e(format_yes_no_display_value($formData['groom_baptized'] ?? '') ?? '—') ?>; Confirmation: <?= e(format_yes_no_display_value($formData['groom_confirmed'] ?? '') ?? '—') ?></div><div><strong>Bride</strong> — Baptism: <?= e(format_yes_no_display_value($formData['bride_baptized'] ?? '') ?? '—') ?>; Confirmation: <?= e(format_yes_no_display_value($formData['bride_confirmed'] ?? '') ?? '—') ?></div></td></tr>
+<tr><th>Civil marriage</th><td><?= e(format_yes_no_display_value($formData['civilly_married'] ?? '') ?? '—') ?><?php if (strtolower(trim((string) ($formData['civilly_married'] ?? ''))) === 'yes'): ?> <?= mv('civil_marriage_date') ?> <?= mv('civil_marriage_place') ?><?php endif; ?></td></tr>
 <tr><th>Groom's place of birth</th><td><?= e(mv('groom_birthplace')) ?></td></tr>
 <tr><th>Bride's place of birth</th><td><?= e(mv('bride_birthplace')) ?></td></tr>
 <tr><th>Groom's religion</th><td><?= e(mv('groom_religion')) ?></td></tr>
@@ -993,7 +1041,7 @@ $godmotherRows = range(0, min(3, max(1, person_name_row_count($formData, 'godmot
                             'other_parish' => 'Another parish',
                             default => null,
                         },
-                        !empty($marriageRecord['book_verified_at']) ? 'verified' : 'not yet verified',
+                        !empty($marriageRecord['book_verified_at']) ? 'Verified' : 'Not yet verified',
                     ], static fn($value): bool => is_scalar($value) && trim((string) $value) !== '');
                     $statusConflict = in_array($partyCheck['marital_status'], ['single', 'civilly_married'], true);
                     ?>

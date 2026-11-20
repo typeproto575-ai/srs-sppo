@@ -281,27 +281,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_record']) || iss
     $postedEditId = (int) ($_POST['edit_id'] ?? 0);
     $birthplaceInput = $_POST['child_birthplace'] ?? '';
     if (!is_string($birthplaceInput)) {
-        $errors[] = "The child's birthplace must be text.";
+        $errors[] = "The applicant's birthplace must be text.";
         $birthplaceInput = '';
     }
     $birthplaceInput = trim($birthplaceInput);
     $applicantResidenceInput = $_POST['person_address'] ?? '';
     if (!is_string($applicantResidenceInput)) {
-        $errors[] = "The child's current residence must be text.";
+        $errors[] = "The applicant's current residence must be text.";
         $applicantResidenceInput = '';
     }
     $applicantResidenceInput = trim($applicantResidenceInput);
     if (mb_strlen($applicantResidenceInput) > 255) {
-        $errors[] = "The child's current residence must be 255 characters or fewer.";
+        $errors[] = "The applicant's current residence must be 255 characters or fewer.";
     }
     if (is_unknown_place_of_birth($birthplaceInput)) {
         $errors[] = "Please enter the child's exact Place of Birth as indicated on the PSA/LCR Birth Certificate.";
     }
     if (($_POST['birthplace_verified'] ?? '') !== '1') {
-        $errors[] = "Confirm that you verified the child's birthplace against the PSA/LCR Birth Certificate.";
+        $errors[] = "Confirm that you verified the applicant's birthplace against the PSA/LCR Birth Certificate.";
     }
     if (mb_strlen($birthplaceInput) > 150) {
-        $errors[] = "The child's birthplace must be 150 characters or fewer.";
+        $errors[] = "The applicant's birthplace must be 150 characters or fewer.";
     }
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $baptismDate = trim((string) ($_POST['baptism_date'] ?? ''));
@@ -779,7 +779,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                 </label>
                 <label class="checkbox-label">
                     <input type="checkbox" name="birthplace_verified" value="1" required<?= ($_POST['birthplace_verified'] ?? '') === '1' ? ' checked' : '' ?>>
-                    I verified the exact birthplace against the child's PSA/LCR Birth Certificate.
+                    I verified the exact birthplace against the applicant's PSA/LCR Birth Certificate.
                 </label>
                 <div class="inline-fields">
                     <label>Baptism Date <span class="required-marker">*</span> <input type="date" name="baptism_date" value="<?= e($formValues['baptism_date'] ?? $editRecord['event_date'] ?? '') ?>" required></label>
@@ -841,7 +841,7 @@ foreach (['godfather' => 'godfatherRows', 'godmother' => 'godmotherRows'] as $pr
                     </label>
                 </div>
             </fieldset>
-            <?php foreach (['godfather' => ['Godfathers (Ninong)', $godfatherRows], 'godmother' => ['Godmothers (Ninang)', $godmotherRows]] as $role => [$legend, $rows]): ?>
+            <?php foreach (['godfather' => ['Godfathers', $godfatherRows], 'godmother' => ['Godmothers', $godmotherRows]] as $role => [$legend, $rows]): ?>
                 <fieldset>
                     <legend><?= e($legend) ?><?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : '' ?></legend>
                     <?php if (!$isEdit): ?>

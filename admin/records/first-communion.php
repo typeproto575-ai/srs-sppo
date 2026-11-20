@@ -28,7 +28,7 @@ $selfReturn = '/admin/records/first-communion.php' . ((($_SERVER['QUERY_STRING']
 $editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
 $editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 
-$pageTitle = 'First Communion Records';
+$pageTitle = 'Holy Communion Records';
 $errors  = [];
 $duplicateMatches = [];
 $success = null;
@@ -145,12 +145,13 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
         $_POST['domicile'] = (string) ($application['address'] ?? '');
         $_POST['father_name'] = (string) ($application['father_name'] ?? '');
         $_POST['mother_maiden_name'] = (string) ($application['mother_maiden_name'] ?? '');
+        $_POST['minister_name'] = trim((string) ($applicationDetails['preferred_priest'] ?? ''));
         $_POST['remarks'] = 'Encoded from application ' . $application['request_no'];
     } elseif ($application) {
         $prefillNotice = 'Application ' . $application['request_no'] . ' must be approved or scheduled before it can be encoded into the register.';
         $prefillReviewUrl = $basePath . '/admin/requests/applications-queue.php?' . http_build_query(['q' => $application['request_no']]);
     } else {
-        $errors[] = 'The requested First Communion application could not be found.';
+        $errors[] = 'The requested Holy Communion application could not be found.';
     }
 }
 
@@ -203,8 +204,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
 
-    if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
-    if ($place === '') $errors[] = 'Enter the actual place of First Communion.';
+    if ($communionDate === '')   $errors[] = 'Date of Holy Communion is required.';
+    if ($place === '') $errors[] = 'Enter the actual place of Holy Communion.';
     if ($ministerName === '') $errors[] = 'Enter the officiating minister’s full name.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
     if (empty($_POST['person_id']) && empty($_POST['from_application'])) {
@@ -281,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             $recordId = (int) $pdo->lastInsertId();
 
             log_activity($pdo, current_user()['id'], 'first_communion_record_encoded', 'sacrament_records', $recordId,
-                "First Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
+                "Holy Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
             $appDone = '';
             if ($application) {
                 $completed = $pdo->prepare(
@@ -292,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 );
                 $completed->execute([$recordId, current_user()['id'], (int) $application['id']]);
                 log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $application['id'],
-                    "First Communion encoded into register (record #{$recordId}); application completed.");
+                    "Holy Communion encoded into register (record #{$recordId}); application completed.");
                 $appDone = '&app_completed=1';
             }
             $pdo->commit();
@@ -337,7 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $lineNo = trim((string) ($_POST['line_no'] ?? ''));
     $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
 
-    if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
+    if ($communionDate === '')   $errors[] = 'Date of Holy Communion is required.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
     if ($editId <= 0)            $errors[] = 'Invalid record selected for update.';
     if (strlen($correctionReason) < 5 || strlen($correctionReason) > 500) $errors[] = 'A correction reason of at least 5 characters is required.';
@@ -430,7 +431,7 @@ if (isset($_GET['edit'])) {
 }
 $isEdit = $editRecord !== null;
 $isNew = (string) ($_GET['new'] ?? '') === '1';
-$pageTitle = $isEdit ? 'Edit First Communion Record' : 'New First Communion Record';
+$pageTitle = $isEdit ? 'Edit Holy Communion Record' : 'New Holy Communion Record';
 
 // Suggested next logbook numbers for the encode dialog (create mode only).
 $suggest = $isEdit
@@ -451,10 +452,10 @@ foreach ([
     }
 }
 
-if (isset($_GET['added'])) $success = 'First Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
-if (isset($_GET['app_completed'])) $success = 'First Communion record saved and application completed.';
-if (isset($_GET['updated'])) $success = 'First Communion record updated.';
-if (isset($_GET['deleted'])) $success = 'First Communion record deleted.';
+if (isset($_GET['added'])) $success = 'Holy Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['app_completed'])) $success = 'Holy Communion record saved and application completed.';
+if (isset($_GET['updated'])) $success = 'Holy Communion record updated.';
+if (isset($_GET['deleted'])) $success = 'Holy Communion record deleted.';
 
 // --- Filter / paginate (shared component) --------------------------------
 $rfConfig = [
@@ -581,7 +582,7 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
-            <h1><?= $isEdit ? 'Edit First Communion Record' : 'New First Communion Record' ?></h1>
+            <h1><?= $isEdit ? 'Edit Holy Communion Record' : 'New Holy Communion Record' ?></h1>
             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
         </div>
         <p class="field-hint">Tracked as a one-time received/not-received event, not per-Mass attendance.</p>
@@ -596,7 +597,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                 <?php if (!defined('SRS_UNIFIED_RECORD_EDITOR')): ?>
                 <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="First Communion register records; scroll horizontally to view all columns">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Holy Communion register records; scroll horizontally to view all columns">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -604,7 +605,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th><a class="table-sort-link<?= $sort === 'page' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('page')) ?>">Page<?= first_communion_sort_indicator('page') ?></a></th>
                     <th><a class="table-sort-link<?= $sort === 'line' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('line')) ?>">Line<?= first_communion_sort_indicator('line') ?></a></th>
                     <th><a class="table-sort-link<?= $sort === 'name' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('name')) ?>">Full Name<?= first_communion_sort_indicator('name') ?></a></th>
-                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date of First Communion<?= first_communion_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
+                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date of Holy Communion<?= first_communion_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
                     <th>Linked</th>
                     <th>Options</th>
                 </tr>
@@ -613,7 +614,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php if (empty($records)): ?>
                     <tr>
                         <td colspan="7" class="empty-table-row">
-                            <div class="empty-state"><h2>No First Communion records found</h2><p><?= $rf['q'] !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
+                            <div class="empty-state"><h2>No Holy Communion records found</h2><p><?= $rf['q'] !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
                         </td>
                     </tr>
                 <?php else: ?>
@@ -646,7 +647,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit First Communion Record #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'New First Communion Record' ?></h2>
+                <h2><?= $isEdit ? 'Edit Holy Communion Record #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'New Holy Communion Record' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
@@ -656,7 +657,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
-        <form autocomplete="off" method="post" action="" data-review data-review-title="Review First Communion Entry" data-review-confirm="Confirm and Save">
+        <form autocomplete="off" method="post" action="" data-review data-review-title="Review Holy Communion Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
             <?php if ($editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
@@ -714,8 +715,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <label><input type="checkbox" name="confirm_new_person" value="1"<?= (($_POST['confirm_new_person'] ?? '') === '1') ? ' checked' : '' ?>> I reviewed these matches and still need a separate person profile.</label>
                     </div>
                 <?php endif; ?>
-                <label>Date of First Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
-                <label>Place of First Communion<?= !$isEdit ? ' *' : '' ?>
+                <label>Date of Holy Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
+                <label>Place of Holy Communion<?= !$isEdit ? ' *' : '' ?>
                     <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
                 </label>
                 <label>Residence (Domicile) / Address <input autocomplete="off" type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>

@@ -213,9 +213,11 @@ function baptismal_certificate_values(array $source, array $req, array $sponsorN
         $childNameWithoutMiddle = $firstAndLast($first($source, ['child_full_name']));
     }
 
+    $ministerName = cert_format_title_case($first($source, ['minister_name', 'officiating_minister']));
+    $fatherName = cert_format_title_case($firstAndLast($first($source, ['father_name', 'father_full_name'])));
     $v = [
         'subject_full_name'  => cert_format_upper_case($childNameWithoutMiddle),
-        'father_name'        => cert_format_title_case($firstAndLast($first($source, ['father_name', 'father_full_name']))),
+        'father_name'        => $fatherName !== '' ? $fatherName : 'Not recorded',
         'mother_name'        => cert_format_title_case($firstAndLast($first($source, ['mother_maiden_name', 'mother_name', 'mother_full_name']))),
         'place_of_birth'     => $first($source, ['child_birthplace', 'birthplace', 'birth_place', 'place_of_birth']),
         'birth_date_day'     => $part($birth, 'jS'),
@@ -224,7 +226,7 @@ function baptismal_certificate_values(array $source, array $req, array $sponsorN
         'baptism_date_day'   => $part($bapt, 'jS'),
         'baptism_date_month' => $part($bapt, 'F'),
         'baptism_date_year'  => $part($bapt, 'Y'),
-        'officiating_priest' => cert_format_title_case($first($source, ['minister_name', 'officiating_minister'])),
+        'officiating_priest' => $ministerName !== '' ? $ministerName : 'Not recorded',
         'register_book'      => $first($source, ['book_no']),
         'register_page'      => $first($source, ['page_no']),
         'register_line'      => $first($source, ['line_no']),

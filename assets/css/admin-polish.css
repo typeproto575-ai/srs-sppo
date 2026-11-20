@@ -226,6 +226,9 @@
     .application-queue-review .application-review-card > section > h3 { grid-column: 1; }
     .application-queue-review .application-requirement-form { grid-template-columns: minmax(0, 1fr) auto; }
     .application-queue-review .application-requirement-form strong { grid-column: 1 / -1; }
+    .application-queue-review .application-requirement-form .requirement-verification-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 /* ---- Search and filter bars (Funerals and similar pages) ---------------- */
@@ -400,6 +403,29 @@
     .application-venue-confirmation-form { grid-template-columns: minmax(0, 1fr); }
 }
 
+.application-queue-table-scroll > .application-queue-table {
+    width: 100%;
+    min-width: 73rem;
+    table-layout: fixed;
+}
+.application-queue-table th:nth-child(1),
+.application-queue-table td:nth-child(1) { width: 11rem; }
+.application-queue-table th:nth-child(2),
+.application-queue-table td:nth-child(2) { width: 10rem; }
+.application-queue-table th:nth-child(3),
+.application-queue-table td:nth-child(3) { min-width: 20rem; }
+.application-queue-table th:nth-child(4),
+.application-queue-table td:nth-child(4) { width: 12rem; }
+.application-queue-table th:nth-child(5),
+.application-queue-table td:nth-child(5) {
+    width: 11rem;
+    min-width: 11rem;
+    white-space: nowrap;
+}
+.application-queue-table td:nth-child(5) .status-badge { white-space: nowrap; }
+.application-queue-table th:nth-child(6),
+.application-queue-table td:nth-child(6) { width: 9rem; }
+
 /* ---- Pre-application review: structured desk view ---------------------- */
 .application-queue-review .application-review-card {
     display: grid;
@@ -561,6 +587,50 @@
 .application-queue-review .application-requirement-form strong { grid-column: 1 / -1; }
 .application-queue-review .application-requirement-form label { min-width: 0; }
 .application-queue-review .application-requirement-form .btn { align-self: end; }
+.application-queue-review .application-requirement-form .requirement-saved-details {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: .18rem;
+    color: var(--admin-muted, #5f6b62);
+    font-size: .78rem;
+    line-height: 1.35;
+}
+.application-queue-review .application-requirement-form .requirement-age-warning {
+    justify-self: start;
+    margin-top: .15rem;
+    padding: .18rem .42rem;
+    border-radius: 999px;
+    background: #fff1d6;
+    color: #7a5520;
+    font-size: .72rem;
+    font-weight: 700;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+    padding-top: .45rem;
+    border-top: 1px solid rgba(31, 61, 43, .1);
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields[hidden] { display: none; }
+.application-queue-review .application-requirement-form .requirement-verification-fields label {
+    display: grid;
+    align-content: start;
+    gap: .28rem;
+    font-size: .78rem;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields input,
+.application-queue-review .application-requirement-form .requirement-verification-fields textarea {
+    width: 100%;
+    min-width: 0;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields label:last-child { grid-column: 1 / -1; }
+.application-queue-review .application-requirement-form .verification-edit-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+    width: auto;
+}
 .application-queue-review .application-review-card > .application-review-actions {
     align-items: center;
     padding: .8rem .25rem .1rem;
@@ -631,8 +701,14 @@
     }
     .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(1),
     .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(3),
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5),
     .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(6) {
         grid-column: 1 / -1;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5) {
+        width: auto;
+        min-width: 0;
+        white-space: normal;
     }
     .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(1)::before,
     .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(2)::before,

@@ -1,0 +1,119 @@
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header class="site-header">
+  <a [href]="publicHomeUrl" class="site-brand">
+    <img src="/srs-sppo/assets/images/logo.jpg" alt="St. Patrick's Parish logo" class="brand-logo-public">
+    St. Patrick's Parish Office
+  </a>
+  <button
+    type="button"
+    class="nav-toggle"
+    [attr.aria-expanded]="isNavOpen()"
+    aria-controls="site-nav"
+    (click)="toggleNav()"
+  >
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M4 6h16M4 12h16M4 18h16"></path>
+    </svg>
+    Menu
+  </button>
+  <nav id="site-nav" [class.open]="isNavOpen()" aria-label="Main navigation">
+    <a [href]="publicHomeUrl" (click)="closeNav()">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+      </svg>
+      Home
+    </a>
+    <a [href]="howItWorksUrl" (click)="closeNav()">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      How It Works
+    </a>
+    <a [href]="trackerUrl" (click)="closeNav()">View My Requests</a>
+    <a [href]="requirementsUrl" (click)="closeNav()">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="16" y1="13" x2="8" y2="13"></line>
+        <line x1="16" y1="17" x2="8" y2="17"></line>
+      </svg>
+      Requirements
+    </a>
+    <a [href]="servicesUrl" (click)="closeNav()">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="7"></circle>
+        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
+      </svg>
+      Office Services
+    </a>
+  </nav>
+</header>
+
+<main class="site-main public-page" id="main-content">
+  <section class="workflow-hero">
+    <span class="eyebrow">Parish Office Services</span>
+    <h1>What do you need?</h1>
+    <p>
+      Start a pre-application for a future sacrament or request a copy of an existing parish
+      record. Each form shows the relevant preparation guidance before you submit.
+    </p>
+  </section>
+
+  <section class="option-group" id="sacrament-applications" aria-labelledby="application-services-heading">
+    <h2 id="application-services-heading">Start a pre-application to receive a sacrament</h2>
+    <p>
+      Submit a pre-application for parish-office review. The office will confirm requirements,
+      preparation, approval, and scheduling.
+    </p>
+    <div class="service-grid">
+      @for (service of applicationServices; track service.type) {
+        <a class="service-card" [href]="applicationUrl(service.type)">
+          <span class="service-number">{{ service.number }}</span>
+          <h3>{{ service.label }}</h3>
+          <p>{{ service.description }}</p>
+          <span class="service-link">{{ service.linkLabel }} &rarr;</span>
+        </a>
+      }
+    </div>
+  </section>
+
+  <section class="option-group" id="certificate-requests" aria-labelledby="certificate-services-heading">
+    <h2 id="certificate-services-heading">Request a certificate copy</h2>
+    <p>
+      Use this when the sacrament has already taken place and you need a certified copy of the
+      parish record.
+    </p>
+    <div class="service-grid">
+      <a class="service-card service-card-accent" [href]="certificateUrl">
+        <span class="service-number">05</span>
+        <h3>Baptism, First Communion, Confirmation, or Marriage</h3>
+        <p>
+          Request a copy of an existing sacramental record. The parish office verifies the record
+          and provides updates.
+        </p>
+        <span class="service-link">Request a certificate copy &rarr;</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="option-group">
+    <p>
+      Not sure which documents apply? Read the
+      <a [href]="requirementsUrl">optional requirements and preparation guide</a>. Other parish
+      services are handled by contacting or visiting the Parish Office.
+    </p>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p class="footer-links">
+    <a [href]="termsUrl">Terms and Conditions</a>
+    &middot;
+    <a [href]="privacyUrl">Privacy Notice</a>
+  </p>
+  <p>&copy; {{ currentYear }} St. Patrick's Parish Office, Dingalan, Aurora.</p>
+</footer>

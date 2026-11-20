@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/mail.php';
 require_login();
 require_role('secretary');
 
@@ -17,12 +18,31 @@ if (is_array($flash)) {
 }
 
 $sacramentLabels = [
-    'first_communion' => 'First Holy Communion',
+    'first_communion' => 'Holy Communion',
     'confirmation' => 'Confirmation',
 ];
 $gradeOptions = sacrament_formation_grade_options();
 $batchId = filter_var($_GET['batch_id'] ?? null, FILTER_VALIDATE_INT);
 $batchId = $batchId && $batchId > 0 ? (int) $batchId : 0;
+
+function application_batch_candidate_matches(array $details, array $batch): bool
+{
+    $formationPath = (string) ($details['formation_path'] ?? '');
+    if ($batch['grade_level'] === 'general') {
+        $grade = (string) ($details['school_grade'] ?? '');
+        $requestedGroup = trim((string) ($details['group_label'] ?? ''));
+        $batchName = (string) ($batch['batch_name'] ?? '');
+        return $formationPath === 'batch'
+            && in_array($grade, ['general', ''], true)
+            && (string) ($details['school_year'] ?? '') === trim((string) $batch['school_year'])
+            && ($requestedGroup === ''
+                || mb_stripos($batchName, $requestedGroup . ' —', 0, 'UTF-8') === 0);
+    }
+
+    return $formationPath === 'batch'
+        && (string) ($details['school_grade'] ?? '') === (string) $batch['grade_level']
+        && (string) ($details['school_year'] ?? '') === (string) $batch['school_year'];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
@@ -30,25 +50,135 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Your session expired. Please reload the page and try again.';
     } else {
         try {
-            if ($action === 'create_batch') {
+            if ($action === 'review_group_status') {
+                $batchId = filter_var($_POST['batch_id'] ?? null, FILTER_VALIDATE_INT);
+                $batchId = $batchId && $batchId > 0 ? (int) $batchId : 0;
+                $targetStatus = is_string($_POST['group_status'] ?? null) ? $_POST['group_status'] : '';
+                if ($batchId < 1 || !in_array($targetStatus, ['reviewing', 'approved'], true)) {
+                    throw new RuntimeException('Choose a valid Communion group and group status.');
+                }
+
+                $pdo->beginTransaction();
+                $batchStmt = $pdo->prepare(
+                    'SELECT id, sacrament_type, grade_level, batch_name
+                     FROM sacrament_batches
+                     WHERE id = ?
+                     FOR UPDATE'
+                );
+                $batchStmt->execute([$batchId]);
+                $batch = $batchStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$batch || $batch['sacrament_type'] !== 'first_communion' || $batch['grade_level'] !== 'general') {
+                    throw new RuntimeException('The selected item is not a Holy Communion group.');
+                }
+
+                $memberStmt = $pdo->prepare(
+                    'SELECT id, request_no, applicant_name, applicant_email, status, details
+                     FROM sacrament_applications
+                     WHERE batch_id = ? AND sacrament_type = \'first_communion\'
+                     ORDER BY id
+                     FOR UPDATE'
+                );
+                $memberStmt->execute([$batchId]);
+                $groupMembers = $memberStmt->fetchAll(PDO::FETCH_ASSOC);
+                if ($groupMembers === []) {
+                    throw new RuntimeException('This group has no candidate applications to review.');
+                }
+
+                $groupReference = '';
+                $groupLabel = '';
+                $contactEmail = '';
+                $membersForEmail = [];
+                $eligibleIds = [];
+                foreach ($groupMembers as $member) {
+                    $memberDetails = json_decode((string) ($member['details'] ?? ''), true);
+                    if (!is_array($memberDetails)
+                        || ($memberDetails['intake_mode'] ?? '') !== 'group'
+                        || trim((string) ($memberDetails['group_reference'] ?? '')) === '') {
+                        throw new RuntimeException('A candidate is missing valid shared group details; no status was changed.');
+                    }
+                    $memberGroupReference = trim((string) $memberDetails['group_reference']);
+                    if ($groupReference !== '' && !hash_equals($groupReference, $memberGroupReference)) {
+                        throw new RuntimeException('The selected batch contains more than one group; no status was changed.');
+                    }
+                    $groupReference = $memberGroupReference;
+                    $groupLabel = $groupLabel !== '' ? $groupLabel : trim((string) ($memberDetails['group_label'] ?? ''));
+                    $contactEmail = $contactEmail !== '' ? $contactEmail : trim((string) ($memberDetails['contact_person_email'] ?? ''));
+                    $membersForEmail[] = [
+                        'name' => (string) $member['applicant_name'],
+                        'request_no' => (string) $member['request_no'],
+                    ];
+                    if ($targetStatus === 'reviewing' && $member['status'] === 'new') {
+                        $eligibleIds[] = (int) $member['id'];
+                    } elseif ($targetStatus === 'approved'
+                        && !in_array($member['status'], ['completed', 'rejected', 'scheduled', 'approved'], true)) {
+                        $eligibleIds[] = (int) $member['id'];
+                    }
+                }
+                if ($eligibleIds === []) {
+                    throw new RuntimeException('The group already has the selected status or no candidates are eligible for this update.');
+                }
+                $scheduleStmt = $pdo->prepare('SELECT id FROM schedule_events WHERE batch_id = ? LIMIT 1 FOR UPDATE');
+                $scheduleStmt->execute([$batchId]);
+                if ($scheduleStmt->fetchColumn() !== false) {
+                    throw new RuntimeException('This group already has a confirmed schedule; manage it from this group page.');
+                }
+
+                $updateMember = $pdo->prepare('UPDATE sacrament_applications SET status = ? WHERE id = ?');
+                foreach ($eligibleIds as $eligibleId) {
+                    $updateMember->execute([$targetStatus, $eligibleId]);
+                }
+                log_activity(
+                    $pdo,
+                    (int) current_user()['id'],
+                    $targetStatus === 'approved' ? 'sacrament_group_approved' : 'sacrament_group_review_started',
+                    'sacrament_batches',
+                    $batchId,
+                    'Holy Communion group ' . $groupReference . ' updated to ' . $targetStatus
+                );
+                $pdo->commit();
+
+                $notificationWarning = '';
+                if (filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
+                    try {
+                        $emailSent = mail_communion_group_status(
+                            $contactEmail,
+                            $groupLabel,
+                            $membersForEmail,
+                            $targetStatus === 'approved' ? 'Approved for group preparation and scheduling' : 'Under review',
+                            $pdo,
+                            $batchId
+                        );
+                        if (!$emailSent) {
+                            $notificationWarning = ' The group was updated, but email delivery could not be confirmed; check the notification log.';
+                        }
+                    } catch (Throwable $mailException) {
+                        error_log('Communion group status email failed after status save: ' . $mailException->getMessage());
+                        $notificationWarning = ' The group was updated, but its email notice failed; check the notification log.';
+                    }
+                }
+                $_SESSION['sacrament_batches_flash'] = [
+                    'success' => 'The group was updated in one action. Individual identity and sacramental record checks remain available before register encoding.'
+                        . $notificationWarning,
+                ];
+                redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => $batchId]) . '#group-management');
+                exit;
+            } elseif ($action === 'create_batch') {
                 $sacramentType = is_string($_POST['sacrament_type'] ?? null) ? $_POST['sacrament_type'] : '';
-                $grade = is_string($_POST['school_grade'] ?? null) ? $_POST['school_grade'] : '';
-                $schoolYear = is_string($_POST['school_year'] ?? null) ? trim($_POST['school_year']) : '';
+                $schoolYear = is_string($_POST['calendar_year'] ?? null) ? trim($_POST['calendar_year']) : '';
                 $groupLabel = is_string($_POST['group_label'] ?? null) ? trim($_POST['group_label']) : '';
                 if (!isset($sacramentLabels[$sacramentType])) {
-                    $errors[] = 'Choose First Holy Communion or Confirmation.';
+                    $errors[] = 'Choose Holy Communion or Confirmation.';
                 }
-                if (mb_strlen($groupLabel, 'UTF-8') > 40) {
-                    $errors[] = 'The group label must be 40 characters or fewer.';
+                if (mb_strlen($groupLabel, 'UTF-8') > 60) {
+                    $errors[] = 'The group or organization name must be 60 characters or fewer.';
                 }
-                if (($formationError = sacrament_formation_input_error('batch', $grade, $schoolYear)) !== null) {
-                    $errors[] = $formationError;
+                if (!preg_match('/^\d{4}$/D', $schoolYear)) {
+                    $errors[] = 'Enter a four-digit calendar year.';
                 }
 
                 if ($errors === []) {
-                    $batchName = $gradeOptions[$grade] . ' ' . $sacramentLabels[$sacramentType]
-                        . ($groupLabel !== '' ? ' - ' . $groupLabel : '')
-                        . ' - School Year ' . $schoolYear;
+                    $batchName = ($groupLabel !== '' ? $groupLabel . ' — ' : '')
+                        . $sacramentLabels[$sacramentType] . ' — ' . $schoolYear;
                     $pdo->beginTransaction();
                     $insert = $pdo->prepare(
                         'INSERT INTO sacrament_batches (sacrament_type, grade_level, school_year, batch_name, created_by)
@@ -56,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                     $insert->execute([
                         $sacramentType,
-                        $grade,
+                        'general',
                         $schoolYear,
                         $batchName,
                         (int) current_user()['id'],
@@ -140,9 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             || $application['status'] !== 'approved'
                             || $application['batch_id'] !== null
                             || !is_array($details)
-                            || ($details['formation_path'] ?? '') !== 'batch'
-                            || ($details['school_grade'] ?? '') !== $batch['grade_level']
-                            || ($details['school_year'] ?? '') !== $batch['school_year']) {
+                            || !application_batch_candidate_matches($details, $batch)) {
                             throw new RuntimeException('A selected application is no longer eligible for this group. Refresh the page and try again.');
                         }
 
@@ -204,8 +332,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $eventDate = is_string($_POST['event_date'] ?? null) ? trim($_POST['event_date']) : '';
                 $startTime = is_string($_POST['start_time'] ?? null) ? trim($_POST['start_time']) : '';
                 $endTime = is_string($_POST['end_time'] ?? null) ? trim($_POST['end_time']) : '';
+                $confirmedVenue = is_string($_POST['confirmed_venue'] ?? null) ? trim($_POST['confirmed_venue']) : '';
                 if ($batchId < 1) {
                     throw new RuntimeException('Choose a valid group before setting its schedule.');
+                }
+                if (mb_strlen($confirmedVenue, 'UTF-8') > 255) {
+                    throw new RuntimeException('The confirmed group venue must be 255 characters or fewer.');
                 }
                 if (($scheduleError = application_schedule_input_error($eventDate, $startTime, $endTime)) !== null) {
                     throw new RuntimeException($scheduleError);
@@ -219,10 +351,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('The selected group could not be found.');
                 }
                 $memberStmt = $pdo->prepare(
-                    "SELECT id, request_no, status
-                     FROM sacrament_applications
+                    "SELECT sa.id, sa.request_no, sa.status, sa.applicant_name, sa.applicant_email,
+                            sa.details, p.public_reference
+                     FROM sacrament_applications sa
+                     LEFT JOIN persons p ON p.id = sa.person_id
                      WHERE batch_id = ? AND status IN ('approved', 'scheduled')
-                     ORDER BY id
+                     ORDER BY sa.id
                      FOR UPDATE"
                 );
                 $memberStmt->execute([$batchId]);
@@ -231,7 +365,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Assign at least one approved application before scheduling this group.');
                 }
                 $eventStmt = $pdo->prepare(
-                    'SELECT id, event_date, start_time, end_time
+                    'SELECT id, event_date, start_time, end_time, public_details
                      FROM schedule_events
                      WHERE batch_id = ?
                      LIMIT 1
@@ -245,10 +379,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $existingEnd = $existingEvent && $existingEvent['end_time'] !== null
                     ? substr((string) $existingEvent['end_time'], 0, 5)
                     : '';
+                $eventDetails = $sacramentLabels[$batch['sacrament_type']]
+                    . ' group for calendar year ' . trim((string) $batch['school_year']) . '.';
+                $eventDetails .= $confirmedVenue !== ''
+                    ? ' Confirmed venue: ' . $confirmedVenue . '.'
+                    : ' Venue to be confirmed by the Parish Office.';
                 $scheduleChanged = $existingEvent === null
                     || (string) $existingEvent['event_date'] !== $eventDate
                     || $existingStart !== $startTime
-                    || $existingEnd !== $endTime;
+                    || $existingEnd !== $endTime
+                    || (string) $existingEvent['public_details'] !== $eventDetails;
                 if (!$scheduleChanged && !array_filter($members, static fn(array $member): bool => $member['status'] !== 'scheduled')) {
                     $pdo->rollBack();
                     $_SESSION['sacrament_batches_flash'] = ['success' => 'That shared group schedule is already saved.'];
@@ -280,9 +420,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $startValue = $startTime !== '' ? $startTime : null;
                 $endValue = $endTime !== '' ? $endTime : null;
                 $eventTitle = (string) $batch['batch_name'];
-                $eventDetails = $sacramentLabels[$batch['sacrament_type']]
-                    . ' group for ' . $gradeOptions[$batch['grade_level']]
-                    . ', school year ' . $batch['school_year'] . '.';
                 if ($existingEvent === null) {
                     $saveEvent = $pdo->prepare(
                         "INSERT INTO schedule_events
@@ -334,17 +471,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ? format_event_time_range($startValue, $endValue)
                         : 'To be confirmed')
                     . '. Please contact the Parish Office promptly if you cannot attend.';
+                $groupMail = [];
                 foreach ($members as $member) {
-                    notify_sacrament_application_status(
-                        $pdo,
-                        'scheduled',
-                        (string) $batch['sacrament_type'],
-                        (string) $member['request_no'],
-                        $scheduleNote
-                    );
+                    $details = json_decode((string) ($member['details'] ?? ''), true);
+                    $details = is_array($details) ? $details : [];
+                    $groupReference = trim((string) ($details['group_reference'] ?? ''));
+                    $contactEmail = trim((string) ($details['contact_person_email'] ?? ''));
+                    if ($batch['sacrament_type'] === 'first_communion'
+                        && $groupReference !== ''
+                        && filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
+                        $key = $groupReference . '|' . strtolower($contactEmail);
+                        if (!isset($groupMail[$key])) {
+                            $groupMail[$key] = [
+                                'email' => $contactEmail,
+                                'label' => (string) ($details['group_label'] ?? ''),
+                                'members' => [],
+                            ];
+                        }
+                        $groupMail[$key]['members'][] = [
+                            'name' => (string) ($member['applicant_name'] ?? ''),
+                            'reference' => (string) ($member['public_reference'] ?? ''),
+                            'request_no' => (string) ($member['request_no'] ?? ''),
+                        ];
+                        notify(
+                            $pdo,
+                            'application_scheduled',
+                            'Application Scheduled',
+                            'Holy Communion application (' . $member['request_no'] . ') is scheduled with its group.',
+                            '/admin/requests/applications-queue.php?status=scheduled'
+                        );
+                    } else {
+                        notify_sacrament_application_status(
+                            $pdo,
+                            'scheduled',
+                            (string) $batch['sacrament_type'],
+                            (string) $member['request_no'],
+                            $scheduleNote
+                        );
+                    }
+                }
+                foreach ($groupMail as $groupNotification) {
+                    try {
+                        mail_communion_group_schedule(
+                            $groupNotification['email'],
+                            $groupNotification['label'],
+                            $groupNotification['members'],
+                            $eventDate,
+                            $startValue !== null ? format_event_time_range($startValue, $endValue) : '',
+                            $pdo,
+                            $batchId,
+                            $confirmedVenue
+                        );
+                    } catch (Throwable $mailException) {
+                        error_log(
+                            'Holy Communion schedule saved, but group email failed for batch '
+                            . $batchId . ': ' . $mailException->getMessage()
+                        );
+                    }
                 }
                 $_SESSION['sacrament_batches_flash'] = [
-                    'success' => 'The shared schedule was saved. Status notifications were attempted for all assigned families; check the email log for delivery results.'
+                    'success' => 'The shared schedule was saved. Schedule notices were attempted for each Communion group contact and other assigned families; check the email log for delivery results.'
                         . ($hasConflict ? ' Check the calendar: this time overlaps another event.' : ''),
                 ];
                 redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => $batchId]) . '#group-management');
@@ -376,9 +562,16 @@ $selectedBatch = null;
 $batchEvent = null;
 $assignedApplications = [];
 $candidateApplications = [];
+$groupContactDetails = [];
+$confirmedGroupVenue = '';
+$isSubmittedCommunionGroup = false;
+$activeGroupApplications = [];
+$groupNeedsReview = false;
+$groupNeedsApproval = false;
 if ($batchId > 0) {
     $batchStmt = $pdo->prepare(
-        'SELECT b.*, e.id AS event_id, e.event_date, e.start_time, e.end_time
+        'SELECT b.*, e.id AS event_id, e.event_date, e.start_time, e.end_time,
+                e.public_details AS event_public_details
          FROM sacrament_batches b
          LEFT JOIN schedule_events e ON e.batch_id = b.id
          WHERE b.id = ?
@@ -392,13 +585,36 @@ if ($batchId > 0) {
     } else {
         $batchEvent = !empty($selectedBatch['event_id']) ? $selectedBatch : null;
         $assignedStmt = $pdo->prepare(
-            'SELECT id, request_no, applicant_name, applicant_email, status, details
+            'SELECT id, request_no, applicant_name, applicant_email, person_id, status, details
              FROM sacrament_applications
              WHERE batch_id = ?
              ORDER BY applicant_name, id'
         );
         $assignedStmt->execute([$batchId]);
         $assignedApplications = $assignedStmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($assignedApplications !== []) {
+            $groupContactDetails = json_decode((string) ($assignedApplications[0]['details'] ?? ''), true);
+            $groupContactDetails = is_array($groupContactDetails) ? $groupContactDetails : [];
+        }
+        $isSubmittedCommunionGroup = $selectedBatch['sacrament_type'] === 'first_communion'
+            && $selectedBatch['grade_level'] === 'general'
+            && ($groupContactDetails['intake_mode'] ?? '') === 'group';
+        $activeGroupApplications = array_values(array_filter(
+            $assignedApplications,
+            static fn(array $application): bool => !in_array($application['status'], ['completed', 'rejected', 'scheduled'], true)
+        ));
+        $groupNeedsReview = array_filter(
+            $activeGroupApplications,
+            static fn(array $application): bool => $application['status'] === 'new'
+        ) !== [];
+        $groupNeedsApproval = array_filter(
+            $activeGroupApplications,
+            static fn(array $application): bool => $application['status'] !== 'approved'
+        ) !== [];
+        if ($batchEvent !== null
+            && preg_match('/Confirmed venue:\s*(.+?)(?:\.|$)/i', (string) ($batchEvent['event_public_details'] ?? ''), $venueMatch) === 1) {
+            $confirmedGroupVenue = trim($venueMatch[1]);
+        }
 
         if ($batchEvent === null) {
             $candidateStmt = $pdo->prepare(
@@ -408,12 +624,10 @@ if ($batchId > 0) {
                  ORDER BY applicant_name, id"
             );
             $candidateStmt->execute([$selectedBatch['sacrament_type']]);
+            $candidateBatch = $selectedBatch;
             foreach ($candidateStmt->fetchAll(PDO::FETCH_ASSOC) as $candidate) {
                 $details = json_decode((string) ($candidate['details'] ?? ''), true);
-                if (is_array($details)
-                    && ($details['formation_path'] ?? '') === 'batch'
-                    && ($details['school_grade'] ?? '') === $selectedBatch['grade_level']
-                    && ($details['school_year'] ?? '') === $selectedBatch['school_year']) {
+                if (is_array($details) && application_batch_candidate_matches($details, $candidateBatch)) {
                     $candidateApplications[] = $candidate;
                 }
             }
@@ -428,7 +642,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <div>
             <p class="admin-queue-kicker">Requests</p>
             <h1>Sacrament groups</h1>
-            <p>Organize approved First Communion or Confirmation applications into groups, then schedule and notify everyone together.</p>
+            <p>Review submitted Communion groups, inspect the roster, approve for preparation, and manage each shared schedule here.</p>
         </div>
         <div class="admin-queue-actions">
             <a class="btn btn-secondary" href="<?= e($basePath . '/admin/requests/applications-queue.php') ?>">Application queue</a>
@@ -438,9 +652,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <?php foreach ($errors as $error): ?><p class="alert alert-error" role="alert"><?= e((string) $error) ?></p><?php endforeach; ?>
 
     <ol class="sacrament-group-workflow" aria-label="Secretary workflow">
-        <li><span>01</span><div><strong>Review</strong><p>Approve applications requesting group preparation.</p></div></li>
-        <li><span>02</span><div><strong>Create</strong><p>Match the sacrament, grade, and school year.</p></div></li>
-        <li><span>03</span><div><strong>Assign applicants</strong><p>Add approved applicants to the group.</p></div></li>
+        <li><span>01</span><div><strong>Review together</strong><p>Review and approve a submitted Communion group once from its group page.</p></div></li>
+        <li><span>02</span><div><strong>Create</strong><p>Choose the sacrament, calendar year, and group label.</p></div></li>
+        <li><span>03</span><div><strong>Organize candidates</strong><p>Submitted Communion groups are already linked; other groups can add reviewed applications.</p></div></li>
         <li><span>04</span><div><strong>Confirm schedule</strong><p>Save the shared date and time to notify assigned families.</p></div></li>
     </ol>
     <p class="sacrament-group-record-note"><strong>After the ceremony:</strong> Enter each completed sacrament in Records. Group scheduling does not create register entries.</p>
@@ -451,7 +665,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <p class="sacrament-group-eyebrow">Step 2</p>
                 <h2>Create a group</h2>
             </div>
-            <p>Use one group for applicants with the same sacrament, grade, and school year.</p>
+            <p>Use one group for applications with the same sacrament and calendar year.</p>
         </div>
         <form method="post" class="sacrament-group-create-form">
             <?= csrf_field() ?>
@@ -464,23 +678,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php endforeach; ?>
                 </select>
             </label>
-            <label>Grade level *
-                <select name="school_grade" required>
-                    <option value="">-- Select --</option>
-                    <?php foreach ($gradeOptions as $grade => $label): ?>
-                        <option value="<?= e($grade) ?>"><?= e($label) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <label>Calendar year *
+                <input type="text" name="calendar_year" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="<?= e(date('Y')) ?>" value="<?= e(date('Y')) ?>" required>
             </label>
-            <label>School year *
-                <input type="text" name="school_year" inputmode="numeric" pattern="\d{4}-\d{4}" maxlength="9" placeholder="2026-2027" required>
-            </label>
-            <label>Group name <span class="field-hint">(optional, e.g. Group A)</span>
-                <input type="text" name="group_label" maxlength="40">
+            <label>Group or organization name <span class="field-hint">(optional)</span>
+                <input type="text" name="group_label" maxlength="60">
             </label>
             <button type="submit" class="btn">Create group</button>
         </form>
-        <p class="sacrament-group-hint">Only approved applications requesting group preparation and matching these details can be added.</p>
+        <p class="sacrament-group-hint">Only approved group applications for the selected sacrament and calendar year can be added. A submitted group label must match.</p>
     </section>
 
     <?php if ($selectedBatch !== null): ?>
@@ -489,12 +695,72 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div>
                     <p class="sacrament-group-eyebrow">Selected group</p>
                     <h2><?= e($selectedBatch['batch_name']) ?></h2>
-                    <p><?= e($sacramentLabels[$selectedBatch['sacrament_type']] ?? $selectedBatch['sacrament_type']) ?> · <?= e($gradeOptions[$selectedBatch['grade_level']] ?? $selectedBatch['grade_level']) ?> · School year <?= e($selectedBatch['school_year']) ?></p>
+                    <p><?= e($sacramentLabels[$selectedBatch['sacrament_type']] ?? $selectedBatch['sacrament_type']) ?> · Calendar year <?= e(trim((string) $selectedBatch['school_year'])) ?><?= $selectedBatch['grade_level'] !== 'general' ? ' · ' . e($gradeOptions[$selectedBatch['grade_level']] ?? $selectedBatch['grade_level']) : '' ?></p>
                 </div>
                 <span class="sacrament-group-status<?= $batchEvent !== null ? ' is-scheduled' : '' ?>">
-                    <?= $batchEvent !== null ? 'Schedule confirmed' : ($assignedApplications !== [] ? 'Ready to schedule' : 'Needs applicants') ?>
+                    <?php if ($batchEvent !== null): ?>
+                        Schedule confirmed
+                    <?php elseif ($assignedApplications === []): ?>
+                        Needs applicants
+                    <?php elseif (count(array_filter(
+                        $assignedApplications,
+                        static fn(array $application): bool => !in_array($application['status'], ['approved', 'scheduled', 'rejected', 'completed'], true)
+                    )) > 0): ?>
+                        Group review needed
+                    <?php else: ?>
+                        Ready to schedule
+                    <?php endif; ?>
                 </span>
             </header>
+            <?php if ($isSubmittedCommunionGroup): ?>
+                <div class="sacrament-group-review-actions">
+                    <?php if ($batchEvent === null && $activeGroupApplications !== []): ?>
+                        <?php if ($groupNeedsReview): ?>
+                            <form method="post">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="review_group_status">
+                                <input type="hidden" name="batch_id" value="<?= $batchId ?>">
+                                <input type="hidden" name="group_status" value="reviewing">
+                                <button type="submit" class="btn btn-secondary">Start group review</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($groupNeedsApproval): ?>
+                            <form method="post">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="action" value="review_group_status">
+                                <input type="hidden" name="batch_id" value="<?= $batchId ?>">
+                                <input type="hidden" name="group_status" value="approved">
+                                <button type="submit" class="btn">Approve group for preparation</button>
+                            </form>
+                        <?php else: ?>
+                            <span class="field-hint">Group approval is saved; set the shared schedule below.</span>
+                        <?php endif; ?>
+                    <?php elseif ($batchEvent === null): ?>
+                        <p class="field-hint">No active candidates remain to review.</p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+            <?php if ($assignedApplications !== []): ?>
+                <?php
+                $canScheduleBatch = count(array_filter(
+                    $assignedApplications,
+                    static fn(array $application): bool => !in_array($application['status'], ['approved', 'scheduled', 'rejected', 'completed'], true)
+                )) === 0;
+                ?>
+                <?php
+                $requestedGroupVenue = ($groupContactDetails['communion_venue'] ?? '') === 'other'
+                    ? trim((string) ($groupContactDetails['communion_venue_other'] ?? ''))
+                    : (($groupContactDetails['communion_venue'] ?? '') === 'parish_church' ? 'St. Patrick’s Parish Church' : '');
+                ?>
+                <p class="sacrament-group-confirmed-schedule">
+                    <strong>Group contact:</strong> <?= e((string) ($groupContactDetails['contact_person_name'] ?? 'Not provided')) ?>
+                    · <?= e((string) ($groupContactDetails['contact_person_number'] ?? '')) ?>
+                    · <?= e((string) ($groupContactDetails['contact_person_email'] ?? '')) ?>
+                </p>
+                <?php if ($requestedGroupVenue !== ''): ?>
+                    <p class="sacrament-group-confirmed-schedule"><strong>Requested group venue:</strong> <?= e($requestedGroupVenue) ?> (subject to confirmation)</p>
+                <?php endif; ?>
+            <?php endif; ?>
             <?php if ($batchEvent !== null): ?>
                 <p class="sacrament-group-confirmed-schedule"><strong>Shared schedule</strong>
                     <?= e(date('F j, Y', strtotime((string) $batchEvent['event_date']))) ?>
@@ -502,6 +768,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         (string) $batchEvent['start_time'],
                         $batchEvent['end_time'] !== null ? (string) $batchEvent['end_time'] : null
                     )) : '— time to be confirmed' ?>
+                    <?php if ($confirmedGroupVenue !== ''): ?> · <strong>Venue:</strong> <?= e($confirmedGroupVenue) ?><?php else: ?> · Venue to be confirmed<?php endif; ?>
                 </p>
             <?php endif; ?>
 
@@ -520,11 +787,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </div>
                     <ul class="sacrament-group-applicant-list">
                         <?php foreach ($candidateApplications as $candidate): ?>
+                            <?php $candidateDetails = json_decode((string) ($candidate['details'] ?? ''), true);
+                            $candidateDetails = is_array($candidateDetails) ? $candidateDetails : []; ?>
                             <li>
                                 <label class="sacrament-group-applicant">
                                     <input type="checkbox" name="application_ids[]" value="<?= (int) $candidate['id'] ?>">
                                     <span class="sacrament-group-applicant__name"><?= e($candidate['applicant_name']) ?></span>
-                                    <span class="sacrament-group-applicant__meta"><?= e($candidate['request_no']) ?> · <?= e($candidate['applicant_email']) ?></span>
+                                    <span class="sacrament-group-applicant__meta"><?= e($candidate['request_no']) ?> · <?= e($candidate['applicant_email']) ?>
+                                        <?php if (trim((string) ($candidateDetails['contact_person_name'] ?? '')) !== ''): ?>
+                                            · Contact: <?= e((string) $candidateDetails['contact_person_name']) ?>
+                                        <?php endif; ?>
+                                        <?php if (trim((string) ($candidateDetails['group_label'] ?? '')) !== ''): ?>
+                                            · Requested group: <?= e((string) $candidateDetails['group_label']) ?>
+                                        <?php endif; ?>
+                                    </span>
                                 </label>
                             </li>
                         <?php endforeach; ?>
@@ -547,17 +823,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php else: ?>
                 <ul class="sacrament-group-assigned-list">
                     <?php foreach ($assignedApplications as $assigned): ?>
+                        <?php $assignedDetails = json_decode((string) ($assigned['details'] ?? ''), true);
+                        $assignedDetails = is_array($assignedDetails) ? $assignedDetails : []; ?>
                         <li>
                             <div class="sacrament-group-assigned-person">
                                 <strong><?= e($assigned['applicant_name']) ?></strong>
-                                <span><?= e($assigned['request_no']) ?> · <?= e($assigned['applicant_email']) ?></span>
+                                <span><?= e($assigned['request_no']) ?> · <?= e($assigned['applicant_email']) ?> · <?= !empty($assigned['person_id']) ? 'Profile linked' : 'Identity match pending' ?></span>
                             </div>
                             <span class="sacrament-group-status"><?= e(status_label('application', (string) $assigned['status'])) ?></span>
-                            <a class="sacrament-group-review" href="<?= e($basePath . '/admin/requests/applications-queue.php?' . http_build_query([
-                                    'q' => $assigned['request_no'],
-                                    'open_application_id' => (int) $assigned['id'],
-                                ])) ?>">Review application</a>
-                            <?php if ($batchEvent === null): ?>
+                            <?php if (($assignedDetails['intake_mode'] ?? '') !== 'group'): ?>
+                                <a class="sacrament-group-review" href="<?= e($basePath . '/admin/requests/applications-queue.php?' . http_build_query([
+                                        'q' => $assigned['request_no'],
+                                        'open_application_id' => (int) $assigned['id'],
+                                    ])) ?>">Review application</a>
+                            <?php endif; ?>
+                            <?php if ($batchEvent === null && ($assignedDetails['intake_mode'] ?? '') !== 'group'): ?>
                                 <form method="post" class="sacrament-group-remove-form">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="remove_application">
@@ -572,7 +852,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <?php endif; ?>
             </div>
 
-            <?php if ($assignedApplications !== []): ?>
+            <?php if ($assignedApplications !== [] && ($canScheduleBatch ?? false)): ?>
                 <section class="sacrament-group-schedule">
                 <div class="sacrament-group-subheading">
                     <div>
@@ -594,9 +874,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <label>End time
                         <input type="time" name="end_time" value="<?= $batchEvent && $batchEvent['end_time'] ? e(date('H:i', strtotime((string) $batchEvent['end_time']))) : '' ?>">
                     </label>
+                    <label>Confirmed venue <span class="field-hint">(leave blank if still to be confirmed)</span>
+                        <input type="text" name="confirmed_venue" maxlength="255" value="<?= e($confirmedGroupVenue) ?>">
+                    </label>
                     <button type="submit" class="btn"><?= $batchEvent === null ? 'Confirm and notify families' : 'Update and notify families' ?></button>
                 </form>
                 </section>
+            <?php elseif ($assignedApplications !== []): ?>
+                <p class="sacrament-group-empty">Use the group approval controls above before scheduling. Individual profile and Baptism checks remain necessary before register encoding.</p>
             <?php endif; ?>
         </section>
     <?php endif; ?>
@@ -617,7 +902,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <article class="sacrament-group-list-item">
                         <div class="sacrament-group-list-item__main">
                             <h3><?= e($batch['batch_name']) ?></h3>
-                            <p><?= e($sacramentLabels[$batch['sacrament_type']] ?? $batch['sacrament_type']) ?> · School year <?= e($batch['school_year']) ?></p>
+                            <p><?= e($sacramentLabels[$batch['sacrament_type']] ?? $batch['sacrament_type']) ?> · <?= $batch['grade_level'] === 'general' ? 'Calendar year ' . e(trim((string) $batch['school_year'])) : e($gradeOptions[$batch['grade_level']] ?? $batch['grade_level']) . ' · School year ' . e($batch['school_year']) ?></p>
                         </div>
                         <div class="sacrament-group-list-item__metric">
                             <span>Applicants</span>

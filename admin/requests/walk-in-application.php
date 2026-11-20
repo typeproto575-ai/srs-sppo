@@ -114,8 +114,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         ?>
     </section>
 
-    <section class="card walk-in-form-section" data-dedicated-spouse data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
-        <h2>Bride</h2>
+    <fieldset class="card walk-in-form-section" data-dedicated-spouse data-marriage-only<?= $selectedType === 'marriage' ? '' : ' hidden disabled' ?>>
+        <legend>Bride</legend>
         <p class="field-hint">Search the master person index first, or create a profile with only a name and date of birth.</p>
         <?php
         $matchRole = 'spouse';
@@ -130,7 +130,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         $matchBirthDate = $values['spouse_birth_date'];
         require __DIR__ . '/../../includes/person-match-widget.php';
         ?>
-    </section>
+    </fieldset>
 
     <section class="card walk-in-form-section" data-dedicated-panel="contact">
         <h2>Applicant contact</h2>

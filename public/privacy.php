@@ -87,7 +87,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="retention">
             <h2 class="legal-clause__title">How Long We Keep It</h2>
             <ol class="legal-subclauses">
-                <li>The permanent parish sacramental registers — persons, baptismal records, confirmation records, First Communion records, marriage records, and marriage witnesses — are never purged, anonymized, or flagged as disposable.</li>
+                <li>The permanent parish sacramental registers — persons, baptismal records, confirmation records, Holy Communion records, marriage records, and marriage witnesses — are never purged, anonymized, or flagged as disposable.</li>
                 <li>Online requests and applications are anonymized after <strong>60 months</strong> (5 years) from completion or cancellation.</li>
                 <li>Audit and security logs (including IP addresses) are retained for <strong>36 months</strong> (3 years); once the period ends, IP addresses and user agents are removed and only the action and date remain.</li>
                 <li>Disposable operational logs (rate-limit attempts, email delivery log, notifications, expired or used password reset tokens) are deleted when they become older than <strong>30 days</strong> (rate-limit attempts) or <strong>36 months</strong> (all other listed logs).</li>

@@ -3520,6 +3520,7 @@ textarea {
 }
 
 .walk-in-page .walk-in-form-section {
+    min-width: 0;
     padding: clamp(1rem, 2.5vw, 1.4rem);
     border: 1px solid rgba(31, 61, 43, 0.15);
     border-radius: 12px;
@@ -5246,6 +5247,20 @@ textarea {
 .sacrament-group-manager-heading > div > p:last-child {
     margin-top: .35rem;
 }
+
+.sacrament-group-review-actions {
+    margin: 0 0 .85rem;
+}
+
+.sacrament-group-review-actions form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+}
+
+.sacrament-group-review-actions .field-hint { margin: 0; }
 
 .sacrament-group-status {
     display: inline-flex;

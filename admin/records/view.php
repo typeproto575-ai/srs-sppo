@@ -135,13 +135,37 @@ foreach ($personIds as $personId) {
     }
 }
 
-function record_view_value($value): string
+function record_view_value($value, string $emptyLabel = 'Not recorded'): string
 {
-    if ($value === null || $value === '') {
-        return 'Not recorded';
+    if ($value === null || (is_string($value) && trim($value) === '')) {
+        return $emptyLabel;
+    }
+    $yesNoLabel = format_yes_no_display_value($value);
+    if ($yesNoLabel !== null) {
+        return $yesNoLabel;
     }
     if (is_array($value) || is_object($value)) {
-        return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $normalize = static function (mixed $item) use (&$normalize, $emptyLabel): mixed {
+            if ($item === null || (is_string($item) && trim($item) === '')) {
+                return $emptyLabel;
+            }
+            $label = format_yes_no_display_value($item);
+            if ($label !== null) {
+                return $label;
+            }
+            if (is_array($item)) {
+                foreach ($item as $key => $nestedValue) {
+                    $item[$key] = $normalize($nestedValue);
+                }
+            } elseif (is_object($item)) {
+                $item = get_object_vars($item);
+                foreach ($item as $key => $nestedValue) {
+                    $item[$key] = $normalize($nestedValue);
+                }
+            }
+            return $item;
+        };
+        return (string) json_encode($normalize($value), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
     return (string) $value;
 }
@@ -245,7 +269,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <dl class="record-detail-list">
                     <?php foreach ($record['details'] as $key => $value): ?>
                         <?php if (strtolower((string) $key) === 'legitimacy') continue; ?>
-                        <div><dt><?= e(record_view_label((string) $key)) ?></dt><dd><?= e(record_view_value($value)) ?></dd></div>
+                        <div><dt><?= e(record_view_label((string) $key)) ?></dt><dd><?= e(record_view_value(
+                            $value,
+                            ($record['sacrament_type'] ?? '') === 'marriage' ? '—' : 'Not recorded'
+                        )) ?></dd></div>
                     <?php endforeach; ?>
                 </dl>
             <?php endif; ?>

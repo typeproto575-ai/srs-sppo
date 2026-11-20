@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/person-linking.php';
 require_once __DIR__ . '/../../includes/sacrament-data.php';
 require_once __DIR__ . '/../../includes/funeral-data.php';
+require_once __DIR__ . '/../../includes/mail.php';
 require_role('secretary');
 
 $basePath = base_path();
@@ -96,10 +97,10 @@ $newPerson = [
 
 $sacramentOptions = ['baptism', 'confirmation', 'marriage', 'anointing'];
 $savedSacraments = [];
+$recordMetadata = funeral_record_metadata($editRecord['sacraments_received'] ?? null);
 if ($isEdit) {
-    $decodedSacraments = json_decode((string) ($editRecord['sacraments_received'] ?? ''), true);
-    $savedSacraments = is_array($decodedSacraments)
-        ? array_values(array_intersect($sacramentOptions, $decodedSacraments))
+    $savedSacraments = is_array($recordMetadata['sacraments'] ?? null)
+        ? array_values(array_intersect($sacramentOptions, $recordMetadata['sacraments']))
         : [];
 } elseif ($selectedPerson) {
     $savedSacraments = funeral_suggested_sacraments($pdo, $personId);
@@ -117,7 +118,11 @@ $values = [
     'sacraments_received' => $savedSacraments,
     'cause_of_death' => (string) ($editRecord['cause_of_death'] ?? ''),
     'place_of_burial' => (string) ($editRecord['place_of_burial'] ?? ''),
-    'service_type' => (string) ($editRecord['service_type'] ?? ''),
+    'service_type' => $isEdit
+        ? (in_array($recordMetadata['service_variant'], ['mass_with_wake', 'mass_death_anniversary'], true)
+            ? $recordMetadata['service_variant']
+            : ((string) ($editRecord['service_type'] ?? '') === 'mass' ? 'legacy_mass' : 'blessing'))
+        : '',
     'service_date' => (string) ($editRecord['service_date'] ?? ''),
     'service_time' => substr((string) ($editRecord['service_time'] ?? ''), 0, 5),
     'minister_name' => (string) ($editRecord['minister_name'] ?? ''),
@@ -125,12 +130,15 @@ $values = [
     'page_no' => (string) ($editRecord['page_no'] ?? ''),
     'line_no' => (string) ($editRecord['line_no'] ?? ''),
     'contact_number' => (string) ($editRecord['contact_number'] ?? ''),
+    'contact_name' => (string) ($recordMetadata['contact_name'] ?? ''),
+    'contact_email' => (string) ($recordMetadata['contact_email'] ?? ''),
 ];
 if ($isPost) {
     foreach ([
         'date_of_death', 'date_of_burial', 'age_at_death', 'civil_status', 'spouse_name',
         'parents_name', 'cause_of_death', 'place_of_burial', 'service_type', 'service_date',
         'service_time', 'minister_name', 'book_no', 'page_no', 'line_no', 'contact_number',
+        'contact_name', 'contact_email',
     ] as $field) {
         $values[$field] = funeral_input_string($_POST[$field] ?? '');
     }
@@ -178,6 +186,8 @@ if ($isPost) {
             'page_no' => 'page number',
             'line_no' => 'line number',
             'contact_number' => 'contact number',
+            'contact_name' => 'person to be notified name',
+            'contact_email' => 'person to be notified email address',
             'new_first_name' => 'new person first name',
             'new_middle_name' => 'new person middle name',
             'new_last_name' => 'new person last name',
@@ -238,6 +248,8 @@ if ($isPost) {
             'page_no' => 20,
             'line_no' => 20,
             'contact_number' => 30,
+            'contact_name' => 150,
+            'contact_email' => 150,
         ];
         foreach ($lengthLimits as $field => $limit) {
             if (strlen($values[$field]) > $limit) {
@@ -288,9 +300,14 @@ if ($isPost) {
                 } else {
                     $nullable = static fn(string $key): ?string => $values[$key] === '' ? null : $values[$key];
                     $age = $values['age_at_death'] === '' ? null : (int) $values['age_at_death'];
-                    $sacramentsJson = json_encode(
+                    $serviceType = in_array($values['service_type'], ['mass', 'mass_with_wake', 'mass_death_anniversary', 'legacy_mass'], true)
+                        ? 'mass'
+                        : 'blessing';
+                    $sacramentsJson = funeral_record_metadata_json(
                         $values['sacraments_received'],
-                        JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+                        $values['service_type'],
+                        $values['contact_name'],
+                        $values['contact_email']
                     );
                     $recordValues = [
                         $targetPersonId,
@@ -303,7 +320,7 @@ if ($isPost) {
                         $sacramentsJson,
                         $nullable('cause_of_death'),
                         $nullable('place_of_burial'),
-                        $values['service_type'],
+                        $serviceType,
                         $nullable('service_date'),
                         $nullable('service_time'),
                         $nullable('minister_name'),
@@ -354,6 +371,33 @@ if ($isPost) {
                         'Funeral record ' . ($isEdit ? 'updated' : 'created') . " for person #{$targetPersonId}."
                     );
                     $pdo->commit();
+                    if (!$isEdit && $values['contact_email'] !== '') {
+                        try {
+                            $serviceLabel = match ($values['service_type']) {
+                                'mass_with_wake' => 'Funeral Mass (With Wake)',
+                                'mass_death_anniversary' => 'Funeral Mass (Death Anniversary)',
+                                'blessing' => 'Funeral Blessing',
+                                default => 'Funeral Mass',
+                            };
+                            send_mail(
+                                $values['contact_email'],
+                                'Funeral Record Notification',
+                                "Dear " . $values['contact_name'] . ",\r\n\r\n"
+                                    . "The Parish Office has recorded a " . $serviceLabel . " entry in the parish register. "
+                                    . "Please contact the Parish Office if you have questions.\r\n\r\n"
+                                    . "St. Patrick's Parish Office — Dingalan, Aurora",
+                                $pdo,
+                                'funeral_record_contact',
+                                'funeral_records',
+                                $recordId
+                            );
+                        } catch (Throwable $mailException) {
+                            error_log(
+                                'Funeral record saved, but contact email failed for record '
+                                . $recordId . ': ' . $mailException->getMessage()
+                            );
+                        }
+                    }
                     redirect_to('/admin/funerals/index.php?' . ($isEdit ? 'updated=1' : 'added=1'));
                     exit;
                 }
@@ -602,13 +646,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     <section class="panel-card">
         <h2>Service and Register</h2>
         <fieldset>
-            <legend>Blessing or Mass *</legend>
-            <?php foreach (['mass' => 'Mass', 'blessing' => 'Blessing'] as $value => $label): ?>
+            <legend>Funeral Service *</legend>
+            <?php foreach ([
+                'mass_with_wake' => 'Funeral Mass (With Wake)',
+                'mass_death_anniversary' => 'Funeral Mass (Death Anniversary)',
+                'blessing' => 'Funeral Blessing',
+            ] as $value => $label): ?>
                 <label class="radio-label">
-                    <input type="radio" name="service_type" value="<?= e($value) ?>" required<?= $values['service_type'] === $value ? ' checked' : '' ?>>
+                    <input type="radio" name="service_type" value="<?= e($value) ?>" required data-funeral-service-type<?= $values['service_type'] === $value ? ' checked' : '' ?>>
                     <?= e($label) ?>
                 </label>
             <?php endforeach; ?>
+            <?php if ($isEdit && $values['service_type'] === 'legacy_mass'): ?>
+                <label class="radio-label">
+                    <input type="radio" name="service_type" value="legacy_mass" required data-funeral-service-type checked>
+                    Funeral Mass (type not recorded)
+                </label>
+            <?php endif; ?>
         </fieldset>
         <div class="form-grid view-grid">
             <label>Service Date
@@ -617,8 +671,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label>Service Time
                 <input type="time" name="service_time" value="<?= e($values['service_time']) ?>" step="60">
             </label>
-            <label>Minister
-                <input type="text" name="minister_name" maxlength="150" value="<?= e($values['minister_name']) ?>">
+            <label>Minister <span data-minister-required><?= in_array($values['service_type'], ['mass_with_wake', 'mass_death_anniversary'], true) ? '*' : '(optional for Blessing)' ?></span>
+                <input type="text" name="minister_name" maxlength="150" value="<?= e($values['minister_name']) ?>" data-funeral-minister<?= in_array($values['service_type'], ['mass_with_wake', 'mass_death_anniversary'], true) ? ' required' : '' ?>>
             </label>
             <label>Book
                 <input type="text" name="book_no" maxlength="20" value="<?= e($values['book_no']) ?>">
@@ -629,10 +683,21 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <label>Line
                 <input type="text" name="line_no" maxlength="20" value="<?= e($values['line_no']) ?>">
             </label>
-            <label>Contact Number
-                <input type="tel" name="contact_number" maxlength="30" value="<?= e($values['contact_number']) ?>">
-            </label>
         </div>
+        <fieldset>
+            <legend>Person in Charge / Person to Be Notified</legend>
+            <div class="form-grid view-grid">
+                <label>Name *
+                    <input type="text" name="contact_name" maxlength="150" value="<?= e($values['contact_name']) ?>" required>
+                </label>
+                <label>Contact Number *
+                    <input type="tel" name="contact_number" maxlength="30" value="<?= e($values['contact_number']) ?>" required>
+                </label>
+                <label>Email Address <span class="field-hint">(optional; a notification will be sent if provided)</span>
+                    <input type="email" name="contact_email" maxlength="150" value="<?= e($values['contact_email']) ?>">
+                </label>
+            </div>
+        </fieldset>
     </section>
 
     <div>
@@ -658,6 +723,23 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     var createPanel = form.querySelector('[data-create-person-panel]');
     var createFlag = form.querySelector('[data-create-person-flag]');
     var ageIsAuto = age.dataset.autoAge === '1';
+    var serviceTypes = form.querySelectorAll('[data-funeral-service-type]');
+    var minister = form.querySelector('[data-funeral-minister]');
+    var ministerRequired = form.querySelector('[data-minister-required]');
+
+    function syncFuneralMinisterRequirement() {
+        var selected = form.querySelector('[data-funeral-service-type]:checked');
+        var isMass = selected && selected.value !== 'blessing';
+        if (minister) minister.required = Boolean(isMass && selected.value !== 'legacy_mass');
+        if (ministerRequired) ministerRequired.textContent = isMass
+            ? (selected.value === 'legacy_mass' ? '(optional; legacy entry)' : '*')
+            : '(optional for Blessing)';
+    }
+
+    serviceTypes.forEach(function (radio) {
+        radio.addEventListener('change', syncFuneralMinisterRequirement);
+    });
+    syncFuneralMinisterRequirement();
 
     function calculateAge() {
         if (!ageIsAuto || !birthDate.value || !deathDate.value) return;

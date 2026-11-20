@@ -17,7 +17,7 @@ $recordStmt = $pdo->prepare(
     'SELECT fr.id, fr.person_id, fr.date_of_death, fr.date_of_burial, fr.age_at_death,
             fr.civil_status, fr.spouse_name, fr.parents_name, fr.cause_of_death,
             fr.place_of_burial, fr.service_type, fr.service_date, fr.service_time,
-            fr.minister_name, fr.book_no, fr.page_no, fr.line_no,
+            fr.minister_name, fr.book_no, fr.page_no, fr.line_no, fr.sacraments_received,
             p.first_name, p.middle_name, p.last_name, p.suffix, p.sex
      FROM funeral_records fr
      JOIN persons p ON p.id = fr.person_id
@@ -30,6 +30,8 @@ if (!$record) {
     redirect_to('/admin/funerals/index.php');
     exit;
 }
+$funeralMetadata = funeral_record_metadata($record['sacraments_received'] ?? null);
+$record['service_variant'] = $funeralMetadata['service_variant'];
 
 $person = [
     'first_name' => (string) ($record['first_name'] ?? ''),

@@ -32,7 +32,7 @@ foreach ($staffUsers as $staffUser) {
 if (isset($_GET['assignee']) && !is_string($_GET['assignee'])) {
     unset($_GET['assignee']);
 }
-$requirementStatuses = ['not_received', 'received', 'verified'];
+$requirementStatuses = ['not_received', 'received'];
 $requirementKeys = sd_application_requirement_keys();
 $returnKeys = ['status', 'sacrament', 'channel', 'assignee', 'q', 'range', 'date_from', 'date_to', 'per_page', 'page', 'open_application_id'];
 $returnParams = array_intersect_key($_GET, array_flip($returnKeys));
@@ -47,29 +47,44 @@ function application_queue_label(string $value): string
         'age_at_submission' => 'Age at Submission',
         'age_eligibility_status' => 'Age Eligibility Assessment',
         'birth_place' => 'Place of Birth',
-        'child_residence' => "Child's Current Residence",
+        'child_name' => "Applicant's Full Name",
+        'child_birth_date' => 'Date of Birth',
+        'child_birthplace' => 'Place of Birth',
+        'child_residence' => "Applicant's Current Residence",
         'parents_residence' => "Parents' Current Residence",
         'baptized_here' => 'Baptism Location',
         'baptism_parish' => 'Baptism Parish / Church and Location',
-        'communion_venue' => 'Requested First Communion Venue',
-        'communion_venue_other' => 'Other First Communion Venue',
+        'preferred_wedding_venue' => 'Requested Wedding Venue',
+        'preferred_wedding_venue_other' => 'Requested Venue Name / Location',
+        'communion_venue' => 'Requested Holy Communion Venue',
+        'communion_venue_other' => 'Requested Holy Communion Venue Name / Location',
+        'group_label' => 'Group / Organization',
+        'group_reference' => 'Group Reference',
+        'intake_mode' => 'Application Type',
+        'contact_person_name' => 'Person to Be Notified',
+        'contact_person_number' => 'Contact Number',
+        'contact_person_email' => 'Contact Email',
+        'preferred_priest' => 'Requested Officiating Priest',
         'communion_sponsor_names' => 'Godparents / Sponsors',
         'principal_sponsors' => 'Principal Sponsors',
-        'godfathers' => 'Godfathers (Ninong)',
-        'godmothers' => 'Godmothers (Ninang)',
+        'godfathers' => 'Godfathers',
+        'godmothers' => 'Godmothers',
         'sponsors' => 'Principal Sponsors',
-        'formation_path' => 'Requested Formation Pathway',
-        'school_grade' => 'Current Grade Level',
-        'school_grade_other' => 'Other Grade Level / Preparation Situation',
-        'school_year' => 'School Year',
+        'formation_path' => 'Requested Preparation Type',
+        'school_grade' => 'Legacy Group Classification',
+        'school_grade_other' => 'Legacy Preparation Situation',
+        'school_year' => 'Calendar / School Year',
         'sponsor_names' => 'Proposed Confirmation Sponsor(s)',
         'sponsor_eligibility_confirmed' => 'Sponsor Eligibility Declared at Submission',
         'guardian_relationship' => 'Guardian Relationship',
         'guardian_relationship_other' => 'Other Guardian Relationship',
         'parent_guardian_name' => 'Guardian / Authorized Representative',
-        'batch' => 'Regular parish group',
-        'individual_catchup' => 'Individual / catch-up pathway',
-        'not_sure' => 'Not sure — please advise',
+        'batch' => 'Group preparation',
+        'individual_catchup' => 'Individual / catch-up preparation',
+        'general' => 'General group',
+        'received' => 'Received',
+        'not_received' => 'Not Received',
+        'verified' => 'Received',
         'this_parish' => 'This parish',
         'elsewhere' => 'Another parish / church',
     ];
@@ -77,11 +92,62 @@ function application_queue_label(string $value): string
     if (isset($labels[$value])) {
         return $labels[$value];
     }
+    if ($value === 'first_communion') {
+        return 'Holy Communion';
+    }
 
     return ucwords(str_replace('_', ' ', $value));
 }
 
-function application_queue_render_detail_value(mixed $value): void
+function application_queue_requirement_field_type(string $requirementKey): string
+{
+    if ($requirementKey === 'pre_cana_seminar'
+        || str_contains($requirementKey, 'seminar')
+        || str_contains($requirementKey, 'formation')
+        || str_contains($requirementKey, 'catechism')
+        || str_contains($requirementKey, 'reconciliation')) {
+        return 'seminar';
+    }
+    if (str_contains($requirementKey, 'origin_baptismal_certificate')
+        || str_contains($requirementKey, 'origin_confirmation_certificate')) {
+        return 'origin_certificate';
+    }
+    if ($requirementKey === 'marriage_license_application'
+        || str_starts_with($requirementKey, 'psa_')) {
+        return 'reference_document';
+    }
+    return 'note_only';
+}
+
+function application_queue_requirement_old_document_warning(
+    string $requirementKey,
+    string $documentDate
+): ?string
+{
+    $timestamp = strtotime($documentDate);
+    if ($timestamp === false) {
+        return null;
+    }
+
+    $fieldType = application_queue_requirement_field_type($requirementKey);
+    if ($fieldType === 'origin_certificate'
+        && $timestamp < strtotime('-6 months', strtotime('today'))) {
+        return 'Issued more than 6 months ago';
+    }
+    if ($requirementKey === 'marriage_license_application'
+        && $timestamp < strtotime('-120 days', strtotime('today'))) {
+        return 'Issued more than 120 days ago';
+    }
+    return null;
+}
+
+function application_queue_format_requirement_date(string $documentDate): string
+{
+    $timestamp = strtotime($documentDate);
+    return $timestamp === false ? $documentDate : date('M j, Y', $timestamp);
+}
+
+function application_queue_render_detail_value(mixed $value, string $key = ''): void
 {
     if (is_array($value)) {
         if ($value === []) {
@@ -122,24 +188,36 @@ function application_queue_render_detail_value(mixed $value): void
             if (!$isList) {
                 echo '<strong>' . e(application_queue_label((string) $key)) . ':</strong> ';
             }
-            application_queue_render_detail_value($nestedValue);
+            application_queue_render_detail_value($nestedValue, $isList ? '' : (string) $key);
             echo '</li>';
         }
         echo '</ul>';
         return;
     }
 
-    if ($value === null || $value === '') {
+    if ($value === null || (is_string($value) && trim($value) === '')) {
         echo '—';
         return;
     }
 
-    if (is_bool($value)) {
-        echo $value ? 'Yes' : 'No';
+    $yesNoLabel = format_yes_no_display_value($value);
+    if ($yesNoLabel !== null) {
+        echo e($yesNoLabel);
         return;
     }
 
     $text = (string) $value;
+    if ($key === 'preferred_wedding_venue') {
+        $text = match (strtolower(trim($text))) {
+            'church' => "St. Patrick's Parish Church",
+            'other' => 'Another parish church, chapel, or community venue',
+            'barangay_chapel' => 'Barangay chapel',
+            default => $text,
+        };
+        echo e($text);
+        return;
+    }
+
     $knownValueLabels = ['batch', 'individual_catchup', 'not_sure', 'this_parish', 'elsewhere'];
     echo e(str_contains($text, '_') || in_array($text, $knownValueLabels, true)
         ? application_queue_label($text)
@@ -561,7 +639,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $eventTitle = match ($application['sacrament_type']) {
                 'baptism' => 'Baptism',
-                'first_communion' => 'First Communion',
+                'first_communion' => 'Holy Communion',
                 'confirmation' => 'Confirmation',
                 'marriage' => 'Wedding',
                 default => 'Parish Sacrament',
@@ -790,9 +868,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $requirementKey = (string) ($_POST['requirement_key'] ?? '');
             $requirementStatus = (string) ($_POST['requirement_status'] ?? '');
             $requirementNote = trim((string) ($_POST['requirement_note'] ?? ''));
+            $referenceNo = array_key_exists('reference_no', $_POST)
+                ? trim((string) $_POST['reference_no'])
+                : null;
+            $documentDate = array_key_exists('document_date', $_POST)
+                ? trim((string) $_POST['document_date'])
+                : null;
+            $issuingParish = array_key_exists('issuing_parish', $_POST)
+                ? trim((string) $_POST['issuing_parish'])
+                : null;
+            $preCanaInputInvalid = false;
+            $preCanaFields = [];
+            foreach (['facilitator_name', 'session_time', 'session_count'] as $field) {
+                if (!array_key_exists($field, $_POST)) {
+                    $preCanaFields[$field] = null;
+                } elseif (!is_string($_POST[$field])) {
+                    $preCanaFields[$field] = null;
+                    $preCanaInputInvalid = true;
+                } else {
+                    $preCanaFields[$field] = trim($_POST[$field]);
+                }
+            }
+            $sessionCountValue = $preCanaFields['session_count'];
+            $sessionCountInteger = $sessionCountValue === null || $sessionCountValue === ''
+                ? null
+                : filter_var($sessionCountValue, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 999]]);
             if (!in_array($requirementKey, $requirementKeys[$application['sacrament_type']] ?? [], true)
                 || !in_array($requirementStatus, $requirementStatuses, true)
-                || strlen($requirementNote) > 500) {
+                || strlen($requirementNote) > 500
+                || ($referenceNo !== null && strlen($referenceNo) > 100)
+                || ($issuingParish !== null && strlen($issuingParish) > 255)
+                || ($requirementKey === 'pre_cana_seminar' && (
+                    $preCanaInputInvalid
+                    || ($preCanaFields['facilitator_name'] !== null && strlen($preCanaFields['facilitator_name']) > 150)
+                    || ($preCanaFields['session_time'] !== null && $preCanaFields['session_time'] !== ''
+                        && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $preCanaFields['session_time']) !== 1)
+                    || ($sessionCountValue !== null && $sessionCountValue !== '' && $sessionCountInteger === false)
+                ))
+                || ($documentDate !== null && $documentDate !== ''
+                    && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $documentDate)
+                        || false === strtotime($documentDate)))) {
                 $pdo->rollBack();
                 $_SESSION['application_queue_error'] = 'The selected requirement is invalid.';
                 redirect_to($postReturnUrl);
@@ -805,6 +920,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $currentRequirement = $requirements[$requirementKey] ?? [];
             $currentRequirement = is_array($currentRequirement) ? $currentRequirement : [];
             $currentRequirementStatus = (string) ($currentRequirement['status'] ?? 'not_received');
+            if ($currentRequirementStatus === 'verified') {
+                $currentRequirementStatus = 'received';
+            }
             if (!in_array($currentRequirementStatus, $requirementStatuses, true)) {
                 $currentRequirementStatus = 'not_received';
             }
@@ -813,23 +931,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $currentRequirementStatus,
                 $requirementStatus
             );
-            $requirements[$requirementKey] = [
-                'status' => $requirementStatus,
-                'note' => $requirementNote,
-            ];
+            $requirements[$requirementKey] = $currentRequirement;
+            $requirements[$requirementKey]['status'] = $requirementStatus;
+            $requirements[$requirementKey]['note'] = $requirementNote;
+            foreach ([
+                'reference_no' => $referenceNo,
+                'document_date' => $documentDate,
+                'issuing_parish' => $issuingParish,
+            ] as $metadataKey => $metadataValue) {
+                if ($metadataValue === null) {
+                    continue;
+                }
+                if ($metadataValue === '') {
+                    unset($requirements[$requirementKey][$metadataKey]);
+                } else {
+                    $requirements[$requirementKey][$metadataKey] = $metadataValue;
+                }
+            }
+            if ($requirementKey === 'pre_cana_seminar') {
+                foreach ([
+                    'facilitator_name' => $preCanaFields['facilitator_name'],
+                    'session_time' => $preCanaFields['session_time'],
+                    'session_count' => $sessionCountValue === null || $sessionCountValue === ''
+                        ? null
+                        : (string) $sessionCountInteger,
+                ] as $metadataKey => $metadataValue) {
+                    if ($metadataValue === null || $metadataValue === '') {
+                        unset($requirements[$requirementKey][$metadataKey]);
+                    } else {
+                        $requirements[$requirementKey][$metadataKey] = $metadataValue;
+                    }
+                }
+            }
             $encodedRequirements = json_encode($requirements, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             if ($nextApplicationStatus !== null) {
                 $update = $pdo->prepare(
                     'UPDATE sacrament_applications SET requirements = ?, status = ? WHERE id = ?'
                 );
                 $update->execute([$encodedRequirements, $nextApplicationStatus, (int) $applicationId]);
+                $auditDescription = 'Application status automatically changed from new to reviewing after a requirement status changed.';
+                $auditMetadata = [];
+                $recordedDocumentDate = (string) ($requirements[$requirementKey]['document_date'] ?? '');
+                $recordedReferenceNo = (string) ($requirements[$requirementKey]['reference_no'] ?? '');
+                if ($recordedDocumentDate !== '') {
+                    $auditMetadata[] = 'Document date: ' . $recordedDocumentDate;
+                }
+                if ($recordedReferenceNo !== '') {
+                    $auditMetadata[] = 'Reference no: ' . $recordedReferenceNo;
+                }
+                if ($auditMetadata !== []) {
+                    $auditDescription .= ' ' . implode('; ', $auditMetadata) . '.';
+                }
                 log_activity(
                     $pdo,
                     (int) current_user()['id'],
                     'sacrament_application_status_changed',
                     'sacrament_applications',
                     (int) $applicationId,
-                    'Application status automatically changed from new to reviewing after a requirement status changed.'
+                    $auditDescription
                 );
             } else {
                 $update = $pdo->prepare('UPDATE sacrament_applications SET requirements = ? WHERE id = ?');
@@ -890,16 +1049,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     redirect_to($postReturnUrl);
                 }
             }
+            $applicationDetailsForStatus = json_decode((string) ($application['details'] ?? ''), true);
+            $retainGroupMembership = $application['sacrament_type'] === 'first_communion'
+                && is_array($applicationDetailsForStatus)
+                && ($applicationDetailsForStatus['intake_mode'] ?? '') === 'group';
             $update = $pdo->prepare(
                 "UPDATE sacrament_applications
                  SET status = ?, rejection_reason = ?,
-                     batch_id = CASE WHEN ? = 'rejected' THEN NULL ELSE batch_id END
+                     batch_id = CASE WHEN ? = 'rejected' AND ? = 0 THEN NULL ELSE batch_id END
                  WHERE id = ?"
             );
             $update->execute([
                 $newStatus,
                 $newStatus === 'rejected' ? $closeReason : null,
                 $newStatus,
+                $retainGroupMembership ? 1 : 0,
                 (int) $applicationId,
             ]);
             $pdo->commit();
@@ -946,8 +1110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $selfUrl = $basePath . '/admin/requests/applications-queue.php';
 $rfConfig = [
     'date_column' => 'DATE(sa.created_at)',
-    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)'],
-    'placeholder' => 'Search request number, applicant, or application details...',
+    'search_columns' => ['sa.request_no', 'sa.applicant_name', 'CAST(sa.details AS CHAR)', 'sa.notes'],
+    'placeholder' => 'Search request number, applicant, details, or TEST SEED...',
     'ranges' => ['today', 'week', 'month', 'year'],
     'filters' => [
         'status' => ['label' => 'Status', 'options' => array_combine($statuses, array_map(static fn($s) => status_label('application', (string) $s), $statuses))],
@@ -988,31 +1152,138 @@ if ($filterAssignee === 'unassigned') {
     $whereSql .= ' AND sa.assigned_to = ?';
     $params[] = (int) $filterAssignee;
 }
+$filteredApplicationWhereSql = $whereSql;
+$whereSql .= " AND NOT (
+    sa.sacrament_type = 'first_communion'
+    AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.intake_mode')), '') = 'group'
+    AND EXISTS (
+        SELECT 1
+        FROM sacrament_batches group_batch
+        WHERE group_batch.id = sa.batch_id
+          AND group_batch.sacrament_type = 'first_communion'
+          AND group_batch.grade_level = 'general'
+    )
+)";
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_applications sa{$whereSql}");
 $countStmt->execute($params);
-$totalRows = (int) $countStmt->fetchColumn();
+$standaloneRowCount = (int) $countStmt->fetchColumn();
+$matchingGroupMemberSql = "EXISTS (
+    SELECT 1
+    FROM sacrament_applications sa
+    {$filteredApplicationWhereSql}
+      AND sa.batch_id = b.id
+      AND sa.sacrament_type = 'first_communion'
+      AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.intake_mode')), '') = 'group'
+)";
+$groupBatchWhereSql = "b.sacrament_type = 'first_communion'
+    AND b.grade_level = 'general'
+    AND {$matchingGroupMemberSql}";
+$groupCountStmt = $pdo->prepare("SELECT COUNT(*) FROM sacrament_batches b WHERE {$groupBatchWhereSql}");
+$groupCountStmt->execute($params);
+$groupRowCount = (int) $groupCountStmt->fetchColumn();
+$totalRows = $standaloneRowCount + $groupRowCount;
 $page = min($rf['page'], max(1, (int) ceil($totalRows / $rf['per_page'])));
 $offset = ($page - 1) * $rf['per_page'];
 $limit = (int) $rf['per_page'];
 $offset = (int) $offset;
 $rf['page'] = $page;
 $rf['offset'] = $offset;
-$stmt = $pdo->prepare(
-    "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.batch_id, sa.spouse_person_id,
-            sa.applicant_name, sa.applicant_contact, sa.applicant_email, sa.preferred_date, sa.preferred_time,
-            sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at, 
-            sa.updated_at, sa.rejection_reason, sa.assigned_to, 
-            assignee.full_name AS assigned_to_name, batch.batch_name
-     FROM sacrament_applications sa
-     LEFT JOIN users assignee ON assignee.id = sa.assigned_to
-     LEFT JOIN sacrament_batches batch ON batch.id = sa.batch_id
-     {$whereSql}
-     ORDER BY sa.created_at DESC, sa.id DESC
+$queueKeyStmt = $pdo->prepare(
+    "SELECT queue_rows.row_type, queue_rows.row_id
+     FROM (
+         SELECT 'application' AS row_type, sa.id AS row_id, sa.created_at AS sort_at
+         FROM sacrament_applications sa{$whereSql}
+         UNION ALL
+         SELECT 'group' AS row_type, b.id AS row_id, MIN(group_member.created_at) AS sort_at
+         FROM sacrament_batches b
+         INNER JOIN sacrament_applications group_member
+            ON group_member.batch_id = b.id
+           AND group_member.sacrament_type = 'first_communion'
+           AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(group_member.details, '$.intake_mode')), '') = 'group'
+         WHERE {$groupBatchWhereSql}
+         GROUP BY b.id
+     ) queue_rows
+     ORDER BY queue_rows.sort_at DESC, queue_rows.row_type ASC, queue_rows.row_id DESC
      LIMIT {$limit} OFFSET {$offset}"
 );
-$stmt->execute($params);
-$applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$queueKeyStmt->execute(array_merge($params, $params));
+$queueKeys = $queueKeyStmt->fetchAll(PDO::FETCH_ASSOC);
+$pageApplicationIds = [];
+$pageGroupIds = [];
+foreach ($queueKeys as $queueKey) {
+    if ($queueKey['row_type'] === 'application') {
+        $pageApplicationIds[] = (int) $queueKey['row_id'];
+    } elseif ($queueKey['row_type'] === 'group') {
+        $pageGroupIds[] = (int) $queueKey['row_id'];
+    }
+}
+
+$applications = [];
+if ($pageApplicationIds !== []) {
+    $applicationPlaceholders = implode(', ', array_fill(0, count($pageApplicationIds), '?'));
+    $applicationStmt = $pdo->prepare(
+        "SELECT sa.id, sa.request_no, sa.channel, sa.sacrament_type, sa.person_id, sa.batch_id, sa.spouse_person_id,
+                sa.applicant_name, sa.applicant_contact, sa.applicant_email, sa.preferred_date, sa.preferred_time,
+                sa.status, sa.details, sa.requirements, sa.record_id, sa.created_at,
+                sa.updated_at, sa.rejection_reason, sa.notes, sa.assigned_to,
+                assignee.full_name AS assigned_to_name, batch.batch_name
+         FROM sacrament_applications sa
+         LEFT JOIN users assignee ON assignee.id = sa.assigned_to
+         LEFT JOIN sacrament_batches batch ON batch.id = sa.batch_id
+         WHERE sa.id IN ({$applicationPlaceholders})
+         ORDER BY sa.created_at DESC, sa.id DESC"
+    );
+    $applicationStmt->execute($pageApplicationIds);
+    $applications = $applicationStmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+$groupSummaries = [];
+if ($pageGroupIds !== []) {
+    $groupPlaceholders = implode(', ', array_fill(0, count($pageGroupIds), '?'));
+    $groupSummaryStmt = $pdo->prepare(
+        "SELECT b.id AS batch_id, b.batch_name,
+                MIN(sa.created_at) AS submitted_at,
+                COUNT(sa.id) AS candidate_count,
+                COALESCE(MAX(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.group_reference'))), '') AS group_reference,
+                COALESCE(MAX(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.group_label'))), '') AS group_label,
+                COALESCE(MAX(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.contact_person_name'))), '') AS coordinator_name,
+                MAX(CASE WHEN sa.notes LIKE 'TEST SEED:%' THEN 1 ELSE 0 END) AS is_test_seed,
+                COUNT(DISTINCT sa.status) AS status_count,
+                CASE
+                    WHEN EXISTS (SELECT 1 FROM schedule_events se WHERE se.batch_id = b.id) THEN 'scheduled'
+                    WHEN COUNT(DISTINCT sa.status) = 1 THEN MIN(sa.status)
+                    ELSE 'reviewing'
+                END AS group_status
+         FROM sacrament_batches b
+         INNER JOIN sacrament_applications sa
+            ON sa.batch_id = b.id
+           AND sa.sacrament_type = 'first_communion'
+           AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(sa.details, '$.intake_mode')), '') = 'group'
+         WHERE b.id IN ({$groupPlaceholders})
+           AND b.sacrament_type = 'first_communion'
+           AND b.grade_level = 'general'
+         GROUP BY b.id, b.batch_name"
+    );
+    $groupSummaryStmt->execute($pageGroupIds);
+    foreach ($groupSummaryStmt->fetchAll(PDO::FETCH_ASSOC) as $groupSummary) {
+        $groupSummaries[(int) $groupSummary['batch_id']] = $groupSummary;
+    }
+}
+
+$applicationsById = [];
+foreach ($applications as $application) {
+    $applicationsById[(int) $application['id']] = $application;
+}
+$queueRows = [];
+foreach ($queueKeys as $queueKey) {
+    $rowId = (int) $queueKey['row_id'];
+    if ($queueKey['row_type'] === 'application' && isset($applicationsById[$rowId])) {
+        $queueRows[] = ['type' => 'application', 'data' => $applicationsById[$rowId]];
+    } elseif ($queueKey['row_type'] === 'group' && isset($groupSummaries[$rowId])) {
+        $queueRows[] = ['type' => 'group', 'data' => $groupSummaries[$rowId]];
+    }
+}
 
 $scheduleEventsByApplication = [];
 if ($applications !== []) {
@@ -1192,15 +1463,15 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <div>
             <p class="admin-queue-kicker">Requests</p>
             <h1>Sacrament pre-applications</h1>
-            <p>Review pre-applications, link master person profiles, track requirements, and continue the parish review process.</p>
+            <p>Review individual pre-applications and manage each Holy Communion group from one summary row.</p>
         </div>
         <div class="admin-queue-actions">
             <a href="<?= e($basePath . '/admin/requests/sacrament-batches.php') ?>" class="btn btn-secondary">Manage sacrament groups</a>
             <a href="<?= e($basePath . '/public/sacrament-applications/baptismal.php') ?>" class="btn btn-secondary">New walk-in pre-application</a>
         </div>
-        <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> pre-applications match the current filters">
+        <div class="admin-queue-total" aria-label="<?= (int) $totalRows ?> queue entries match the current filters">
             <strong><?= (int) $totalRows ?></strong>
-            <span><?= $totalRows === 1 ? 'pre-application' : 'pre-applications' ?></span>
+            <span><?= $totalRows === 1 ? 'queue entry' : 'queue entries' ?></span>
         </div>
     </header>
 
@@ -1212,23 +1483,56 @@ require_once __DIR__ . '/../../includes/admin-header.php';
     </div>
     <?php rf_render_pagination($selfUrl, $totalRows, $rf); ?>
 
-    <?php if ($applications === []): ?>
-        <p class="admin-queue-empty">No pre-applications match your search or filters.</p>
+    <?php if ($queueRows === []): ?>
+        <p class="admin-queue-empty">No applications or groups match your search or filters.</p>
     <?php else: ?>
         <div class="table-scroll application-queue-table-scroll">
             <table class="admin-table application-queue-table">
                 <thead>
                     <tr>
-                        <th>Request No.</th>
+                        <th>Reference</th>
                         <th>Sacrament</th>
-                        <th>Applicant(s)</th>
+                        <th>Applicant / Group</th>
                         <th>Submitted</th>
                         <th>Status</th>
-                        <th>Review</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
-            <?php foreach ($applications as $app):
+            <?php foreach ($queueRows as $queueRow): ?>
+                <?php if ($queueRow['type'] === 'group'):
+                    $group = $queueRow['data'];
+                    $groupStatusLabel = (int) $group['status_count'] > 1 && $group['group_status'] !== 'scheduled'
+                        ? 'Mixed candidate statuses'
+                        : status_label('application', (string) $group['group_status']);
+                    $groupLabel = trim((string) $group['group_label']);
+                    $groupLabel = $groupLabel !== '' ? $groupLabel : (string) $group['batch_name'];
+                    $groupReference = trim((string) $group['group_reference']);
+                    $groupReference = $groupReference !== '' ? $groupReference : (string) $group['batch_name'];
+                    $groupSubmittedAt = (string) $group['submitted_at'];
+                ?>
+                    <tr class="application-queue-group-row">
+                        <td>
+                            <strong><?= e($groupReference) ?></strong>
+                            <?php if (!empty($group['is_test_seed'])): ?><span class="status-badge status-pending">TEST SEED</span><?php endif; ?>
+                        </td>
+                        <td>Holy Communion (Group)</td>
+                        <td>
+                            <strong><?= e($groupLabel) ?></strong>
+                            <span class="application-queue-submitter">
+                                <?= (int) $group['candidate_count'] ?> candidates · Coordinator: <?= e((string) ($group['coordinator_name'] ?: 'Not provided')) ?>
+                            </span>
+                        </td>
+                        <td><time datetime="<?= e(date('c', strtotime($groupSubmittedAt))) ?>"><?= e(date('M j, Y', strtotime($groupSubmittedAt))) ?></time></td>
+                        <td><span class="status-badge status-<?= e((string) $group['group_status']) ?>"><?= e($groupStatusLabel) ?></span></td>
+                        <td>
+                            <a class="btn btn-small" href="<?= e($basePath . '/admin/requests/sacrament-batches.php?' . http_build_query(['batch_id' => (int) $group['batch_id']]) . '#group-management') ?>">Manage Group</a>
+                        </td>
+                    </tr>
+                    <?php continue; ?>
+                <?php endif; ?>
+                <?php $app = $queueRow['data']; ?>
+                <?php
                 $applicationReturnParams = $returnParams;
                 $applicationReturnParams['open_application_id'] = (int) $app['id'];
                 $applicationReturnQuery = http_build_query($applicationReturnParams);
@@ -1240,6 +1544,8 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     ? trim((string) $details['confirmed_venue'])
                     : '';
                 $venueIsConfirmed = $confirmedBaptismVenue !== '';
+                $isGroupCommunion = $app['sacrament_type'] === 'first_communion'
+                    && ($details['intake_mode'] ?? '') === 'group';
                 $matches = $app['sacrament_type'] === 'marriage'
                     ? [
                         application_queue_person_match($app, $details, 'applicant'),
@@ -1271,6 +1577,12 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     application_queue_next_statuses((string) $app['status']),
                     static fn(string $status): bool => $status !== 'scheduled'
                 ));
+                if ($isGroupCommunion) {
+                    $validNextStatuses = array_values(array_filter(
+                        $validNextStatuses,
+                        static fn(string $status): bool => $status === 'rejected'
+                    ));
+                }
                 $prerequisiteWarnings = [];
                 $prerequisiteChecks = [];
                 $hasParishBaptismRecord = false;
@@ -1360,7 +1672,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
                         }
                         if (!in_array('first_communion', $personRecords, true)) {
-                            $prerequisiteWarnings[] = "{$label}: no First Communion record is linked.";
+                            $prerequisiteWarnings[] = "{$label}: no Holy Communion record is linked.";
                         }
                     } elseif ($app['sacrament_type'] === 'marriage' && !$hasBaptism) {
                         $prerequisiteWarnings[] = "{$label}: verify the Baptism record in this parish or check the origin-parish certificate before proceeding.";
@@ -1373,9 +1685,14 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     $roleLabel = $match['role'] === 'spouse' ? 'Bride' : ($app['sacrament_type'] === 'marriage' ? 'Groom' : 'Applicant');
                     $subjectNames[] = $roleLabel . ': ' . ($match['name'] !== '' ? $match['name'] : 'Name not provided');
                 }
-            ?>
+                ?>
                 <tr>
-                    <td><strong><?= e($app['request_no']) ?></strong></td>
+                    <td>
+                        <strong><?= e($app['request_no']) ?></strong>
+                        <?php if (str_starts_with((string) ($app['notes'] ?? ''), 'TEST SEED:')): ?>
+                            <span class="status-badge status-pending">TEST SEED</span>
+                        <?php endif; ?>
+                    </td>
                     <td><?= e(application_queue_label($app['sacrament_type'])) ?></td>
                     <td>
                         <?= e(implode(' · ', $subjectNames)) ?>
@@ -1434,7 +1751,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <header class="admin-queue-heading">
                         <div>
                             <p class="admin-queue-kicker"><?= e(application_queue_label($app['sacrament_type'])) ?> · <?= e(application_queue_label($app['channel'])) ?></p>
-                            <h2><?= e($app['request_no']) ?></h2>
+                            <h2><?= e($app['request_no']) ?>
+                                <?php if (str_starts_with((string) ($app['notes'] ?? ''), 'TEST SEED:')): ?>
+                                    <span class="status-badge status-pending">TEST SEED</span>
+                                <?php endif; ?>
+                            </h2>
                             <p>Submitted by <?= e($app['applicant_name']) ?> · <?= e($app['applicant_email']) ?><?= !empty($app['applicant_contact']) ? ' · ' . e($app['applicant_contact']) : '' ?> · <?= e(date('M j, Y g:i A', strtotime($app['created_at']))) ?></p>
                         </div>
                         <span class="status-badge status-<?= e($app['status']) ?>"><?= e(status_label('application', (string) $app['status'])) ?></span>
@@ -1696,20 +2017,20 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                             continue;
                                         }
                                         $detailLabel = $detailName === 'preferred_wedding_venue_other'
-                                            ? 'Other venue name'
+                                            ? 'Requested Venue Name / Location'
                                             : application_queue_label($detailName);
                                         $displayValue = $detailValue;
                                         if ($detailName === 'preferred_wedding_venue') {
                                             $displayValue = match ($detailValue) {
                                                 'church' => "St. Patrick's Parish Church",
-                                                'other' => 'Other',
+                                                'other' => 'Another parish church, chapel, or community venue',
                                                 'barangay_chapel' => 'Barangay Chapel',
                                                 default => $detailValue,
                                             };
                                         } elseif ($detailName === 'communion_venue') {
                                             $displayValue = match ($detailValue) {
                                                 'parish_church' => "St. Patrick's Parish Church",
-                                                'other' => 'Other',
+                                                    'other' => 'Another parish church, chapel, or community venue',
                                                 default => $detailValue,
                                             };
                                         } elseif ($detailName === 'godparents') {
@@ -1728,7 +2049,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                         <div>
                                             <dt><?= e($detailLabel) ?></dt>
                                             <dd>
-                                                <span data-submission-display><?php application_queue_render_detail_value($displayValue); ?></span>
+                                                <span data-submission-display><?php application_queue_render_detail_value($displayValue, $detailName); ?></span>
                                                 <?php if ($canEditSubmission): ?>
                                                     <?php if ($detailName === 'godparents'): ?>
                                                         <?php
@@ -1980,14 +2301,69 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                     continue;
                                 }
                                 $currentRequirementStatus = (string) ($requirement['status'] ?? 'not_received');
+                                if ($currentRequirementStatus === 'verified') {
+                                    $currentRequirementStatus = 'received';
+                                }
                                 if (!in_array($currentRequirementStatus, $requirementStatuses, true)) {
                                     $currentRequirementStatus = 'not_received';
                                 }
+                                $requirementFieldType = application_queue_requirement_field_type($requirementKey);
+                                $requirementDocumentDate = trim((string) ($requirement['document_date'] ?? ''));
+                                $requirementReferenceNo = trim((string) ($requirement['reference_no'] ?? ''));
+                                $requirementIssuingParish = trim((string) ($requirement['issuing_parish'] ?? ''));
+                                $requirementNote = trim((string) ($requirement['note'] ?? ''));
+                                $preCanaFacilitator = is_scalar($requirement['facilitator_name'] ?? null)
+                                    ? trim((string) ($requirement['facilitator_name'] ?? ''))
+                                    : '';
+                                $preCanaSessionTime = is_scalar($requirement['session_time'] ?? null)
+                                    ? trim((string) ($requirement['session_time'] ?? ''))
+                                    : '';
+                                $preCanaSessionCount = is_scalar($requirement['session_count'] ?? null)
+                                    ? trim((string) ($requirement['session_count'] ?? ''))
+                                    : '';
+                                $hasRequirementSavedDetails = $requirementDocumentDate !== ''
+                                    || $requirementReferenceNo !== ''
+                                    || $requirementIssuingParish !== ''
+                                    || $requirementNote !== ''
+                                    || ($requirementKey === 'pre_cana_seminar'
+                                        && ($preCanaFacilitator !== '' || $preCanaSessionTime !== '' || $preCanaSessionCount !== ''));
+                                $requirementWarning = application_queue_requirement_old_document_warning(
+                                    $requirementKey,
+                                    $requirementDocumentDate
+                                );
                             ?>
                                 <?php if (in_array($app['status'], ['completed', 'rejected'], true)): ?>
                                     <div class="application-requirement-form">
                                         <strong><?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?></strong>
                                         <p>Status: <?= e(application_queue_label($currentRequirementStatus)) ?></p>
+                                        <?php if ($hasRequirementSavedDetails): ?>
+                                            <div class="requirement-saved-details">
+                                                <?php if ($requirementDocumentDate !== ''): ?>
+                                                    <span><?= $requirementFieldType === 'seminar' ? 'Seminar Date Completed:' : 'Date Issued:' ?> <?= e(application_queue_format_requirement_date($requirementDocumentDate)) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementReferenceNo !== ''): ?>
+                                                    <span><?= $requirementFieldType === 'seminar' ? 'Certificate / Control No.:' : 'Reference No.:' ?> <?= e($requirementReferenceNo) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementIssuingParish !== ''): ?>
+                                                    <span><?= $requirementFieldType === 'seminar' ? 'Issuing Parish / Organizer:' : 'Issuing Parish:' ?> <?= e($requirementIssuingParish) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaFacilitator !== ''): ?>
+                                                    <span>Facilitator: <?= e($preCanaFacilitator) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaSessionTime !== ''): ?>
+                                                    <span>Session time: <?= e($preCanaSessionTime) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaSessionCount !== ''): ?>
+                                                    <span>Sessions / participants: <?= e($preCanaSessionCount) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementNote !== ''): ?>
+                                                    <span>Note: <?= e($requirementNote) ?></span>
+                                                <?php endif; ?>
+                                                <?php if ($requirementWarning !== null): ?>
+                                                    <span class="requirement-age-warning"><?= e($requirementWarning) ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 <?php else: ?>
                                 <form method="post" class="application-requirement-form">
@@ -2004,6 +2380,78 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                                             <?php endforeach; ?>
                                         </select>
                                     </label>
+                                    <?php if ($hasRequirementSavedDetails): ?>
+                                        <button type="button" class="btn btn-small verification-edit-button">Edit details</button>
+                                    <?php endif; ?>
+                                    <?php if ($hasRequirementSavedDetails): ?>
+                                        <div class="requirement-saved-details">
+                                            <?php if ($requirementDocumentDate !== ''): ?>
+                                                <span><?= $requirementFieldType === 'seminar' ? 'Seminar Date Completed:' : 'Date:' ?> <?= e(application_queue_format_requirement_date($requirementDocumentDate)) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementReferenceNo !== ''): ?>
+                                                <span><?= $requirementFieldType === 'seminar' ? 'Certificate / Control No.:' : 'Reference No.:' ?> <?= e($requirementReferenceNo) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementIssuingParish !== ''): ?>
+                                                <span><?= $requirementFieldType === 'seminar' ? 'Issuing Parish / Organizer:' : 'Issuing Parish:' ?> <?= e($requirementIssuingParish) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaFacilitator !== ''): ?>
+                                                <span>Facilitator: <?= e($preCanaFacilitator) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaSessionTime !== ''): ?>
+                                                <span>Session time: <?= e($preCanaSessionTime) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementKey === 'pre_cana_seminar' && $preCanaSessionCount !== ''): ?>
+                                                <span>Sessions / participants: <?= e($preCanaSessionCount) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementNote !== ''): ?>
+                                                <span>Note: <?= e($requirementNote) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($requirementWarning !== null): ?>
+                                                <span class="requirement-age-warning"><?= e($requirementWarning) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="requirement-verification-fields" <?= $currentRequirementStatus === 'received' ? '' : 'hidden' ?>>
+                                        <?php if ($requirementFieldType === 'seminar'): ?>
+                                            <?php if ($requirementKey === 'pre_cana_seminar'): ?>
+                                                <label>Facilitator
+                                                    <input type="text" name="facilitator_name" maxlength="150" value="<?= e($preCanaFacilitator ?? '') ?>">
+                                                </label>
+                                                <label>Session time
+                                                    <input type="time" name="session_time" value="<?= e($preCanaSessionTime ?? '') ?>">
+                                                </label>
+                                                <label>Sessions / participants
+                                                    <input type="number" name="session_count" min="1" max="999" step="1" value="<?= e($preCanaSessionCount ?? '') ?>">
+                                                </label>
+                                            <?php endif; ?>
+                                            <label><?= $requirementKey === 'pre_cana_seminar' ? 'Seminar Date Completed' : 'Seminar / Formation Date' ?>
+                                                <input type="date" name="document_date" value="<?= e($requirementDocumentDate) ?>">
+                                            </label>
+                                            <label>Issuing Parish / Organizer
+                                                <input type="text" name="issuing_parish" maxlength="255" value="<?= e($requirementIssuingParish) ?>">
+                                            </label>
+                                            <label>Certificate / Control No.
+                                                <input type="text" name="reference_no" maxlength="100" value="<?= e($requirementReferenceNo) ?>">
+                                            </label>
+                                        <?php elseif ($requirementFieldType === 'origin_certificate'): ?>
+                                            <label>Date Issued
+                                                <input type="date" name="document_date" value="<?= e($requirementDocumentDate) ?>">
+                                            </label>
+                                            <label>Issuing Parish
+                                                <input type="text" name="issuing_parish" maxlength="255" value="<?= e($requirementIssuingParish) ?>">
+                                            </label>
+                                        <?php elseif ($requirementFieldType === 'reference_document'): ?>
+                                            <label><?= $requirementKey === 'marriage_license_application' ? 'License / PSA Reference No.' : 'PSA Reference No.' ?>
+                                                <input type="text" name="reference_no" maxlength="100" value="<?= e($requirementReferenceNo) ?>">
+                                            </label>
+                                            <label>Date Issued
+                                                <input type="date" name="document_date" value="<?= e($requirementDocumentDate) ?>">
+                                            </label>
+                                        <?php endif; ?>
+                                        <label>Note
+                                            <textarea name="requirement_note" maxlength="500" rows="2"><?= e($requirementNote) ?></textarea>
+                                        </label>
+                                    </div>
                                     <button type="submit" class="btn btn-small" aria-label="Save <?= e(application_queue_requirement_label($app['sacrament_type'], $requirementKey)) ?> checklist item">Save requirement</button>
                                 </form>
                                 <?php endif; ?>
@@ -2069,6 +2517,68 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 </div>
 
 <script>
+const applicationQueueScrollKey = 'srs-sppo:application-queue-scroll';
+
+document.querySelectorAll('.application-queue-review form').forEach((form) => {
+    form.addEventListener('submit', () => {
+        if (form.matches('.application-requirement-form')) return;
+        const review = form.closest('.application-queue-review');
+        const requirementKey = form.querySelector('input[name="requirement_key"]')?.value || '';
+        const action = form.querySelector('input[name="action"]')?.value || '';
+        const viewportOffset = form.getBoundingClientRect().top;
+        try {
+            sessionStorage.setItem(applicationQueueScrollKey, JSON.stringify({
+                reviewId: review instanceof HTMLDetailsElement ? review.id : '',
+                requirementKey,
+                action,
+                viewportOffset,
+            }));
+        } catch (error) {
+            // Saving is still allowed when sessionStorage is unavailable.
+        }
+    });
+});
+
+(() => {
+    let savedPosition = null;
+    try {
+        const stored = sessionStorage.getItem(applicationQueueScrollKey);
+        if (stored) {
+            savedPosition = JSON.parse(stored);
+            sessionStorage.removeItem(applicationQueueScrollKey);
+        }
+    } catch (error) {
+        savedPosition = null;
+    }
+    if (!savedPosition) return;
+
+    const restore = () => {
+        let target = savedPosition.reviewId
+            ? document.getElementById(savedPosition.reviewId)
+            : null;
+        if (savedPosition.requirementKey) {
+            const requirementForm = target?.querySelector(
+                `form.application-requirement-form input[name="requirement_key"][value="${CSS.escape(savedPosition.requirementKey)}"]`
+            )?.closest('form');
+            if (requirementForm) target = requirementForm;
+        } else if (savedPosition.action) {
+            const matchingForm = target?.querySelector(
+                `form input[name="action"][value="${CSS.escape(savedPosition.action)}"]`
+            )?.closest('form');
+            if (matchingForm) target = matchingForm;
+        }
+        if (!(target instanceof HTMLElement)) return;
+        const targetTop = target.getBoundingClientRect().top + window.scrollY;
+        document.documentElement.style.scrollBehavior = 'auto';
+        window.scrollTo({
+            top: Math.max(0, targetTop - (savedPosition.viewportOffset ?? 0)),
+            behavior: 'auto',
+        });
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+})();
+
 document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -2285,10 +2795,28 @@ document.querySelectorAll('form[data-schedule-availability]').forEach((form) => 
 
     loadScheduleAvailability();
 });
-document.querySelectorAll('form.application-requirement-form').forEach((form) => {
+function initializeApplicationRequirementForm(form) {
     const button = form.querySelector('button[type="submit"]');
-    if (!button) return;
-    const fields = form.querySelectorAll('select[name="requirement_status"], input[name="requirement_note"]');
+    const status = form.querySelector('select[name="requirement_status"]');
+    if (!button || !status) return;
+    const verificationFields = form.querySelector('.requirement-verification-fields');
+    const editButton = form.querySelector('.verification-edit-button');
+    const fields = form.querySelectorAll('select[name="requirement_status"], textarea[name="requirement_note"], input[name="reference_no"], input[name="document_date"], input[name="issuing_parish"], input[name="facilitator_name"], input[name="session_time"], input[name="session_count"]');
+    const syncVerificationVisibility = () => {
+        if (!verificationFields) return;
+        verificationFields.hidden = status.value !== 'received';
+    };
+    if (status) {
+        status.addEventListener('change', syncVerificationVisibility);
+    }
+    if (editButton && verificationFields) {
+        editButton.addEventListener('click', () => {
+            verificationFields.hidden = false;
+            const firstInput = verificationFields.querySelector('input, textarea');
+            if (firstInput) firstInput.focus();
+        });
+    }
+    syncVerificationVisibility();
     const initial = Array.from(fields).map((field) => field.value);
     const sync = () => {
         button.disabled = !Array.from(fields).some((field, i) => field.value !== initial[i]);
@@ -2300,7 +2828,101 @@ document.querySelectorAll('form.application-requirement-form').forEach((form) =>
         field.addEventListener('change', sync);
     });
     sync();
-});
+}
+
+document.querySelectorAll('form.application-requirement-form').forEach(initializeApplicationRequirementForm);
+
+function showApplicationQueueAjaxNotice(message, type) {
+    const adminContent = document.querySelector('.admin-content');
+    if (!adminContent) return;
+    adminContent.querySelectorAll(':scope > [data-application-queue-ajax-notice]').forEach((notice) => notice.remove());
+    const notice = document.createElement('p');
+    notice.className = `alert alert-${type}`;
+    notice.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    notice.setAttribute('data-application-queue-ajax-notice', 'true');
+    notice.textContent = message;
+    adminContent.appendChild(notice);
+}
+
+document.addEventListener('submit', async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches('.application-requirement-form')) return;
+    event.preventDefault();
+
+    const review = form.closest('.application-queue-review');
+    const requirementKey = form.querySelector('input[name="requirement_key"]')?.value || '';
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (!(review instanceof HTMLDetailsElement) || requirementKey === '' || !submitButton) {
+        showApplicationQueueAjaxNotice('The requirement could not be identified. Reload the page and try again.', 'error');
+        return;
+    }
+
+    const originalButtonText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Saving…';
+    form.setAttribute('aria-busy', 'true');
+
+    try {
+        const response = await fetch(form.getAttribute('action') || window.location.href, {
+            method: 'POST',
+            body: new FormData(form),
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+        });
+        if (new URL(response.url).pathname.endsWith('/admin/login.php')) {
+            throw new Error('Your staff session expired. Sign in again before saving this requirement.');
+        }
+        if (!response.ok) {
+            throw new Error(`The requirement could not be saved (HTTP ${response.status}). Please try again.`);
+        }
+
+        const responseDocument = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const errorNotice = responseDocument.querySelector('.application-queue-page > .alert-error');
+        if (errorNotice) {
+            throw new Error(errorNotice.textContent.trim());
+        }
+
+        const updatedReview = responseDocument.getElementById(review.id);
+        const updatedForm = Array.from(updatedReview?.querySelectorAll('form.application-requirement-form') ?? [])
+            .find((candidate) => candidate.querySelector('input[name="requirement_key"]')?.value === requirementKey);
+        if (!updatedReview || !updatedForm) {
+            throw new Error('The page did not return the saved requirement. Reload the queue and check its status.');
+        }
+
+        const updatedReviewStatus = updatedReview.querySelector('.admin-queue-heading .status-badge');
+        const currentReviewStatus = review.querySelector('.admin-queue-heading .status-badge');
+        if (updatedReviewStatus && currentReviewStatus) {
+            currentReviewStatus.replaceWith(updatedReviewStatus.cloneNode(true));
+        }
+
+        const currentSummaryRow = review.closest('tr')?.previousElementSibling;
+        const updatedSummaryRow = updatedReview.closest('tr')?.previousElementSibling;
+        const currentStatusCell = currentSummaryRow?.querySelector('td:nth-child(5)');
+        const updatedStatusCell = updatedSummaryRow?.querySelector('td:nth-child(5)');
+        if (currentStatusCell && updatedStatusCell) {
+            currentStatusCell.replaceChildren(...Array.from(updatedStatusCell.childNodes, (node) => node.cloneNode(true)));
+        }
+
+        const replacementForm = updatedForm.cloneNode(true);
+        form.replaceWith(replacementForm);
+        initializeApplicationRequirementForm(replacementForm);
+
+        const successNotice = responseDocument.querySelector('.application-queue-page > .alert-success');
+        showApplicationQueueAjaxNotice(
+            successNotice?.textContent.trim() || 'Requirement checklist saved.',
+            'success'
+        );
+    } catch (error) {
+        const message = error instanceof Error
+            ? error.message
+            : 'The requirement could not be saved. Please try again.';
+        showApplicationQueueAjaxNotice(message, 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = originalButtonText || 'Save requirement';
+    } finally {
+        form.removeAttribute('aria-busy');
+    }
+}, true);
 
 document.querySelectorAll('form.application-status-form').forEach((form) => {
     const status = form.querySelector('select[name="new_status"]');

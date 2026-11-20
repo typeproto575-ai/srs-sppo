@@ -75,22 +75,28 @@ if (!function_exists('application_queue_requirement_label')) {
             'baptism' => [
                 'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
                 'godparent_eligibility' => 'Godparent Eligibility Checked',
+                'pre_jordan_seminar' => 'Pre-Jordan Seminar',
+                'parents_marriage_certificate' => 'Parents\' Marriage Certificate',
+                'transfer_letter' => 'Parish Transfer / Permission Letter',
                 'guardianship_papers' => 'Legal Guardianship Papers',
             ],
             'first_communion' => [
                 'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
-                'first_reconciliation' => 'First Reconciliation Completion (before First Communion)',
+                'first_reconciliation' => 'First Confession / First Reconciliation',
                 'catechism_completion' => 'Catechism Completion',
                 'parent_guardian_commitment' => 'Parent/Guardian Formation Commitment',
             ],
             'confirmation' => [
                 'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
                 'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
-                'first_communion_verified' => 'First Communion Verified (parish record or origin-parish certificate)',
+                'first_communion_verified' => 'Holy Communion Record / Origin-Parish Certificate',
                 'confirmation_sponsor_details' => 'Sponsor Eligibility Verification',
+                'confirmation_seminar' => 'Confirmation Seminar',
                 'parent_guardian_commitment' => 'Parent/Guardian Formation Commitment',
             ],
             'marriage' => [
+                'psa_birth_certificate_groom' => 'Groom PSA Birth Certificate',
+                'psa_birth_certificate_bride' => 'Bride PSA Birth Certificate',
                 'psa_cenomar_groom' => 'Groom PSA CENOMAR',
                 'psa_cenomar_bride' => 'Bride PSA CENOMAR',
                 'psa_marriage_certificate_couple' => 'Couple PSA Marriage Certificate',
@@ -108,7 +114,9 @@ if (!function_exists('application_queue_requirement_label')) {
                 'origin_baptismal_certificate_bride' => 'Bride Baptismal Certificate (for marriage purpose)',
                 'origin_confirmation_certificate_groom' => 'Groom Confirmation Certificate (for marriage purpose)',
                 'origin_confirmation_certificate_bride' => 'Bride Confirmation Certificate (for marriage purpose)',
-                'transfer_letter' => 'Parish Banns / Transfer Letter (Tawag)',
+                'transfer_letter' => 'Parish Transfer / Permission Letter',
+                'canonical_interview' => 'Canonical Interview',
+                'marriage_banns' => 'Marriage Banns',
                 'pre_cana_seminar' => 'Pre-Cana Seminar',
                 'marriage_license_application' => 'Marriage License Application (from the Municipal Civil Registrar)',
             ],
@@ -346,7 +354,7 @@ function public_assert_no_open_sacrament_application(
     if ($stmt->fetchColumn()) {
         $labels = [
             'baptism' => 'Baptism',
-            'first_communion' => 'First Communion',
+            'first_communion' => 'Holy Communion',
             'confirmation' => 'Confirmation',
             'marriage' => 'Marriage',
         ];
@@ -520,16 +528,16 @@ function first_communion_details_input_errors(array $data): array
         ? trim((string) $data['communion_venue'])
         : '';
     if (!in_array($venue, ['parish_church', 'other'], true)) {
-        $errors[] = 'Choose where First Communion will take place.';
+        $errors[] = 'Choose where Holy Communion will take place.';
     }
     $otherVenue = is_scalar($data['communion_venue_other'] ?? null)
         ? trim((string) $data['communion_venue_other'])
         : '';
     if ($venue === 'other' && $otherVenue === '') {
-        $errors[] = 'Enter the name and location of the other First Communion venue.';
+        $errors[] = 'Enter the name and location of the other Holy Communion venue.';
     }
     if (mb_strlen($otherVenue) > 150) {
-        $errors[] = 'The other First Communion venue must be 150 characters or fewer.';
+        $errors[] = 'The other Holy Communion venue must be 150 characters or fewer.';
     }
 
     return array_values(array_unique($errors));
@@ -575,6 +583,11 @@ function first_communion_grade_options(): array
 function first_communion_formation_input_error(string $path, string $grade, string $schoolYear): ?string
 {
     if ($path === 'batch') {
+        if ($grade === 'general') {
+            return preg_match('/^\d{4}$/D', trim($schoolYear)) === 1
+                ? null
+                : 'Enter a four-digit calendar year for the group.';
+        }
         $path = 'parish_based';
     }
     if (!in_array($path, ['school_based', 'parish_based', 'individual_catchup'], true)) {
@@ -613,6 +626,11 @@ function sacrament_formation_input_error(string $path, string $grade, string $sc
 {
     if (!in_array($path, ['batch', 'individual_catchup', 'not_sure'], true)) {
         return 'Choose a formation pathway.';
+    }
+    if ($path === 'batch' && $grade === 'general') {
+        return preg_match('/^\d{4}$/D', trim($schoolYear)) === 1
+            ? null
+            : 'Enter a four-digit calendar year for the group.';
     }
     if ($path === 'individual_catchup') {
         if ($grade !== '' && !array_key_exists($grade, sacrament_formation_grade_options())) {
@@ -766,7 +784,7 @@ function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
             'min_key' => 'marriage_min_age',
             'min_default' => 18,
         ],
-        default => throw new InvalidArgumentException('Age eligibility is only configured for First Communion, Confirmation, and Marriage.'),
+        default => throw new InvalidArgumentException('Age eligibility is only configured for Holy Communion, Confirmation, and Marriage.'),
     };
 
     $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM settings WHERE setting_key = ?');
@@ -843,7 +861,7 @@ function notify_newly_age_eligible_persons(PDO $pdo): int
 
         $sacraments = [
             'first_communion' => [
-                'label' => 'First Communion',
+                'label' => 'Holy Communion',
                 'type' => 'age_eligible_first_communion',
             ],
             'confirmation' => [
@@ -1206,17 +1224,56 @@ function marriage_marital_status_label(string $status): string
         default => '—',
     };
 }
+
+function format_yes_no_display_value(mixed $value): ?string
+{
+    if (is_bool($value)) {
+        return $value ? 'Yes' : 'No';
+    }
+    if (!is_scalar($value)) {
+        return null;
+    }
+
+    $text = trim((string) $value);
+    if ($text === '') {
+        return null;
+    }
+
+    $parts = preg_split('/\s*\/\s*/', $text);
+    if (!is_array($parts) || $parts === []) {
+        return null;
+    }
+
+    $labels = [];
+    foreach ($parts as $part) {
+        $labels[] = match (strtolower(trim($part))) {
+            'yes' => 'Yes',
+            'no' => 'No',
+            default => '',
+        };
+        if ($labels[array_key_last($labels)] === '') {
+            return null;
+        }
+    }
+
+    return implode(' / ', $labels);
+}
+
 /**
  * Human-readable label for a party's previous-marriage answer, used on the
- * marriage review screen. 'no' / anything unexpected renders as 'No'.
+ * marriage review screen. Empty or unrecognized values remain visibly unset.
  */
 function marriage_previous_marriage_label(string $previousMarriage): string
 {
-    return match ($previousMarriage) {
-        'no' => 'No',
-        'church' => 'Yes — church',
-        'civil' => 'Yes — civil',
-        default => 'No',
+    $yesNoLabel = format_yes_no_display_value($previousMarriage);
+    if ($yesNoLabel !== null) {
+        return $yesNoLabel;
+    }
+
+    return match (strtolower(trim($previousMarriage))) {
+        'church' => 'Yes — Church',
+        'civil' => 'Yes — Civil',
+        default => '—',
     };
 }
 
@@ -2051,6 +2108,39 @@ function validate_full_name(string $name): ?string
     return null;
 }
 
+function communion_roster_candidates(string $roster): array
+{
+    $lines = preg_split('/\R/u', $roster) ?: [];
+    $candidates = [];
+    foreach ($lines as $line) {
+        $fullName = trim($line);
+        if ($fullName === '') {
+            continue;
+        }
+        if (mb_strlen($fullName, 'UTF-8') > 150) {
+            throw new InvalidArgumentException('Each candidate name must be 150 characters or fewer.');
+        }
+        if (($nameError = validate_full_name($fullName)) !== null) {
+            throw new InvalidArgumentException($nameError);
+        }
+        $parts = preg_split('/\s+/u', $fullName) ?: [];
+        if (count($parts) < 2) {
+            throw new InvalidArgumentException('Enter each candidate’s full name, including a first and last name.');
+        }
+
+        $candidates[] = ['full_name' => $fullName];
+        if (count($candidates) > 100) {
+            throw new InvalidArgumentException('A group can include no more than 100 candidates.');
+        }
+    }
+
+    if ($candidates === []) {
+        throw new InvalidArgumentException('Enter at least one candidate name, one name per line.');
+    }
+
+    return $candidates;
+}
+
 function search_middle_initial(string $token): ?string
 {
     return preg_match('/^([\p{L}])\.?$/u', trim($token), $matches) === 1
@@ -2411,7 +2501,9 @@ function notify_sacrament_application_status(
     string $requestNo,
     string $extra = ''
 ): void {
-    $kind = ucwords(str_replace('_', ' ', $sacramentType));
+    $kind = $sacramentType === 'first_communion'
+        ? 'Holy Communion'
+        : ucwords(str_replace('_', ' ', $sacramentType));
     $state = status_label('application', $newStatus);
     notify(
         $pdo,
@@ -2932,7 +3024,7 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
             $missing[] = 'Pre-Cana / marriage seminar not completed.';
         }
         if (empty($ext['banns_date_1']) || empty($ext['banns_date_2']) || empty($ext['banns_date_3'])) {
-            $missing[] = 'Banns must be posted on all three dates (Tawag sa Kasal).';
+            $missing[] = 'Marriage banns must be posted on all three dates.';
         }
         if (($ext['groom_baptismal_cert_status'] ?? '') !== 'submitted') {
             $missing[] = "Groom's baptismal certificate not submitted.";
@@ -2968,10 +3060,10 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
             $counts[$row['godparent_type']] = (int) $row['c'];
         }
         if ($counts['godfather'] < 1) {
-            $missing[] = 'At least one godfather (ninong) must be recorded.';
+            $missing[] = 'At least one godfather must be recorded.';
         }
         if ($counts['godmother'] < 1) {
-            $missing[] = 'At least one godmother (ninang) must be recorded.';
+            $missing[] = 'At least one godmother must be recorded.';
         }
         return ['ok' => $missing === [], 'missing' => $missing];
     }

@@ -90,13 +90,13 @@ require_once __DIR__ . '/../includes/header.php';
         <a class="service-card" href="<?= $basePath ?>/public/services.php#sacrament-applications">
             <span class="service-number">01</span>
             <h3>Apply for a sacrament</h3>
-            <p>Start a Baptism, First Communion, Confirmation, or Church Wedding application for parish review.</p>
+            <p>Start a Baptism, Holy Communion, Confirmation, or Church Wedding application for parish review.</p>
             <span class="service-link">Choose an application &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/certificate-request.php">
             <span class="service-number">02</span>
             <h3>Request a certificate copy</h3>
-            <p>Request a certified copy of a baptism, confirmation, first communion, or marriage record.</p>
+            <p>Request a certified copy of a baptism, confirmation, Holy Communion, or marriage record.</p>
             <span class="service-link">Request a certificate copy &rarr;</span>
         </a>
     </div>

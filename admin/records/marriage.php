@@ -102,6 +102,7 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
         $_POST['place'] = $venue === 'church'
             ? "St. Patrick's Parish Church"
             : trim((string) ($applicationDetails['preferred_wedding_venue_other'] ?? ''));
+        $_POST['minister_name'] = trim((string) ($applicationDetails['preferred_officiant'] ?? ''));
         $principalSponsors = $applicationDetails['principal_sponsors'] ?? null;
         if (is_array($principalSponsors)) {
             $godfathers = array_values(array_filter((array) ($principalSponsors['godfathers'] ?? []), 'is_string'));
@@ -846,9 +847,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php endforeach; ?>
                     <fieldset>
                         <legend>Marriage Details</legend>
-                        <label>Marriage Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? $editRecord['marriage_date'] ?? '') ?>" required></label>
-                        <label>Place<?= !$isEdit ? ' *' : '' ?>
+                        <label>Marriage date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? $editRecord['marriage_date'] ?? '') ?>" required></label>
+                        <label>Place of marriage<?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : ' <span class="field-hint">(optional when correcting an existing record)</span>' ?>
                             <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? "St. Patrick's Parish") ?>"<?= !$isEdit ? ' required' : '' ?>>
+                            <span class="field-hint">Enter the parish church, chapel, or community venue as recorded.</span>
                         </label>
                         <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $party => $label): ?>
                             <?php
@@ -858,16 +860,16 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             ?>
                             <h3><?= e($label) ?> register details</h3>
                             <div class="inline-fields">
-                                <label>Civil Status <input autocomplete="off" type="text" name="<?= e($party) ?>_civil_status" value="<?= e($_POST[$party . '_civil_status'] ?? $partyDetails['civil_status'] ?? '') ?>"></label>
-                                <label>Age <input autocomplete="off" type="number" min="0" max="120" name="<?= e($party) ?>_age" value="<?= e($_POST[$party . '_age'] ?? $partyDetails['age'] ?? '') ?>"></label>
+                                <label>Civil status <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_civil_status" value="<?= e($_POST[$party . '_civil_status'] ?? $partyDetails['civil_status'] ?? '') ?>"></label>
+                                <label>Age <span class="field-hint">(optional)</span><input autocomplete="off" type="number" min="0" max="120" name="<?= e($party) ?>_age" value="<?= e($_POST[$party . '_age'] ?? $partyDetails['age'] ?? '') ?>"></label>
                             </div>
                             <div class="inline-fields">
-                                <label>Origin <input autocomplete="off" type="text" name="<?= e($party) ?>_origin" value="<?= e($_POST[$party . '_origin'] ?? $partyDetails['origin'] ?? '') ?>"></label>
-                                <label>Residence <input autocomplete="off" type="text" name="<?= e($party) ?>_residence" value="<?= e($_POST[$party . '_residence'] ?? $partyDetails['residence'] ?? '') ?>"></label>
+                                <label>Origin <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_origin" value="<?= e($_POST[$party . '_origin'] ?? $partyDetails['origin'] ?? '') ?>"></label>
+                                <label>Residence <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_residence" value="<?= e($_POST[$party . '_residence'] ?? $partyDetails['residence'] ?? '') ?>"></label>
                             </div>
                         <?php endforeach; ?>
-                        <label>Marriage License Reference <input autocomplete="off" type="text" name="license_ref" value="<?= e($_POST['license_ref'] ?? $details['license_ref'] ?? '') ?>"></label>
-                        <label>Officiating Minister's full name<?= !$isEdit ? ' *' : '' ?>
+                        <label>Marriage license reference <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="license_ref" value="<?= e($_POST['license_ref'] ?? $details['license_ref'] ?? '') ?>"></label>
+                        <label>Officiating minister's full name<?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : ' <span class="field-hint">(optional when correcting an existing record)</span>' ?>
                             <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
                         </label>
                     </fieldset>

@@ -8,7 +8,7 @@ function walk_in_sacrament_types(): array
 {
     return [
         'baptism' => 'Baptism',
-        'first_communion' => 'First Communion',
+        'first_communion' => 'Holy Communion',
         'confirmation' => 'Confirmation',
         'marriage' => 'Marriage',
     ];
@@ -160,7 +160,7 @@ function walk_in_resolve_person(PDO $pdo, array $input, string $prefix): array
             throw new InvalidArgumentException('Select a valid person from the person search.');
         }
         $personStmt = $pdo->prepare(
-            'SELECT id, first_name, middle_name, last_name, suffix, birth_date
+            'SELECT id, first_name, middle_name, last_name, suffix, birth_date, address
              FROM persons WHERE id = ?'
         );
         $personStmt->execute([(int) $personId]);
@@ -185,7 +185,7 @@ function walk_in_resolve_person(PDO $pdo, array $input, string $prefix): array
     ]);
 
     $personStmt = $pdo->prepare(
-        'SELECT id, first_name, middle_name, last_name, suffix, birth_date
+        'SELECT id, first_name, middle_name, last_name, suffix, birth_date, address
          FROM persons WHERE id = ?'
     );
     $personStmt->execute([$personId]);
@@ -240,13 +240,36 @@ function walk_in_application_details(string $type, array $person, ?array $spouse
     return ['candidate_name' => $name, 'candidate_birth_date' => $birthDate];
 }
 
-function walk_in_requirements(string $type): array
+function walk_in_requirements(string $type, ?PDO $pdo = null, ?array $person = null, ?array $spouse = null): array
 {
     $allRequirements = sd_application_requirement_keys();
     $requirements = [];
     foreach ($allRequirements[$type] ?? [] as $key) {
         $requirements[$key] = ['status' => 'not_received', 'note' => ''];
     }
+
+    if ($type === 'marriage' && $pdo !== null) {
+        $marriageRequirements = marriage_application_requirement_states(
+            '',
+            '',
+            '',
+            $pdo,
+            isset($person['id']) ? (int) $person['id'] : null,
+            isset($spouse['id']) ? (int) $spouse['id'] : null,
+            (string) ($person['address'] ?? ''),
+            (string) ($spouse['address'] ?? '')
+        );
+        foreach ([
+            'origin_baptismal_certificate_groom',
+            'origin_baptismal_certificate_bride',
+            'origin_confirmation_certificate_groom',
+            'origin_confirmation_certificate_bride',
+            'transfer_letter',
+        ] as $key) {
+            $requirements[$key] = $marriageRequirements[$key];
+        }
+    }
+
     return $requirements;
 }
 
@@ -326,7 +349,7 @@ function walk_in_save_application(PDO $pdo, array $input, array $user): array
             walk_in_input_string($input, 'applicant_email'),
             walk_in_input_string($input, 'applicant_contact') ?: null,
             json_encode($details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
-            json_encode(walk_in_requirements($type), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+            json_encode(walk_in_requirements($type, $pdo, $person, $spouse), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
         ]);
         $applicationId = (int) $pdo->lastInsertId();
         log_activity($pdo, $session['user_id'], 'walk_in_application_created', 'sacrament_applications', $applicationId, 'Walk-in pre-application created.');

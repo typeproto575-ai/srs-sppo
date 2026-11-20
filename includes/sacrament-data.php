@@ -32,10 +32,12 @@ if (!defined('SD_TYPES')) {
 function sd_application_requirement_keys(): array
 {
     return [
-        'baptism' => ['psa_birth_certificate', 'godparent_eligibility', 'guardianship_papers'],
+        'baptism' => ['psa_birth_certificate', 'godparent_eligibility', 'pre_jordan_seminar', 'parents_marriage_certificate', 'transfer_letter', 'guardianship_papers'],
         'first_communion' => ['origin_baptismal_certificate', 'first_reconciliation', 'catechism_completion', 'parent_guardian_commitment'],
-        'confirmation' => ['psa_birth_certificate', 'origin_baptismal_certificate', 'first_communion_verified', 'confirmation_sponsor_details', 'parent_guardian_commitment'],
+        'confirmation' => ['psa_birth_certificate', 'origin_baptismal_certificate', 'first_communion_verified', 'confirmation_sponsor_details', 'confirmation_seminar', 'parent_guardian_commitment'],
         'marriage' => [
+            'psa_birth_certificate_groom',
+            'psa_birth_certificate_bride',
             'psa_cenomar_groom',
             'psa_cenomar_bride',
             'psa_marriage_certificate_couple',
@@ -52,6 +54,8 @@ function sd_application_requirement_keys(): array
             'origin_baptismal_certificate_groom',
             'origin_baptismal_certificate_bride',
             'transfer_letter',
+            'canonical_interview',
+            'marriage_banns',
             'pre_cana_seminar',
             'marriage_license_application',
             'origin_confirmation_certificate_groom',
@@ -78,7 +82,7 @@ function sd_type_label(string $type): string
 {
     $labels = [
         'baptism' => 'Baptism',
-        'first_communion' => 'First Communion',
+        'first_communion' => 'Holy Communion',
         'confirmation' => 'Confirmation',
         'marriage' => 'Marriage',
         'funeral' => 'Funeral / Death',
@@ -322,7 +326,7 @@ function sd_application_apply_detail_corrections(array $submittedDetails, mixed 
 
         if (in_array($key, ['child_residence', 'parents_residence'], true)) {
             $label = $key === 'child_residence'
-                ? "Child's current residence"
+                ? "Applicant's current residence"
                 : "Parents' current residence";
             $submittedDetails[$key] = sd_application_optional_residence($correctedValue, $label, 255);
             continue;
@@ -409,7 +413,7 @@ function sd_baptism_guardian_attestation_error(string $guardianName, bool $confi
         return null;
     }
 
-    return "Confirm that you are the child's legal guardian or have permission from the child's parents.";
+    return 'Confirm that you are authorized to submit this baptism application on the applicant’s behalf.';
 }
 
 /**
@@ -620,7 +624,7 @@ function sd_get_person_records(PDO $pdo, int $personId): array
 function sd_get_age_eligible_persons(PDO $pdo, string $sacramentType): array
 {
     if (!in_array($sacramentType, ['first_communion', 'confirmation', 'marriage'], true)) {
-        throw new InvalidArgumentException('Age eligibility is only configured for First Communion, Confirmation, and Marriage.');
+        throw new InvalidArgumentException('Age eligibility is only configured for Holy Communion, Confirmation, and Marriage.');
     }
 
     $range = sacrament_eligibility_range($pdo, $sacramentType);
@@ -754,14 +758,14 @@ function sd_prerequisite_warnings(
             $warnings[] = "No baptism on record for $name. Check the origin baptismal certificate.";
         }
         if ($recs['first_communion'] !== null) {
-            $warnings[] = "A First Communion is already recorded for $name.";
+            $warnings[] = "A Holy Communion is already recorded for $name.";
         }
     } elseif ($type === 'confirmation') {
         if (!$baptized) {
             $warnings[] = "No baptism on record for $name. Check the origin baptismal certificate.";
         }
         if ($recs['first_communion'] === null) {
-            $warnings[] = "No First Communion on record for $name.";
+            $warnings[] = "No Holy Communion on record for $name.";
         }
         if ($recs['confirmation'] !== null) {
             $warnings[] = "A Confirmation is already recorded for $name.";

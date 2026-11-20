@@ -174,7 +174,7 @@ $rfConfig = [
             'options' => [
                 'baptism'        => 'Baptism',
                 'confirmation'   => 'Confirmation',
-                'first_communion'=> 'First Communion',
+                'first_communion'=> 'Holy Communion',
                 'marriage'       => 'Marriage',
             ]],
     ],

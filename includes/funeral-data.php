@@ -17,6 +17,34 @@ function funeral_input_string(mixed $value): string
     return is_scalar($value) ? trim((string) $value) : '';
 }
 
+function funeral_record_metadata(mixed $raw): array
+{
+    $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+    if (!is_array($decoded)) {
+        return ['sacraments' => [], 'service_variant' => '', 'contact_name' => '', 'contact_email' => ''];
+    }
+    if (array_is_list($decoded)) {
+        return ['sacraments' => $decoded, 'service_variant' => '', 'contact_name' => '', 'contact_email' => ''];
+    }
+
+    return [
+        'sacraments' => is_array($decoded['sacraments'] ?? null) ? $decoded['sacraments'] : [],
+        'service_variant' => funeral_input_string($decoded['service_variant'] ?? ''),
+        'contact_name' => funeral_input_string($decoded['contact_name'] ?? ''),
+        'contact_email' => funeral_input_string($decoded['contact_email'] ?? ''),
+    ];
+}
+
+function funeral_record_metadata_json(array $sacraments, string $serviceVariant, string $contactName, string $contactEmail): string
+{
+    return json_encode([
+        'sacraments' => array_values($sacraments),
+        'service_variant' => $serviceVariant,
+        'contact_name' => $contactName,
+        'contact_email' => $contactEmail,
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+}
+
 function funeral_validate(array $input, ?string $personBirthDate): array
 {
     $errors = [];
@@ -29,6 +57,10 @@ function funeral_validate(array $input, ?string $personBirthDate): array
         'age_at_death' => 'age at death',
         'service_time' => 'service time',
         'service_date' => 'service date',
+        'minister_name' => 'minister name',
+        'contact_name' => 'person to be notified name',
+        'contact_number' => 'person to be notified contact number',
+        'contact_email' => 'person to be notified email address',
     ] as $field => $label) {
         if (array_key_exists($field, $input) && !is_scalar($input[$field])) {
             $errors[] = "Enter a valid {$label}.";
@@ -61,8 +93,29 @@ function funeral_validate(array $input, ?string $personBirthDate): array
     }
 
     $serviceType = funeral_input_string($input['service_type'] ?? '');
-    if (!in_array($serviceType, ['mass', 'blessing'], true)) {
-        $errors[] = 'Choose Mass or Blessing for the service type.';
+    if (!in_array($serviceType, ['mass', 'mass_with_wake', 'mass_death_anniversary', 'legacy_mass', 'blessing'], true)) {
+        $errors[] = 'Choose a Funeral Mass type or Funeral Blessing.';
+    }
+    if (in_array($serviceType, ['mass_with_wake', 'mass_death_anniversary'], true)
+        && funeral_input_string($input['minister_name'] ?? '') === '') {
+        $errors[] = 'Enter the minister for the selected Funeral Mass.';
+    }
+
+    $contactName = funeral_input_string($input['contact_name'] ?? '');
+    if ($contactName === '') {
+        $errors[] = 'Person to be notified name is required.';
+    } elseif (validate_full_name($contactName) !== null) {
+        $errors[] = 'Enter the full name of the person to be notified.';
+    }
+    $contactNumber = funeral_input_string($input['contact_number'] ?? '');
+    if ($contactNumber === '') {
+        $errors[] = 'Person to be notified contact number is required.';
+    } elseif (!is_valid_phone_number($contactNumber)) {
+        $errors[] = 'Enter a valid contact number for the person to be notified.';
+    }
+    $contactEmail = funeral_input_string($input['contact_email'] ?? '');
+    if ($contactEmail !== '' && !filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Enter a valid email address for the person to be notified.';
     }
 
     $civilStatus = funeral_input_string($input['civil_status'] ?? '');
@@ -192,7 +245,12 @@ function funeral_certification_lines(
     }
 
     $serviceType = strtolower($value($record, 'service_type'));
-    $serviceName = $serviceType === 'blessing' ? 'Blessing' : 'Mass';
+    $serviceVariant = $value($record, 'service_variant');
+    $serviceName = match ($serviceVariant) {
+        'mass_with_wake' => 'Mass (With Wake)',
+        'mass_death_anniversary' => 'Mass (Death Anniversary)',
+        default => $serviceType === 'blessing' ? 'Blessing' : 'Mass',
+    };
     $service = 'A Funeral ' . $serviceName . ' was held';
     $serviceDate = $formatDate($record['service_date'] ?? null);
     if ($serviceDate !== '') {

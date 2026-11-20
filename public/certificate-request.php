@@ -37,7 +37,8 @@ if (($_GET['person_lookup'] ?? '') === '1') {
         exit;
     }
 
-    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place,
+                   address, contact_number, email, father_name, mother_maiden_name
             FROM persons
             WHERE public_reference = ? AND is_deceased = 0
             LIMIT 1';
@@ -55,9 +56,40 @@ if (($_GET['person_lookup'] ?? '') === '1') {
                 'suffix' => $person['suffix'] ?? '',
                 'birth_date' => $person['birth_date'],
                 'birth_place' => $person['birth_place'] ?? '',
+                'address' => $person['address'] ?? '',
+                'contact_number' => $person['contact_number'] ?? '',
+                'email' => $person['email'] ?? '',
                 'father_name' => $person['father_name'] ?? '',
                 'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
             ];
+            if (trim((string) $result['birth_place']) === '') {
+                $birthPlaceStmt = $pdo->prepare(
+                    "SELECT place
+                     FROM sacrament_records
+                     WHERE person_id = ? AND sacrament_type = 'baptism'
+                       AND source = 'this_parish' AND NULLIF(TRIM(place), '') IS NOT NULL
+                     ORDER BY (book_verified_at IS NOT NULL) DESC, id DESC
+                     LIMIT 1"
+                );
+                $birthPlaceStmt->execute([(int) $person['id']]);
+                $result['birth_place'] = (string) ($birthPlaceStmt->fetchColumn() ?: '');
+            }
+            $verifiedRecordsStmt = $pdo->prepare(
+                "SELECT sacrament_type
+                 FROM sacrament_records
+                 WHERE person_id = ? AND source = 'this_parish'
+                   AND book_verified_at IS NOT NULL
+                   AND sacrament_type IN ('baptism', 'first_communion', 'confirmation')"
+            );
+            $verifiedRecordsStmt->execute([(int) $person['id']]);
+            $result['verified_records'] = [
+                'baptism' => false,
+                'first_communion' => false,
+                'confirmation' => false,
+            ];
+            foreach ($verifiedRecordsStmt->fetchAll(PDO::FETCH_COLUMN) as $recordType) {
+                $result['verified_records'][$recordType] = true;
+            }
             if ($preapplicationLookup) {
                 $result['sacrament_records'] = public_person_lookup_record_summary(
                     sd_get_person_records($pdo, (int) $person['id'])
@@ -103,7 +135,7 @@ $values = [
 ];
 $certificateTypes = [
     'baptism' => 'Baptism',
-    'first_communion' => 'First Communion',
+    'first_communion' => 'Holy Communion',
     'confirmation' => 'Confirmation',
     'marriage' => 'Marriage',
 ];
@@ -115,7 +147,7 @@ $certificatePreparation = [
     ],
     'first_communion' => [
         'The name and birthdate recorded in the parish register.',
-        "The parents' names and the approximate First Communion date, if known.",
+        "The parents' names and the approximate Holy Communion date, if known.",
     ],
     'confirmation' => [
         'The name and birthdate recorded in the parish register.',
@@ -492,7 +524,7 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if ($isSecretary): ?>
         <p>Use this form when someone is requesting a certificate at the Parish Office. Choose the sacrament, enter the requester's details, and submit it to the Certificate Requests queue. To start from an existing verified register entry, open that record and choose “Start walk-in certificate request.”</p>
     <?php else: ?>
-        <p>Use this form to request a certificate for a sacrament that has already taken place. Choose Baptism, First Communion, Confirmation, or Marriage, then enter the details that will help the Parish Office find the register entry.</p>
+        <p>Use this form to request a certificate for a sacrament that has already taken place. Choose Baptism, Holy Communion, Confirmation, or Marriage, then enter the details that will help the Parish Office find the register entry.</p>
     <?php endif; ?>
     <?php if ($errors): ?>
         <div class="alert alert-error" role="alert">
@@ -503,7 +535,7 @@ require_once __DIR__ . '/../includes/header.php';
             </ul>
         </div>
     <?php endif; ?>
-    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form certificate-request-wizard" data-certificate-wizard data-certificate-prefilled="<?= $walkInRecordId ? '1' : '0' ?>">
+    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form certificate-request-wizard" data-certificate-wizard data-certificate-prefilled="<?= $walkInRecordId ? '1' : '0' ?>" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="certificate_wizard_step" value="1" data-certificate-current-step>
         <div data-certificate-phase="record">
@@ -541,7 +573,8 @@ require_once __DIR__ . '/../includes/header.php';
              data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
              data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
              data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
-             data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
+             data-requester-name-field="requester_name" data-relationship-field="requester_relationship"
+             data-requester-email-field="requester_email" data-requester-contact-field="requester_contact_number">
             <h3 class="lookup-title">Already registered with the parish?</h3>
             <p class="field-hint">Enter a person reference to fill in recorded details. Without a reference, enter the person’s name and date of birth manually.</p>
             <div data-person-results aria-live="polite"></div>

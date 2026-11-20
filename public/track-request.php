@@ -23,7 +23,7 @@ foreach (['pending_person_request_lookup', 'verified_person_request_lookup'] as 
     $lookup = $_SESSION[$lookupKey] ?? null;
     $lookupReference = is_array($lookup) ? (string) ($lookup['reference'] ?? '') : '';
     if (is_array($lookup)
-        && !preg_match('/^(SPPO-P-[A-Z0-9]{16,32}|CR-\d{4}-\d{4,})$/', $lookupReference)) {
+        && !preg_match('/^(SPPO-P-[A-Z0-9]{16,32}|(?:CR|SA)-\d{4}-\d{4,})$/', $lookupReference)) {
         unset($_SESSION[$lookupKey]);
     }
 }
@@ -87,6 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $requestStmt->execute([$reference, $email]);
                 $requestNo = (string) ($requestStmt->fetchColumn() ?: '');
+            } elseif (preg_match('/^SA-\d{4}-\d{4,}$/', $reference)) {
+                $requestStmt = $pdo->prepare(
+                    'SELECT request_no FROM sacrament_applications
+                     WHERE request_no = ? AND LOWER(applicant_email) = LOWER(?)
+                     LIMIT 1'
+                );
+                $requestStmt->execute([$reference, $email]);
+                $requestNo = (string) ($requestStmt->fetchColumn() ?: '');
             }
             $hasMatchingRequest = false;
             if ($personId !== false) {
@@ -143,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
             }
         } else {
-            $errors[] = 'Enter a valid person reference or certificate request number and the email address used on the request.';
+            $errors[] = 'Enter a valid person reference or request number and the email address used on the request.';
         }
         $_SESSION['person_request_lookup_attempts'] = $attempts;
     }
@@ -176,6 +184,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $certificateStmt->execute([(int) $personId]);
             $certificates = $certificateStmt->fetchAll(PDO::FETCH_ASSOC);
+        } elseif (preg_match('/^SA-\d{4}-\d{4,}$/', $requestNo)) {
+            $applicationStmt = $pdo->prepare(
+                'SELECT request_no, sacrament_type, status, created_at, preferred_date, requirements, rejection_reason
+                 FROM sacrament_applications
+                 WHERE request_no = ? AND LOWER(applicant_email) = LOWER(?)
+                 LIMIT 1'
+            );
+            $applicationStmt->execute([$requestNo, $email]);
+            $applications = $applicationStmt->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($requestNo !== '') {
             $certificateStmt = $pdo->prepare(
                 'SELECT request_no, sacrament_type, status, created_at, rejection_reason
@@ -205,9 +222,15 @@ $statusLabels = [
 ];
 $sacramentLabels = [
     'baptism' => 'Baptism',
-    'first_communion' => 'First Communion',
+    'first_communion' => 'Holy Communion',
     'confirmation' => 'Confirmation',
     'marriage' => 'Marriage',
+];
+$requirementStatusLabels = [
+    'not_received' => 'Not Received',
+    'received' => 'Received',
+    'verified' => 'Received',
+    'not_applicable' => 'Not Applicable',
 ];
 
 function tracker_format_date(?string $value): string
@@ -271,13 +294,13 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 <section class="card">
     <h1>View My Requests</h1>
-    <p>Use your person reference or certificate request number to find your request. We will email a one-time access code to the address used on a linked request. This page does not approve requests or accept documents.</p>
+    <p>Use your person reference or request number to find your request. We will email a one-time access code to the address used on that request. This page does not approve requests or accept documents.</p>
     <?php if (!$searched && !isset($_SESSION['pending_person_request_lookup'])): ?>
         <form method="post" class="stacked-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="send_code">
             <label for="person_reference">Person reference or request number</label>
-            <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-... or CR-...">
+            <input id="person_reference" name="person_reference" autocomplete="off" required maxlength="48" value="<?= e($reference) ?>" placeholder="SPPO-P-..., CR-..., or SA-...">
             <p class="field-hint">Use the number shown after you submitted your request.</p>
             <label for="email">Email address used on the request</label>
             <input id="email" name="email" type="email" autocomplete="email" required maxlength="150" value="<?= e($email) ?>">
@@ -331,16 +354,6 @@ require_once __DIR__ . '/../includes/header.php';
                                     : ($statusLabels[$rawStatus] ?? ucfirst(str_replace('_', ' ', $rawStatus)));
                                 $timeline = tracker_status_timeline($group['type'], $rawStatus);
                                 $requirements = json_decode((string) ($item['requirements'] ?? ''), true);
-                                $missingRequirements = [];
-                                if ($group['type'] === 'application' && is_array($requirements)) {
-                                    foreach ($requirements as $key => $requirement) {
-                                        if (is_array($requirement) && ($requirement['status'] ?? '') === 'not_received') {
-                                            $requirementLabel = application_queue_requirement_label((string) $item['sacrament_type'], (string) $key);
-                                            $requirementNote = trim((string) ($requirement['note'] ?? ''));
-                                            $missingRequirements[] = $requirementNote !== '' ? $requirementLabel . ' (' . $requirementNote . ')' : $requirementLabel;
-                                        }
-                                    }
-                                }
                                 ?>
                             <article class="tracker-request-card">
                                 <div class="tracker-request-header">
@@ -366,11 +379,53 @@ require_once __DIR__ . '/../includes/header.php';
                                         <?php endforeach; ?>
                                     </ol>
                                 <?php endif; ?>
-                                <?php if ($missingRequirements !== []): ?>
-                                    <p class="tracker-request-note"><strong>Still needed:</strong> <?= e(implode(', ', $missingRequirements)) ?>. Contact the Parish Office using this request number; do not submit a duplicate.</p>
+                                <?php if ($group['type'] === 'application' && is_array($requirements) && $requirements !== []): ?>
+                                    <section class="tracker-requirements" aria-label="Application requirements">
+                                        <h5>Requirements checklist</h5>
+                                        <ul class="tracker-requirement-list">
+                                            <?php foreach ($requirements as $requirementKey => $requirement): ?>
+                                                <?php
+                                                if (!is_array($requirement)) {
+                                                    continue;
+                                                }
+                                                $requirementStatus = is_string($requirement['status'] ?? null)
+                                                    ? $requirement['status']
+                                                    : 'not_received';
+                                                if (!isset($requirementStatusLabels[$requirementStatus])) {
+                                                    $requirementStatus = 'not_received';
+                                                }
+                                                $requirementNote = is_scalar($requirement['note'] ?? null)
+                                                    ? trim((string) $requirement['note'])
+                                                    : '';
+                                                $documentDate = $requirementStatus === 'verified' && is_scalar($requirement['document_date'] ?? null)
+                                                    ? trim((string) $requirement['document_date'])
+                                                    : '';
+                                                $issuingParish = $requirementStatus === 'verified' && is_scalar($requirement['issuing_parish'] ?? null)
+                                                    ? trim((string) $requirement['issuing_parish'])
+                                                    : '';
+                                                ?>
+                                                <li class="tracker-requirement-item">
+                                                    <div class="tracker-requirement-heading">
+                                                        <strong><?= e(application_queue_requirement_label((string) $item['sacrament_type'], (string) $requirementKey)) ?></strong>
+                                                        <span class="tracker-requirement-status"><?= e($requirementStatusLabels[$requirementStatus]) ?></span>
+                                                    </div>
+                                                    <?php if ($requirementNote !== ''): ?>
+                                                        <p class="tracker-requirement-detail"><?= e($requirementNote) ?></p>
+                                                    <?php endif; ?>
+                                                    <?php if ($documentDate !== '' || $issuingParish !== ''): ?>
+                                                        <p class="tracker-requirement-detail">
+                                                            <?php if ($documentDate !== ''): ?>Date: <?= e(tracker_format_date($documentDate)) ?><?php endif; ?>
+                                                            <?php if ($documentDate !== '' && $issuingParish !== ''): ?> · <?php endif; ?>
+                                                            <?php if ($issuingParish !== ''): ?>Issuing parish: <?= e($issuingParish) ?><?php endif; ?>
+                                                        </p>
+                                                    <?php endif; ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </section>
                                 <?php endif; ?>
-                                <?php if (in_array($rawStatus, ['rejected', 'cancelled'], true) && trim((string) ($item['rejection_reason'] ?? '')) !== ''): ?>
-                                    <p class="tracker-request-note"><strong>Closed:</strong> <?= e(trim((string) $item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</p>
+                                <?php if ($group['type'] === 'application' && $rawStatus === 'rejected' && is_string($item['rejection_reason'] ?? null) && trim($item['rejection_reason']) !== ''): ?>
+                                    <p class="tracker-request-note"><strong>Closed:</strong> <?= e(trim($item['rejection_reason'])) ?>. Contact the Parish Office if you have questions.</p>
                                 <?php endif; ?>
                             </article>
                             <?php endforeach; ?>

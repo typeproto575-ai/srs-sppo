@@ -241,7 +241,7 @@ final class FunctionsTest extends TestCase
         self::assertNull(sd_baptism_guardian_attestation_error('', false));
         self::assertNull(sd_baptism_guardian_attestation_error('   ', false));
         self::assertSame(
-            "Confirm that you are the child's legal guardian or have permission from the child's parents.",
+            'Confirm that you are authorized to submit this baptism application on the applicant’s behalf.',
             sd_baptism_guardian_attestation_error('Guardian Name', false)
         );
         self::assertNull(sd_baptism_guardian_attestation_error('Guardian Name', true));
@@ -365,14 +365,14 @@ final class FunctionsTest extends TestCase
             ])
         );
         self::assertContains(
-            'Enter the name and location of the other First Communion venue.',
+            'Enter the name and location of the other Holy Communion venue.',
             first_communion_details_input_errors([
                 'baptized_here' => 'this_parish',
                 'communion_venue' => 'other',
             ])
         );
         self::assertContains(
-            'Choose where First Communion will take place.',
+            'Choose where Holy Communion will take place.',
             first_communion_details_input_errors([
                 'baptized_here' => 'this_parish',
                 'communion_venue' => 'barangay_chapel',
@@ -1418,6 +1418,31 @@ final class FunctionsTest extends TestCase
         );
     }
 
+    public function testCommunionRosterPreservesCandidateFullNamesWithoutSplittingThem(): void
+    {
+        self::assertSame([
+            ['full_name' => 'Maria   Clara Santos'],
+            ['full_name' => 'Juan Dela Cruz Jr.'],
+        ], communion_roster_candidates("  Maria   Clara Santos \r\nJuan Dela Cruz Jr."));
+    }
+
+    public function testCommunionRosterRejectsSingleNameAndMoreThanOneHundredCandidates(): void
+    {
+        try {
+            communion_roster_candidates('Madonna');
+            self::fail('A candidate must have a first and last name.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertStringContainsString('full name', $exception->getMessage());
+        }
+
+        try {
+            communion_roster_candidates(implode("\n", array_fill(0, 101, 'Maria Santos')));
+            self::fail('A group must not exceed one hundred candidates.');
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame('A group can include no more than 100 candidates.', $exception->getMessage());
+        }
+    }
+
     public function testFuneralValidationAcceptsAValidRecord(): void
     {
         $today = new DateTimeImmutable('today');
@@ -1430,9 +1455,12 @@ final class FunctionsTest extends TestCase
             'age_at_death' => '42',
             'civil_status' => 'married',
             'spouse_name' => 'Avery Example',
-            'service_type' => 'mass',
+            'service_type' => 'mass_with_wake',
             'service_date' => $death,
             'service_time' => '09:30',
+            'minister_name' => 'Fr. Example',
+            'contact_name' => 'Jordan Example',
+            'contact_number' => '09171234567',
         ], '1984-05-10'));
     }
 
@@ -1471,6 +1499,8 @@ final class FunctionsTest extends TestCase
             'date_of_death' => $today->format('Y-m-d'),
             'date_of_burial' => $today->modify('+1 day')->format('Y-m-d'),
             'service_type' => 'blessing',
+            'contact_name' => 'Jordan Example',
+            'contact_number' => '09171234567',
         ], null));
     }
 
@@ -1501,8 +1531,44 @@ final class FunctionsTest extends TestCase
             'age_at_death' => '200',
         ], null);
 
-        self::assertContains('Choose Mass or Blessing for the service type.', $errors);
+        self::assertContains('Choose a Funeral Mass type or Funeral Blessing.', $errors);
         self::assertContains('Age at death must be a whole number from 0 to 130.', $errors);
+    }
+
+    public function testFuneralMassVariantsRequireMinisterAndContactDetails(): void
+    {
+        foreach (['mass_with_wake', 'mass_death_anniversary'] as $serviceType) {
+            $errors = funeral_validate([
+                'date_of_death' => '2020-01-02',
+                'service_type' => $serviceType,
+            ], null);
+
+            self::assertContains('Enter the minister for the selected Funeral Mass.', $errors);
+            self::assertContains('Person to be notified name is required.', $errors);
+            self::assertContains('Person to be notified contact number is required.', $errors);
+        }
+    }
+
+    public function testFuneralMetadataReadsLegacySacramentsAndNewContactFields(): void
+    {
+        self::assertSame([
+            'sacraments' => ['baptism', 'confirmation'],
+            'service_variant' => '',
+            'contact_name' => '',
+            'contact_email' => '',
+        ], funeral_record_metadata('["baptism","confirmation"]'));
+
+        self::assertSame([
+            'sacraments' => ['baptism'],
+            'service_variant' => 'mass_with_wake',
+            'contact_name' => 'Jordan Example',
+            'contact_email' => 'jordan@example.test',
+        ], funeral_record_metadata(json_encode([
+            'sacraments' => ['baptism'],
+            'service_variant' => 'mass_with_wake',
+            'contact_name' => 'Jordan Example',
+            'contact_email' => 'jordan@example.test',
+        ], JSON_THROW_ON_ERROR)));
     }
 
     public function testFuneralValidationRejectsNonScalarInput(): void

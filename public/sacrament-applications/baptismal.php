@@ -82,7 +82,7 @@ if (($_GET['start'] ?? '') === 'profile') {
 
 // Stepper labels shared with certificate-request flows (visual parity).
 $stepLabels = [
-    STEP_APP_DETAILS     => 'Child information',
+    STEP_APP_DETAILS     => 'Applicant information',
     STEP_FAMILY_REQS     => 'Family & godparents',
     STEP_CONTACT_CONSENT => 'Contact & consent',
     STEP_FINAL_VERIFY    => 'Review & submit',
@@ -176,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $childBirthplace = fd('child_birthplace', $_POST);
                 $_POST['child_residence'] = baptismal_application_optional_residence(
                     $_POST['child_residence'] ?? null,
-                    "Child's current residence",
+                    "Applicant's current residence",
                     255,
                     $errors
                 ) ?? '';
@@ -189,15 +189,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_POST['child_birthplace'] = $childBirthplace;
                 $_POST['baptism_venue'] = $baptismVenue;
 
-                if (fd('child_first', $_POST) === '') $errors[] = "Child's first name is required.";
-                if (fd('child_last', $_POST) === '') $errors[] = "Child's last name is required.";
+                if (fd('child_first', $_POST) === '') $errors[] = "Applicant's first name is required.";
+                if (fd('child_last', $_POST) === '') $errors[] = "Applicant's last name is required.";
                 if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
-                if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
-                if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
+                if ($childBirthdate === '')  $errors[] = "Applicant's birthdate is required.";
+                if (is_future_date($childBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
                 if (is_unknown_place_of_birth($childBirthplace)) {
-                    $errors[] = "Please enter the child's city or municipality and province of birth.";
+                    $errors[] = "Enter the applicant's city or municipality and province of birth.";
                 }
-                if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
+                if (mb_strlen($childBirthplace) > 150) $errors[] = "Applicant's birthplace must be 150 characters or fewer.";
                 if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
             }
 
@@ -322,7 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $godmotherNames      = compose_godparent_names($formData, 'godmother');
             $childResidence = baptismal_application_optional_residence(
                 $formData['child_residence'] ?? null,
-                "Child's current residence",
+                "Applicant's current residence",
                 255,
                 $errors
             );
@@ -347,15 +347,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $godparents = sd_application_godparents($formData);
             $childPersonId = null;
 
-            if (fd('child_first', $formData) === '') $errors[] = "Child's first name is required.";
-            if (fd('child_last', $formData) === '') $errors[] = "Child's last name is required.";
+            if (fd('child_first', $formData) === '') $errors[] = "Applicant's first name is required.";
+            if (fd('child_last', $formData) === '') $errors[] = "Applicant's last name is required.";
             if (($e = validate_full_name($childName)) !== null) $errors[] = $e;
-            if ($childBirthdate === '')  $errors[] = "Child's birthdate is required.";
-            if (is_future_date($childBirthdate)) $errors[] = "Child's birthdate cannot be in the future.";
+            if ($childBirthdate === '')  $errors[] = "Applicant's birthdate is required.";
+            if (is_future_date($childBirthdate)) $errors[] = "Applicant's birthdate cannot be in the future.";
             if (is_unknown_place_of_birth($childBirthplace)) {
-                $errors[] = "Please enter the child's city or municipality and province of birth.";
+                $errors[] = "Enter the applicant's city or municipality and province of birth.";
             }
-            if (mb_strlen($childBirthplace) > 150) $errors[] = "Child's birthplace must be 150 characters or fewer.";
+            if (mb_strlen($childBirthplace) > 150) $errors[] = "Applicant's birthplace must be 150 characters or fewer.";
             if (mb_strlen($baptismVenue) > 150) $errors[] = 'Preferred baptism venue must be 150 characters or fewer.';
             if ($contactNumber === '') {
                 $errors[] = 'Contact number is required.';
@@ -446,9 +446,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($baptismVenue !== '') {
                             $details['baptism_venue'] = $baptismVenue;
                         }
+                        $transferLetterRequired = stripos((string) $childResidence, 'Dingalan') === false
+                            || stripos((string) $parentsResidence, 'Dingalan') === false;
                         $requirements = [
                             'psa_birth_certificate' => ['status' => 'not_received', 'note' => ''],
                             'godparent_eligibility' => ['status' => 'not_received', 'note' => ''],
+                            'pre_jordan_seminar' => ['status' => 'not_received', 'note' => ''],
+                            'parents_marriage_certificate' => ['status' => 'not_received', 'note' => ''],
+                            'transfer_letter' => [
+                                'status' => $transferLetterRequired ? 'not_received' : 'not_applicable',
+                                'note' => $transferLetterRequired
+                                    ? 'Transfer or permission letter required because the applicant or parents\' current residence is outside Dingalan or not specified.'
+                                    : 'Not required because the applicant and parents\' current residences include Dingalan.',
+                            ],
                             'guardianship_papers' => [
                                 'status' => $fatherName === '' && $motherMaidenName === '' ? 'not_received' : 'not_applicable',
                                 'note' => '',
@@ -574,25 +584,28 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
-    <form method="POST" action="">
+    <form method="POST" action="" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
-            <legend>Phase 1 of 4 — Child Information</legend>
+            <legend>Phase 1 of 4 — Applicant Information</legend>
             <p class="field-hint">Your answers are kept in this browser only until you close it. Nothing is sent to the parish until you press Submit.</p>
             <div class="public-person-lookup" data-public-person-lookup
                  data-lookup-context="preapplication"
                  data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
                  data-name-inputs="child_first,child_middle,child_last,child_suffix"
-                 data-birth-field="child_birthdate" data-person-id-field="child_person_id"
+                 data-birth-field="child_birthdate" data-birth-place-field="child_birthplace" data-person-id-field="child_person_id"
+                 data-address-field="child_residence" data-contact-field="contact_number" data-email-field="email"
                  data-father-value-field="selected_father_name" data-mother-value-field="selected_mother_maiden_name">
                 <h3 class="lookup-title">Already registered with the parish?</h3>
-                <p class="field-hint">Enter the child’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
+                <p class="field-hint">Enter the applicant’s person reference to fill in recorded details and view linked sacrament records. Keep the reference private. Without a reference, fill in the form manually.</p>
                 <div data-person-results aria-live="polite"></div>
             </div>
-            <h3 class="form-subheading">Child’s details</h3>
+            <input type="hidden" name="contact_number" value="<?= e(fd('contact_number', $formData)) ?>">
+            <input type="hidden" name="email" value="<?= e(fd('email', $formData)) ?>">
+            <h3 class="form-subheading">Applicant details</h3>
             <div class="inline-fields">
-                <label>Child's First Name *
+                <label>Applicant's First Name *
                     <input type="text" name="child_first" autocomplete="given-name" value="<?= e(fd('child_first', $formData)) ?>" required>
                 </label>
                 <label>Middle Name <span class="field-hint">(optional)</span>
@@ -610,7 +623,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             <label>Date of birth *
                 <input type="date" name="child_birthdate" value="<?= e($formData['child_birthdate'] ?? '') ?>" required>
             </label>
-            <label>Child's Current Residence <span class="field-hint">(optional)</span>
+            <label>Applicant's Current Residence <span class="field-hint">(optional)</span>
                 <input type="text" name="child_residence" maxlength="255" autocomplete="street-address"
                        value="<?= e(fd('child_residence', $formData)) ?>">
             </label>
@@ -624,7 +637,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
                        title="Enter the city or municipality and province. Placeholder values are not accepted."
                        value="<?= e(fd('child_birthplace', $formData)) ?>" required>
             </label>
-            <label>Preferred place / venue of baptism <span class="field-hint">(optional)</span>
+            <label>Preferred baptism venue <span class="field-hint">(optional; parish church, chapel, or community venue)</span>
                 <input type="text" name="baptism_venue" maxlength="150" value="<?= e(fd('baptism_venue', $formData)) ?>">
                 <span class="field-hint">This is a preference only; the Parish Office will confirm the venue.</span>
             </label>
@@ -646,7 +659,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
-    <form method="POST" action="">
+    <form method="POST" action="" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
@@ -658,14 +671,14 @@ if ($currentStep === STEP_COUNT + 1): ?>
                        value="<?= e(fd('parents_residence', $formData)) ?>">
             </label>
             <section class="guardian-section">
-                <p class="field-hint">The Guardian field is optional. Adults applying for themselves may leave it blank.</p>
+                <p class="field-hint">Guardian details are optional. Adults applying for themselves may leave this section blank.</p>
                 <?= person_name_fields('parent_guardian', 'Guardian', $formData, false) ?>
                 <div class="alert alert-info" data-guardian-attestation<?= compose_person_name($formData, 'parent_guardian') === '' ? ' hidden' : '' ?>>
                     <label class="checkbox-label">
                         <input type="checkbox" name="guardian_authority_confirmed" value="1" <?= (fd('guardian_authority_confirmed', $formData) === '1') ? 'checked' : '' ?>>
-                        If I am a guardian, I confirm that I am the child's legal guardian or have permission from the child's parents to submit this baptism pre-application.
+                        If I am a guardian or authorized representative, I confirm that I may submit this baptism pre-application on the applicant's behalf.
                     </label>
-                    <p class="field-hint">This confirmation is required when a guardian is listed. A guardian does not have to be related to the child; if you are not the child's legal guardian, you must have permission from the child's parents.</p>
+                    <p class="field-hint">This confirmation is required when a guardian or representative is listed.</p>
                 </div>
             </section>
             <?php
@@ -673,7 +686,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
             $godmotherRows = max(1, count(fa('godmother_full_name', $formData)));
             ?>
             <fieldset>
-                <legend>Godfathers (Ninong) <span class="required-marker" aria-hidden="true">*</span></legend>
+                <legend>Godfathers <span class="required-marker" aria-hidden="true">*</span></legend>
                 <p class="field-hint">At least one godfather is required; up to 8 may be entered.</p>
                 <div data-repeat-group="godfather" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godfatherRows; $i++): ?>
@@ -692,7 +705,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
                 <button type="button" class="btn btn-secondary repeat-add" data-repeat-add="godfather">Add another godfather</button>
             </fieldset>
             <fieldset>
-                <legend>Godmothers (Ninang) <span class="required-marker" aria-hidden="true">*</span></legend>
+                <legend>Godmothers <span class="required-marker" aria-hidden="true">*</span></legend>
                 <p class="field-hint">At least one godmother is required; up to 8 may be entered.</p>
                 <div data-repeat-group="godmother" data-repeat-max="8">
                     <?php for ($i = 0; $i < $godmotherRows; $i++): ?>
@@ -750,7 +763,7 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
-    <form method="POST" action="">
+    <form method="POST" action="" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="next">
         <fieldset>
@@ -787,18 +800,18 @@ if ($currentStep === STEP_COUNT + 1): ?>
         <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $error): ?><li><?= e($error) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
     <h2 class="form-stage-heading">Pre-application form</h2>
-    <form method="POST" action="">
+    <form method="POST" action="" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="_action" value="final_submit">
         <fieldset>
             <legend>Review Your Information</legend>
             <table class="review-table">
-                <tr><th>Child's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
+                <tr><th>Applicant's Full Name</th><td><?= e(compose_person_name($formData, 'child')) ?></td></tr>
                 <tr><th>Date of Birth</th><td><?= e($formData['child_birthdate'] ?? '') ?></td></tr>
                 <tr><th>Place of Birth</th><td><?= e(fd('child_birthplace', $formData)) ?></td></tr>
-                <tr><th>Child's Current Residence</th><td><?= e(fd('child_residence', $formData) ?: '—') ?></td></tr>
+                <tr><th>Applicant's Current Residence</th><td><?= e(fd('child_residence', $formData) ?: '—') ?></td></tr>
                 <tr>
-                    <th>Preferred place / venue of baptism</th>
+                    <th>Preferred baptism venue</th>
                     <td><?= e(fd('baptism_venue', $formData)) ?><br><span class="field-hint">Preference only; the Parish Office will confirm the venue.</span></td>
                 </tr>
                 <tr><th>Father's Name</th><td><?= e(compose_person_name($formData, 'father')) ?></td></tr>

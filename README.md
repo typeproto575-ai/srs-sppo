@@ -239,6 +239,7 @@ srs-sppo/
 │   ├── sacrament-applications/   Baptism, Confirmation, First Communion, Marriage
 │   ├── how-it-works.php          explained workflow for parishioners
 │   └── requirements.php          documentary requirements per sacrament
+├── angular-app/                  separate Angular parish services frontend
 ├── admin/                        secretary only, login required
 │   ├── login.php / logout.php / dashboard.php
 │   ├── requests/                 queues + walk-in encoding + marriage detail page
@@ -259,6 +260,17 @@ srs-sppo/
 - **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, request status management, and the shared System tools. Applicants use one stable person reference across linked requests; public request status lookup additionally requires a one-time email access code. All staff accounts use the same parish secretary access level.
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
+
+## Separate Angular parish services frontend
+
+The independent Angular project is in `angular-app/`. It reuses the existing public and staff
+styles. The public Angular routes currently include Office Services, How It Works, Requirements,
+Privacy Notice, and Terms and Conditions; submission forms and request tracking continue to use PHP.
+An Angular staff dashboard uses additive
+authenticated PHP APIs for overview and person search. The remaining forms, queues, and staff pages
+continue using PHP while the full interface is migrated module by module.
+See
+[`angular-app/README.md`](angular-app/README.md) for local development and deployment instructions.
 
 ## Design decisions
 

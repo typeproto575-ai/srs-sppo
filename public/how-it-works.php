@@ -35,7 +35,7 @@ require_once __DIR__ . '/../includes/header.php';
         <span class="ledger-no"></span>
         <div>
 <h3>Choose what you need</h3>
-            <p>Choose a certificate if the sacrament already happened. Start a pre-application if you are preparing for Baptism, Confirmation, First Communion, or Marriage.</p>
+            <p>Choose a certificate if the sacrament already happened. Start a pre-application if you are preparing for Baptism, Confirmation, Holy Communion, or Marriage.</p>
         </div>
     </div>
 
@@ -90,7 +90,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="path-cards">
     <div class="path-card">
         <h3>Sacrament Pre-Application</h3>
-        <p>Preparing for Baptism, First Communion, Confirmation, or a church wedding? Start a pre-application for parish-office review.</p>
+        <p>Preparing for Baptism, Holy Communion, Confirmation, or a church wedding? Start a pre-application for parish-office review.</p>
         <a href="<?= e($basePath) ?>/public/services.php#sacrament-applications" class="btn btn-secondary">Start a Pre-Application</a>
     </div>
     <div class="path-card">

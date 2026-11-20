@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/application-requirements.php';
 
 final class MarriageApplicationTest extends TestCase
 {
@@ -216,6 +217,83 @@ final class MarriageApplicationTest extends TestCase
         }
     }
 
+    public function testMarriageChecklistVerifiesExistingParishSacramentsWithRegisterReferences(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $groom = public_person_reference($this->pdo, null, [
+                'first_name' => 'Checklist',
+                'middle_name' => '',
+                'last_name' => 'Groom',
+                'suffix' => '',
+                'birth_date' => '1990-01-01',
+            ]);
+            $bride = public_person_reference($this->pdo, null, [
+                'first_name' => 'Checklist',
+                'middle_name' => '',
+                'last_name' => 'Bride',
+                'suffix' => '',
+                'birth_date' => '1991-01-01',
+            ]);
+            $groomBaptismId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $groom['person_id'],
+                'event_date' => '1990-02-01',
+                'minister_name' => 'Test Minister',
+                'book_no' => 'IV',
+                'page_no' => '12',
+                'line_no' => '3',
+                'participants' => ['godfather' => ['full_name' => 'Test Sponsor']],
+            ], [['role' => 'godfather', 'full_name' => 'Test Sponsor']]);
+            $brideConfirmationId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'confirmation',
+                'person_id' => $bride['person_id'],
+                'event_date' => '2005-05-01',
+                'book_no' => 'II',
+                'page_no' => '8',
+                'line_no' => '6',
+            ]);
+            sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $bride['person_id'],
+                'event_date' => '1991-02-01',
+                'minister_name' => 'Unverified Minister',
+                'book_no' => 'I',
+                'page_no' => '2',
+                'line_no' => '4',
+                'participants' => ['godfather' => ['full_name' => 'Unverified Sponsor']],
+            ], [['role' => 'godfather', 'full_name' => 'Unverified Sponsor']]);
+            $verifyRecord = $this->pdo->prepare(
+                'UPDATE sacrament_records SET book_verified_at = NOW() WHERE id = ?'
+            );
+            $verifyRecord->execute([$groomBaptismId]);
+            $verifyRecord->execute([$brideConfirmationId]);
+
+            $requirements = marriage_application_requirement_states(
+                'single',
+                'single',
+                'church',
+                $this->pdo,
+                $groom['person_id'],
+                $bride['person_id'],
+                'Dingalan, Aurora',
+                'Dingalan, Aurora'
+            );
+
+            self::assertSame('verified', $requirements['origin_baptismal_certificate_groom']['status']);
+            self::assertStringContainsString('Book IV, Page 12, Line 3', $requirements['origin_baptismal_certificate_groom']['note']);
+            self::assertSame('verified', $requirements['origin_confirmation_certificate_bride']['status']);
+            self::assertStringContainsString('Book II, Page 8, Line 6', $requirements['origin_confirmation_certificate_bride']['note']);
+            self::assertSame('not_received', $requirements['origin_baptismal_certificate_bride']['status']);
+            self::assertSame('not_received', $requirements['origin_confirmation_certificate_groom']['status']);
+            self::assertNull(verified_parish_record_requirement($this->pdo, $bride['person_id'], 'baptism'));
+        } finally {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+        }
+    }
+
     public function testFinalSubmitRequiresEligibilityDeclaration(): void
     {
         $post = $this->baseStepData();
@@ -312,8 +390,11 @@ final class MarriageApplicationTest extends TestCase
         $result = $this->runPage($post, 5);
 
         self::assertSame(5, $result['step']);
-        self::assertStringContainsString('Yes — church', $result['output']);
-        self::assertStringContainsString('Yes — civil', $result['output']);
+        self::assertStringContainsString('Groom</strong> — Baptism: Yes; Confirmation: Yes', $result['output']);
+        self::assertStringContainsString('Bride</strong> — Baptism: Yes; Confirmation: Yes', $result['output']);
+        self::assertStringNotContainsString('Baptism / confirmation', $result['output']);
+        self::assertStringContainsString('Yes — Church', $result['output']);
+        self::assertStringContainsString('Yes — Civil', $result['output']);
     }
 }
 

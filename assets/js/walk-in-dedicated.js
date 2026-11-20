@@ -2,6 +2,8 @@ function initWalkInDedicatedForms() {
     'use strict';
 
     document.querySelectorAll('form.walk-in-dedicated').forEach(function (form) {
+        if (form.querySelector('.walk-in-dedicated-shell')) return;
+
         var isRequest = form.getAttribute('data-walk-in-dedicated') === 'request';
         var steps = isRequest
             ? [

@@ -6,6 +6,8 @@ use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/application-requirements.php';
+require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/walk-in-intake.php';
 
 final class MarriageEligibilityTest extends TestCase
 {
@@ -59,10 +61,23 @@ final class MarriageEligibilityTest extends TestCase
     public function testPreviousMarriageLabels(): void
     {
         self::assertSame('No', marriage_previous_marriage_label('no'));
-        self::assertSame('Yes — church', marriage_previous_marriage_label('church'));
-        self::assertSame('Yes — civil', marriage_previous_marriage_label('civil'));
-        self::assertSame('No', marriage_previous_marriage_label(''));
-        self::assertSame('No', marriage_previous_marriage_label('unknown'));
+        self::assertSame('No / No', marriage_previous_marriage_label('no/no'));
+        self::assertSame('Yes — Church', marriage_previous_marriage_label('church'));
+        self::assertSame('Yes — Civil', marriage_previous_marriage_label('civil'));
+        self::assertSame('—', marriage_previous_marriage_label(''));
+        self::assertSame('—', marriage_previous_marriage_label('unknown'));
+    }
+
+    public function testYesNoDisplayValuesAreNormalizedWithoutChangingOtherValues(): void
+    {
+        self::assertSame('Yes', format_yes_no_display_value('yes'));
+        self::assertSame('No', format_yes_no_display_value('NO'));
+        self::assertSame('No / No', format_yes_no_display_value(' no/no '));
+        self::assertSame('Yes / No', format_yes_no_display_value('YES / no'));
+        self::assertSame('Yes', format_yes_no_display_value(true));
+        self::assertSame('No', format_yes_no_display_value(false));
+        self::assertNull(format_yes_no_display_value(''));
+        self::assertNull(format_yes_no_display_value('church'));
     }
 
     public function testCivillyMarriedStatusMustMatchForBothApplicants(): void
@@ -132,5 +147,64 @@ final class MarriageEligibilityTest extends TestCase
 
         $annulledRequirements = marriage_application_requirement_states('annulled', 'widowed', 'church');
         self::assertSame('not_received', $annulledRequirements['marriage_license_application']['status']);
+    }
+
+    public function testMarriageChecklistIncludesNewRequirementsAndUsesDingalanAddressRule(): void
+    {
+        $localParish = marriage_application_requirement_states(
+            'single',
+            'single',
+            'church',
+            null,
+            null,
+            null,
+            'Dingalan, Aurora',
+            'Poblacion, DINGALAN'
+        );
+        foreach ([
+            'psa_birth_certificate_groom',
+            'psa_birth_certificate_bride',
+            'canonical_interview',
+            'marriage_banns',
+        ] as $key) {
+            self::assertSame('not_received', $localParish[$key]['status']);
+        }
+        self::assertSame('not_applicable', $localParish['transfer_letter']['status']);
+
+        $outsideDingalan = marriage_application_requirement_states(
+            'single',
+            'single',
+            'church',
+            null,
+            null,
+            null,
+            'Dingalan, Aurora',
+            'Baler, Aurora'
+        );
+        self::assertSame('not_received', $outsideDingalan['transfer_letter']['status']);
+        self::assertStringContainsString('bride', $outsideDingalan['transfer_letter']['note']);
+
+        $outsideVenue = marriage_application_requirement_states(
+            'single',
+            'single',
+            'other',
+            null,
+            null,
+            null,
+            'Dingalan, Aurora',
+            'Dingalan, Aurora'
+        );
+        self::assertSame('not_received', $outsideVenue['transfer_letter']['status']);
+        self::assertContains('pre_jordan_seminar', sd_application_requirement_keys()['baptism']);
+        self::assertContains('parents_marriage_certificate', sd_application_requirement_keys()['baptism']);
+        self::assertContains('transfer_letter', sd_application_requirement_keys()['baptism']);
+        self::assertContains('confirmation_seminar', sd_application_requirement_keys()['confirmation']);
+        self::assertContains('canonical_interview', sd_application_requirement_keys()['marriage']);
+        self::assertArrayHasKey('pre_jordan_seminar', walk_in_requirements('baptism'));
+        self::assertArrayHasKey('confirmation_seminar', walk_in_requirements('confirmation'));
+        self::assertArrayHasKey('canonical_interview', walk_in_requirements('marriage'));
+        self::assertSame('Pre-Jordan Seminar', application_queue_requirement_label('baptism', 'pre_jordan_seminar'));
+        self::assertSame('Confirmation Seminar', application_queue_requirement_label('confirmation', 'confirmation_seminar'));
+        self::assertSame('Canonical Interview', application_queue_requirement_label('marriage', 'canonical_interview'));
     }
 }
