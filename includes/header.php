@@ -23,8 +23,8 @@ $basePath  = $basePath ?? base_path();
 $pageDescriptions = [
     'Home' => "St. Patrick's Parish Office in Dingalan, Aurora: prepare requirements, submit a request for parish review, and receive updates by email or contact the office with your reference number.",
     'Requirements' => 'Review parish office requirements before requesting a sacramental certificate or applying for a sacrament.',
-    'Office Services' => "Choose a sacrament application or request a Baptismal, Confirmation, First Communion, or Marriage certificate from St. Patrick's Parish Office.",
-    'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, First Communion, or Marriage preparation for parish review.',
+    'Office Services' => "Choose a sacrament application or request a Baptismal, Confirmation, Holy Communion, or Marriage certificate from St. Patrick's Parish Office.",
+    'Sacrament Applications' => 'Submit information for Baptismal, Confirmation, Holy Communion, or Marriage preparation for parish review.',
     'How It Works' => "Learn how online intake, secretary review, in-person requirements, and certificate pickup work at St. Patrick's Parish Office.",
     'View My Requests' => 'View the status of requests linked to your parish person reference.',
     'Privacy Notice' => "Read how St. Patrick's Parish Office handles information submitted through this parish records system.",
@@ -50,6 +50,7 @@ $pageDescription = $pageDescription ?? ($pageDescriptions[$pageTitle] ?? $pageDe
     ?>
     <!-- Main stylesheet for the public site -->
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $publicStyleVersion ?>">
+    <link rel="stylesheet" href="<?= $basePath ?>/assets/css/polish.css?v=<?= (int) (file_exists(__DIR__ . '/../assets/css/polish.css') ? filemtime(__DIR__ . '/../assets/css/polish.css') : time()) ?>">
     <meta property="og:title" content="<?= e($pageTitle) ?> | St. Patrick's Parish Office">
     <meta property="og:description" content="<?= e($pageDescription) ?>">
     <meta property="og:type" content="website">

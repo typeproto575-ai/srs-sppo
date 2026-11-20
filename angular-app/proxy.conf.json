@@ -1,0 +1,7 @@
+{
+  "/srs-sppo": {
+    "target": "http://localhost",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

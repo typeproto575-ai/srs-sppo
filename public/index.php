@@ -31,10 +31,18 @@ $calendarEvents = array_map(function ($event) use ($typeColorMap, $typeLabels) {
     $color = $typeColorMap[$event['event_type']] ?? $typeColorMap['other'];
     $displayTitle = public_calendar_title((string) $event['title']);
     $publicDetails = trim((string) ($event['public_details'] ?? ''));
+    $publicVenue = '';
+    if (($event['event_type'] ?? '') === 'baptism'
+        && preg_match('/^Venue:\s*(.+)$/i', $publicDetails, $venueMatch)) {
+        $publicVenue = trim($venueMatch[1]);
+    }
     $calendarTitle = $displayTitle;
     if (!empty($event['start_time'])) {
         $timeLabel = date('g:i A', strtotime($event['start_time']));
         $calendarTitle = $timeLabel . ' - ' . $displayTitle;
+    }
+    if ($publicVenue !== '') {
+        $calendarTitle .= ' · Venue: ' . $publicVenue;
     }
     return [
         'title' => $calendarTitle,
@@ -44,6 +52,7 @@ $calendarEvents = array_map(function ($event) use ($typeColorMap, $typeLabels) {
         'classNames' => $publicDetails === '' ? [] : ['has-public-details'],
         'displayTitle' => $displayTitle,
         'publicDetails' => $publicDetails,
+        'publicVenue' => $publicVenue,
         'eventType' => $typeLabels[$event['event_type']] ?? $typeLabels['other'],
         'displayDate' => date('l, F j, Y', strtotime($event['event_date'])),
     ];
@@ -81,13 +90,13 @@ require_once __DIR__ . '/../includes/header.php';
         <a class="service-card" href="<?= $basePath ?>/public/services.php#sacrament-applications">
             <span class="service-number">01</span>
             <h3>Apply for a sacrament</h3>
-            <p>Start a Baptism, First Communion, Confirmation, or Church Wedding application for parish review.</p>
+            <p>Start a Baptism, Holy Communion, Confirmation, or Church Wedding application for parish review.</p>
             <span class="service-link">Choose an application &rarr;</span>
         </a>
         <a class="service-card" href="<?= $basePath ?>/public/certificate-request.php">
             <span class="service-number">02</span>
             <h3>Request a certificate copy</h3>
-            <p>Request a certified copy of a baptism, confirmation, first communion, or marriage record.</p>
+            <p>Request a certified copy of a baptism, confirmation, Holy Communion, or marriage record.</p>
             <span class="service-link">Request a certificate copy &rarr;</span>
         </a>
     </div>
@@ -121,12 +130,13 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </section>
 
-<?php if (!empty($announcements)): ?>
+<?php $announcementSlides = array_chunk($announcements, 2); ?>
+<?php if (!empty($announcementSlides)): ?>
 <section class="announcements portal-section" aria-labelledby="announcements-heading">
     <div class="section-heading-row"><div><p class="section-kicker">From the parish office</p><h2 id="announcements-heading">Announcements</h2></div></div>
     <div class="carousel" data-carousel aria-roledescription="carousel" aria-label="Announcements">
         <div class="carousel-viewport"><div class="carousel-track">
-            <?php foreach (array_chunk($announcements, 2) as $batch): ?>
+            <?php foreach ($announcementSlides as $batch): ?>
                 <article class="slide announcement-slide">
                     <?php foreach ($batch as $announcement): ?>
                         <div class="card"><h3><?= e($announcement['title']) ?></h3><?php if ($announcement['event_date']): ?><span class="event-date"><?= e(date('M j, Y', strtotime($announcement['event_date']))) ?></span><?php endif; ?><p><?= e($announcement['content']) ?></p></div>
@@ -134,7 +144,9 @@ require_once __DIR__ . '/../includes/header.php';
                 </article>
             <?php endforeach; ?>
         </div></div>
+        <?php if (count($announcementSlides) > 1): ?>
         <div class="carousel-controls"><button type="button" class="carousel-btn carousel-prev" data-carousel-prev aria-label="Previous announcement">&#8249;</button><div class="carousel-dots" data-carousel-dots></div><button type="button" class="carousel-btn carousel-next" data-carousel-next aria-label="Next announcement">&#8250;</button></div>
+        <?php endif; ?>
     </div>
 </section>
 <?php endif; ?>
@@ -180,7 +192,9 @@ require_once __DIR__ . '/../includes/header.php';
             eventDidMount: function (info) {
                 var details = info.event.extendedProps;
                 var hasPublicDetails = details.publicDetails !== '';
-                info.el.setAttribute('aria-label', details.displayTitle + ', ' + details.eventType + ', ' + details.displayDate + (hasPublicDetails ? '. Select to read more.' : '. No additional details posted.'));
+                info.el.setAttribute('aria-label', details.displayTitle + ', ' + details.eventType + ', ' + details.displayDate
+                    + (details.publicVenue ? '. Venue: ' + details.publicVenue : '')
+                    + (hasPublicDetails ? '. Select to read more.' : '. No additional details posted.'));
                 if (hasPublicDetails) {
                     var indicator = document.createElement('span');
                     indicator.className = 'calendar-event-has-details';

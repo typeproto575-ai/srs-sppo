@@ -71,6 +71,10 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
         $applicationDetails = is_array($applicationDetails) ? $applicationDetails : [];
         $_POST['person_id'] = (string) ($application['person_id'] ?? '');
         $_POST['remarks'] = 'Encoded from application ' . $application['request_no'];
+        $applicationSponsors = $applicationDetails['sponsor_names'] ?? [];
+        if (is_array($applicationSponsors) && isset($applicationSponsors[0]) && is_string($applicationSponsors[0])) {
+            $_POST['sponsor_full_name'] = $applicationSponsors[0];
+        }
         if (empty($application['person_id'])) {
             $applicantName = trim((string) ($applicationDetails['applicant_full_name'] ?? ''));
             [$first, $middle, $last, $suffix] = structured_name_parts($applicantName);
@@ -109,7 +113,7 @@ if (isset($_GET['edit'])) {
     }
     $stmt = $pdo->prepare(
         "SELECT sr.id, sr.person_id, sr.event_date AS confirmation_date,
-                sr.entry_no, sr.book_no, sr.page_no, sr.line_no,
+                sr.entry_no, sr.book_no, sr.page_no, sr.line_no, sr.place,
                 sr.minister_name, sr.remarks, sr.encoded_by,
                 p.first_name, p.middle_name, p.last_name, p.suffix, p.birth_date,
                 p.birth_place, p.father_name, p.mother_maiden_name, p.address,
@@ -152,14 +156,7 @@ $isEdit = $editRecord !== null;
 $isNew = (string) ($_GET['new'] ?? '') === '1';
 $pageTitle = $isEdit ? 'Edit Confirmation Record' : 'New Confirmation Record';
 $recordNameFormValues = $formValues;
-foreach ([
-    'sponsor' => $isEdit ? structured_name_parts((string) ($editRecord['sponsor_name'] ?? '')) : ['', '', '', ''],
-    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
-] as $prefix => $parts) {
-    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
-        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
-    }
-}
+$recordNameFormValues['sponsor_full_name'] ??= (string) ($editRecord['sponsor_name'] ?? '');
 
 // CSRF guard: reject any POST whose token is missing or stale (see
 // csrf_field() inside the form). Nothing is written when it fails.
@@ -171,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $confirmationDate = trim((string) ($_POST['confirmation_date'] ?? ''));
+    $place = trim((string) ($_POST['place'] ?? ''));
     $confirmandFirst = trim((string) ($_POST['confirmand_first_name'] ?? ''));
     $confirmandMiddle = trim((string) ($_POST['confirmand_middle_name'] ?? ''));
     $confirmandLast = trim((string) ($_POST['confirmand_last_name'] ?? ''));
@@ -178,14 +176,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
     $birthdate = trim((string) ($_POST['birthdate'] ?? ''));
     $fatherName = compose_person_name($_POST, 'father');
     $motherMaidenName = compose_person_name($_POST, 'mother');
-    $sponsorName = compose_person_name($_POST, 'sponsor');
-    $ministerName = compose_person_name($_POST, 'minister');
+    $sponsorName = trim((string) ($_POST['sponsor_full_name'] ?? compose_person_name($_POST, 'sponsor')));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
     $lineNo = trim((string) ($_POST['line_no'] ?? ''));
 
     if ($confirmationDate === '') $errors[] = 'Confirmation date is required.';
+    if ($place === '') $errors[] = 'Enter the actual place of Confirmation.';
+    if ($ministerName === '') $errors[] = 'Enter the officiating minister’s full name.';
     if ($birthdate !== '' && !confirmation_birthdate_is_valid($birthdate)) $errors[] = 'Enter a valid birth date that is not in the future.';
     if (empty($_POST['person_id']) && empty($_POST['from_application'])
         && $confirmandFirst !== '' && $confirmandLast !== '') {
@@ -258,13 +258,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_records
-                    (sacrament_type, person_id, source, event_date, minister_name, entry_no,
+                    (sacrament_type, person_id, source, event_date, place, minister_name, entry_no,
                      book_no, page_no, line_no, remarks, encoded_by)
-                 VALUES ('confirmation', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES ('confirmation', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $personId,
                 $confirmationDate,
+                $place,
                 $ministerName !== '' ? $ministerName : null,
                 $entryNo !== '' ? $entryNo : null,
                 $bookNo,
@@ -306,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             $pdo->commit();
             if ($applicationRequestNo !== null) {
                 try {
-                    notify_sacrament_application_status($pdo, 'completed', 'confirmation', $applicationRequestNo, "Confirmation encoded into register (record #{$recordId}).");
+                    notify_sacrament_application_status($pdo, 'completed', 'confirmation', $applicationRequestNo);
                 } catch (Throwable $e) {
                     error_log('Confirmation application completion notification failed: ' . $e->getMessage());
                 }
@@ -330,8 +331,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $editId = (int) ($_POST['edit_id'] ?? 0);
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $confirmationDate = trim((string) ($_POST['confirmation_date'] ?? ''));
-    $sponsorName = compose_person_name($_POST, 'sponsor');
-    $ministerName = compose_person_name($_POST, 'minister');
+    $place = trim((string) ($_POST['place'] ?? ''));
+    $sponsorName = trim((string) ($_POST['sponsor_full_name'] ?? compose_person_name($_POST, 'sponsor')));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
@@ -348,12 +350,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
             $auditBefore = sd_record_audit_snapshot($pdo, $editId);
             $stmt = $pdo->prepare(
                 "UPDATE sacrament_records
-                 SET event_date = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?,
+                 SET event_date = ?, place = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?,
                      line_no = ?, remarks = ?, encoded_by = ?
                  WHERE id = ? AND sacrament_type = 'confirmation'"
             );
             $stmt->execute([
                 $confirmationDate,
+                $place !== '' ? $place : null,
                 $ministerName !== '' ? $ministerName : null,
                 $entryNo !== '' ? $entryNo : null,
                 $bookNo,
@@ -673,12 +676,19 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     </div>
                 <?php endif; ?>
                 <label>Confirmation Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="confirmation_date" value="<?= e($_POST['confirmation_date'] ?? $editRecord['confirmation_date'] ?? '') ?>" required></label>
-                <?= person_name_fields('sponsor', 'Sponsor', $recordNameFormValues, false) ?>
+                <label>Sponsor's full name
+                    <input type="text" name="sponsor_full_name" maxlength="150" value="<?= e($recordNameFormValues['sponsor_full_name'] ?? '') ?>" autocomplete="name">
+                </label>
+                <label>Place of Confirmation<?= !$isEdit ? ' *' : '' ?>
+                    <input type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                </label>
             </fieldset>
 
             <fieldset>
                 <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                <label>Officiating Minister's full name<?= !$isEdit ? ' *' : '' ?>
+                    <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                </label>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
                 <?php if ($isEdit): ?>
                     <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>

@@ -1,0 +1,26 @@
+:host {
+  display: block;
+}
+
+.master-user-name {
+  color: #f3efe8;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.dashboard-search .search-form {
+  display: flex;
+  gap: 0.7rem;
+}
+
+.dashboard-search .search-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .dashboard-search .search-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

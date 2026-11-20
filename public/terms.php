@@ -27,8 +27,7 @@ require_once __DIR__ . '/../includes/header.php';
         <h1>Terms and Conditions</h1>
         <p class="legal-document__subtitle">Governing the use of this website's online certificate-request and sacrament-application service.</p>
         <div class="legal-document__meta">
-            <span>Effective: September 20, 2026</span>
-            <span>Last Updated: September 20, 2026</span>
+            <span>Draft for demonstration. Not yet in effect.</span>
         </div>
     </header>
 
@@ -70,7 +69,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause">
             <h2 class="legal-clause__title">Inquiries and Amendment</h2>
-            <p>A requesting party who is uncertain as to a requirement, eligibility criterion, record detail, or pickup instruction should contact the Parish Office prior to submission. The Parish Office reserves the right to amend these Terms and Conditions from time to time as its online request process changes; the "Last Updated" date above reflects the most recent revision.</p>
+            <p>A requesting party who is uncertain as to a requirement, eligibility criterion, record detail, or pickup instruction should contact the Parish Office prior to submission. The Parish Office reserves the right to amend these Terms and Conditions from time to time as its online request process changes; a revision date will be shown here once these Terms take effect.</p>
         </section>
 
     </div>

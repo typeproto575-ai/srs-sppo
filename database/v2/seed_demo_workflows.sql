@@ -38,7 +38,7 @@ FROM (
       'child_birth_place', 'Dingalan, Aurora',
       'father_name', 'Tobin Moonwhistle',
       'mother_maiden_name', 'Mira Fernbrook',
-      'parents_union_type', 'legitimate',
+      'parents_union_type', 'canonical',
       'parent_guardian_name', 'Mira Moonwhistle',
       'godparents', JSON_ARRAY(
         JSON_OBJECT('role', 'godfather', 'full_name', 'Rowan Starling'),
@@ -60,7 +60,7 @@ FROM (
       'child_birth_place', 'Barangay San Isidro, Dingalan',
       'father_name', 'Rowan Silverfern',
       'mother_maiden_name', 'Lark Willowmere',
-      'parents_union_type', 'legitimate',
+      'parents_union_type', 'canonical',
       'parent_guardian_name', 'Rowan Silverfern',
       'godparents', JSON_ARRAY(
         JSON_OBJECT('role', 'godfather', 'full_name', 'Cassian Brookspell'),

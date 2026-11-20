@@ -86,9 +86,40 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
                 $_POST[$party . '_suffix'] = $suffix;
                 $_POST[$party . '_birth_date'] = (string) ($applicationDetails[$party]['birth_date'] ?? '');
                 $_POST[$party . '_birth_place'] = (string) ($applicationDetails[$party]['birthplace'] ?? '');
+                foreach (['father_name' => 'father', 'mother_maiden_name' => 'mother'] as $detailKey => $parentPrefix) {
+                    $parentName = trim((string) ($applicationDetails[$party][$detailKey] ?? ''));
+                    if ($parentName !== '') {
+                        $parentParts = structured_name_parts($parentName);
+                        foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
+                            $_POST[$party . '_' . $parentPrefix . '_' . $part] = $parentParts[$index];
+                        }
+                    }
+                }
             }
         }
         $_POST['marriage_date'] = (string) ($application['preferred_date'] ?? '');
+        $venue = (string) ($applicationDetails['preferred_wedding_venue'] ?? '');
+        $_POST['place'] = $venue === 'church'
+            ? "St. Patrick's Parish Church"
+            : trim((string) ($applicationDetails['preferred_wedding_venue_other'] ?? ''));
+        $_POST['minister_name'] = trim((string) ($applicationDetails['preferred_officiant'] ?? ''));
+        $principalSponsors = $applicationDetails['principal_sponsors'] ?? null;
+        if (is_array($principalSponsors)) {
+            $godfathers = array_values(array_filter((array) ($principalSponsors['godfathers'] ?? []), 'is_string'));
+            $godmothers = array_values(array_filter((array) ($principalSponsors['godmothers'] ?? []), 'is_string'));
+            $sponsors = array_merge(
+                array_slice($godfathers, 0, 1),
+                array_slice($godmothers, 0, 1),
+                array_slice($godfathers, 1),
+                array_slice($godmothers, 1)
+            );
+        } else {
+            $sponsors = array_values(array_filter((array) ($applicationDetails['sponsors'] ?? []), 'is_string'));
+        }
+        $sponsors = array_slice($sponsors, 0, 2);
+        foreach ($sponsors as $i => $sponsorName) {
+            $_POST['witness_full_name'][$i] = $sponsorName;
+        }
         $_POST['remarks'] = 'Encoded from application ' . $application['request_no'];
     } elseif ($application) {
         $errors[] = 'Application ' . $application['request_no'] . ' must be approved or scheduled before it can be encoded into the register.';
@@ -200,7 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $marriageDate = trim((string) ($_POST['marriage_date'] ?? ''));
     $place = trim((string) ($_POST['place'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister');
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
     $licenseRef = trim((string) ($_POST['license_ref'] ?? ''));
@@ -217,8 +248,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
     $witnessNames = compose_person_name_rows_by_index($_POST, 'witness');
     $witnessResidences = $_POST['witness_residence'] ?? [];
     if (!is_array($witnessResidences)) $witnessResidences = [];
+    foreach ($witnessNames as $name) {
+        if (!is_string($name)) {
+            $errors[] = 'Witness names must be text.';
+            break;
+        }
+        if (mb_strlen(trim($name)) > 150) {
+            $errors[] = 'Witness names must be 150 characters or fewer.';
+            break;
+        }
+    }
+    foreach ($witnessResidences as $residence) {
+        if (!is_string($residence)) {
+            $errors[] = 'Witness residence must be text.';
+            break;
+        }
+        if (mb_strlen(trim($residence)) > 150) {
+            $errors[] = 'Witness residence must be 150 characters or fewer.';
+            break;
+        }
+    }
 
     if ($marriageDate === '') $errors[] = 'Marriage date is required.';
+    if (!$isUpdate && $place === '') $errors[] = 'Enter the actual place of marriage.';
+    if (!$isUpdate && $ministerName === '') $errors[] = 'Enter the officiating minister’s full name.';
     if ($isUpdate && (!$editRecord || $editId !== (int) $editRecord['id'])) {
         $errors[] = 'Invalid record selected for update.';
     }
@@ -465,8 +518,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
                         $pdo,
                         'completed',
                         'marriage',
-                        $applicationRequestNo,
-                        "Marriage encoded into register (record #{$recordId})."
+                        $applicationRequestNo
                     );
                 } catch (Throwable $e) {
                     error_log('Marriage application completion notification failed: ' . $e->getMessage());
@@ -494,7 +546,7 @@ $groomId = (int) ($editRecord['person_id'] ?? ($_POST['groom_person_id'] ?? 0));
 $brideId = (int) ($editRecord['spouse_person_id'] ?? ($_POST['bride_person_id'] ?? 0));
 if (!$groomIdentity && $groomId > 0) $groomIdentity = marriage_load_person_identity($pdo, $groomId);
 if (!$brideIdentity && $brideId > 0) $brideIdentity = marriage_load_person_identity($pdo, $brideId);
-
+$marriageDate = trim((string) ($_POST['marriage_date'] ?? ($editRecord['marriage_date'] ?? '')));
 $prerequisiteWarnings = [];
 if ($groomId > 0) {
     $prerequisiteWarnings = array_merge(
@@ -527,12 +579,6 @@ $suggest = $isEdit
     ? ['entry_no' => '', 'book_no' => '', 'page_no' => '', 'line_no' => '']
     : register_next_logbook_numbers($pdo, 'marriage');
 $recordNameFormValues = $_POST;
-$ministerParts = $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''];
-foreach (['minister' => $ministerParts] as $prefix => $parts) {
-    foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
-        $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
-    }
-}
 if (isset($_GET['added'])) $success = 'Marriage record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '') . (isset($_GET['app_completed']) ? ' The linked marriage application was marked completed.' : '');
 if (isset($_GET['updated'])) $success = 'Marriage record updated.';
 if (isset($_GET['deleted'])) $success = 'Marriage record deleted.';
@@ -801,8 +847,11 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <?php endforeach; ?>
                     <fieldset>
                         <legend>Marriage Details</legend>
-                        <label>Marriage Date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? $editRecord['marriage_date'] ?? '') ?>" required></label>
-                        <label>Place <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? "St. Patrick's Parish") ?>"></label>
+                        <label>Marriage date <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="marriage_date" value="<?= e($_POST['marriage_date'] ?? $editRecord['marriage_date'] ?? '') ?>" required></label>
+                        <label>Place of marriage<?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : ' <span class="field-hint">(optional when correcting an existing record)</span>' ?>
+                            <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? "St. Patrick's Parish") ?>"<?= !$isEdit ? ' required' : '' ?>>
+                            <span class="field-hint">Enter the parish church, chapel, or community venue as recorded.</span>
+                        </label>
                         <?php foreach (['groom' => 'Groom', 'bride' => 'Bride'] as $party => $label): ?>
                             <?php
                             $details = json_decode((string) ($editRecord['details'] ?? ''), true);
@@ -811,34 +860,30 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             ?>
                             <h3><?= e($label) ?> register details</h3>
                             <div class="inline-fields">
-                                <label>Civil Status <input autocomplete="off" type="text" name="<?= e($party) ?>_civil_status" value="<?= e($_POST[$party . '_civil_status'] ?? $partyDetails['civil_status'] ?? '') ?>"></label>
-                                <label>Age <input autocomplete="off" type="number" min="0" max="120" name="<?= e($party) ?>_age" value="<?= e($_POST[$party . '_age'] ?? $partyDetails['age'] ?? '') ?>"></label>
+                                <label>Civil status <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_civil_status" value="<?= e($_POST[$party . '_civil_status'] ?? $partyDetails['civil_status'] ?? '') ?>"></label>
+                                <label>Age <span class="field-hint">(optional)</span><input autocomplete="off" type="number" min="0" max="120" name="<?= e($party) ?>_age" value="<?= e($_POST[$party . '_age'] ?? $partyDetails['age'] ?? '') ?>"></label>
                             </div>
                             <div class="inline-fields">
-                                <label>Origin <input autocomplete="off" type="text" name="<?= e($party) ?>_origin" value="<?= e($_POST[$party . '_origin'] ?? $partyDetails['origin'] ?? '') ?>"></label>
-                                <label>Residence <input autocomplete="off" type="text" name="<?= e($party) ?>_residence" value="<?= e($_POST[$party . '_residence'] ?? $partyDetails['residence'] ?? '') ?>"></label>
+                                <label>Origin <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_origin" value="<?= e($_POST[$party . '_origin'] ?? $partyDetails['origin'] ?? '') ?>"></label>
+                                <label>Residence <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="<?= e($party) ?>_residence" value="<?= e($_POST[$party . '_residence'] ?? $partyDetails['residence'] ?? '') ?>"></label>
                             </div>
                         <?php endforeach; ?>
-                        <label>Marriage License Reference <input autocomplete="off" type="text" name="license_ref" value="<?= e($_POST['license_ref'] ?? $details['license_ref'] ?? '') ?>"></label>
-                        <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                        <label>Marriage license reference <span class="field-hint">(optional)</span><input autocomplete="off" type="text" name="license_ref" value="<?= e($_POST['license_ref'] ?? $details['license_ref'] ?? '') ?>"></label>
+                        <label>Officiating minister's full name<?= !$isEdit ? ' <span class="required-marker" aria-hidden="true">*</span>' : ' <span class="field-hint">(optional when correcting an existing record)</span>' ?>
+                            <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                        </label>
                     </fieldset>
                     <?php
-                    $witnessRows = array_key_exists('witness_first', $_POST)
-                        ? array_fill(0, person_name_row_count($_POST, 'witness'), '')
-                        : array_column($editWitnesses, 'full_name');
+                    if (array_key_exists('witness_full_name', $_POST)
+                        || array_key_exists('witness_first', $_POST)) {
+                        $witnessRows = compose_person_name_rows_by_index($_POST, 'witness');
+                    } else {
+                        $witnessRows = array_column($editWitnesses, 'full_name');
+                    }
                     $witnessResidences = $_POST['witness_residence'] ?? array_column($editWitnesses, 'residence');
                     if (!is_array($witnessRows)) $witnessRows = [];
                     if (!is_array($witnessResidences)) $witnessResidences = [];
-                    $witnessRows = array_values($witnessRows);
-                    $witnessResidences = array_values($witnessResidences);
                     if ($witnessRows === []) $witnessRows = [''];
-                    $witnessFormValues = $_POST;
-                    foreach ($witnessRows as $index => $rowName) {
-                        $parts = structured_name_parts(is_string($rowName) ? $rowName : '');
-                        foreach (['first', 'middle', 'last', 'suffix'] as $partIndex => $part) {
-                            $witnessFormValues['witness_' . $part][$index] ??= $parts[$partIndex];
-                        }
-                    }
                     ?>
                     <fieldset>
                         <legend>Witnesses</legend>
@@ -846,8 +891,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                             <?php foreach ($witnessRows as $index => $rowName): ?>
                                 <div class="godparent-row">
                                     <div class="inline-fields">
-                                        <?= person_name_fields('witness', 'Witness Name', $witnessFormValues, false, $index) ?>
-                                        <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" value="<?= e(isset($witnessResidences[$index]) && is_string($witnessResidences[$index]) ? $witnessResidences[$index] : '') ?>"></label>
+                                        <label>Witness full name
+                                            <input autocomplete="name" type="text" name="witness_full_name[]" maxlength="150" value="<?= e(is_string($rowName) ? $rowName : '') ?>">
+                                        </label>
+                                        <label>Residence <input autocomplete="off" type="text" name="witness_residence[]" maxlength="150" value="<?= e(isset($witnessResidences[$index]) && is_string($witnessResidences[$index]) ? $witnessResidences[$index] : '') ?>"></label>
                                     </div>
                                     <button type="button" class="link-button repeat-remove" data-repeat-remove<?= $index === 0 ? ' hidden' : '' ?>>Remove</button>
                                 </div>

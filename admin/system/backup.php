@@ -102,6 +102,7 @@ $backupCounts['persons'] = (int) $pdo->query('SELECT COUNT(*) FROM persons')->fe
 $backupCounts['sacrament_participants'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_participants')->fetchColumn();
 $backupCounts['certificate_requests'] = (int) $pdo->query('SELECT COUNT(*) FROM certificate_requests')->fetchColumn();
 $backupCounts['sacrament_applications'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_applications')->fetchColumn();
+$backupCounts['sacrament_batches'] = (int) $pdo->query('SELECT COUNT(*) FROM sacrament_batches')->fetchColumn();
 $backupCounts['schedule_events'] = (int) $pdo->query('SELECT COUNT(*) FROM schedule_events')->fetchColumn();
 $backupCounts['announcements'] = (int) $pdo->query('SELECT COUNT(*) FROM announcements')->fetchColumn();
 $backupCounts['audit_logs'] = (int) $pdo->query('SELECT COUNT(*) FROM audit_logs')->fetchColumn();

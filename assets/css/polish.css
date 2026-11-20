@@ -1,0 +1,748 @@
+/* ==========================================================================
+   SRS-SPPO — UI polish layer (public site)
+   Loaded AFTER style.css. Presentation only: no markup or logic depends on it.
+   To undo everything, remove the <link> to polish.css in includes/header.php.
+   ========================================================================== */
+
+:root {
+    --p-radius: 10px;
+    --p-radius-sm: 8px;
+    --p-line: rgba(31, 61, 43, .16);
+    --p-line-strong: rgba(31, 61, 43, .32);
+    --p-muted: #5f5848;
+    --p-focus: 0 0 0 3px rgba(47, 94, 63, .18);
+    --p-shadow: 0 1px 2px rgba(31, 61, 43, .06), 0 10px 28px rgba(31, 61, 43, .07);
+}
+
+/* ---- Type and rhythm -------------------------------------------------- */
+.public-page h1,
+.public-page h2 { letter-spacing: -.01em; }
+.public-page p { max-width: 75ch; }
+
+/* ---- Form fields ------------------------------------------------------- */
+.public-page label {
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--color-ledger-dark);
+}
+
+.public-page input:not([type="checkbox"]):not([type="radio"]),
+.public-page select,
+.public-page textarea {
+    min-height: 2.75rem;
+    padding: .6rem .8rem;
+    border: 1px solid var(--p-line-strong);
+    border-radius: var(--p-radius-sm);
+    background-color: #fff;
+    font-weight: 400;
+    color: var(--color-ink);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.public-page textarea { min-height: 6rem; }
+
+.public-page input:not([type="checkbox"]):not([type="radio"]):hover,
+.public-page select:hover,
+.public-page textarea:hover { border-color: var(--color-parish-green); }
+
+.public-page input:not([type="checkbox"]):not([type="radio"]):focus,
+.public-page select:focus,
+.public-page textarea:focus {
+    border-color: var(--color-parish-green);
+    outline: none;
+    box-shadow: var(--p-focus);
+}
+
+.public-page input:disabled,
+.public-page input[readonly],
+.public-page select:disabled {
+    background: #f1ede1;
+    color: var(--p-muted);
+    cursor: not-allowed;
+}
+
+.public-page input:user-invalid,
+.public-page select:user-invalid,
+.public-page textarea:user-invalid { border-color: #b23a2e; }
+
+.public-page .field-hint {
+    display: inline;
+    margin: 0;
+    font-weight: 400;
+    font-size: .82rem;
+    color: var(--p-muted);
+}
+.public-page p.field-hint { display: block; margin: 0 0 1rem; }
+
+/* ---- Fieldsets become clean section cards ------------------------------ */
+.public-page .request-form fieldset,
+.public-page .application-form fieldset {
+    margin: 1.25rem 0;
+    padding: 1.25rem 1.4rem 1rem;
+    border: 1px solid var(--p-line);
+    border-radius: var(--p-radius);
+    background: #fffefa;
+}
+
+.public-page fieldset > legend {
+    padding: .2rem .8rem;
+    border-radius: 999px;
+    background: var(--color-ledger-dark);
+    color: #fff;
+    font-family: var(--font-body);
+    font-size: .82rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+.public-page .inline-fields { gap: .25rem 1.25rem; }
+
+/* ---- Step indicator ---------------------------------------------------- */
+.public-page .request-steps { gap: .6rem; margin-bottom: 1.5rem; }
+
+.public-page .request-steps li {
+    padding: .55rem .7rem;
+    border: 1px solid var(--p-line);
+    border-bottom-width: 1px;
+    border-radius: var(--p-radius-sm);
+    background: #fffefa;
+    font-size: .82rem;
+}
+
+.public-page .request-steps li.is-current {
+    border-color: var(--color-parish-green);
+    background: #edf3ec;
+}
+
+.public-page .request-steps li.is-done { background: #f6faf5; }
+
+.public-page .request-steps li span {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-width: 2px;
+    font-weight: 700;
+}
+
+@media (max-width: 720px) {
+    .public-page .request-steps li { padding: .45rem; justify-content: center; }
+    .public-page .request-steps li > :not(span) { display: none; }
+}
+
+/* ---- Buttons ----------------------------------------------------------- */
+.public-page .btn,
+.public-page button.btn {
+    min-height: 2.75rem;
+    padding: .7rem 1.5rem;
+    border-radius: var(--p-radius-sm);
+    box-shadow: 0 1px 2px rgba(31, 61, 43, .2);
+    transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+
+.public-page .btn:hover { box-shadow: 0 4px 12px rgba(31, 61, 43, .22); }
+.public-page .btn:active { transform: translateY(1px); }
+
+.public-page .btn[disabled],
+.public-page button.btn:disabled {
+    background: #c9c4b3;
+    color: #6b6659;
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.public-page .btn-secondary { box-shadow: none; }
+
+/* ---- Alerts (adds the missing alert-info used by the marriage notes) ---- */
+.alert {
+    display: block;
+    padding: .85rem 1rem;
+    border-left-width: 4px;
+    border-radius: var(--p-radius-sm);
+    line-height: 1.5;
+}
+.alert-success { border-left-color: #2f7d4a; }
+.alert-error   { border-left-color: #b23a2e; }
+.alert-warning { border-left-color: #c9962b; }
+.alert-info {
+    background: #e8f0f7;
+    border: 1px solid #a9c3da;
+    border-left: 4px solid #3b6e9c;
+    color: #1f3a52;
+}
+[data-guardian-attestation][hidden] {
+    display: none !important;
+}
+
+/* ---- Person lookup widget --------------------------------------------- */
+.public-page .public-person-lookup {
+    margin: .5rem 0 1.25rem;
+    padding: .9rem 1rem;
+    border: 1px dashed var(--p-line-strong);
+    border-radius: var(--p-radius);
+    background: #f6faf5;
+}
+
+.public-page .record-card {
+    border-radius: var(--p-radius-sm);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.public-page .record-card:hover {
+    border-color: var(--color-parish-green);
+    box-shadow: var(--p-shadow);
+}
+
+/* ---- Review tables and request summaries ------------------------------ */
+.public-page .request-form .review-table,
+.public-page .application-form .review-table {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-spacing: 0;
+    overflow: visible;
+    background: transparent;
+}
+.public-page .request-form .review-table tbody,
+.public-page .application-form .review-table tbody {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .7rem;
+}
+.public-page .request-form .review-table tr,
+.public-page .application-form .review-table tr {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--p-line);
+    border-radius: var(--p-radius-sm);
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(31, 61, 43, .04);
+}
+.public-page .request-form .review-table th,
+.public-page .request-form .review-table td,
+.public-page .application-form .review-table th,
+.public-page .application-form .review-table td {
+    display: block;
+    width: auto;
+    padding: .65rem .8rem;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+.public-page .request-form .review-table th,
+.public-page .application-form .review-table th {
+    padding-bottom: .4rem;
+    border-bottom: 1px solid rgba(31, 61, 43, .09);
+    background: #f6f1e4;
+    color: var(--p-muted);
+    font-size: .73rem;
+    font-weight: 700;
+    letter-spacing: .045em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+.public-page .request-form .review-table td,
+.public-page .application-form .review-table td {
+    flex: 1;
+    color: var(--color-ink);
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+    .public-page .request-form .review-table tbody,
+    .public-page .application-form .review-table tbody { grid-template-columns: 1fr; }
+}
+
+/* ---- Cards ------------------------------------------------------------- */
+.public-page > .card,
+.public-page .service-card,
+.public-page .path-card,
+.public-page .hub-card,
+.public-page .office-card {
+    border-radius: var(--p-radius);
+}
+
+.public-page > .card { box-shadow: var(--p-shadow); }
+
+/* ---- Tracker: status look ---------------------------------------------- */
+.public-page .status-timeline .timeline-dot { box-shadow: 0 0 0 4px rgba(47, 94, 63, .12); }
+
+/* ---- Header and footer ------------------------------------------------- */
+.site-header { box-shadow: 0 2px 14px rgba(31, 61, 43, .18); }
+.site-footer { border-top: 3px solid var(--color-brass); }
+
+/* ---- Keyboard focus ---------------------------------------------------- */
+.public-page a:focus-visible,
+.public-page button:focus-visible {
+    outline: 3px solid var(--color-brass);
+    outline-offset: 2px;
+}
+
+/* ---- Motion preference ------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .public-page * { transition: none !important; }
+}
+
+/* ---- Lookup card vs. the person's own details -------------------------- */
+.public-page .public-person-lookup .lookup-title {
+    margin: 0 0 .35rem;
+    font-size: 1.05rem;
+}
+
+.public-page .form-subheading {
+    margin: 1.75rem 0 .9rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--p-line);
+    font-size: 1.15rem;
+    color: var(--color-ledger-dark);
+}
+
+/* ---- Notices float over the page like a browser notification ----------- */
+.public-page .alert-error,
+.public-page .alert-success,
+.public-page .alert-warning,
+.public-page .certificate-wizard-error {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    z-index: 1000;
+    width: min(92vw, 640px);
+    margin: 0;
+    padding-right: 2.75rem;
+    transform: translateX(-50%);
+    box-shadow: 0 12px 32px rgba(22, 36, 29, .32);
+    animation: p-toast-in .25s ease-out;
+}
+
+.public-page .certificate-wizard-error {
+    animation: p-toast-in .25s ease-out, p-toast-out .4s ease-in 12s forwards;
+}
+
+.public-page .is-dismissed { display: none !important; }
+
+.toast-close {
+    position: absolute;
+    top: .35rem;
+    right: .45rem;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.toast-close:hover { background: rgba(0, 0, 0, .08); }
+
+@keyframes p-toast-in {
+    from { opacity: 0; transform: translate(-50%, -12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes p-toast-out {
+    to { opacity: 0; visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .public-page .alert-error,
+    .public-page .alert-success,
+    .public-page .alert-warning,
+    .public-page .certificate-wizard-error { animation: none; }
+}
+
+/* ---- Holy Communion intake --------------------------------------------- */
+.communion-intake {
+    max-width: 900px;
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    border: 1px solid rgba(31, 61, 43, .14);
+    border-top: 6px solid var(--color-parish-green);
+    border-radius: 20px;
+    background:
+        radial-gradient(ellipse at 92% 0%, rgba(176, 141, 69, .08), transparent 19rem),
+        linear-gradient(180deg, #fff 0%, #fffefa 100%);
+    box-shadow: 0 18px 48px rgba(31, 61, 43, .11);
+}
+
+.communion-page-heading { margin-bottom: 1.8rem; }
+.communion-page-heading .communion-kicker {
+    margin: 0 0 .45rem;
+    color: #806932;
+    font: 700 .7rem/1.3 var(--font-mono);
+    letter-spacing: .14em;
+}
+.communion-page-heading h1 {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    line-height: 1.08;
+}
+.communion-page-heading > p:last-child {
+    max-width: 62ch;
+    margin: .8rem 0 0;
+    color: #5f665e;
+    font-size: 1rem;
+}
+
+.communion-intake .request-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .65rem;
+    margin: 0 0 1.8rem;
+    padding: 0;
+    color: #6b7069;
+}
+.communion-intake .request-steps li {
+    min-width: 0;
+    min-height: 3.6rem;
+    gap: .65rem;
+    padding: .65rem .8rem;
+    border: 1px solid rgba(31, 61, 43, .14);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, .8);
+    font-size: .82rem;
+    line-height: 1.3;
+}
+.communion-intake .request-steps li span {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: 1px solid rgba(31, 61, 43, .22);
+    border-radius: 50%;
+    background: #fff;
+    color: #59645b;
+}
+.communion-intake .request-steps li.is-current {
+    border-color: rgba(47, 94, 63, .48);
+    background: #edf4ed;
+    color: var(--color-ledger-dark);
+}
+.communion-intake .request-steps li.is-current span,
+.communion-intake .request-steps li.is-done span {
+    border-color: var(--color-parish-green);
+    background: var(--color-parish-green);
+    color: #fff;
+}
+.communion-intake .request-steps li.is-done {
+    border-color: rgba(47, 94, 63, .24);
+    background: #f7faf6;
+}
+.communion-intake .form-stage-heading {
+    margin: 0 0 1rem;
+    font-size: clamp(1.35rem, 2.5vw, 1.7rem);
+}
+
+.communion-intake-form > fieldset {
+    margin: 0;
+    padding: clamp(1rem, 3vw, 1.7rem);
+    border: 1px solid rgba(31, 61, 43, .14);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, .78);
+    box-shadow: 0 5px 16px rgba(31, 61, 43, .035);
+}
+.communion-intake-form > fieldset > legend,
+.communion-intake-form .communion-notify-person > legend {
+    padding: 0 .45rem 0 0;
+    border-radius: 0;
+    background: transparent;
+    color: #806932;
+    font: 700 .72rem/1.4 var(--font-mono);
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+.communion-intake-form label { margin-bottom: 1rem; }
+.communion-intake-form .field-hint { display: block; margin: .2rem 0 .45rem; }
+.communion-intake-form .form-subheading {
+    margin: 1.5rem 0 .75rem;
+    padding: 0;
+    border: 0;
+    font-size: 1.15rem;
+}
+.communion-step-intro {
+    margin: .15rem 0 1rem;
+    color: #626a62;
+}
+
+.communion-mode-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+    margin: 1.25rem 0;
+}
+.communion-choice {
+    position: relative;
+    display: grid !important;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    align-content: start;
+    align-items: start;
+    gap: .2rem .85rem;
+    min-height: 8.5rem;
+    margin: 0 !important;
+    padding: 1.15rem 2.9rem 1.1rem 1rem;
+    border: 1px solid rgba(31, 61, 43, .17);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--color-ink);
+    cursor: pointer;
+    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .18s ease;
+}
+.communion-choice:hover {
+    border-color: rgba(47, 94, 63, .55);
+    box-shadow: 0 8px 20px rgba(31, 61, 43, .08);
+    transform: translateY(-1px);
+}
+.communion-choice:has(input:checked) {
+    border-color: var(--color-parish-green);
+    background: #f3f7f1;
+    box-shadow: inset 0 0 0 1px var(--color-parish-green), 0 8px 20px rgba(31, 61, 43, .08);
+}
+.communion-choice:has(input:checked)::before {
+    position: absolute;
+    inset: 1rem auto 1rem 0;
+    width: 3px;
+    border-radius: 0 4px 4px 0;
+    background: var(--color-parish-green);
+    content: "";
+}
+.communion-choice:focus-within {
+    outline: 3px solid rgba(176, 141, 69, .45);
+    outline-offset: 3px;
+}
+.communion-choice input[type="radio"] {
+    position: absolute;
+    top: 1.1rem;
+    right: 1.1rem;
+    display: block;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--color-parish-green);
+}
+.communion-choice-icon {
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    grid-row: span 2;
+    place-items: center;
+    border: 1px solid rgba(47, 94, 63, .12);
+    border-radius: 11px;
+    background: #edf3ec;
+    color: var(--color-parish-green);
+}
+.communion-choice-icon svg {
+    width: 1.7rem;
+    height: 1.7rem;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.communion-choice-copy { display: grid; gap: .35rem; padding-top: .12rem; }
+.communion-choice-copy strong { color: var(--color-ledger-dark); font-size: 1rem; line-height: 1.35; }
+.communion-choice-copy > span { color: #626a62; font-size: .84rem; font-weight: 400; line-height: 1.45; }
+.communion-choice-tag {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: .2rem;
+    padding: .2rem .55rem;
+    border: 1px solid rgba(31, 61, 43, .13);
+    border-radius: 999px;
+    color: #626a62;
+    font-size: .68rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.communion-choice:has(input:checked) .communion-choice-tag {
+    border-color: rgba(47, 94, 63, .2);
+    background: #e5efe4;
+    color: var(--color-ledger-dark);
+}
+.communion-step-note {
+    margin: 1.1rem 0 0;
+    padding: .85rem 1rem;
+    border-left: 3px solid var(--color-brass);
+    border-radius: 0 9px 9px 0;
+    background: #f8f5eb;
+    color: #57584f;
+    font-size: .88rem;
+}
+
+.communion-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .15rem 1rem;
+    align-items: start;
+}
+.communion-form-grid > label > .field-hint {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
+}
+.communion-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .65rem;
+    margin: .4rem 0 1rem;
+}
+.communion-review-grid > div {
+    min-width: 0;
+    padding: .75rem .85rem;
+    border: 1px solid rgba(31, 61, 43, .12);
+    border-radius: 9px;
+    background: #fff;
+}
+.communion-review-grid > .communion-review-grid__wide { grid-column: 1 / -1; }
+.communion-review-grid dt {
+    color: #6b6355;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+.communion-review-grid dd {
+    min-width: 0;
+    margin: .25rem 0 0;
+    color: var(--color-ledger-dark);
+    font-size: .95rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.communion-review-count,
+.communion-review-note {
+    color: var(--p-muted);
+    font-size: .82em;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.communion-review-note { display: block; margin-top: .2rem; }
+.communion-review-candidates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    gap: .35rem 1rem;
+    margin: 0;
+    padding-left: 1.1rem;
+}
+.communion-review-notice { margin: .9rem 0; }
+.confirmation-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem 1rem;
+    margin: .45rem 0 1.1rem;
+}
+.confirmation-review-section { min-width: 0; }
+.confirmation-review-section > h3 {
+    margin: 0 0 .55rem;
+    padding: .1rem 0 .1rem .65rem;
+    border-left: 3px solid var(--color-parish-green);
+    color: var(--color-ledger-dark);
+    font-size: .96rem;
+    line-height: 1.4;
+}
+.confirmation-review-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .45rem;
+    margin: 0;
+}
+.confirmation-review-details > div {
+    min-width: 0;
+    padding: .6rem .7rem;
+    border: 1px solid rgba(31, 61, 43, .12);
+    border-radius: 8px;
+    background: #fff;
+}
+.confirmation-review-details dt {
+    color: #6b6355;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .055em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+.confirmation-review-details dd {
+    min-width: 0;
+    margin: .2rem 0 0;
+    color: var(--color-ledger-dark);
+    font-size: .92rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.communion-intake-form .communion-notify-person {
+    margin: 1.25rem 0;
+    padding: 1rem 1.1rem .75rem;
+    border: 1px solid rgba(47, 94, 63, .2);
+    border-radius: 12px;
+    background: #f5f8f3;
+}
+.communion-intake-form .communion-notify-person .field-hint { margin: 0 0 .75rem; }
+.communion-intake-form .communion-priest-field { max-width: 34rem; margin-top: 1.2rem; }
+.communion-intake-form .public-person-lookup {
+    margin: .25rem 0 1.1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(47, 94, 63, .18);
+    border-left: 4px solid var(--color-parish-green);
+    border-radius: 11px;
+    background: #f4f7f1;
+}
+.communion-intake-form .public-person-lookup .lookup-title { font-size: 1.1rem; }
+.communion-intake-form .public-person-lookup .field-hint { margin-bottom: .75rem; }
+.communion-intake-form .checkbox-label {
+    display: grid;
+    grid-template-columns: 1.2rem minmax(0, 1fr);
+    align-items: start;
+    gap: .65rem;
+    margin: 1.2rem 0 .3rem;
+    padding: .8rem .9rem;
+    border: 1px solid rgba(31, 61, 43, .12);
+    border-radius: 10px;
+    background: #fbfaf6;
+    font-weight: 400;
+    line-height: 1.5;
+}
+.communion-intake-form .checkbox-label input[type="checkbox"] {
+    display: block;
+    width: 1rem;
+    height: 1rem;
+    margin: .2rem 0 0;
+    accent-color: var(--color-parish-green);
+}
+.communion-intake [hidden] { display: none !important; }
+.communion-intake .form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: .8rem;
+    margin: 1.25rem 0 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid rgba(31, 61, 43, .12);
+    background: transparent;
+}
+.communion-intake .form-actions .btn { min-width: 10.5rem; }
+.communion-intake .alert-success {
+    padding: clamp(1.1rem, 3vw, 1.7rem);
+    border-color: rgba(47, 94, 63, .2);
+    border-radius: 15px;
+    background: #f2f7f1;
+}
+.communion-intake .alert-success li { padding: .25rem 0; }
+
+@media (max-width: 680px) {
+    .communion-intake { border-radius: 15px; }
+    .communion-mode-options,
+    .communion-choice { min-height: auto; }
+    .communion-form-grid,
+    .communion-review-grid,
+    .confirmation-review-grid,
+    .confirmation-review-details { grid-template-columns: minmax(0, 1fr); }
+    .communion-review-grid > .communion-review-grid__wide { grid-column: auto; }
+    .communion-intake .request-steps { grid-template-columns: 1fr; gap: .45rem; }
+    .communion-intake .request-steps li { min-height: 2.8rem; }
+}
+@media (max-width: 480px) {
+    .communion-intake { padding: 1rem; }
+    .communion-intake-form > fieldset { padding: 1rem; }
+    .communion-intake-form .inline-fields { display: grid; gap: 0; }
+    .communion-intake .form-actions { flex-direction: column-reverse; }
+    .communion-intake .form-actions .btn { width: 100%; }
+}

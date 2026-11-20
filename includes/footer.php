@@ -24,5 +24,6 @@ $basePath = $basePath ?? base_path();
 <?php $mainJsVersion = file_exists(__DIR__ . '/../assets/js/main.js') ? filemtime(__DIR__ . '/../assets/js/main.js') : time(); ?>
 <!-- Site-wide scripts (vanilla JS helpers only; loaded last) -->
 <script src="<?= $basePath ?>/assets/js/main.js?v=<?= (int) $mainJsVersion ?>"></script>
+<script src="<?= $basePath ?>/assets/js/notices.js?v=<?= (int) (file_exists(__DIR__ . '/../assets/js/notices.js') ? filemtime(__DIR__ . '/../assets/js/notices.js') : time()) ?>"></script>
 </body>
 </html>

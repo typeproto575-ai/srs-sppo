@@ -60,6 +60,7 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
     <!-- Main stylesheets for the admin/priest interface -->
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/style.css?v=<?= (int) $styleVersion ?>">
     <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin.css?v=<?= (int) $adminStyleVersion ?>">
+        <link rel="stylesheet" href="<?= $basePath ?>/assets/css/admin-polish.css?v=<?= (int) (file_exists(__DIR__ . '/../assets/css/admin-polish.css') ? filemtime(__DIR__ . '/../assets/css/admin-polish.css') : time()) ?>">
     <?= $extraHead ?> <!-- Any page-specific head content (e.g. FullCalendar) -->
 </head>
 <body>
@@ -112,16 +113,20 @@ $groupIsOpen = function (string ...$prefixes) use ($currentUri): string {
         <details class="sidebar-group" data-sidebar-group="requests" name="admin-sidebar"<?= $groupIsOpen('/admin/requests/') ?>>
             <summary class="sidebar-group-title" title="Requests"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v12h-4l-2 3h-4l-2-3H4z"/><path d="M4 12h5l2 3h2l2-3h5"/></svg></span><span class="sidebar-group-label">Requests</span></summary>
             <ul class="sidebar-menu">
+                <li><a href="<?= $basePath ?>/admin/requests/walk-in-request.php"<?= $isActive('/admin/requests/walk-in-request.php') ?> title="Enter a walk-in certificate request" data-compact="WC"><span class="sidebar-link-glyph" aria-hidden="true">WC</span><span class="sidebar-link-label">Walk-in Certificate Request</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/requests/walk-in-application.php"<?= $isActive('/admin/requests/walk-in-application.php') ?> title="Enter a walk-in sacrament pre-application" data-compact="WA"><span class="sidebar-link-glyph" aria-hidden="true">WA</span><span class="sidebar-link-label">Walk-in Pre-Application</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/queue.php"<?= $isActive('/admin/requests/queue.php') ?> title="Certificate Requests" data-compact="CR"><span class="sidebar-link-glyph" aria-hidden="true">CR</span><span class="sidebar-link-label">Certificate Requests</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/requests/applications-queue.php"<?= $isActive('/admin/requests/applications-queue.php') ?> title="Sacrament Pre-Applications" data-compact="PA"><span class="sidebar-link-glyph" aria-hidden="true">PA</span><span class="sidebar-link-label">Sacrament Pre-Applications</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/requests/sacrament-batches.php"<?= $isActive('/admin/requests/sacrament-batches.php') ?> title="Sacrament Groups" data-compact="SG"><span class="sidebar-link-glyph" aria-hidden="true">SG</span><span class="sidebar-link-label">Sacrament Groups</span></a></li>
             </ul>
         </details>
 
         <!-- People and register records -->
-        <details class="sidebar-group" data-sidebar-group="people-records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/age-eligibility.php', '/admin/system/person-profile.php', '/admin/system/person-edit.php', '/admin/system/person-mapper.php') ?>>
+        <details class="sidebar-group" data-sidebar-group="people-records" name="admin-sidebar"<?= $groupIsOpen('/admin/records/', '/admin/funerals/', '/admin/age-eligibility.php', '/admin/system/person-profile.php', '/admin/system/person-edit.php', '/admin/system/person-mapper.php') ?>>
             <summary class="sidebar-group-title" title="People &amp; Records"><span class="sidebar-group-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19z"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 13.2a4.8 4.8 0 0 1 3.5 4.6V19h-3"/></svg></span><span class="sidebar-group-label">People &amp; Records</span></summary>
             <ul class="sidebar-menu sidebar-submenu">
                 <li><a href="<?= $basePath ?>/admin/records/index.php"<?= $isActive('/admin/records/index.php', '/admin/records/view.php', '/admin/records/editor.php', '/admin/records/baptismal.php', '/admin/records/confirmation.php', '/admin/records/first-communion.php', '/admin/records/marriage.php') ?> title="Records" data-compact="RC"><span class="sidebar-link-glyph" aria-hidden="true">RC</span><span class="sidebar-link-label">Records</span></a></li>
+                <li><a href="<?= $basePath ?>/admin/funerals/index.php"<?= $isActive('/admin/funerals/index.php', '/admin/funerals/form.php', '/admin/funerals/view.php') ?> title="Funeral Records" data-compact="FN"><span class="sidebar-link-glyph" aria-hidden="true">FN</span><span class="sidebar-link-label">Funeral Records</span></a></li>
                 <li><a href="<?= $basePath ?>/admin/age-eligibility.php"<?= $isActive('/admin/age-eligibility.php') ?> title="Age Eligibility Review" data-compact="AE"><span class="sidebar-link-glyph" aria-hidden="true">AE</span><span class="sidebar-link-label">Age Eligibility Review</span></a></li>
             </ul>
         </details>

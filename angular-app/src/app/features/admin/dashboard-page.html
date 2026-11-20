@@ -1,0 +1,190 @@
+<header class="site-master-header">
+  <a [href]="basePath + '/admin/dashboard.php'" class="header-brand-wrap" aria-label="Go to dashboard">
+    <img src="/srs-sppo/assets/images/logo.jpg" alt="" class="brand-logo" aria-hidden="true">
+    <span class="header-home-brand">Schedule and Record System</span>
+  </a>
+  <div class="master-profile">
+    <span class="master-user-name">{{ fullName() }}</span>
+    <form method="post" action="/srs-sppo/admin/logout.php" class="logout-form">
+      <input type="hidden" name="csrf_token" [value]="csrfToken()">
+      <button type="submit" class="logout-link-btn">Log Out</button>
+    </form>
+  </div>
+</header>
+
+<div class="admin-layout">
+  <nav class="admin-sidebar" aria-label="Admin navigation">
+    <div class="sidebar-scroll">
+      <div id="admin-sidebar-links">
+        <details class="sidebar-group" open>
+          <summary class="sidebar-group-title">
+            <span class="sidebar-group-glyph" aria-hidden="true">RQ</span>
+            <span class="sidebar-group-label">Requests</span>
+          </summary>
+          <ul class="sidebar-menu">
+            <li><a href="/srs-sppo/admin/requests/walk-in-request.php"><span class="sidebar-link-glyph">WC</span><span class="sidebar-link-label">Walk-in Certificate Request</span></a></li>
+            <li><a href="/srs-sppo/admin/requests/walk-in-application.php"><span class="sidebar-link-glyph">WA</span><span class="sidebar-link-label">Walk-in Pre-Application</span></a></li>
+            <li><a href="/srs-sppo/admin/requests/queue.php"><span class="sidebar-link-glyph">CR</span><span class="sidebar-link-label">Certificate Requests</span></a></li>
+            <li><a href="/srs-sppo/admin/requests/applications-queue.php"><span class="sidebar-link-glyph">PA</span><span class="sidebar-link-label">Sacrament Pre-Applications</span></a></li>
+            <li><a href="/srs-sppo/admin/requests/sacrament-batches.php"><span class="sidebar-link-glyph">SG</span><span class="sidebar-link-label">Sacrament Groups</span></a></li>
+          </ul>
+        </details>
+        <details class="sidebar-group">
+          <summary class="sidebar-group-title">
+            <span class="sidebar-group-glyph" aria-hidden="true">PR</span>
+            <span class="sidebar-group-label">People &amp; Records</span>
+          </summary>
+          <ul class="sidebar-menu">
+            <li><a href="/srs-sppo/admin/records/index.php"><span class="sidebar-link-glyph">RC</span><span class="sidebar-link-label">Records</span></a></li>
+            <li><a href="/srs-sppo/admin/funerals/index.php"><span class="sidebar-link-glyph">FN</span><span class="sidebar-link-label">Funeral Records</span></a></li>
+            <li><a href="/srs-sppo/admin/age-eligibility.php"><span class="sidebar-link-glyph">AE</span><span class="sidebar-link-label">Age Eligibility Review</span></a></li>
+          </ul>
+        </details>
+        <details class="sidebar-group">
+          <summary class="sidebar-group-title">
+            <span class="sidebar-group-glyph" aria-hidden="true">SC</span>
+            <span class="sidebar-group-label">Schedule</span>
+          </summary>
+          <ul class="sidebar-menu">
+            <li><a href="/srs-sppo/admin/schedule/calendar.php"><span class="sidebar-link-glyph">CA</span><span class="sidebar-link-label">Calendar</span></a></li>
+            <li><a href="/srs-sppo/admin/schedule/announcements.php"><span class="sidebar-link-glyph">AN</span><span class="sidebar-link-label">Announcements</span></a></li>
+          </ul>
+        </details>
+        <details class="sidebar-group">
+          <summary class="sidebar-group-title">
+            <span class="sidebar-group-glyph" aria-hidden="true">SY</span>
+            <span class="sidebar-group-label">System</span>
+          </summary>
+          <ul class="sidebar-menu">
+            <li><a href="/srs-sppo/admin/system/accounts.php"><span class="sidebar-link-glyph">AC</span><span class="sidebar-link-label">Accounts</span></a></li>
+            <li><a href="/srs-sppo/admin/system/audit-log.php"><span class="sidebar-link-glyph">AL</span><span class="sidebar-link-label">Audit Log</span></a></li>
+            <li><a href="/srs-sppo/admin/system/email-log.php"><span class="sidebar-link-glyph">EL</span><span class="sidebar-link-label">Email Log</span></a></li>
+            <li><a href="/srs-sppo/admin/system/backup.php"><span class="sidebar-link-glyph">BK</span><span class="sidebar-link-label">Backup</span></a></li>
+          </ul>
+        </details>
+      </div>
+    </div>
+  </nav>
+
+  <main class="admin-content">
+    <section class="dashboard-shell">
+      <div class="dashboard-hero">
+        <div>
+          <p class="dashboard-kicker">SECRETARY DASHBOARD · ANGULAR</p>
+          <h1>Welcome back, {{ fullName() }}</h1>
+          <p class="dashboard-subtitle">
+            Search the parishioner index, review incoming work, and open the existing office workflows.
+          </p>
+        </div>
+        <div class="dashboard-actions">
+          <a href="/srs-sppo/admin/requests/queue.php" class="btn btn-primary">Review Requests</a>
+        </div>
+      </div>
+
+      @if (errorMessage()) {
+        <p class="alert alert-error" role="alert">{{ errorMessage() }}</p>
+      }
+
+      <section class="dashboard-search" aria-labelledby="dashboard-search-heading">
+        <div class="dashboard-section-heading">
+          <h2 id="dashboard-search-heading">Find a parishioner</h2>
+          <p>Search the master person index, then open a profile to review linked sacramental history.</p>
+        </div>
+        <form class="search-form" (ngSubmit)="searchPeople()">
+          <input
+            type="search"
+            name="q"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search by name or birth year (e.g., dela Cruz 1985)…"
+            autocomplete="off"
+            aria-label="Search parishioners by name or birth year"
+          >
+          <button type="submit" class="btn btn-primary" [disabled]="isLoading()">Search</button>
+        </form>
+        <p class="field-hint">For a completed register entry, use Records. For a certificate copy request, use Certificate Requests.</p>
+      </section>
+
+      @if (searchQuery().trim()) {
+        <section class="search-results" aria-live="polite">
+          <h2>Search results for “{{ searchQuery() }}”</h2>
+          @if (isLoading()) {
+            <p class="field-hint">Searching the master person index…</p>
+          } @else if (data()?.search_results?.length) {
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Name</th><th>Birth date</th><th>Birth place</th>
+                    <th>Baptism</th><th>First Communion</th><th>Confirmation</th><th>Marriage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (person of data()?.search_results ?? []; track person.id) {
+                    <tr>
+                      <td><a [href]="'/srs-sppo/admin/system/person-profile.php?id=' + person.id">{{ person.full_name }}</a></td>
+                      <td>{{ person.birth_date || '—' }}</td>
+                      <td>{{ person.birth_place || '—' }}</td>
+                      <td>{{ person.has_baptism ? '✓' : '—' }}</td>
+                      <td>{{ person.has_first_communion ? '✓' : '—' }}</td>
+                      <td>{{ person.has_confirmation ? '✓' : '—' }}</td>
+                      <td>{{ person.has_marriage ? '✓' : '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <p class="field-hint">No profile matched. Try another name part or birth year.</p>
+          }
+        </section>
+      }
+
+      <section class="dashboard-work" aria-labelledby="dashboard-work-heading">
+        <div class="dashboard-section-heading">
+          <h2 id="dashboard-work-heading">Request overview</h2>
+          <p>Select a count to open the corresponding office queue.</p>
+        </div>
+        @if (isLoading() && !data()) {
+          <p class="field-hint">Loading dashboard…</p>
+        } @else if (data(); as dashboard) {
+          <div class="stat-cards dashboard-metrics">
+            <a class="stat-card stat-tone-amber" href="/srs-sppo/admin/requests/queue.php?status=pending">
+              <p class="stat-number">{{ dashboard.counts.pending_certificates }}</p>
+              <p class="stat-label">Certificates needing action</p>
+            </a>
+            <a class="stat-card stat-tone-amber" href="/srs-sppo/admin/requests/applications-queue.php?status=new">
+              <p class="stat-number">{{ dashboard.counts.new_applications }}</p>
+              <p class="stat-label">New pre-applications</p>
+            </a>
+            <a class="stat-card stat-tone-blue" href="/srs-sppo/admin/requests/queue.php?status=ready">
+              <p class="stat-number">{{ dashboard.counts.ready_for_pickup }}</p>
+              <p class="stat-label">Ready for pickup</p>
+            </a>
+            <a class="stat-card stat-tone-green" href="/srs-sppo/admin/requests/applications-queue.php?status=in_progress">
+              <p class="stat-number">{{ dashboard.counts.applications_in_progress }}</p>
+              <p class="stat-label">Pre-applications in progress</p>
+            </a>
+          </div>
+          <section class="registry-summary">
+            <h2>Sacramental records on file</h2>
+            <p class="registry-summary-note">Select a sacrament to open its records.</p>
+            <div class="registry-grid">
+              @for (record of registryTypes; track record.type) {
+                <a class="registry-card" [href]="'/srs-sppo/admin/records/index.php?type=' + record.type">
+                  <h3>{{ record.label }}</h3>
+                  <span class="registry-count">{{ dashboard.registry_counts[record.type] }}</span>
+                  <span class="registry-card-action">View records <span aria-hidden="true">→</span></span>
+                </a>
+              }
+            </div>
+          </section>
+        }
+      </section>
+    </section>
+  </main>
+</div>
+
+<footer class="site-footer">
+  <p>&copy; {{ currentYear }} St. Patrick's Parish Office — Parish System Administration.</p>
+</footer>

@@ -15,6 +15,8 @@
  *   $successHeading  - (optional) e.g. 'Your request has been submitted'
  *                      defaults to a generic submitted message
  *   $successIsApplication - (optional) show sacrament-application next steps
+ *   $successFormationGuidance - (optional) formation group guidance
+ *   $successRequestNumber - (optional) the internal request/ticket number
  *   $basePath        - falls back to base_path()
  *
  * Certificates are picked up and printed at the counter per project rules.
@@ -32,12 +34,18 @@ if (empty($trackingNumber)) {
 
 $successHeading = $successHeading ?? 'Your request has been submitted';
 $successIsApplication = $successIsApplication ?? false;
+$successFormationGuidance = isset($successFormationGuidance) && is_string($successFormationGuidance)
+    ? trim($successFormationGuidance)
+    : '';
 $successRequiredDocuments = isset($successRequiredDocuments) && is_array($successRequiredDocuments)
     ? $successRequiredDocuments
     : [];
 $successPersonReferences = isset($successPersonReferences) && is_array($successPersonReferences)
     ? $successPersonReferences
     : [['name' => '', 'reference' => $trackingNumber]];
+$successRequestNumber = isset($successRequestNumber) && is_string($successRequestNumber)
+    ? trim($successRequestNumber)
+    : '';
 $basePath       = $basePath ?? base_path();
 ?>
         <div class="submission-success" id="submission-success">
@@ -45,33 +53,44 @@ $basePath       = $basePath ?? base_path();
 
             <div class="submission-number-row">
                 <div>
-                    <p class="field-hint">Your person reference</p>
+                    <?php if ($successPersonReferences === [] && $successRequestNumber !== ''): ?>
+                        <p class="field-hint">Your request number</p>
+                        <p class="submission-tracking"><?= e($successRequestNumber) ?></p>
+                        <button type="button" class="btn btn-secondary btn-small" data-copy-request-number="<?= e($successRequestNumber) ?>">Copy request number</button>
+                        <p class="submission-reference-reminder">Keep this number to track your request.</p>
+                    <?php endif; ?>
                     <?php foreach ($successPersonReferences as $personReference): ?>
                         <?php if (!is_array($personReference) || !is_string($personReference['reference'] ?? null)) continue; ?>
+                        <p class="field-hint"><?= is_string($personReference['name'] ?? null) && $personReference['name'] !== '' ? 'Person reference for ' . e($personReference['name']) : 'Your person reference' ?></p>
                         <p class="submission-tracking">
-                            <?php if (is_string($personReference['name'] ?? null) && $personReference['name'] !== ''): ?>
-                                <?= e($personReference['name']) ?>:
-                            <?php endif; ?>
                             <?= e($personReference['reference']) ?>
                         </p>
                         <button type="button" class="btn btn-secondary btn-small" data-copy-person-reference="<?= e($personReference['reference']) ?>">Copy<?= is_string($personReference['name'] ?? null) && $personReference['name'] !== '' ? ' ' . e($personReference['name']) . ' Reference' : ' Reference' ?></button>
+                        <p class="submission-reference-reminder">Keep this number. It works for every sacrament and request.</p>
                     <?php endforeach; ?>
                 </div>
             </div>
+            <?php if ($successRequestNumber !== '' && $successPersonReferences !== []): ?>
+                <p class="submission-request-number">Request no.: <span><?= e($successRequestNumber) ?></span></p>
+            <?php endif; ?>
+            <p><a class="btn" href="<?= e($basePath . '/public/track-request.php') ?>">Track my requests</a></p>
 
             <div class="submission-next-steps">
                 <h3>After submission: what happens next</h3>
                 <ol>
                     <?php if ($successIsApplication): ?>
                     <li>The Parish Office reviews your pre-application and may email you about requirements, payment, preparation, and scheduling. Use your person reference and the email address you used to view requests linked to that profile. You may also contact the office or ask a question through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send IDs or documents through Messenger.</li>
+                    <?php if ($successFormationGuidance !== ''): ?>
+                    <li><?= e($successFormationGuidance) ?></li>
+                    <?php endif; ?>
                     <?php else: ?>
                     <li>The parish office reviews the information you submitted and checks the details against the parish register.</li>
                     <?php endif; ?>
                     <?php if ($successIsApplication): ?>
                     <li>Bring requested documents to the Parish Office in person. The secretary confirms approval and any sacrament schedule separately.</li>
                     <?php else: ?>
-                    <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you.</li>
-                    <li>The Parish Office may email you when there is an update. Use your person reference and the email address you used to view linked requests, or contact the office through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger. When the certificate is ready, collect it in person; the secretary verifies the request and recorded payment. An authorized representative must bring a signed authorization letter.</li>
+                    <li>If asked to proceed, handle payment at the Parish Office.</li>
+                    <li>The Parish Office may email you when there is an update. Use your person reference or request number and the email address you used to view requests, or contact the office through the <a href="https://www.facebook.com/profile.php?id=61575322479373" target="_blank" rel="noopener noreferrer">parish Facebook/Messenger page</a>. Do not send documents through Messenger. When the certificate is ready, collect it in person; the secretary verifies the request and recorded payment. An authorized representative must bring a signed authorization letter.</li>
                     <?php endif; ?>
                 </ol>
             </div>
@@ -87,15 +106,15 @@ $basePath       = $basePath ?? base_path();
                 </section>
             <?php endif; ?>
 
-            <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online. <a href="<?= e($basePath . '/public/track-request.php') ?>">View requests linked to your person reference</a>.</p>
+            <p class="field-hint">The Parish Office may email you at the address you provided when email updates are available. Online submission is only a request for parish-office review; it does not guarantee approval, accept payment, or release a certificate online.</p>
         </div>
         <script>
         (function () {
             // Copy: modern clipboard API first, textarea fallback for older
             // mobile browsers inside the parish (no external library).
-            document.querySelectorAll('[data-copy-person-reference]').forEach(function (btn) {
+            document.querySelectorAll('[data-copy-person-reference], [data-copy-request-number]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
-                    var text = btn.dataset.copyPersonReference;
+                    var text = btn.dataset.copyPersonReference || btn.dataset.copyRequestNumber;
                     function done(ok) {
                         var originalLabel = btn.dataset.originalLabel;
                         btn.textContent = ok ? 'Copied!' : 'Copy failed';

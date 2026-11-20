@@ -70,6 +70,7 @@ function baptismal_blank_stock_layout(): array
         'register_book' => ['label' => 'Register: Book No.', 'confidence' => 'measured', 'x_pct' => 39.791, 'baseline_pct' => 80.606, 'width_pct' => 10.117, 'align' => 'middle', 'size_pct' => 2.667],
         'register_page' => ['label' => 'Register: Page', 'confidence' => 'measured', 'x_pct' => 56.458, 'baseline_pct' => 80.606, 'width_pct' => 8.95, 'align' => 'middle', 'size_pct' => 2.667],
         'register_line' => ['label' => 'Register: Line', 'confidence' => 'measured', 'x_pct' => 72.166, 'baseline_pct' => 80.606, 'width_pct' => 9.033, 'align' => 'middle', 'size_pct' => 2.667],
+        'certificate_serial' => ['label' => 'Certificate serial number', 'confidence' => 'measured', 'x_pct' => 12.5, 'baseline_pct' => 94.5, 'width_pct' => 24, 'align' => 'start', 'size_pct' => 2.667],
         'purpose' => ['label' => 'Purpose', 'confidence' => 'measured', 'x_pct' => 19, 'baseline_pct' => 84.689, 'width_pct' => 44.583, 'align' => 'start', 'size_pct' => 2.667],
         'date_issued' => ['label' => 'Date issued (the Date: blank)', 'confidence' => 'measured', 'x_pct' => 71.083, 'baseline_pct' => 84.689, 'width_pct' => 21.75, 'align' => 'start', 'size_pct' => 2.667],
         'remarks' => ['label' => 'Remarks', 'confidence' => 'measured', 'x_pct' => 18.917, 'baseline_pct' => 87.889, 'width_pct' => 73.917, 'align' => 'start', 'size_pct' => 2.667],
@@ -276,6 +277,9 @@ function baptismal_blank_stock_layout(): array
             ]],
             ['id' => 'remarks', 'family' => 'serif', 'weight' => 400, 'color' => 'ink', 'size' => 2.667, 'base' => 88, 'words' => [
                 [7.25, 10.917, 'Remarks:'],
+            ]],
+            ['id' => 'certificate_no', 'family' => 'serif', 'weight' => 400, 'color' => 'ink', 'size' => 2.667, 'base' => 94.5, 'words' => [
+                [7.25, 4.25, 'No.'],
             ]],
             ['id' => 'priest', 'family' => 'serif', 'weight' => 400, 'color' => 'ink', 'size' => 2.667, 'base' => 96.778, 'words' => [
                 [68.667, 7, 'Parish'],

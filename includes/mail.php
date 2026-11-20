@@ -33,7 +33,7 @@ function email_delivery_log(PDO $pdo, string $to, string $subject, string $event
     }
 }
 
-function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = null, string $eventType = 'generic', ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null): bool
+function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = null, string $eventType = 'generic', ?string $entityType = null, ?int $entityId = null, ?string $trackingNumber = null, ?string $htmlBody = null): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
     $to = trim($to);
@@ -94,8 +94,11 @@ function send_mail(string $to, string $subject, string $bodyText, ?PDO $pdo = nu
         $mailer->addReplyTo(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
         $mailer->addAddress($to);
         $mailer->Subject = $fullSubject;
-        $mailer->Body = $bodyText;
-        $mailer->isHTML(false);
+        $mailer->Body = $htmlBody ?? $bodyText;
+        $mailer->isHTML($htmlBody !== null);
+        if ($htmlBody !== null) {
+            $mailer->AltBody = $bodyText;
+        }
         $mailer->send();
     } catch (Throwable $e) {
         error_log('SRS-SPPO SMTP delivery failed: ' . $e->getMessage());
@@ -112,7 +115,8 @@ function mail_request_documents(string $kind): array
     return match ($kind) {
         'Baptism Application',
         'Baptismal Application' => sacrament_application_requirements('baptism')['before'],
-        'First Communion Application' => sacrament_application_requirements('first_communion')['before'],
+        'First Communion Application',
+        'Holy Communion Application' => sacrament_application_requirements('first_communion')['before'],
         'Confirmation Application' => sacrament_application_requirements('confirmation')['before'],
         'Marriage Application',
         'Holy Matrimony Application' => sacrament_application_requirements('marriage')['before'],
@@ -130,6 +134,7 @@ function mail_is_sacrament_application(string $kind): bool
         'Baptismal Application',
         'Baptism Application',
         'First Communion Application',
+        'Holy Communion Application',
         'Confirmation Application',
         'Marriage Application',
         'Holy Matrimony Application',
@@ -145,42 +150,313 @@ function mail_request_documents_heading(string $kind): string
 
 function mail_request_display_name(string $kind): string
 {
+    if ($kind === 'First Communion Application' || $kind === 'Holy Communion Application') {
+        return 'Holy Communion Pre-Application';
+    }
+
     return mail_is_sacrament_application($kind)
         ? str_replace(' Application', ' Pre-Application', $kind)
         : $kind;
 }
 
-function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null): bool
+function mail_reference_block_html(string $personReference, string $requestNumber, string $trackingUrl): string
+{
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $displayReference = $personReference !== '' ? $personReference : $requestNumber;
+    $referenceLabel = $personReference !== '' ? 'Reference number' : 'Request number';
+    $requestNumberHtml = $requestNumber !== ''
+        && $personReference !== ''
+        ? '<p style="margin:0 0 16px;color:#52605a;font-size:13px">Request no.: ' . $escape($requestNumber) . '</p>'
+        : '';
+
+    return '<div style="margin:20px 0;padding:20px;border:1px solid #c8dfce;border-radius:8px;background:#f3faf3">'
+        . '<p style="margin:0 0 6px;color:#315b3b;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">' . $escape($referenceLabel) . '</p>'
+        . '<p style="margin:0 0 10px;color:#193e26;font-family:monospace;font-size:30px;font-weight:bold;letter-spacing:1px">' . $escape($displayReference) . '</p>'
+        . '<p style="margin:0;color:#315b3b;font-size:14px;font-weight:bold">Keep this number to track your request.</p>'
+        . '</div>'
+        . $requestNumberHtml
+        . '<p style="margin:0 0 20px"><a href="' . $escape($trackingUrl) . '" style="display:inline-block;padding:11px 18px;border-radius:6px;background:#245b36;color:#fff;text-decoration:none;font-weight:bold">Track my requests</a></p>'
+        . '<p>Enter this number and the email address used on the request.</p>';
+}
+
+function mail_public_url(string $path, ?string $basePath = null): string
+{
+    $siteUrl = defined('MAIL_SITE_URL') && trim((string) MAIL_SITE_URL) !== ''
+        ? (string) MAIL_SITE_URL
+        : (string) SRS_APP_URL;
+    $parts = parse_url($siteUrl);
+    if (!is_array($parts) || empty($parts['host'])) {
+        throw new RuntimeException('The public mail site URL is invalid.');
+    }
+
+    $scheme = defined('SRS_FORCE_HTTPS') && SRS_FORCE_HTTPS
+        ? 'https'
+        : (string) ($parts['scheme'] ?? 'https');
+    $authority = $parts['host'];
+    if (isset($parts['port']) && !(($scheme === 'https' && (int) $parts['port'] === 80)
+        || ($scheme === 'http' && (int) $parts['port'] === 443))) {
+        $authority .= ':' . (int) $parts['port'];
+    }
+    $basePath = $basePath ?? base_path();
+    if ($basePath === '') {
+        $basePath = (string) ($parts['path'] ?? '');
+    }
+    $basePath = $basePath === '' ? '' : '/' . trim($basePath, '/');
+
+    return $scheme . '://' . $authority . $basePath . '/' . ltrim($path, '/');
+}
+
+function mail_request_received(string $to, string $trackingNumber, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, string $requestNumber = '', ?array $documentRequirements = null): bool
 {
     $displayKind = mail_request_display_name($kind);
-    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
+    $documents = $documentRequirements ?? mail_request_documents($kind);
+    $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, $documents));
     $documentHeading = mail_request_documents_heading($kind);
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
+    $requestNumberText = $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '';
+    $formationGuidance = in_array($kind, ['First Communion Application', 'Holy Communion Application', 'Confirmation Application'], true)
+        ? "For Holy Communion and Confirmation, the Parish Office reviews group or individual preparation. The office assigns the group and date; this form does not reserve one.\r\n\r\n"
+        : '';
+    $referenceText = "REFERENCE NUMBER:\r\n" . $trackingNumber . "\r\n"
+        . "Keep this number. It works for every sacrament and request.\r\n"
+        . $requestNumberText . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
+        . "Enter this reference and the email address used on the request.\r\n\r\n";
     if (mail_is_sacrament_application($kind)) {
-        $body = "Dear Parishioner,\r\n\r\n"
-            . "The Parish Office received your " . $displayKind . " for review.\r\n\r\n"
-            . "Your person reference is: " . $trackingNumber . "\r\n"
-            . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
-            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+        $intro = "The Parish Office received your " . $displayKind . " for review.\r\n\r\n";
+        $content = $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+            . $formationGuidance
             . "The Parish Office will contact you about the next steps, preparation, approval, and scheduling. Submitting this pre-application does not confirm approval or a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
-        $body = "Dear Parishioner,\r\n\r\n"
-            . "The parish office has recorded your " . $kind . ".\r\n\r\n"
-            . "Your person reference is: " . $trackingNumber . "\r\n"
-            . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
-            . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
+        $intro = "The parish office has recorded your " . $kind . ".\r\n\r\n";
+        $content = $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
             . "Processing and pickup happen in person at the parish office. Certificates are never emailed or downloaded. Do not send documents by email or Messenger; you may still email or message the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     }
-    return send_mail($to, $displayKind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber);
+    $body = "Dear Parishioner,\r\n\r\n" . $intro . $referenceText . $content;
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $htmlBody = '<p>Dear Parishioner,</p><p>' . $escape(trim($intro)) . '</p>'
+        . mail_reference_block_html($trackingNumber, $requestNumber, $trackingUrl)
+        . '<p>' . nl2br($escape($content)) . '</p>';
+
+    return send_mail($to, $displayKind . " — Received — " . $trackingNumber, $body, $pdo, 'request_received', $entityType, $entityId, $trackingNumber, $htmlBody);
+}
+
+function mail_communion_group_received(
+    string $to,
+    string $groupLabel,
+    array $members,
+    PDO $pdo,
+    int $applicationId,
+    string $requestedVenue = ''
+): bool {
+    $trackingUrl = mail_public_url('/public/track-request.php');
+    $memberLines = [];
+    foreach ($members as $member) {
+        if (!is_array($member)) {
+            continue;
+        }
+        $name = trim((string) ($member['name'] ?? ''));
+        $reference = trim((string) ($member['reference'] ?? ''));
+        $requestNo = trim((string) ($member['request_no'] ?? ''));
+        if ($name !== '' && ($requestNo !== '' || $reference !== '')) {
+            $memberLines[] = '- ' . $name
+                . ($requestNo !== '' ? ': request no. ' . $requestNo : '')
+                . ($reference !== '' ? ' (person reference: ' . $reference . ')' : '');
+        }
+    }
+    if ($memberLines === []) {
+        throw new InvalidArgumentException('A group receipt requires at least one candidate request number.');
+    }
+
+    $displayGroup = trim($groupLabel) !== '' ? trim($groupLabel) : 'Holy Communion group';
+    $documents = implode("\r\n", array_map(
+        static fn(string $document): string => '- ' . $document,
+        sacrament_application_requirements('first_communion')['before']
+    ));
+    $requestedVenue = trim($requestedVenue);
+    $body = "Dear Parish Contact,\r\n\r\n"
+        . "The Parish Office received the Holy Communion group pre-application for {$displayGroup}.\r\n\r\n"
+        . "Candidate request numbers:\r\n" . implode("\r\n", $memberLines) . "\r\n\r\n"
+        . ($requestedVenue !== '' ? "Preferred venue (requested, not confirmed): {$requestedVenue}\r\n\r\n" : '')
+        . "Track each candidate using the request number above and this email address: {$trackingUrl}\r\n\r\n"
+        . "Requirements to prepare:\r\n{$documents}\r\n\r\n"
+        . "The Parish Office will review the applications and contact you about preparation and scheduling. "
+        . "Submitting this form does not confirm approval or a group date. Please do not send personal documents by email or Messenger.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $items = '';
+    foreach ($members as $member) {
+        if (!is_array($member)) {
+            continue;
+        }
+        $name = trim((string) ($member['name'] ?? ''));
+        $reference = trim((string) ($member['reference'] ?? ''));
+        $requestNo = trim((string) ($member['request_no'] ?? ''));
+        if ($name !== '' && ($requestNo !== '' || $reference !== '')) {
+            $items .= '<li><strong>' . $escape($name) . '</strong>'
+                . ($requestNo !== '' ? ': request no. ' . $escape($requestNo) : '')
+                . ($reference !== '' ? ' (person reference: ' . $escape($reference) . ')' : '') . '</li>';
+        }
+    }
+    $htmlBody = '<p>Dear Parish Contact,</p><p>The Parish Office received the Holy Communion group pre-application for '
+        . $escape($displayGroup) . '.</p>'
+        . ($requestedVenue !== '' ? '<p><strong>Preferred venue (requested, not confirmed):</strong> ' . $escape($requestedVenue) . '</p>' : '')
+        . '<p>Candidate request numbers:</p><ul>' . $items . '</ul>'
+        . '<p>Track each candidate using the request number above and this email address: <a href="' . $escape($trackingUrl) . '">'
+        . $escape($trackingUrl) . '</a></p><p>Requirements to prepare:</p><ul>';
+    foreach (sacrament_application_requirements('first_communion')['before'] as $document) {
+        $htmlBody .= '<li>' . $escape($document) . '</li>';
+    }
+    $htmlBody .= '</ul><p>The Parish Office will review the applications and contact you about preparation and scheduling. '
+        . 'Submitting this form does not confirm approval or a group date. Please do not send personal documents by email or Messenger.</p>'
+        . '<p>God bless,<br>St. Patrick\'s Parish Office — Dingalan, Aurora</p>';
+
+    return send_mail(
+        $to,
+        'Holy Communion Group Application — Received',
+        $body,
+        $pdo,
+        'application_first_communion_group',
+        'sacrament_applications',
+        $applicationId,
+        (string) ($members[0]['reference'] ?? ''),
+        $htmlBody
+    );
+}
+
+function mail_communion_group_schedule(
+    string $to,
+    string $groupLabel,
+    array $members,
+    string $date,
+    string $time,
+    PDO $pdo,
+    int $batchId,
+    string $venue = ''
+): bool {
+    $trackingUrl = mail_public_url('/public/track-request.php');
+    $memberLines = [];
+    foreach ($members as $member) {
+        if (!is_array($member)) {
+            continue;
+        }
+        $name = trim((string) ($member['name'] ?? ''));
+        $reference = trim((string) ($member['reference'] ?? ''));
+        $requestNo = trim((string) ($member['request_no'] ?? ''));
+        if ($name !== '' && ($requestNo !== '' || $reference !== '')) {
+            $memberLines[] = '- ' . $name
+                . ($requestNo !== '' ? ': request no. ' . $requestNo : '')
+                . ($reference !== '' ? ' (person reference: ' . $reference . ')' : '');
+        }
+    }
+    $displayGroup = trim($groupLabel) !== '' ? trim($groupLabel) : 'Holy Communion group';
+    $schedule = date('F j, Y', strtotime($date)) . '; time: ' . ($time !== '' ? $time : 'To be confirmed');
+    $venue = trim($venue);
+    $body = "Dear Parish Contact,\r\n\r\n"
+        . "The shared Holy Communion schedule for {$displayGroup} is confirmed: {$schedule}.\r\n\r\n"
+        . ($venue !== '' ? "Confirmed venue: {$venue}\r\n\r\n" : '')
+        . "Candidates:\r\n" . implode("\r\n", $memberLines) . "\r\n\r\n"
+        . "Track each application using its request number and this email address: {$trackingUrl}\r\n\r\n"
+        . "Please contact the Parish Office promptly if any candidate cannot attend.\r\n\r\n"
+        . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $items = '';
+    foreach ($members as $member) {
+        if (is_array($member)
+            && trim((string) ($member['name'] ?? '')) !== ''
+            && (trim((string) ($member['request_no'] ?? '')) !== '' || trim((string) ($member['reference'] ?? '')) !== '')) {
+            $items .= '<li>' . $escape(trim((string) $member['name']))
+                . (trim((string) ($member['request_no'] ?? '')) !== ''
+                    ? ': request no. ' . $escape(trim((string) $member['request_no']))
+                    : '')
+                . (trim((string) ($member['reference'] ?? '')) !== ''
+                    ? ' (person reference: ' . $escape(trim((string) $member['reference'])) . ')'
+                    : '')
+                . '</li>';
+        }
+    }
+    $htmlBody = '<p>Dear Parish Contact,</p><p>The shared Holy Communion schedule for ' . $escape($displayGroup)
+        . ' is confirmed: <strong>' . $escape($schedule) . '</strong>.</p>'
+        . ($venue !== '' ? '<p><strong>Confirmed venue:</strong> ' . $escape($venue) . '</p>' : '')
+        . '<p>Candidates:</p><ul>' . $items . '</ul>'
+        . '<p>Track each application using its request number and this email address: <a href="' . $escape($trackingUrl) . '">'
+        . $escape($trackingUrl) . '</a></p><p>Please contact the Parish Office promptly if any candidate cannot attend.</p>'
+        . '<p>God bless,<br>St. Patrick\'s Parish Office — Dingalan, Aurora</p>';
+
+    return send_mail(
+        $to,
+        'Holy Communion Group Schedule',
+        $body,
+        $pdo,
+        'application_first_communion_group_schedule',
+        'sacrament_batches',
+        $batchId,
+        '',
+        $htmlBody
+    );
+}
+
+function mail_communion_group_status(
+    string $to,
+    string $groupLabel,
+    array $members,
+    string $status,
+    PDO $pdo,
+    int $batchId
+): bool {
+    $displayGroup = trim($groupLabel) !== '' ? trim($groupLabel) : 'Holy Communion group';
+    $requestNumbers = [];
+    foreach ($members as $member) {
+        if (!is_array($member)) {
+            continue;
+        }
+        $name = trim((string) ($member['name'] ?? ''));
+        $requestNo = trim((string) ($member['request_no'] ?? ''));
+        if ($name !== '' && $requestNo !== '') {
+            $requestNumbers[] = $name . ' — ' . $requestNo;
+        }
+    }
+    if ($requestNumbers === []) {
+        throw new InvalidArgumentException('A group status email requires candidate request numbers.');
+    }
+    $trackingUrl = mail_public_url('/public/track-request.php');
+    $body = "Dear Parish Contact,\r\n\r\n"
+        . "The Parish Office updated the Holy Communion group application for {$displayGroup}: {$status}.\r\n\r\n"
+        . "Candidate request numbers:\r\n- " . implode("\r\n- ", $requestNumbers) . "\r\n\r\n"
+        . "Use each request number and this email address to view the individual application: {$trackingUrl}\r\n\r\n"
+        . "Individual identity and sacramental record checks will be completed as needed before register encoding.\r\n\r\n"
+        . "St. Patrick's Parish Office — Dingalan, Aurora";
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $items = '';
+    foreach ($requestNumbers as $requestNumber) {
+        $items .= '<li>' . $escape($requestNumber) . '</li>';
+    }
+    $htmlBody = '<p>Dear Parish Contact,</p><p>The Parish Office updated the Holy Communion group application for '
+        . $escape($displayGroup) . ': <strong>' . $escape($status) . '</strong>.</p><ul>' . $items . '</ul>'
+        . '<p>Use each request number and this email address to view the individual application: <a href="'
+        . $escape($trackingUrl) . '">' . $escape($trackingUrl) . '</a></p>'
+        . '<p>Individual identity and sacramental record checks will be completed as needed before register encoding.</p>'
+        . '<p>St. Patrick\'s Parish Office — Dingalan, Aurora</p>';
+
+    return send_mail(
+        $to,
+        'Holy Communion Group Application Update',
+        $body,
+        $pdo,
+        'application_first_communion_group_status',
+        'sacrament_batches',
+        $batchId,
+        '',
+        $htmlBody
+    );
 }
 
 function mail_status_update(string $to, string $trackingNumber, string $humaneStatus, string $kind, ?PDO $pdo = null, ?string $entityType = null, ?int $entityId = null, ?string $officeNote = null): bool
 {
     $displayKind = mail_request_display_name($kind);
     $referenceLabel = str_starts_with($trackingNumber, 'SPPO-P-') ? 'person reference' : 'reference number';
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
     $documentList = implode("\r\n", array_map(static fn($document) => '- ' . $document, mail_request_documents($kind)));
     $documentHeading = mail_request_documents_heading($kind);
     $officeNote = trim((string) $officeNote);
@@ -194,13 +470,18 @@ function mail_status_update(string $to, string $trackingNumber, string $humaneSt
             . "Payment is made outside this website; the office never takes payment online. You may pay at the parish office, contact the parish by email, phone, or the parish Facebook page/Messenger, or ask someone near the parish to pay on your behalf. The parish confirms the fee directly. Processing continues once your payment is recorded.";
     }
     if (mail_is_sacrament_application($kind)) {
+        $scheduleGuidance = strcasecmp($humaneStatus, 'Scheduled') === 0
+            ? ($officeNote !== ''
+                ? 'Your confirmed schedule is listed in the Parish Office note above. If you cannot attend, contact the Parish Office promptly to discuss another date.'
+                : 'The Parish Office has marked your pre-application as Scheduled. Please contact the Parish Office to confirm the date and time.')
+            : 'The Parish Office will contact you about any documents, preparation, approval, and scheduling. The pre-application does not itself confirm approval or reserve a sacrament date.';
         $body = "Dear Parishioner,\r\n\r\n"
             . "This is an update on your " . $displayKind . " ({$referenceLabel}: " . $trackingNumber . ").\r\n"
             . "View linked requests at " . $trackingUrl . " using this reference and the email address on the request.\r\n\r\n"
             . "Current stage: " . $humaneStatus . "\r\n\r\n"
             . $officeNoteText
             . $documentHeading . "\r\n" . $documentList . "\r\n\r\n"
-            . "The Parish Office will contact you about any documents, preparation, approval, and scheduling. The pre-application does not itself confirm approval or reserve a sacrament date. Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
+            . $scheduleGuidance . " Do not send personal documents by email or Messenger; contact the Parish Office if you have questions.\r\n\r\n"
             . "God bless,\r\nSt. Patrick's Parish Office — Dingalan, Aurora";
     } else {
         $body = "Dear Parishioner,\r\n\r\n"
@@ -231,22 +512,27 @@ function mail_certificate_request_received(
     string $toEmail,
     string $requesterName,
     string $certificateType,
-    string $requestNo,
+    string $personReference,
     ?PDO $pdo = null,
     ?int $requestId = null,
-    bool $requesterIsSubject = false
+    bool $requesterIsSubject = false,
+    string $requestNumber = ''
 ): bool
 {
     $pdo = $pdo ?: ($GLOBALS['pdo'] ?? null);
-    $trackingUrl = rtrim(SRS_APP_URL, '/') . '/public/track-request.php';
+    $trackingUrl = mail_public_url('/public/track-request.php');
     $selfPickupRequirement = $requesterIsSubject
         ? "- A valid ID with a name matching the person on the certificate.\r\n"
         : '';
-    $body = "Dear " . $requesterName . ",\r\n\r\n"
-        . "The parish office received your request for a " . $certificateType . " certificate.\r\n\r\n"
-        . "Your person reference is: " . $requestNo . "\r\n"
-        . "Use this same reference for requests linked to your person profile. To view linked requests, enter this reference and the email used on the request at " . $trackingUrl . ".\r\n\r\n"
-        . "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded. Keep any claim stub or payment slip the secretary gives you.\r\n\r\n"
+    $intro = "The parish office received your request for a " . $certificateType . " certificate.";
+    $displayReference = $personReference !== '' ? $personReference : $requestNumber;
+    $referenceLabel = $personReference !== '' ? 'REFERENCE NUMBER' : 'REQUEST NUMBER';
+    $referenceText = $referenceLabel . ":\r\n" . $displayReference . "\r\n"
+        . "Keep this number to track your request.\r\n"
+        . ($personReference !== '' && $requestNumber !== '' ? "\r\nRequest no.: " . $requestNumber . "\r\n" : '')
+        . "\r\nTrack my requests: " . $trackingUrl . "\r\n"
+        . "Enter this number and the email address used on the request.\r\n\r\n";
+    $content = "Next step: visit the parish office, give your full name at the counter, and pay when instructed. Processing begins only after payment is recorded.\r\n\r\n"
         . "After that, please wait for our next email. It will tell you when the certificate is signed and ready for pickup. Please do not come back before then.\r\n\r\n"
         . "When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment; the Acknowledgment Receipt is placed with the certificate in its folder. Bring any claim stub or payment slip if one was given to you. If it is missing, provide your reference number and certificate name.\r\n\r\n"
         . $selfPickupRequirement
@@ -255,5 +541,11 @@ function mail_certificate_request_received(
         . "- For a record from another parish, bring the original supporting document and transfer or permission letter when requested.\r\n\r\n"
         . "Nothing is uploaded or emailed. You show any requested documents at the counter.\r\n\r\n"
         . "God bless,\r\nSt. Patrick's Parish Office";
-    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $requestNo);
+    $body = "Dear " . $requesterName . ",\r\n\r\n" . $intro . "\r\n\r\n" . $referenceText . $content;
+    $escape = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $htmlBody = '<p>Dear ' . $escape($requesterName) . ',</p><p>' . $escape($intro) . '</p>'
+        . mail_reference_block_html($personReference, $requestNumber, $trackingUrl)
+        . '<p>' . nl2br($escape($content)) . '</p>';
+
+    return send_mail($toEmail, 'We received your certificate request', $body, $pdo, 'request_received', 'certificate_requests', $requestId, $displayReference, $htmlBody);
 }

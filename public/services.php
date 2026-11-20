@@ -26,9 +26,9 @@ require_once __DIR__ . '/../includes/header.php';
         </a>
         <a class="service-card" href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php">
             <span class="service-number">02</span>
-            <h3>First Holy Communion</h3>
-            <p>Submit a pre-application for First Communion preparation.</p>
-            <span class="service-link">Start First Communion pre-application &rarr;</span>
+            <h3>Holy Communion</h3>
+            <p>Submit a group or individual pre-application for Holy Communion preparation.</p>
+            <span class="service-link">Start Holy Communion pre-application &rarr;</span>
         </a>
         <a class="service-card" href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php">
             <span class="service-number">03</span>
@@ -51,7 +51,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="service-grid">
         <a class="service-card service-card-accent" href="<?= e($basePath) ?>/public/certificate-request.php">
             <span class="service-number">05</span>
-            <h3>Baptism, First Communion, Confirmation, or Marriage</h3>
+            <h3>Baptism, Holy Communion, Confirmation, or Marriage</h3>
             <p>Request a copy of an existing sacramental record. The parish office verifies the record and provides updates.</p>
             <span class="service-link">Request a certificate copy &rarr;</span>
         </a>

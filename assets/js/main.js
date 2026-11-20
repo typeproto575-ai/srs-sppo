@@ -10,9 +10,80 @@
       3. Modal encode dialogs ([data-open-dialog], [data-autoshow]).
       4. Record-list filter panel sync + click-outside close.
       5. Admin sidebar collapse preference (localStorage).
-   Every enhancement is opt-in via HTML attributes, so pages without
-   the attributes are unaffected.
+      6. Preserve scroll position after same-page POST actions. Multi-step
+         wizards and pages with custom restoration can opt out.
+   Most enhancements are opt-in via HTML attributes. Scroll restoration is
+   limited to same-page POSTs and can be disabled on multi-step forms.
    ===================================================================== */
+
+(function () {
+    var storageKey = 'srs-sppo:post-scroll-position';
+    var currentPath = window.location.pathname;
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+        if (form.dataset.preserveScroll === 'false') return;
+        if (form.closest('.application-queue-review')) return;
+
+        var submitter = event.submitter;
+        var method = submitter && submitter.formMethod
+            ? submitter.formMethod
+            : form.method;
+        var target = submitter && submitter.formTarget
+            ? submitter.formTarget
+            : form.target;
+        if (String(method).toLowerCase() !== 'post') return;
+        if (target && target.toLowerCase() !== '_self') return;
+
+        var action = submitter && submitter.formAction
+            ? submitter.formAction
+            : form.action;
+        try {
+            var actionUrl = new URL(action, window.location.href);
+            if (actionUrl.origin !== window.location.origin
+                || actionUrl.pathname !== currentPath) return;
+            sessionStorage.setItem(storageKey, JSON.stringify({
+                path: currentPath,
+                scrollY: window.scrollY,
+            }));
+        } catch (error) {
+            console.warn('Could not save the page scroll position.', error);
+        }
+    });
+
+    function restoreScrollPosition() {
+        var savedPosition = null;
+        try {
+            var stored = sessionStorage.getItem(storageKey);
+            if (!stored) return;
+            savedPosition = JSON.parse(stored);
+            sessionStorage.removeItem(storageKey);
+        } catch (error) {
+            console.warn('Could not restore the page scroll position.', error);
+            return;
+        }
+
+        if (!savedPosition
+            || savedPosition.path !== currentPath
+            || !Number.isFinite(savedPosition.scrollY)) return;
+
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                var previousScrollBehavior = document.documentElement.style.scrollBehavior;
+                document.documentElement.style.scrollBehavior = 'auto';
+                window.scrollTo(0, Math.max(0, savedPosition.scrollY));
+                document.documentElement.style.scrollBehavior = previousScrollBehavior;
+            });
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreScrollPosition, { once: true });
+    } else {
+        restoreScrollPosition();
+    }
+})();
 
 document.addEventListener('DOMContentLoaded', function () {
     // ---- Dashboard person search ----------------------------------------
@@ -184,8 +255,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (button.hasAttribute('data-preserve-submit')) return;
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
-            if (button.tagName === 'INPUT') button.value = 'Submitting…';
-            else button.textContent = 'Submitting…';
+            if (button.tagName === 'INPUT') button.value = 'Please wait…';
+            else button.textContent = 'Please wait…';
         });
     });
 
@@ -614,11 +685,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        var clear = document.createElement('button');
-        clear.type = 'button';
-        clear.className = 'btn btn-secondary btn-small person-finder-clear';
-        clear.textContent = 'Clear selection';
-        clear.hidden = true;
+        var clear = null;
+        if (!finder.hasAttribute('data-no-clear-selection')) {
+            clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'btn btn-secondary btn-small person-finder-clear';
+            clear.textContent = 'Clear selection';
+            clear.hidden = true;
+        }
 
         function field(name) {
             var input = form.querySelector('[name="' + name + '"]');
@@ -691,35 +765,62 @@ document.addEventListener('DOMContentLoaded', function () {
                 input.readOnly = readOnly;
                 input.classList.toggle('person-profile-readonly', input.readOnly);
             });
+            if (form.hasAttribute('data-walk-in-intake')) {
+                var birthDateField = form.querySelector('[name="' + finder.dataset.birthField + '"]');
+                if (birthDateField) birthDateField.required = !readOnly;
+            }
         }
 
-        function renderSelection() {
-            selection.textContent = '';
-            if (!hiddenId.value) {
-                clear.hidden = true;
-                selection.appendChild(clear);
-                return;
-            }
-            var text = document.createElement('strong');
+        function selectedPersonName() {
             var prefix = namePrefix();
-            var selectedName = [
+            return [
                 field(prefix + '_first_name'),
                 field(prefix + '_middle_name'),
                 field(prefix + '_last_name'),
                 field(prefix + '_suffix')
             ].filter(Boolean).join(' ');
+        }
+
+        function notifyWalkInPersonChange(name) {
+            if (form.hasAttribute('data-walk-in-certificate')) {
+                finder.dispatchEvent(new CustomEvent('walkinpersonchange', { detail: { name: name || '' } }));
+            }
+        }
+
+        function renderSelection() {
+            selection.textContent = '';
+            var selectedName = selectedPersonName();
+            if (!hiddenId.value) {
+                if (clear) {
+                    clear.hidden = true;
+                    selection.appendChild(clear);
+                }
+                notifyWalkInPersonChange(selectedName);
+                return;
+            }
+            var text = document.createElement('strong');
             text.textContent = 'Selected: ' + (selectedName || 'Person profile #' + hiddenId.value);
             selection.appendChild(text);
             var note = document.createElement('span');
             note.textContent = 'Recorded biographical details are reused; enter only sacrament-specific information.';
             selection.appendChild(note);
-            selection.appendChild(clear);
-            clear.hidden = false;
+            if (clear) {
+                selection.appendChild(clear);
+                clear.hidden = false;
+            }
+            notifyWalkInPersonChange(selectedName);
         }
 
         function clearStaleSelection() {
+            var wasLinked = hiddenId.value !== '';
             hiddenId.value = '';
             setIdentityReadOnly(false);
+            if (wasLinked && form.hasAttribute('data-walk-in-intake')) {
+                identityFieldNames().forEach(function (name) {
+                    var input = form.querySelector('[name="' + name + '"]');
+                    if (input) input.value = '';
+                });
+            }
             renderSelection();
             resultsBox.textContent = '';
         }
@@ -744,7 +845,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     hiddenId.value = record.id;
                     search.value = name.textContent;
                     var prefix = namePrefix();
-                    var personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    var personName;
+                    if (finder.dataset.namePrefix) {
+                        personName = {
+                            first: record.first_name || '',
+                            middle: record.middle_name || '',
+                            last: record.last_name || '',
+                            suffix: record.suffix || ''
+                        };
+                    } else {
+                        personName = structuredParts([record.first_name, record.middle_name, record.last_name, record.suffix].filter(Boolean).join(' '));
+                    }
                     if (prefix === 'wife' && record.maiden_name) personName.last = record.maiden_name;
                     fillFromProfile(prefix + '_first_name', personName.first);
                     fillFromProfile(prefix + '_middle_name', personName.middle);
@@ -804,6 +915,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 window.clearTimeout(searchTimer);
                 searchTimer = window.setTimeout(searchPeople, 300);
             });
+            search.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    searchPeople();
+                }
+            });
             if (birthDateSearch) {
                 birthDateSearch.addEventListener('change', function () {
                     clearStaleSelection();
@@ -812,13 +929,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             }
 
-        clear.addEventListener('click', function () {
-            hiddenId.value = '';
-            setIdentityReadOnly(false);
-            search.value = '';
-            renderSelection();
-            resultsBox.textContent = '';
-        });
+        if (clear) {
+            clear.addEventListener('click', function () {
+                hiddenId.value = '';
+                setIdentityReadOnly(false);
+                search.value = '';
+                if (form.hasAttribute('data-walk-in-intake')) {
+                    identityFieldNames().forEach(function (name) {
+                        var input = form.querySelector('[name="' + name + '"]');
+                        if (input) input.value = '';
+                    });
+                }
+                renderSelection();
+                resultsBox.textContent = '';
+            });
+        }
 
         ['first_name', 'middle_name', 'last_name', 'suffix'].forEach(function (part) {
             var input = form.querySelector('[name="' + namePrefix() + '_' + part + '"]');
@@ -837,6 +962,63 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         setIdentityReadOnly(hiddenId.value !== '');
         renderSelection();
+    });
+
+    document.querySelectorAll('[data-walk-in-intake]').forEach(function (form) {
+        var typeSelect = form.querySelector('[data-walk-in-type]');
+        var marriageFields = form.querySelector('[data-marriage-only]');
+        var baptismFields = form.querySelector('[data-baptism-only]');
+        if (typeSelect) {
+            var updateTypeFields = function () {
+                if (marriageFields) {
+                    var isMarriage = typeSelect.value === 'marriage';
+                    marriageFields.hidden = !isMarriage;
+                    marriageFields.disabled = !isMarriage;
+                }
+                if (baptismFields) baptismFields.hidden = typeSelect.value !== 'baptism';
+            };
+            typeSelect.addEventListener('change', updateTypeFields);
+            updateTypeFields();
+        }
+
+        if (!form.hasAttribute('data-walk-in-certificate')) return;
+        var relationship = form.querySelector('[name="requester_relationship"]');
+        var requesterName = form.querySelector('[name="requester_name"]');
+        var selfIdNote = form.querySelector('[data-self-id-note]');
+        var primaryFinder = form.querySelector('[data-person-finder][data-name-prefix="person"]');
+        if (!relationship || !requesterName || !primaryFinder) return;
+
+        var subjectName = [
+            form.querySelector('[name="person_first_name"]'),
+            form.querySelector('[name="person_middle_name"]'),
+            form.querySelector('[name="person_last_name"]'),
+            form.querySelector('[name="person_suffix"]')
+        ].map(function (input) { return input ? input.value.trim() : ''; }).filter(Boolean).join(' ');
+        var autoRequesterName = '';
+
+        function updateRequesterName() {
+            var selfRequest = relationship.value === 'self';
+            requesterName.readOnly = selfRequest;
+            requesterName.required = !selfRequest;
+            if (selfIdNote) selfIdNote.hidden = !selfRequest;
+            if (selfRequest) {
+                if (autoRequesterName && requesterName.value !== autoRequesterName) {
+                    requesterName.value = '';
+                }
+                requesterName.value = subjectName;
+                autoRequesterName = subjectName;
+            } else if (requesterName.value === autoRequesterName) {
+                requesterName.value = '';
+                autoRequesterName = '';
+            }
+        }
+
+        primaryFinder.addEventListener('walkinpersonchange', function (event) {
+            subjectName = event.detail && event.detail.name ? event.detail.name : '';
+            updateRequesterName();
+        });
+        relationship.addEventListener('change', updateRequesterName);
+        updateRequesterName();
     });
 
     // ---- 7) Person Mapper search-first assignment -----------------------
@@ -1254,13 +1436,16 @@ document.addEventListener('DOMContentLoaded', function () {
         var prevBtn = root.querySelector('[data-carousel-prev]');
         var nextBtn = root.querySelector('[data-carousel-next]');
         var dotsWrap = root.querySelector('[data-carousel-dots]');
+        var controls = root.querySelector('.carousel-controls');
         if (!track || slides.length === 0) return;
 
         // A single slide needs no controls at all.
         if (slides.length < 2) {
-            if (prevBtn) prevBtn.hidden = true;
-            if (nextBtn) nextBtn.hidden = true;
-            if (dotsWrap) dotsWrap.hidden = true;
+            [controls, prevBtn, nextBtn, dotsWrap].forEach(function (control) {
+                if (!control) return;
+                control.hidden = true;
+                control.style.display = 'none';
+            });
             return;
         }
 
@@ -1547,22 +1732,72 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---- Show a field only while another field has a given value ---------
     // <label data-show-if="purpose=other"> is shown (and submitted) only while
     // the control named "purpose" in the same form has the value "other".
+    // Set data-show-if-required="false" to keep the conditional field optional.
     // Without JavaScript the field simply stays visible.
     document.querySelectorAll('[data-show-if]').forEach(function (el) {
         var parts = el.getAttribute('data-show-if').split('=');
         var form = el.closest('form');
         var control = form && form.elements[parts[0]];
         if (!control) return;
+        var requiredWhenShown = el.getAttribute('data-show-if-required') !== 'false';
         function sync() {
             var show = control.value === parts[1];
             el.hidden = !show;
             el.querySelectorAll('input, select, textarea').forEach(function (i) {
                 i.disabled = !show;
-                i.required = show;
+                i.required = show && requiredWhenShown;
             });
         }
         control.addEventListener('change', sync);
         sync();
+    });
+
+    // ---- Sacrament formation pathway fields -----------------------------
+    document.querySelectorAll('[data-formation-pathway]').forEach(function (pathway) {
+        var form = pathway.closest('form');
+        var grade = form && form.elements.school_grade;
+        var gradeMarker = form && form.querySelector('[data-grade-required-marker]');
+        var schoolYearContainer = form && form.querySelector('[data-school-year-container]');
+        var schoolYearLabel = form && form.querySelector('[data-school-year-label]');
+        var schoolYearMarker = form && form.querySelector('[data-school-year-required-marker]');
+        var schoolYear = form && form.elements.school_year;
+        if (!grade || !schoolYearContainer || !schoolYear) return;
+
+        var activeSchoolYear = pathway.getAttribute('data-active-school-year') || '';
+        var gradePrompt = grade.querySelector('option[value=""]');
+        var outOfSchoolOption = grade.querySelector('option[value="not_enrolled"]');
+
+        function syncFormationFields() {
+            var selectedPath = pathway.value;
+            var schoolBased = selectedPath === 'school_based' || selectedPath === 'batch';
+            var individual = selectedPath === 'individual_catchup';
+            var gradeRequired = !individual && ['school_based', 'batch', 'parish_based', 'not_sure'].indexOf(selectedPath) !== -1;
+
+            grade.required = gradeRequired;
+            if (gradeMarker) gradeMarker.hidden = !gradeRequired;
+            if (gradePrompt) {
+                gradePrompt.textContent = individual ? '-- Select if applicable --' : '-- Select --';
+            }
+            if (individual && !grade.value) grade.value = 'not_applicable';
+            if (gradeRequired && grade.value === 'not_applicable') grade.value = '';
+            if (outOfSchoolOption) {
+                outOfSchoolOption.disabled = schoolBased;
+                if (schoolBased && grade.value === 'not_enrolled') grade.value = '';
+            }
+
+            schoolYearContainer.hidden = individual;
+            schoolYear.disabled = individual;
+            schoolYear.required = schoolBased;
+            schoolYear.placeholder = schoolBased ? '2026-2027' : activeSchoolYear;
+            if (individual) schoolYear.value = '';
+            if (schoolYearLabel) {
+                schoolYearLabel.textContent = 'School year';
+            }
+            if (schoolYearMarker) schoolYearMarker.hidden = !schoolBased;
+        }
+
+        pathway.addEventListener('change', syncFormationFields);
+        syncFormationFields();
     });
 
     // ---- 9) Repeatable "Add another" rows (sponsor/witness sets) ------
@@ -2089,10 +2324,22 @@ document.addEventListener('DOMContentLoaded', function () {
         var form = widget.closest('form');
         var resultsBox = widget.querySelector('[data-person-results]');
         var endpoint = widget.getAttribute('data-endpoint');
+        var lookupContext = widget.getAttribute('data-lookup-context') || '';
+        var showRecordHistory = lookupContext === 'preapplication';
         var nameInputs = (widget.getAttribute('data-name-inputs') || '').split(',').filter(Boolean);
         var birthField = widget.getAttribute('data-birth-field');
         var personIdField = widget.getAttribute('data-person-id-field');
         if (!form || !resultsBox || !endpoint || !nameInputs.length || !birthField || !personIdField) return;
+
+        var referenceLabel = document.createElement('label');
+        referenceLabel.textContent = 'Person reference number (optional)';
+        var referenceInput = document.createElement('input');
+        referenceInput.type = 'text';
+        referenceInput.autocomplete = 'off';
+        referenceInput.placeholder = 'SPPO-P-...';
+        referenceInput.setAttribute('aria-label', referenceLabel.textContent);
+        referenceLabel.appendChild(referenceInput);
+        widget.insertBefore(referenceLabel, resultsBox);
 
         function field(name) {
             return Array.prototype.find.call(form.elements, function (element) {
@@ -2103,6 +2350,15 @@ document.addEventListener('DOMContentLoaded', function () {
         function value(name) {
             var input = field(name);
             return input ? input.value.trim() : '';
+        }
+
+        function fillValue(name, nextValue) {
+            if (!name) return;
+            var input = field(name);
+            if (!input) return;
+            input.value = nextValue == null ? '' : String(nextValue);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         function splitName(name) {
@@ -2132,6 +2388,59 @@ document.addEventListener('DOMContentLoaded', function () {
             return [person.first_name, person.middle_name, person.last_name, person.suffix].filter(Boolean).join(' ');
         }
 
+        function renderRecordHistory(records) {
+            var section = document.createElement('section');
+            section.className = 'person-record-history';
+            var heading = document.createElement('h4');
+            heading.textContent = 'Sacrament records on file';
+            section.appendChild(heading);
+
+            if (!records.length) {
+                var empty = document.createElement('p');
+                empty.textContent = 'No linked sacrament records were found for this profile.';
+                section.appendChild(empty);
+                resultsBox.appendChild(section);
+                return;
+            }
+
+            var labels = {
+                baptism: 'Baptism',
+                first_communion: 'First Communion',
+                confirmation: 'Confirmation',
+                marriage: 'Marriage'
+            };
+            var list = document.createElement('ul');
+            records.forEach(function (record) {
+                var item = document.createElement('li');
+                var details = document.createElement('span');
+                var parts = [labels[record.type] || 'Sacrament'];
+                if (record.event_date) parts.push(record.event_date);
+                if (record.place) parts.push(record.place);
+                if (record.source === 'this_parish') parts.push('This parish');
+                if (record.source === 'other_parish') parts.push('Another parish');
+
+                var registerParts = [];
+                if (record.book_no) registerParts.push('Book ' + record.book_no);
+                if (record.page_no) registerParts.push('Page ' + record.page_no);
+                if (record.line_no) registerParts.push('Line ' + record.line_no);
+                if (record.entry_no) registerParts.push('Entry ' + record.entry_no);
+                if (registerParts.length) parts.push(registerParts.join(', '));
+
+                details.textContent = parts.join(' · ');
+                item.appendChild(details);
+
+                var status = document.createElement('span');
+                status.className = 'person-record-verification';
+                status.textContent = record.is_verified
+                    ? 'Verified against parish register'
+                    : 'Not yet verified against parish register';
+                item.appendChild(status);
+                list.appendChild(item);
+            });
+            section.appendChild(list);
+            resultsBox.appendChild(section);
+        }
+
         function fillParent(person, side) {
             var fullName = side === 'father' ? person.father_name : person.mother_maiden_name;
             var inputNames = (widget.getAttribute('data-' + side + '-inputs') || '').split(',').filter(Boolean);
@@ -2143,11 +2452,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var searchTimer = null;
         var selected = false;
+        var selectedPerson = null;
         var idInput = field(personIdField);
         var selectionClear = document.createElement('button');
         selectionClear.type = 'button';
         selectionClear.className = 'btn btn-secondary btn-small';
-        selectionClear.textContent = 'Change selected profile';
+        selectionClear.textContent = 'Clear';
         selectionClear.hidden = true;
 
         function identityInputNames() {
@@ -2155,7 +2465,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 .split(',').filter(Boolean)
                 .concat((widget.getAttribute('data-mother-inputs') || '').split(',').filter(Boolean));
             var birthPlaceField = widget.getAttribute('data-birth-place-field');
-            return nameInputs.concat([birthField], parentNames, birthPlaceField ? [birthPlaceField] : []);
+            var addressField = widget.getAttribute('data-address-field');
+            return nameInputs.concat(
+                [birthField],
+                parentNames,
+                birthPlaceField ? [birthPlaceField] : [],
+                addressField ? [addressField] : []
+            );
         }
 
         function setPublicIdentityReadOnly(readOnly) {
@@ -2167,24 +2483,41 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        function renderExistingSelection(message) {
+        function renderExistingSelection(message, records) {
             resultsBox.replaceChildren();
             var confirmation = document.createElement('p');
             confirmation.className = 'person-lookup-selection';
             confirmation.textContent = message || 'A parish profile is selected. Recorded biographical details are read-only; clear the selection to change profiles.';
-            resultsBox.appendChild(confirmation);
+            referenceInput.readOnly = true;
             selectionClear.hidden = false;
-            resultsBox.appendChild(selectionClear);
+            confirmation.appendChild(selectionClear);
+            resultsBox.appendChild(confirmation);
+            if (showRecordHistory) renderRecordHistory(Array.isArray(records) ? records : []);
         }
 
         selectionClear.addEventListener('click', function () {
             if (idInput) idInput.value = '';
             selected = false;
+            selectedPerson = null;
+            referenceInput.value = '';
+            referenceInput.readOnly = false;
             setPublicIdentityReadOnly(false);
             selectionClear.hidden = true;
             resultsBox.replaceChildren();
-            resultsBox.textContent = 'Profile link cleared. Edit the name or birth date, then search again to choose a profile.';
+            resultsBox.textContent = 'Profile link cleared. Enter a person reference to search again.';
         });
+
+        var requesterNameField = widget.getAttribute('data-requester-name-field');
+        var relationshipFieldName = widget.getAttribute('data-relationship-field');
+        var requesterRelationship = relationshipFieldName ? field(relationshipFieldName) : null;
+        if (requesterRelationship) {
+            requesterRelationship.addEventListener('change', function () {
+                if (!selectedPerson || value(relationshipFieldName) !== 'self') return;
+                fillValue(requesterNameField, personName(selectedPerson));
+                fillValue(widget.getAttribute('data-requester-email-field'), selectedPerson.email || '');
+                fillValue(widget.getAttribute('data-requester-contact-field'), selectedPerson.contact_number || '');
+            });
+        }
 
         if (idInput && idInput.value) {
             selected = true;
@@ -2193,11 +2526,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function runSearch() {
-            var fullName = nameInputs.map(value).filter(Boolean).join(' ');
-            var birthDate = value(birthField);
+            var reference = referenceInput.value.trim();
             resultsBox.replaceChildren();
-            if (fullName.trim().split(/\s+/).length < 2 || !birthDate) {
-                resultsBox.textContent = 'Enter full name and date of birth to search the parish person index.';
+            if (!/^SPPO-P-[A-Z0-9]{8,40}$/i.test(reference)) {
+                resultsBox.textContent = reference
+                    ? 'Enter a complete person reference (SPPO-P-...) to search.'
+                    : 'Enter a person reference to find the profile.';
                 return;
             }
 
@@ -2207,8 +2541,8 @@ document.addEventListener('DOMContentLoaded', function () {
             resultsBox.appendChild(status);
             var url = new URL(endpoint, window.location.href);
             url.searchParams.set('person_lookup', '1');
-            url.searchParams.set('name', fullName);
-            url.searchParams.set('birth_date', birthDate);
+            if (lookupContext) url.searchParams.set('lookup_context', lookupContext);
+            url.searchParams.set('reference', reference);
             fetch(url.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
                 .then(function (response) {
                     return response.json().then(function (payload) {
@@ -2219,7 +2553,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (payload) {
                     resultsBox.replaceChildren();
                     if (!payload.results || !payload.results.length) {
-                        resultsBox.textContent = 'No matching person was found. You can continue; the Parish Office can search the physical parish register.';
+                        resultsBox.textContent = 'No profile matched that reference number. Check it, or continue with the form manually.';
                         return;
                     }
                     var heading = document.createElement('p');
@@ -2232,26 +2566,36 @@ document.addEventListener('DOMContentLoaded', function () {
                         button.className = 'public-person-result';
                         button.textContent = personName(person) + ' · ' + person.birth_date;
                         button.addEventListener('click', function () {
+                            selectedPerson = person;
                             fillName(nameInputs, personName(person));
                             var dob = field(birthField);
                             if (dob) dob.value = person.birth_date || '';
                             var birthPlaceField = widget.getAttribute('data-birth-place-field');
                             if (birthPlaceField) {
-                                var birthPlace = field(birthPlaceField);
-                                if (birthPlace) birthPlace.value = person.birth_place || '';
+                                fillValue(birthPlaceField, person.birth_place || '');
+                            }
+                            fillValue(widget.getAttribute('data-address-field'), person.address || '');
+                            fillValue(widget.getAttribute('data-contact-field'), person.contact_number || '');
+                            fillValue(widget.getAttribute('data-email-field'), person.email || '');
+                            var verifiedRecords = person.verified_records || {};
+                            if (verifiedRecords.baptism) {
+                                fillValue(widget.getAttribute('data-baptized-here-field'), 'this_parish');
+                                fillValue(widget.getAttribute('data-baptized-field'), 'yes');
+                            }
+                            if (verifiedRecords.confirmation) {
+                                fillValue(widget.getAttribute('data-confirmed-field'), 'yes');
                             }
                             if (idInput) idInput.value = String(person.id);
                             fillParent(person, 'father');
                             fillParent(person, 'mother');
-                            var requesterField = widget.getAttribute('data-requester-name-field');
-                            var relationshipField = widget.getAttribute('data-relationship-field');
-                            if (requesterField && relationshipField && value(relationshipField) === 'self') {
-                                var requester = field(requesterField);
-                                if (requester) requester.value = personName(person);
+                            if (requesterNameField && relationshipFieldName && value(relationshipFieldName) === 'self') {
+                                fillValue(requesterNameField, personName(person));
+                                fillValue(widget.getAttribute('data-requester-email-field'), person.email || '');
+                                fillValue(widget.getAttribute('data-requester-contact-field'), person.contact_number || '');
                             }
                             selected = true;
                             setPublicIdentityReadOnly(true);
-                            renderExistingSelection('Selected parish profile: ' + personName(person) + '. Recorded biographical details are read-only; complete only the sacrament-specific information.');
+                            renderExistingSelection('Found: ' + personName(person) + ', born ' + (person.birth_date || '') + '. Not you? ', person.sacrament_records);
                         });
                         resultsBox.appendChild(button);
                     });
@@ -2261,7 +2605,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }
 
-        function scheduleSearch() {
+        function scheduleSearch(event) {
+            if (selected && event && event.currentTarget === referenceInput) return;
             var idInput = field(personIdField);
             if (selected && idInput) {
                 idInput.value = '';
@@ -2274,8 +2619,8 @@ document.addEventListener('DOMContentLoaded', function () {
             searchTimer = window.setTimeout(runSearch, 350);
         }
 
-        nameInputs.concat([birthField]).forEach(function (name) {
-            var input = field(name);
+        [referenceInput].forEach(function (name) {
+            var input = typeof name === 'string' ? field(name) : name;
             if (!input) return;
             input.addEventListener('input', scheduleSearch);
             input.addEventListener('change', scheduleSearch);

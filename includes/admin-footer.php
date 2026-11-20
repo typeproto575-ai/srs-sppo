@@ -19,5 +19,7 @@ $basePath = $basePath ?? base_path();
 <!-- Site-wide scripts (vanilla JS helpers; loaded last, after the DOM is ready) -->
 <?php $mainJsVersion = file_exists(__DIR__ . '/../assets/js/main.js') ? filemtime(__DIR__ . '/../assets/js/main.js') : time(); ?>
 <script src="<?= $basePath ?>/assets/js/main.js?v=<?= (int) $mainJsVersion ?>"></script>
+<script src="<?= $basePath ?>/assets/js/walk-in-dedicated.js?v=<?= (int) (file_exists(__DIR__ . '/../assets/js/walk-in-dedicated.js') ? filemtime(__DIR__ . '/../assets/js/walk-in-dedicated.js') : time()) ?>"></script>
+<script src="<?= $basePath ?>/assets/js/notices.js?v=<?= (int) (file_exists(__DIR__ . '/../assets/js/notices.js') ? filemtime(__DIR__ . '/../assets/js/notices.js') : time()) ?>"></script>
 </body>
 </html>

@@ -70,22 +70,26 @@ require_once __DIR__ . '/../includes/admin-header.php';
     </div>
 
     <!-- Search form at the very top -->
-    <section class="dashboard-search" style="margin-bottom:1.5rem;">
-        <form method="get" action="<?= e($basePath) ?>/admin/dashboard.php" class="search-form" style="display:flex;gap:.5rem;align-items:center;"
+    <section class="dashboard-search" aria-labelledby="dashboard-search-heading">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-search-heading">Find a parishioner</h2>
+            <p>Search the master person index, then open the profile to review linked sacramental history.</p>
+        </div>
+        <form method="get" action="<?= e($basePath) ?>/admin/dashboard.php" class="search-form"
               data-dashboard-person-search data-endpoint="<?= e($basePath) ?>/admin/api/dashboard-person-search.php"
               data-profile-url="<?= e($basePath) ?>/admin/system/person-profile.php"
               data-records-url="<?= e($basePath) ?>/admin/records/index.php"
               data-requests-url="<?= e($basePath) ?>/admin/requests/queue.php">
             <input id="dashboard-person-search" type="search" name="q" value="<?= e($q) ?>"
-                   placeholder="Search by name or birth year, e.g. dela Cruz 1985" autocomplete="off"
+                   placeholder="Search by name or birth year (e.g., dela Cruz 1985)…" autocomplete="off"
                    aria-label="Search parishioners by name or birth year"
-                   aria-controls="dashboard-search-results" style="flex:1;padding:.5rem .75rem;">
-            <noscript><button type="submit" class="btn btn-primary">Search</button></noscript>
+                   aria-controls="dashboard-search-results">
+            <button type="submit" class="btn btn-primary">Search</button>
         </form>
-        <p class="field-hint">Search the master person index by name or birth year. Select a match to view linked sacramental history. To look for a completed register entry, use Records; to track a certificate copy request, use Certificate Requests.</p>
+        <p class="field-hint">For a completed register entry, use Records. For a certificate copy request, use Certificate Requests.</p>
     </section>
 
-    <section id="dashboard-search-results" class="search-results" aria-live="polite" style="margin-bottom:1.5rem;"<?= $q === '' ? ' hidden' : '' ?>>
+    <section id="dashboard-search-results" class="search-results" aria-live="polite"<?= $q === '' ? ' hidden' : '' ?>>
         <?php if ($q !== ''): ?>
             <h2>Search results for "<?= e($q) ?>"</h2>
             <?php if (empty($searchResults)): ?>
@@ -123,28 +127,34 @@ require_once __DIR__ . '/../includes/admin-header.php';
         <?php endif; ?>
     </section>
 
-    <div class="stat-cards dashboard-metrics">
-        <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/queue.php?status=pending">
-            <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-            <p class="stat-number"><?= (int) $pendingCount ?></p>
-            <p class="stat-label">Needs action</p>
-        </a>
-        <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=new">
-            <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
-            <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
-            <p class="stat-label">New pre-application</p>
-        </a>
-        <a class="stat-card stat-tone-blue" href="<?= e($basePath) ?>/admin/requests/queue.php?status=ready">
-            <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
-            <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
-            <p class="stat-label">Ready for pickup</p>
-        </a>
-        <a class="stat-card stat-tone-green" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=in_progress">
-            <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
-            <p class="stat-number"><?= (int) $underReviewCount ?></p>
-            <p class="stat-label">Pre-Applications In Progress</p>
-        </a>
-    </div>
+    <section class="dashboard-work" aria-labelledby="dashboard-work-heading">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-work-heading">Request overview</h2>
+            <p>Select a count to open the corresponding filtered queue.</p>
+        </div>
+        <div class="stat-cards dashboard-metrics">
+            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/queue.php?status=pending">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                <p class="stat-number"><?= (int) $pendingCount ?></p>
+                <p class="stat-label">Certificates needing action</p>
+            </a>
+            <a class="stat-card stat-tone-amber" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=new">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+                <p class="stat-number"><?= (int) $applicationsPendingCount ?></p>
+                <p class="stat-label">New pre-applications</p>
+            </a>
+            <a class="stat-card stat-tone-blue" href="<?= e($basePath) ?>/admin/requests/queue.php?status=ready">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+                <p class="stat-number"><?= (int) $readyForPickupCount ?></p>
+                <p class="stat-label">Ready for pickup</p>
+            </a>
+            <a class="stat-card stat-tone-green" href="<?= e($basePath) ?>/admin/requests/applications-queue.php?status=in_progress">
+                <span class="card-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+                <p class="stat-number"><?= (int) $underReviewCount ?></p>
+                <p class="stat-label">Pre-applications in progress</p>
+            </a>
+        </div>
+    </section>
 
     <div class="registry-summary">
         <h2>Sacramental records on file</h2>

@@ -41,7 +41,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="option-group" aria-labelledby="application-preparation-heading">
     <h2 id="application-preparation-heading">Starting a pre-application to receive a sacrament</h2>
-    <p>These pre-applications are for a future Baptism, Confirmation, First Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
+    <p>These pre-applications are for a future Baptism, Confirmation, Holy Communion, or Church Wedding. Prepare the details below before starting the online form. Do not send sensitive documents through this page.</p>
 
     <div class="ledger">
         <div class="ledger-row">
@@ -83,7 +83,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <ul class="req-list">
                     <li>Applicant's full name and birthdate.</li>
                     <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact.</li>
-                    <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
+                    <li>The applicant’s Baptism status and origin parish, if known. The Parish Office checks this parish’s register or requests the required certificate.</li>
                 </ul>
                 <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
                 <a href="<?= e($basePath) ?>/public/sacrament-applications/confirmation.php" class="btn btn-small">Start Confirmation pre-application</a>
@@ -92,14 +92,14 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="ledger-row">
             <span class="ledger-no"></span>
             <div>
-                <h3>First Communion pre-application</h3>
+                <h3>Holy Communion pre-application</h3>
                 <ul class="req-list">
-                    <li>Applicant's full name and date of birth.</li>
-                    <li>Parent or guardian's name and email address for updates. A phone number is optional for quicker contact. Parents' names are optional.</li>
-                    <li>Whether the applicant was baptized at this parish, another parish or church, or you are not sure.</li>
+                    <li>For a group, one candidate’s full name and date of birth per line, plus a named contact’s phone number and email. Individual applications are also available.</li>
+                    <li>For an individual application, applicant details and the name and contact information of the person to be notified.</li>
+                    <li>First Confession / First Reconciliation and a Baptismal Certificate if no verified parish Baptism record is on file.</li>
                 </ul>
-                <p class="field-hint">The parish office will explain any documents, preparation, and schedule after reviewing the pre-application.</p>
-                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Start First Communion pre-application</a>
+                <p class="field-hint">The parish office reviews each candidate as an individual application, then organizes group preparation by calendar year. Submission does not confirm a schedule.</p>
+                <a href="<?= e($basePath) ?>/public/sacrament-applications/first-communion.php" class="btn btn-small">Start Holy Communion pre-application</a>
             </div>
         </div>
     </div>
@@ -107,7 +107,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <section class="option-group" aria-labelledby="certificate-preparation-heading">
     <h2 id="certificate-preparation-heading">If you are requesting a certificate copy</h2>
-    <p>Use this path when the sacrament already happened and you need a certified copy of an existing parish record. The available certificate requests are Baptism, Confirmation, First Communion, and Marriage.</p>
+    <p>Use this path when the sacrament already happened and you need a certified copy of an existing parish record. The available certificate requests are Baptism, Confirmation, Holy Communion, and Marriage.</p>
     <div class="ledger">
         <div class="ledger-row">
             <span class="ledger-no"></span>
@@ -116,7 +116,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <ul class="req-list">
                     <li>The name and birthdate or sacrament date as recorded in the parish register.</li>
                     <li>For Baptism, the father's name and mother's maiden name. For Marriage, both spouses' names and the marriage date.</li>
-                    <li>Parent names may also be requested to help find a Baptism, Confirmation, or First Communion record.</li>
+                    <li>Parent names may also be requested to help find a Baptism, Confirmation, or Holy Communion record.</li>
                     <li>Your name and relationship to the person, if you are requesting for someone else.</li>
                     <li>Your email address for updates. A contact number is optional for quicker contact.</li>
                 </ul>

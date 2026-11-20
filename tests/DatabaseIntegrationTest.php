@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 require_once __DIR__ . '/../includes/backup.php';
 require_once __DIR__ . '/../includes/person-linking.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/walk-in-intake.php';
 
 final class DatabaseIntegrationTest extends TestCase
 {
@@ -362,6 +363,59 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
+    public function testWalkInRequestsUseOnsiteChannelRegardlessOfSubmittedChannel(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $sessionUser = ['id' => $userId, 'role' => 'secretary'];
+            $application = walk_in_save_application($this->pdo, [
+                'channel' => 'online',
+                'sacrament_type' => 'baptism',
+                'person_first_name' => 'Walk In',
+                'person_last_name' => 'Child',
+                'person_birth_date' => '2018-03-14',
+                'applicant_name' => 'Walk In Parent',
+                'applicant_email' => 'walkin-parent@example.test',
+                'baptism_venue' => 'Parish Chapel',
+            ], $sessionUser);
+
+            $applicationStmt = $this->pdo->prepare(
+                'SELECT channel, status, person_id, details, requirements
+                 FROM sacrament_applications WHERE id = ?'
+            );
+            $applicationStmt->execute([$application['id']]);
+            $savedApplication = $applicationStmt->fetch();
+            self::assertSame('onsite', $savedApplication['channel']);
+            self::assertSame('new', $savedApplication['status']);
+            self::assertSame('Parish Chapel', json_decode($savedApplication['details'], true)['baptism_venue']);
+            self::assertSame(
+                'not_received',
+                json_decode($savedApplication['requirements'], true)['psa_birth_certificate']['status']
+            );
+
+            $request = walk_in_save_certificate_request($this->pdo, [
+                'channel' => 'online',
+                'sacrament_type' => 'baptism',
+                'person_id' => (string) $savedApplication['person_id'],
+                'requester_relationship' => 'self',
+                'requester_email' => 'walkin-parent@example.test',
+            ], $sessionUser);
+            $requestStmt = $this->pdo->prepare(
+                'SELECT channel, status, requester_name, person_id
+                 FROM certificate_requests WHERE id = ?'
+            );
+            $requestStmt->execute([$request['id']]);
+            $savedRequest = $requestStmt->fetch();
+            self::assertSame('onsite', $savedRequest['channel']);
+            self::assertSame('new', $savedRequest['status']);
+            self::assertSame('Walk In Child', $savedRequest['requester_name']);
+            self::assertSame((int) $savedApplication['person_id'], (int) $savedRequest['person_id']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
     public function testSacramentApplicationAndRegisterRecordShareOnePerson(): void
     {
         $this->pdo->beginTransaction();
@@ -425,7 +479,129 @@ final class DatabaseIntegrationTest extends TestCase
         }
     }
 
-    public function testScheduleEventsPersistAndFlagOverlappingTimes(): void
+    public function testBaptismParentUnionAndMarriageParishPersistThroughSharedRecordSave(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Maria',
+                'last_name' => 'Parents',
+                'birth_date' => '2024-02-14',
+            ]);
+
+            $recordId = sd_save_record($this->pdo, [
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2024-03-10',
+                'parents_union_type' => 'legitimate',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+            ], [], $userId);
+            $record = sd_get_record($this->pdo, $recordId);
+            self::assertNotNull($record);
+            self::assertSame('canonical', $record['parents_union_type']);
+            self::assertSame('Saint Joseph Parish', $record['parents_marriage_parish']);
+
+            sd_save_record($this->pdo, [
+                'id' => $recordId,
+                'sacrament_type' => 'baptism',
+                'person_id' => $personId,
+                'event_date' => '2024-03-10',
+                'parents_union_type' => 'civil',
+            ], null, $userId);
+            $record = sd_get_record($this->pdo, $recordId);
+            self::assertNotNull($record);
+            self::assertSame('civil', $record['parents_union_type']);
+            self::assertNull($record['parents_marriage_parish']);
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testBaptismRegisterSaveMatchesSchemaAndPersistsGodparentRows(): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $userId = $this->insertSecretary();
+            $personId = save_person_identity($this->pdo, null, [
+                'first_name' => 'Baptism',
+                'last_name' => 'Register Save',
+                'birth_date' => '2025-02-14',
+            ]);
+
+            $recordId = sd_save_baptismal_register_record($this->pdo, [
+                'person_id' => $personId,
+                'event_date' => '2025-03-10',
+                'place' => 'Saint Patrick Parish',
+                'minister_name' => 'Integration Priest',
+                'entry_no' => 'BT-01',
+                'book_no' => 'I',
+                'page_no' => '1',
+                'line_no' => '1',
+                'parents_union_type' => 'canonical',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+                'details' => ['parents_residence' => 'Dingalan, Aurora'],
+                'remarks' => 'Integration save',
+            ], [[
+                'role' => 'godfather',
+                'full_name' => 'Integration Godparent',
+                'residence' => str_repeat('R', 150),
+            ]], $userId);
+
+            $recordQuery = $this->pdo->prepare(
+                'SELECT person_id, event_date, place, minister_name, entry_no, book_no, page_no, line_no,
+                        parents_union_type, parents_marriage_parish, legitimacy
+                 FROM sacrament_records WHERE id = ?'
+            );
+            $recordQuery->execute([$recordId]);
+            self::assertSame([
+                'person_id' => $personId,
+                'event_date' => '2025-03-10',
+                'place' => 'Saint Patrick Parish',
+                'minister_name' => 'Integration Priest',
+                'entry_no' => 'BT-01',
+                'book_no' => 'I',
+                'page_no' => '1',
+                'line_no' => '1',
+                'parents_union_type' => 'canonical',
+                'parents_marriage_parish' => 'Saint Joseph Parish',
+                'legitimacy' => null,
+            ], $recordQuery->fetch(PDO::FETCH_ASSOC));
+
+            $participantQuery = $this->pdo->prepare(
+                'SELECT role, full_name, residence, sort_order
+                 FROM sacrament_participants WHERE record_id = ?'
+            );
+            $participantQuery->execute([$recordId]);
+            self::assertSame([[
+                'role' => 'godfather',
+                'full_name' => 'Integration Godparent',
+                'residence' => str_repeat('R', 150),
+                'sort_order' => 1,
+            ]], $participantQuery->fetchAll(PDO::FETCH_ASSOC));
+
+            try {
+                sd_save_baptismal_register_record($this->pdo, [
+                    'person_id' => $personId,
+                    'event_date' => '2025-03-10',
+                ], [[
+                    'role' => 'godmother',
+                    'full_name' => 'Too Long Residence',
+                    'residence' => str_repeat('R', 151),
+                ]], $userId);
+                self::fail('An overlong godparent residence should be rejected before insertion.');
+            } catch (InvalidArgumentException $exception) {
+                self::assertSame(
+                    'Godparent residence must be 150 characters or fewer.',
+                    $exception->getMessage()
+                );
+            }
+        } finally {
+            $this->pdo->rollBack();
+        }
+    }
+
+    public function testScheduleEventsAllowOverlappingBaptismsAndFlagOtherConflicts(): void
     {
         $this->pdo->beginTransaction();
         try {
@@ -454,22 +630,34 @@ final class DatabaseIntegrationTest extends TestCase
                 null,
             ]);
             $secondId = (int) $this->pdo->lastInsertId();
+            $insert->execute([
+                'baptism',
+                'Integration Baptism 2',
+                null,
+                '2027-06-12',
+                '10:45:00',
+                '11:15:00',
+                null,
+            ]);
+            $thirdId = (int) $this->pdo->lastInsertId();
 
             $events = $this->pdo->prepare(
-                'SELECT event_date, start_time, end_time, public_details, notes
-                 FROM schedule_events WHERE id IN (?, ?) ORDER BY id'
+                'SELECT event_type, event_date, start_time, end_time, public_details, notes
+                 FROM schedule_events WHERE id IN (?, ?, ?) ORDER BY id'
             );
-            $events->execute([$firstId, $secondId]);
+            $events->execute([$firstId, $secondId, $thirdId]);
             $rows = $events->fetchAll();
 
-            self::assertCount(2, $rows);
-            self::assertSame('2027-06-12', $rows[0]['event_date']);
+            self::assertCount(3, $rows);
+            self::assertSame('2027-06-12', $rows[1]['event_date']);
             self::assertTrue(event_times_overlap(
-                $rows[0]['start_time'],
-                $rows[0]['end_time'],
                 $rows[1]['start_time'],
-                $rows[1]['end_time']
+                $rows[1]['end_time'],
+                $rows[2]['start_time'],
+                $rows[2]['end_time']
             ));
+            self::assertFalse(schedule_events_overlap_as_conflict($rows[1], $rows[2]));
+            self::assertTrue(schedule_events_overlap_as_conflict($rows[0], $rows[1]));
             self::assertFalse(event_times_overlap('10:00:00', '11:00:00', '11:00:00', '12:00:00'));
             self::assertSame('Public event detail', $rows[0]['public_details']);
             self::assertSame('Internal scheduling note', $rows[0]['notes']);

@@ -21,6 +21,10 @@ $basePath = $basePath ?? base_path();
 $pageTitle = 'Calendar';
 $errors  = [];
 $success = null;
+if (is_string($_SESSION['calendar_error'] ?? null)) {
+    $errors[] = $_SESSION['calendar_error'];
+    unset($_SESSION['calendar_error']);
+}
 
 // --- Edit (?edit=ID opens the shared dialog pre-filled) ---------------------
 $editEvent = null;
@@ -30,6 +34,12 @@ if (isset($_GET['edit'])) {
     $editEvent = $stmt->fetch();
     if (!$editEvent) {
         redirect_to('/admin/schedule/calendar.php');
+        exit;
+    }
+    if (!empty($editEvent['batch_id'])) {
+        redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+            'batch_id' => (int) $editEvent['batch_id'],
+        ]));
         exit;
     }
 }
@@ -67,11 +77,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_e
         // overlap BEFORE the insert so the success message can warn about a
         // booking conflict that the secretary must confirm manually. Same
         // day, different time (e.g. a 9am mass and a 2pm wedding) is fine.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ?");
+        $occupyStmt = $pdo->prepare("SELECT event_type, start_time, end_time FROM schedule_events WHERE event_date = ?");
         $occupyStmt->execute([$eventDate]);
         $hadConflict = false;
         foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($startTime, $endTime, $existing['start_time'], $existing['end_time'])) {
+            if (schedule_events_overlap_as_conflict([
+                'event_type' => $postedEventType,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ], $existing)) {
                 $hadConflict = true;
                 break;
             }
@@ -106,6 +120,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     require_role('secretary');
 
     $editId   = (int) ($_POST['edit_id'] ?? 0);
+    if ($editId > 0) {
+        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck->execute([$editId]);
+        $linkedBatchId = $batchCheck->fetchColumn();
+        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+            redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+                'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
+    }
     $updType  = $_POST['event_type'] ?? '';
     $updTitle = trim($_POST['title'] ?? '');
     $updDate  = $_POST['event_date'] ?? '';
@@ -136,11 +161,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
     if ($editId && empty($errors)) {
         // Same time-overlap check as add, excluding the row being edited.
-        $occupyStmt = $pdo->prepare("SELECT start_time, end_time FROM schedule_events WHERE event_date = ? AND id != ?");
+        $occupyStmt = $pdo->prepare("SELECT event_type, start_time, end_time FROM schedule_events WHERE event_date = ? AND id != ?");
         $occupyStmt->execute([$updDate, $editId]);
         $hadConflict = false;
         foreach ($occupyStmt->fetchAll() as $existing) {
-            if (event_times_overlap($updStart, $updEnd, $existing['start_time'], $existing['end_time'])) {
+            if (schedule_events_overlap_as_conflict([
+                'event_type' => $updType,
+                'start_time' => $updStart,
+                'end_time' => $updEnd,
+            ], $existing)) {
                 $hadConflict = true;
                 break;
             }
@@ -160,6 +189,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_event']) && cs
     require_role('secretary');
     $id = (int) ($_POST['event_id'] ?? 0);
     if ($id) {
+        $batchCheck = $pdo->prepare('SELECT batch_id FROM schedule_events WHERE id = ?');
+        $batchCheck->execute([$id]);
+        $linkedBatchId = $batchCheck->fetchColumn();
+        if ($linkedBatchId !== false && $linkedBatchId !== null) {
+            redirect_to('/admin/requests/sacrament-batches.php?' . http_build_query([
+                'batch_id' => (int) $linkedBatchId,
+            ]));
+            exit;
+        }
         $stmt = $pdo->prepare("DELETE FROM schedule_events WHERE id = ?");
         $stmt->execute([$id]);
         log_activity($pdo, current_user()['id'], 'schedule_event_deleted', 'schedule_events', $id, null);
@@ -220,7 +258,7 @@ function schedule_event_has_conflict(array $event, array $eventsByDate): bool
 {
     foreach ($eventsByDate[$event['event_date']] ?? [] as $other) {
         if ((int) $other['id'] === (int) $event['id']) continue;
-        if (event_times_overlap($event['start_time'], $event['end_time'], $other['start_time'], $other['end_time'])) {
+        if (schedule_events_overlap_as_conflict($event, $other)) {
             return true;
         }
     }
@@ -240,6 +278,15 @@ function schedule_calendar_title(string $title): string
     return trim((string) preg_replace('/(?:\s*[-–—|:]\s*|\s+)\(?\b(?:AM|PM)\b\)?\s*$/i', '', $title));
 }
 
+function schedule_calendar_venue(array $event): string
+{
+    if (($event['event_type'] ?? '') !== 'baptism'
+        || !preg_match('/^Venue:\s*(.+)$/i', trim((string) ($event['public_details'] ?? '')), $matches)) {
+        return '';
+    }
+    return trim($matches[1]);
+}
+
 $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $eventsByDateAll, $basePath) {
     $conflict = schedule_event_has_conflict($e, $eventsByDateAll);
     $timeLabel = '';
@@ -247,8 +294,11 @@ $calendarEvents = array_map(function ($e) use ($typeColors, $typeLabels, $events
         $timeLabel = date('g:i A', strtotime($e['start_time']));
         $timeLabel .= ' - ';
     }
+    $venue = schedule_calendar_venue($e);
     return [
-        'title' => $timeLabel . schedule_calendar_title((string) $e['title']) . ($conflict ? ' — CONFLICT' : ''),
+        'title' => $timeLabel . schedule_calendar_title((string) $e['title'])
+            . ($venue !== '' ? ' · Venue: ' . $venue : '')
+            . ($conflict ? ' — CONFLICT' : ''),
         'start' => $e['event_date'] . ($e['start_time'] ? 'T' . $e['start_time'] : ''),
         'end' => $e['end_time'] ? $e['event_date'] . 'T' . $e['end_time'] : null,
         'color' => $conflict ? '#b91c1c' : ($typeColors[$e['event_type']] ?? $typeColors['other']),
@@ -356,7 +406,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 eventDidMount: function (info) {
                     info.el.setAttribute('aria-label', info.event.title + ', ' + info.event.start.toLocaleDateString());
                 },
-                events: <?= json_encode($calendarEvents) ?>
+                events: <?= json_encode($calendarEvents, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
             });
             calendar.render();
         });
@@ -398,9 +448,13 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             <tbody>
                 <?php foreach ($events as $e): ?>
                     <?php $conflict = schedule_event_has_conflict($e, $eventsByDateAll); ?>
+                    <?php $venue = schedule_calendar_venue($e); ?>
                     <tr>
                         <td><?= e(date('M j, Y', strtotime($e['event_date']))) ?></td>
-                        <td><?= $e['start_time'] ? e(date('g:i A', strtotime($e['start_time']))) : '—' ?></td>
+                        <td>
+                            <?= $e['start_time'] ? e(date('g:i A', strtotime($e['start_time']))) : '—' ?>
+                            <?php if ($venue !== ''): ?><br><span class="field-hint">Venue: <?= e($venue) ?></span><?php endif; ?>
+                        </td>
                         <td><span class="status-badge" style="background:<?= e($typeColors[$e['event_type']] ?? '#6b7280') ?>;color:#fff;"><?= e($typeLabels[$e['event_type']] ?? ucfirst($e['event_type'])) ?></span></td>
                         <td><?= e($e['title']) ?><?php if ($conflict): ?> <span class="status-badge status-rejected">Conflict</span><?php endif; ?></td>
                         <td><?= e($e['public_details'] ?? '') ?></td>

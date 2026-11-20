@@ -1,0 +1,997 @@
+/* ==========================================================================
+   SRS-SPPO — UI polish layer (admin site)
+   Loaded AFTER admin.css. Presentation only: no markup or logic depends on it.
+   To undo everything, remove the <link> to admin-polish.css in includes/admin-header.php.
+   ========================================================================== */
+
+/* ---- Applications queue: the open review is a flat record sheet ----------
+   Each section has a label in a narrow left gutter and its content on the
+   right, separated by thin lines. No boxes or cards. */
+.table-scroll:has(.application-queue-table) { container-type: inline-size; }
+
+.application-queue-review {
+    position: sticky;
+    left: 0;
+    box-sizing: border-box;
+    width: calc(100cqw - 1.5rem);
+    max-width: calc(100cqw - 1.5rem);
+    white-space: normal;
+}
+
+.application-queue-review .application-review-card {
+    display: block;
+    padding: .5rem 1rem 1rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Header: reference and status on one line, underlined */
+.application-queue-review .application-review-card > header {
+    padding: .25rem 0 1rem;
+    border-bottom: 2px solid var(--admin-ink, #1f3d2b);
+}
+.application-queue-review .application-review-card > p { margin: .75rem 0 0; }
+.application-queue-review .application-review-card > aside { margin: 1rem 0 0; }
+
+/* Sections: label gutter + content */
+.application-queue-review .application-review-card > section,
+.application-queue-review .application-review-card > .application-review-actions {
+    display: grid;
+    grid-template-columns: 9.5rem minmax(0, 1fr);
+    column-gap: 1.25rem;
+    row-gap: .6rem;
+    align-items: start;
+    padding: .9rem 0;
+    border: 0;
+    border-bottom: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-review-card > .application-review-actions { border-bottom: 0; }
+
+.application-queue-review .application-review-card > section > h3,
+.application-queue-review .application-review-card > .application-review-actions::before {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-review-card > section > :not(h3),
+.application-queue-review .application-review-card > .application-review-actions > * { grid-column: 2; }
+.application-queue-review .application-review-card > .application-review-actions::before { content: "Next step"; }
+
+/* Submitted details: plain label / value rows in two columns */
+.application-queue-review .application-details-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    column-gap: 2rem;
+    margin: 0;
+    border: 0;
+    background: transparent;
+}
+.application-queue-review .application-details-list > div {
+    display: grid;
+    grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+    gap: .6rem;
+    align-items: start;
+    padding: .4rem 0;
+    border: 0;
+    border-bottom: 1px solid rgba(31, 61, 43, .1);
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-details-list dt { min-width: 0; white-space: normal; word-break: break-word; overflow-wrap: anywhere; hyphens: auto; margin: 0; font-size: .8rem; font-weight: 700; color: var(--admin-muted, #5f6b62); }
+.application-queue-review .application-details-list dd { min-width: 0; overflow-wrap: anywhere; margin: 0; font-size: .92rem; }
+
+.application-detail-values { margin: 0; padding: 0; list-style: none; }
+.application-detail-values li { padding: .1rem 0; }
+.application-detail-values ul { margin: 0; padding-left: 0; list-style: none; }
+
+/* Godparents / sponsors: one line per person, in columns, full width */
+.application-queue-review .application-details-list > div:has(.application-detail-compact) { grid-column: 1 / -1; }
+.application-detail-compact {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    columns: 2 16rem;
+    column-gap: 2rem;
+}
+.application-detail-compact li {
+    break-inside: avoid;
+    padding: .12rem 0;
+    font-size: .92rem;
+}
+.application-detail-compact .detail-role {
+    display: inline-block;
+    min-width: 5.5rem;
+    margin-right: .4rem;
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--admin-muted, #5f6b62);
+}
+
+/* Compact controls inside the review sheet */
+.application-queue-review select,
+.application-queue-review input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 2.4rem;
+    padding: .35rem .6rem;
+    font-size: .9rem;
+}
+.application-queue-review .application-review-card .btn { min-height: 2.4rem; }
+.application-queue-review .application-requirement-form .btn { white-space: nowrap; }
+
+/* Requirements: one line per document, with a status dot */
+.application-queue-review .application-requirements-list { display: block; border: 0; background: transparent; }
+.application-queue-review .application-requirement-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 13rem) auto;
+    gap: .75rem;
+    align-items: center;
+    padding: .55rem 0;
+    border: 0;
+    border-bottom: 1px solid rgba(31, 61, 43, .1);
+    border-radius: 0;
+    background: transparent;
+}
+.application-queue-review .application-requirement-form:last-child { border-bottom: 0; }
+.application-queue-review .application-requirement-form strong { font-size: .92rem; font-weight: 600; }
+.application-queue-review .application-requirement-form strong::before {
+    content: "";
+    display: inline-block;
+    width: .6rem;
+    height: .6rem;
+    margin-right: .6rem;
+    border-radius: 50%;
+    background: #b9b3a2;
+}
+.application-queue-review .application-requirement-form:has(option[value="received"]:checked) strong::before { background: #d9a22b; }
+.application-queue-review .application-requirement-form:has(option[value="verified"]:checked) strong::before { background: #2f7d4a; }
+.application-queue-review .application-requirement-form p { margin: 0; font-size: .85rem; color: var(--admin-muted, #5f6b62); }
+.application-queue-review .application-requirement-form label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-requirement-form select { flex: 1; min-width: 0; }
+
+/* Person matching: no frame */
+.application-queue-review .application-person-match-grid { display: grid; grid-template-columns: minmax(0, 32rem); gap: 1rem; }
+.application-queue-review .person-match-form { padding: 0; border: 0; border-radius: 0; background: transparent; }
+
+/* Next step: one aligned row. Label on the left, controls share one baseline. */
+.application-queue-review .application-review-card > .application-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+}
+.application-queue-review .application-review-card > .application-review-actions::before {
+    flex: 0 0 9.5rem;
+    align-self: flex-start;
+    padding-top: .35rem;
+}
+.application-queue-review .application-review-actions > * { margin: 0; }
+.application-queue-review .application-review-actions .btn,
+.application-queue-review .application-review-actions select {
+    min-height: 2.4rem;
+    box-sizing: border-box;
+}
+.application-queue-review .application-review-actions .btn { display: inline-flex; align-items: center; }
+.application-queue-review .application-review-actions .application-status-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+    margin: 0;
+}
+.application-queue-review .application-review-actions .application-status-form > label {
+    display: grid;
+    gap: .3rem;
+    flex: 0 1 15rem;
+    margin: 0;
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+.application-queue-review .application-review-actions .application-status-form select { width: 100%; }
+.application-queue-review .application-review-actions .field-hint { align-self: center; }
+
+/* Narrow screens: label above content */
+@container (max-width: 900px) {
+    .application-queue-review .application-review-card > section,
+    .application-queue-review .application-review-card > .application-review-actions { grid-template-columns: minmax(0, 1fr); }
+    .application-queue-review .application-review-card > .application-review-actions::before { flex-basis: 100%; }
+    .application-queue-review .application-review-card > section > h3,
+    .application-queue-review .application-review-card > .application-review-actions::before { grid-row: auto; margin-bottom: .5rem; }
+    .application-queue-review .application-review-card > section > :not(h3),
+    .application-queue-review .application-review-card > .application-review-actions > *,
+    .application-queue-review .application-review-card > section > h3 { grid-column: 1; }
+    .application-queue-review .application-requirement-form { grid-template-columns: minmax(0, 1fr) auto; }
+    .application-queue-review .application-requirement-form strong { grid-column: 1 / -1; }
+    .application-queue-review .application-requirement-form .requirement-verification-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* ---- Search and filter bars (Funerals and similar pages) ---------------- */
+.record-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .75rem 1rem;
+    margin: 0 0 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 12px;
+    background: var(--admin-panel, #fff);
+}
+
+.record-filters > label {
+    display: grid;
+    gap: .3rem;
+    font-size: .85rem;
+    font-weight: 700;
+    color: var(--admin-muted, #5f6b62);
+}
+
+.record-filters > label:first-child { flex: 1 1 20rem; }
+.record-filters select { min-width: 6rem; }
+.record-filters .btn { align-self: flex-end; }
+
+/* ---- Tables: tighter columns, actions stay visible ---------------------- */
+.admin-table th,
+.admin-table td { padding: .65rem .7rem; }
+
+.admin-table td:last-child,
+.admin-table th:last-child { white-space: nowrap; }
+
+.admin-table td .btn-small {
+    padding: .3rem .65rem;
+    font-size: .82rem;
+}
+.admin-table td .btn-small + .btn-small { margin-left: .3rem; }
+
+/* ---- Form fields in admin ---------------------------------------------- */
+.admin-content input:not([type="checkbox"]):not([type="radio"]),
+.admin-content select,
+.admin-content textarea {
+    border-radius: 8px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.admin-content input:not([type="checkbox"]):not([type="radio"]):focus,
+.admin-content select:focus,
+.admin-content textarea:focus {
+    outline: none;
+    border-color: #2f5e3f;
+    box-shadow: 0 0 0 3px rgba(47, 94, 63, .18);
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+.admin-content .btn {
+    border-radius: 8px;
+    transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.admin-content .btn:hover { box-shadow: 0 4px 12px rgba(31, 61, 43, .18); }
+.admin-content .btn:active { transform: translateY(1px); }
+
+/* ---- Page headings ------------------------------------------------------ */
+.page-heading { margin-bottom: .6rem; }
+.page-heading h1 { letter-spacing: -.01em; }
+
+/* ---- Keyboard focus and motion ----------------------------------------- */
+.admin-content a:focus-visible,
+.admin-content button:focus-visible {
+    outline: 3px solid var(--admin-amber, #c9962b);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-content * { transition: none !important; animation: none !important; }
+}
+
+/* ---- Notices float over the page, same as the public site ---------------
+   Success and error messages only. Warnings stay inline because many are
+   permanent information (for example prerequisite reviews). */
+.admin-content .alert-success:not([role="note"]),
+.admin-content .alert-error:not([role="note"]) {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    z-index: 1000;
+    width: min(92vw, 640px);
+    margin: 0;
+    padding-right: 2.75rem;
+    transform: translateX(-50%);
+    box-shadow: 0 12px 32px rgba(22, 36, 29, .32);
+    animation: a-toast-in .25s ease-out;
+}
+.admin-content .is-dismissed { display: none !important; }
+
+.admin-content .toast-close {
+    position: absolute;
+    top: .35rem;
+    right: .45rem;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.admin-content .toast-close:hover { background: rgba(0, 0, 0, .08); }
+
+@keyframes a-toast-in {
+    from { opacity: 0; transform: translate(-50%, -12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Compact inline correction and schedule controls in the application review. */
+.application-queue-review [hidden] { display: none !important; }
+.application-submission-edit-form .application-details-list input,
+.application-submission-edit-form .application-details-list select,
+.application-submission-edit-form .application-details-list textarea { width: 100%; min-width: 0; }
+.application-inline-editor { display: grid; gap: .45rem; margin-top: .35rem; }
+.application-inline-editor-row {
+    display: grid;
+    grid-template-columns: minmax(7rem, .35fr) minmax(0, .9fr) minmax(0, 1.1fr) auto;
+    gap: .45rem;
+    align-items: center;
+}
+.application-inline-editor-row input { min-width: 0; }
+.application-detail-compact .detail-residence {
+    display: block;
+    margin-left: 5.9rem;
+    color: var(--admin-muted, #626b61);
+    font-size: .86em;
+}
+.application-submission-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: .6rem;
+    border-top: 1px solid rgba(31, 61, 43, .12);
+}
+.application-schedule-form { display: grid; gap: .75rem; }
+.application-venue-confirmation-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .65rem;
+    align-items: end;
+}
+.application-venue-confirmation-form > * { min-width: 0; flex: initial; }
+.application-venue-confirmation-form > button { justify-self: start; min-height: 2.4rem; }
+.application-schedule-booking {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: .65rem .85rem;
+    padding: .8rem;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 9px;
+    background: var(--admin-panel-weak, #f7f6f1);
+}
+.application-schedule-booking label { display: grid; gap: .3rem; margin: 0; }
+.application-schedule-booking .field-hint,
+.application-schedule-booked { grid-column: 1 / -1; margin: 0; }
+.application-schedule-booked h4 { margin: 0 0 .35rem; }
+.application-schedule-booked ul { margin: 0; padding-left: 1.2rem; }
+
+@media (max-width: 700px) {
+    .application-inline-editor-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .application-inline-editor-row select,
+    .application-inline-editor-row input { grid-column: 1 / -1; }
+    .application-venue-confirmation-form { grid-template-columns: minmax(0, 1fr); }
+}
+
+.application-queue-table-scroll > .application-queue-table {
+    width: 100%;
+    min-width: 73rem;
+    table-layout: fixed;
+}
+.application-queue-table th:nth-child(1),
+.application-queue-table td:nth-child(1) { width: 11rem; }
+.application-queue-table th:nth-child(2),
+.application-queue-table td:nth-child(2) { width: 10rem; }
+.application-queue-table th:nth-child(3),
+.application-queue-table td:nth-child(3) { min-width: 20rem; }
+.application-queue-table th:nth-child(4),
+.application-queue-table td:nth-child(4) { width: 12rem; }
+.application-queue-table th:nth-child(5),
+.application-queue-table td:nth-child(5) {
+    width: 11rem;
+    min-width: 11rem;
+    white-space: nowrap;
+}
+.application-queue-table td:nth-child(5) .status-badge { white-space: nowrap; }
+.application-queue-table th:nth-child(6),
+.application-queue-table td:nth-child(6) { width: 9rem; }
+
+/* ---- Pre-application review: structured desk view ---------------------- */
+.application-queue-review .application-review-card {
+    display: grid;
+    grid-template-columns: minmax(22rem, 1.25fr) minmax(16rem, .85fr);
+    gap: .9rem;
+    padding: 1.1rem;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+    border-radius: 16px;
+    background: var(--admin-panel, #fff);
+    box-shadow: var(--admin-shadow-sm, 0 4px 12px rgba(22, 36, 29, .06));
+}
+
+.application-queue-review .application-review-card > header,
+.application-queue-review .application-review-card > aside,
+.application-queue-review .application-review-card > .application-review-actions,
+.application-queue-review .application-review-card > .application-schedule-panel,
+.application-queue-review .application-review-card > .application-submitted-details {
+    grid-column: 1 / -1;
+}
+
+.application-queue-review .application-review-card > header {
+    align-items: flex-start;
+    padding: .25rem .25rem 1rem;
+    border-bottom: 1px solid var(--admin-border, rgba(31, 61, 43, .16));
+}
+.application-queue-review .application-review-card > header h2 {
+    margin: .15rem 0;
+    font: 700 1.55rem/1.15 var(--admin-font-serif, Georgia, serif);
+    letter-spacing: -.02em;
+}
+.application-queue-review .admin-queue-kicker {
+    color: var(--admin-green, #2f5e3f);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+}
+.application-queue-review .application-review-card > header .status-badge { flex: 0 0 auto; }
+
+.application-queue-review .application-review-card > section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .85rem;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .13));
+    border-radius: 13px;
+    background: #fff;
+}
+.application-queue-review .application-review-card > section > h3 {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+    color: var(--admin-green-dark, #234b35);
+    font: 700 1.05rem/1.25 var(--admin-font-serif, Georgia, serif);
+}
+.application-queue-review .application-review-card > section > h3::before {
+    width: .48rem;
+    height: .48rem;
+    border-radius: 50%;
+    background: var(--admin-amber, #c99e43);
+    content: "";
+}
+.application-queue-review .application-review-card > section > :not(h3) { grid-column: 1; }
+.application-queue-review .application-schedule-panel {
+    grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr) !important;
+    align-content: start;
+    border-color: rgba(47, 94, 63, .22) !important;
+    background: linear-gradient(135deg, #f1f5ee 0%, #fbfaf6 100%) !important;
+}
+.application-queue-review .application-schedule-panel > h3 { grid-column: 1 / -1; }
+.application-queue-review .application-schedule-panel > p:not(.field-hint),
+.application-queue-review .application-schedule-panel > .application-venue-confirmation-form {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+}
+.application-queue-review .application-schedule-panel > .application-schedule-form,
+.application-queue-review .application-schedule-panel > p.field-hint {
+    grid-column: 2;
+}
+.application-queue-review .application-schedule-panel > p strong {
+    color: var(--admin-muted, #5a6b5f);
+    font-size: .72rem;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+.application-queue-review .application-schedule-booking {
+    border-color: rgba(31, 61, 43, .12);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, .76);
+}
+
+.application-queue-review .application-details-list {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: .55rem;
+}
+.application-queue-review .application-details-list > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .25rem;
+    min-width: 0;
+    padding: .7rem .8rem;
+    border: 1px solid rgba(31, 61, 43, .09);
+    border-radius: 10px;
+    background: #fbfaf6;
+}
+.application-queue-review .application-details-list dt {
+    font-size: .68rem;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+.application-queue-review .application-details-list dd {
+    margin: 0;
+    color: var(--admin-ink, #1f2d24);
+    font-size: .9rem;
+    line-height: 1.45;
+    white-space: normal;
+}
+.application-queue-review .application-details-list dd > span[data-submission-display] { white-space: pre-wrap; }
+.application-queue-review .application-person-match-panel { grid-column: 1; }
+.application-queue-review .application-requirements-panel { grid-column: 2; align-content: start; }
+.application-queue-review,
+.application-queue-review .application-review-card,
+.application-queue-review .application-person-match-panel,
+.application-queue-review .application-requirements-panel {
+    min-width: 0;
+    max-width: 100%;
+}
+.application-queue-review .application-person-match-grid {
+    grid-template-columns: minmax(0, 32rem);
+}
+.application-queue-review .person-match-form,
+.application-queue-review .person-finder,
+.application-queue-review .application-requirement-form,
+.application-queue-review .application-requirements-list {
+    min-width: 0;
+    width: 100%;
+}
+.application-queue-review .person-finder label,
+.application-queue-review .person-finder input,
+.application-queue-review .person-finder select,
+.application-queue-review .application-requirement-form select,
+.application-queue-review .application-requirement-form button {
+    min-width: 0;
+    width: 100%;
+}
+.application-queue-review .application-requirements-list { display: grid; gap: .55rem; }
+.application-queue-review .application-requirement-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .55rem;
+    padding: .7rem;
+    border: 1px solid rgba(31, 61, 43, .1);
+    border-radius: 10px;
+    background: #fbfaf6;
+}
+.application-queue-review .application-requirement-form strong { grid-column: 1 / -1; }
+.application-queue-review .application-requirement-form label { min-width: 0; }
+.application-queue-review .application-requirement-form .btn { align-self: end; }
+.application-queue-review .application-requirement-form .requirement-saved-details {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: .18rem;
+    color: var(--admin-muted, #5f6b62);
+    font-size: .78rem;
+    line-height: 1.35;
+}
+.application-queue-review .application-requirement-form .requirement-age-warning {
+    justify-self: start;
+    margin-top: .15rem;
+    padding: .18rem .42rem;
+    border-radius: 999px;
+    background: #fff1d6;
+    color: #7a5520;
+    font-size: .72rem;
+    font-weight: 700;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+    padding-top: .45rem;
+    border-top: 1px solid rgba(31, 61, 43, .1);
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields[hidden] { display: none; }
+.application-queue-review .application-requirement-form .requirement-verification-fields label {
+    display: grid;
+    align-content: start;
+    gap: .28rem;
+    font-size: .78rem;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields input,
+.application-queue-review .application-requirement-form .requirement-verification-fields textarea {
+    width: 100%;
+    min-width: 0;
+}
+.application-queue-review .application-requirement-form .requirement-verification-fields label:last-child { grid-column: 1 / -1; }
+.application-queue-review .application-requirement-form .verification-edit-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+    width: auto;
+}
+.application-queue-review .application-review-card > .application-review-actions {
+    align-items: center;
+    padding: .8rem .25rem .1rem;
+    border-top: 1px solid var(--admin-border, rgba(31, 61, 43, .13));
+}
+
+@container (max-width: 900px) {
+    .application-queue-review .application-review-card {
+        grid-template-columns: minmax(0, 1fr);
+        padding: .8rem;
+    }
+    .application-queue-review .application-person-match-panel,
+    .application-queue-review .application-requirements-panel { grid-column: 1; }
+    .application-queue-review .application-schedule-panel {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+    .application-queue-review .application-schedule-panel > p:not(.field-hint),
+    .application-queue-review .application-schedule-panel > .application-venue-confirmation-form,
+    .application-queue-review .application-schedule-panel > .application-schedule-form,
+    .application-queue-review .application-schedule-panel > p.field-hint { grid-column: 1; }
+}
+
+@media (max-width: 760px) {
+    .application-queue-table tr[hidden],
+    .application-queue-table tbody tr.application-queue-detail-row[hidden] {
+        display: none !important;
+    }
+    .application-queue-table-scroll {
+        overflow: visible !important;
+        border: 0;
+        box-shadow: none;
+    }
+    .application-queue-table-scroll::before {
+        display: none !important;
+    }
+    .application-queue-table {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        border: 0 !important;
+        border-radius: 0;
+        background: transparent !important;
+        white-space: normal !important;
+    }
+    .application-queue-table thead {
+        display: none;
+    }
+    .application-queue-table tbody {
+        display: grid;
+        gap: .75rem;
+        width: 100%;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        overflow: hidden;
+        border: 1px solid var(--admin-border, rgba(31,61,43,.16));
+        border-radius: 12px;
+        background: #fff !important;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td {
+        min-width: 0;
+        border: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(1),
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(3),
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5),
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(6) {
+        grid-column: 1 / -1;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5) {
+        width: auto;
+        min-width: 0;
+        white-space: normal;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(1)::before,
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(2)::before,
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(3)::before,
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(4)::before,
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5)::before,
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(6)::before {
+        display: block;
+        margin-bottom: .25rem;
+        color: var(--admin-muted, #667268);
+        font-size: .66rem;
+        font-weight: 800;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(1)::before { content: "Request"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(2)::before { content: "Sacrament"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(3)::before { content: "Applicant"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(4)::before { content: "Submitted"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(5)::before { content: "Status"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(6)::before { content: "Review"; }
+    .application-queue-table tbody tr:not(.application-queue-detail-row) td:nth-child(6) .btn {
+        width: 100%;
+    }
+    .application-queue-table .application-queue-detail-row {
+        display: block;
+        width: 100%;
+    }
+    .application-queue-table .application-queue-detail-row > td {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        padding: .25rem 0;
+        overflow: visible;
+        border: 0;
+    }
+    .application-queue-review {
+        position: static;
+        width: 100%;
+        max-width: 100%;
+    }
+    .application-queue-review .application-review-card {
+        width: 100%;
+        max-width: 100%;
+        padding: .85rem;
+        border: 1px solid var(--admin-border, rgba(31,61,43,.16));
+        border-radius: 12px;
+        background: #fff;
+    }
+    .application-queue-review .application-review-card > header,
+    .application-queue-review .application-review-card > section,
+    .application-queue-review .application-review-card > aside,
+    .application-queue-review .application-review-card > .application-review-actions {
+        grid-column: 1;
+    }
+}
+
+@media (max-width: 560px) {
+    .application-queue-page > .admin-queue-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: .75rem;
+    }
+    .application-queue-page > .admin-queue-heading > * { min-width: 0; }
+    .application-queue-page > .admin-queue-heading .admin-queue-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .application-queue-page > .admin-queue-heading .admin-queue-total {
+        grid-template-columns: auto auto;
+        justify-items: start;
+        justify-self: start;
+    }
+}
+
+/* ---- Baptism register: focused, full-height encoding workspace --------- */
+.baptism-encode-dialog:not([open]) { display: none; }
+.baptism-encode-dialog[open] {
+    display: flex;
+    flex-direction: column;
+    width: min(1120px, calc(100vw - 2.5rem));
+    max-width: none;
+    height: min(94dvh, 980px);
+    max-height: calc(100dvh - 2.5rem);
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(31, 61, 43, .2);
+    border-radius: 18px;
+    color: var(--admin-ink, #1f2d24);
+    background: #f7f6f1;
+    box-shadow: 0 28px 80px rgba(18, 35, 25, .36);
+}
+.baptism-encode-dialog::backdrop { background: rgba(18, 32, 23, .68); }
+.baptism-encode-dialog .dialog-head {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.4rem;
+    border-bottom: 1px solid rgba(31, 61, 43, .12);
+    background: #fffefa;
+}
+.baptism-encode-dialog .dialog-head h2 {
+    margin: 0;
+    color: var(--admin-green-dark, #234b35);
+    font: 700 clamp(1.2rem, 2.4vw, 1.7rem)/1.2 var(--admin-font-serif, Georgia, serif);
+}
+.baptism-encode-dialog .dialog-close {
+    display: grid;
+    flex: 0 0 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    border: 1px solid var(--admin-border, rgba(31, 61, 43, .15));
+    border-radius: 50%;
+    color: var(--admin-ink, #1f2d24);
+    background: #f7f6f1;
+    font-size: 1.4rem;
+}
+.baptism-encode-dialog .dialog-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 1.1rem 1.4rem 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.baptism-encode-dialog .dialog-body > .field-hint {
+    margin: 0 0 .85rem;
+    padding: .75rem .9rem;
+    border-left: 3px solid var(--admin-green, #2f5e3f);
+    border-radius: 0 9px 9px 0;
+    background: #edf3ec;
+}
+.baptism-encode-dialog .baptism-record-entry-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: .9rem;
+    padding-bottom: 1rem;
+}
+.baptism-encode-dialog .baptism-record-entry-form > .person-finder,
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(1),
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(2),
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(3),
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(6),
+.baptism-encode-dialog .record-encode-actions { grid-column: 1 / -1; }
+.baptism-encode-dialog .baptism-record-entry-form > fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid rgba(31, 61, 43, .13);
+    border-radius: 13px;
+    background: #fffefa;
+}
+.baptism-encode-dialog .baptism-record-entry-form > fieldset > legend {
+    padding: 0 .4rem;
+    color: var(--admin-green-dark, #234b35);
+    font: 700 1rem/1.2 var(--admin-font-serif, Georgia, serif);
+}
+.baptism-encode-dialog .baptism-record-entry-form label {
+    display: grid;
+    min-width: 0;
+    gap: .35rem;
+    margin: 0;
+    color: var(--admin-muted, #5a6b5f);
+    font-size: .79rem;
+    font-weight: 750;
+}
+.baptism-encode-dialog .baptism-record-entry-form input:not([type="checkbox"]):not([type="radio"]),
+.baptism-encode-dialog .baptism-record-entry-form select,
+.baptism-encode-dialog .baptism-record-entry-form textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.65rem;
+    padding: .55rem .7rem;
+    border: 1px solid rgba(31, 61, 43, .18);
+    border-radius: 9px;
+    color: var(--admin-ink, #1f2d24);
+    background: #fff;
+}
+.baptism-encode-dialog .baptism-record-entry-form input:focus,
+.baptism-encode-dialog .baptism-record-entry-form select:focus,
+.baptism-encode-dialog .baptism-record-entry-form textarea:focus {
+    border-color: var(--admin-green, #2f5e3f);
+    outline: 3px solid rgba(47, 94, 63, .14);
+    outline-offset: 1px;
+}
+.baptism-encode-dialog .person-finder {
+    display: grid;
+    gap: .65rem;
+    padding: .9rem 1rem;
+    border: 1px solid rgba(47, 94, 63, .2);
+    border-radius: 13px;
+    background: #edf3ec;
+}
+.baptism-encode-dialog .person-finder > .field-hint { margin: 0; }
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(1) .inline-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .7rem;
+}
+.baptism-encode-dialog .structured-name-fields {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .7rem;
+}
+.baptism-encode-dialog .applicant-residence-field {
+    grid-column: span 2;
+    padding: .65rem .75rem;
+    border-left: 3px solid var(--admin-green, #2f5e3f);
+    border-radius: 0 9px 9px 0;
+    background: #edf3ec;
+}
+.baptism-encode-dialog .applicant-residence-label .field-hint {
+    display: inline;
+    margin: 0 0 0 .25rem;
+    font-size: .72rem;
+    font-weight: 500;
+}
+.baptism-encode-dialog .baptism-record-entry-form > fieldset:nth-of-type(2) > .inline-fields:not(.structured-name-fields) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .7rem;
+}
+.baptism-encode-dialog .baptism-parent-grid { gap: .7rem; }
+.baptism-encode-dialog .godparent-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: .55rem;
+    padding: .7rem 0;
+    border-top: 1px solid rgba(31, 61, 43, .1);
+}
+.baptism-encode-dialog .godparent-row .inline-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .6rem;
+}
+.baptism-encode-dialog .record-encode-actions {
+    position: sticky;
+    bottom: -1px;
+    z-index: 2;
+    display: flex;
+    justify-content: flex-end;
+    gap: .65rem;
+    margin: 0 -1.4rem;
+    padding: .85rem 1.4rem;
+    border-top: 1px solid rgba(31, 61, 43, .13);
+    background: rgba(255, 254, 250, .96);
+    backdrop-filter: blur(12px);
+}
+.baptism-encode-dialog .record-encode-actions .btn { min-height: 2.7rem; }
+.baptism-encode-dialog .record-encode-actions .btn-primary { min-width: 10rem; }
+
+@media (max-width: 760px) {
+    .baptism-encode-dialog[open] {
+        width: calc(100vw - 1rem);
+        height: calc(100dvh - 1rem);
+        max-height: calc(100dvh - 1rem);
+        border-radius: 14px;
+    }
+    .baptism-encode-dialog .dialog-head { padding: .85rem 1rem; }
+    .baptism-encode-dialog .dialog-body { padding: .85rem .85rem 0; }
+    .baptism-encode-dialog .baptism-record-entry-form { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .baptism-encode-dialog .baptism-record-entry-form > .person-finder,
+    .baptism-encode-dialog .baptism-record-entry-form > fieldset,
+    .baptism-encode-dialog .record-encode-actions { grid-column: 1; }
+    .baptism-encode-dialog .structured-name-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .baptism-encode-dialog .child-identity-name-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .baptism-encode-dialog .record-encode-actions { margin: 0 -.85rem; padding: .75rem .85rem; }
+}
+
+@media (max-width: 560px) {
+    .baptism-encode-dialog .child-identity-name-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+    .baptism-encode-dialog .baptism-parent-grid,
+    .baptism-encode-dialog .godparent-row .inline-fields { grid-template-columns: minmax(0, 1fr); }
+    .baptism-encode-dialog .record-encode-actions { flex-direction: column-reverse; }
+    .baptism-encode-dialog .record-encode-actions .btn { width: 100%; }
+}

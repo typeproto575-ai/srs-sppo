@@ -20,6 +20,113 @@
 require_once __DIR__ . '/../config/environment.php';
 require_once __DIR__ . '/mail.php';
 
+function normalize_parents_union_type(string $value): string
+{
+    $value = strtolower(trim($value));
+
+    return match ($value) {
+        'legitimate' => 'canonical',
+        'natural' => 'unmarried',
+        default => $value,
+    };
+}
+
+function parents_union_type_options(): array
+{
+    return [
+        '' => '-- Not specified --',
+        'canonical' => 'Canonical Marriage (Catholic Church)',
+        'civil' => 'Civil Marriage Only',
+        'common_law' => 'Living Together / Common-Law',
+        'unmarried' => 'Single Parent / Unmarried',
+    ];
+}
+
+function parents_union_type_label(?string $value): string
+{
+    $value = normalize_parents_union_type((string) $value);
+    if ($value === '') {
+        return 'Not recorded';
+    }
+
+    return parents_union_type_options()[$value] ?? 'Not recorded';
+}
+
+function normalize_place_of_birth(string $value): string
+{
+    $value = trim($value);
+
+    return in_array(strtolower($value), ['n/a', 'na', 'n.a.', 'none', 'unknown', '-'], true)
+        ? 'N/A'
+        : $value;
+}
+
+function is_unknown_place_of_birth(?string $value): bool
+{
+    $value = normalize_place_of_birth((string) $value);
+
+    return $value === '' || strcasecmp($value, 'N/A') === 0;
+}
+
+if (!function_exists('application_queue_requirement_label')) {
+    function application_queue_requirement_label(string $sacramentType, string $requirementKey): string
+    {
+        $labels = [
+            'baptism' => [
+                'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
+                'godparent_eligibility' => 'Godparent Eligibility Checked',
+                'pre_jordan_seminar' => 'Pre-Jordan Seminar',
+                'parents_marriage_certificate' => 'Parents\' Marriage Certificate',
+                'transfer_letter' => 'Parish Transfer / Permission Letter',
+                'guardianship_papers' => 'Legal Guardianship Papers',
+            ],
+            'first_communion' => [
+                'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
+                'first_reconciliation' => 'First Confession / First Reconciliation',
+                'catechism_completion' => 'Catechism Completion',
+                'parent_guardian_commitment' => 'Parent/Guardian Formation Commitment',
+            ],
+            'confirmation' => [
+                'psa_birth_certificate' => 'PSA or Local Civil Registrar Birth Certificate',
+                'origin_baptismal_certificate' => 'Origin Baptismal Certificate',
+                'first_communion_verified' => 'Holy Communion Record / Origin-Parish Certificate',
+                'confirmation_sponsor_details' => 'Sponsor Eligibility Verification',
+                'confirmation_seminar' => 'Confirmation Seminar',
+                'parent_guardian_commitment' => 'Parent/Guardian Formation Commitment',
+            ],
+            'marriage' => [
+                'psa_birth_certificate_groom' => 'Groom PSA Birth Certificate',
+                'psa_birth_certificate_bride' => 'Bride PSA Birth Certificate',
+                'psa_cenomar_groom' => 'Groom PSA CENOMAR',
+                'psa_cenomar_bride' => 'Bride PSA CENOMAR',
+                'psa_marriage_certificate_couple' => 'Couple PSA Marriage Certificate',
+                'psa_death_certificate_groom' => 'Groom Deceased Spouse PSA Death Certificate',
+                'psa_death_certificate_bride' => 'Bride Deceased Spouse PSA Death Certificate',
+                'psa_prior_marriage_certificate_groom' => 'Groom Prior PSA Marriage Certificate',
+                'psa_prior_marriage_certificate_bride' => 'Bride Prior PSA Marriage Certificate',
+                'civil_annulment_finality_groom' => 'Groom Civil Annulment Decree / Certificate of Finality',
+                'civil_annulment_finality_bride' => 'Bride Civil Annulment Decree / Certificate of Finality',
+                'annotated_psa_marriage_certificate_groom' => 'Groom Annotated PSA Marriage Certificate',
+                'annotated_psa_marriage_certificate_bride' => 'Bride Annotated PSA Marriage Certificate',
+                'church_declaration_nullity_groom' => 'Groom Church Declaration of Nullity',
+                'church_declaration_nullity_bride' => 'Bride Church Declaration of Nullity',
+                'origin_baptismal_certificate_groom' => 'Groom Baptismal Certificate (for marriage purpose)',
+                'origin_baptismal_certificate_bride' => 'Bride Baptismal Certificate (for marriage purpose)',
+                'origin_confirmation_certificate_groom' => 'Groom Confirmation Certificate (for marriage purpose)',
+                'origin_confirmation_certificate_bride' => 'Bride Confirmation Certificate (for marriage purpose)',
+                'transfer_letter' => 'Parish Transfer / Permission Letter',
+                'canonical_interview' => 'Canonical Interview',
+                'marriage_banns' => 'Marriage Banns',
+                'pre_cana_seminar' => 'Pre-Cana Seminar',
+                'marriage_license_application' => 'Marriage License Application (from the Municipal Civil Registrar)',
+            ],
+        ];
+
+        return $labels[$sacramentType][$requirementKey]
+            ?? ucfirst(str_replace('_', ' ', $requirementKey));
+    }
+}
+
 /**
  * Generate a reference number with a random, non-sequential suffix.
  */
@@ -63,7 +170,8 @@ function public_selected_person_id(
     string $middleName,
     string $lastName,
     string $suffix,
-    string $birthDate
+    string $birthDate,
+    bool $allowDeceased = false
 ): ?int {
     if (!is_scalar($rawId) || trim((string) $rawId) === '') {
         return null;
@@ -74,6 +182,7 @@ function public_selected_person_id(
         throw new InvalidArgumentException('Choose a valid master person profile.');
     }
 
+    $deceasedFilter = $allowDeceased ? '' : ' AND is_deceased = 0';
     $stmt = $pdo->prepare(
         'SELECT id FROM persons
          WHERE id = ?
@@ -81,7 +190,7 @@ function public_selected_person_id(
            AND COALESCE(middle_name, \'\') = ?
            AND last_name = ?
            AND COALESCE(suffix, \'\') = ?
-           AND (birth_date = ? OR birth_date IS NULL)
+           AND (birth_date = ? OR birth_date IS NULL)' . $deceasedFilter . '
          LIMIT 1'
     );
     $stmt->execute([
@@ -109,6 +218,11 @@ function public_person_reference(PDO $pdo, ?int $personId, array $identity): arr
         'suffix' => trim((string) ($identity['suffix'] ?? '')),
         'birth_date' => trim((string) ($identity['birth_date'] ?? '')),
     ];
+    foreach (['father_name', 'mother_maiden_name', 'birth_place'] as $parentKey) {
+        if (strcasecmp(trim((string) ($identity[$parentKey] ?? '')), 'N/A') === 0) {
+            $identity[$parentKey] = '';
+        }
+    }
     if ($name['first_name'] === '' || $name['last_name'] === '') {
         throw new InvalidArgumentException('A first and last name are needed to create a person reference.');
     }
@@ -240,7 +354,7 @@ function public_assert_no_open_sacrament_application(
     if ($stmt->fetchColumn()) {
         $labels = [
             'baptism' => 'Baptism',
-            'first_communion' => 'First Communion',
+            'first_communion' => 'Holy Communion',
             'confirmation' => 'Confirmation',
             'marriage' => 'Marriage',
         ];
@@ -287,7 +401,7 @@ function public_application_profile(PDO $pdo, int $personId): ?array
         'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place,
                 father_name, mother_maiden_name, address, contact_number, email, sex
          FROM persons
-         WHERE id = ?
+         WHERE id = ? AND is_deceased = 0
          LIMIT 1'
     );
     $stmt->execute([$personId]);
@@ -330,12 +444,231 @@ function application_queue_next_statuses(string $status): array
     return [
         'new' => ['reviewing', 'rejected'],
         'reviewing' => ['requirements_pending', 'approved', 'rejected'],
-        'requirements_pending' => ['reviewing', 'approved', 'rejected'],
+        'requirements_pending' => ['approved', 'rejected'],
         'approved' => ['scheduled', 'rejected'],
         'scheduled' => ['rejected'],
-        'completed' => [],
-        'rejected' => [],
     ][$status] ?? [];
+}
+
+function application_queue_requirement_status_transition(
+    string $applicationStatus,
+    string $previousRequirementStatus,
+    string $newRequirementStatus
+): ?string {
+    if ($applicationStatus !== 'new' || $previousRequirementStatus === $newRequirementStatus) {
+        return null;
+    }
+
+    $nextStatus = 'reviewing';
+    return in_array($nextStatus, application_queue_next_statuses($applicationStatus), true)
+        ? $nextStatus
+        : null;
+}
+
+function application_queue_status_filter_after_transition(string $filterStatus, string $nextStatus): string
+{
+    return $filterStatus === 'new' && $nextStatus === 'reviewing'
+        ? 'reviewing'
+        : $filterStatus;
+}
+
+function application_schedule_input_error(
+    string $date,
+    string $startTime,
+    string $endTime,
+    ?DateTimeImmutable $today = null
+): ?string {
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+        return 'Enter a valid confirmed date.';
+    }
+
+    $scheduledDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($scheduledDate === false
+        || $scheduledDate->format('Y-m-d') !== $date
+        || (is_array($dateErrors) && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))) {
+        return 'Enter a valid confirmed date.';
+    }
+
+    $today = ($today ?? new DateTimeImmutable('today'))->setTime(0, 0);
+    if ($scheduledDate < $today) {
+        return 'The confirmed date cannot be in the past.';
+    }
+
+    foreach (['start time' => $startTime, 'end time' => $endTime] as $label => $time) {
+        if ($time !== '' && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) !== 1) {
+            return 'Enter a valid ' . $label . '.';
+        }
+    }
+
+    if ($endTime !== '' && $startTime === '') {
+        return 'Enter a start time before an end time.';
+    }
+    if ($endTime !== '' && $endTime <= $startTime) {
+        return 'The end time must be after the start time.';
+    }
+
+    return null;
+}
+
+function first_communion_details_input_errors(array $data): array
+{
+    $errors = [];
+    $baptismParish = is_scalar($data['baptism_parish'] ?? null)
+        ? trim((string) $data['baptism_parish'])
+        : '';
+    if (($data['baptized_here'] ?? '') === 'elsewhere' && $baptismParish === '') {
+        $errors[] = 'Enter the name and location of the parish or church where the applicant was baptized.';
+    }
+    if (mb_strlen($baptismParish) > 150) {
+        $errors[] = 'The baptism parish or church name and location must be 150 characters or fewer.';
+    }
+
+    $venue = is_scalar($data['communion_venue'] ?? null)
+        ? trim((string) $data['communion_venue'])
+        : '';
+    if (!in_array($venue, ['parish_church', 'other'], true)) {
+        $errors[] = 'Choose where Holy Communion will take place.';
+    }
+    $otherVenue = is_scalar($data['communion_venue_other'] ?? null)
+        ? trim((string) $data['communion_venue_other'])
+        : '';
+    if ($venue === 'other' && $otherVenue === '') {
+        $errors[] = 'Enter the name and location of the other Holy Communion venue.';
+    }
+    if (mb_strlen($otherVenue) > 150) {
+        $errors[] = 'The other Holy Communion venue must be 150 characters or fewer.';
+    }
+
+    return array_values(array_unique($errors));
+}
+
+function sacrament_formation_grade_options(): array
+{
+    $grades = [
+        'kindergarten' => 'Kindergarten',
+    ];
+    for ($grade = 1; $grade <= 12; $grade++) {
+        $grades['grade_' . $grade] = 'Grade ' . $grade;
+    }
+
+    return $grades + [
+        'not_enrolled' => 'Not currently enrolled',
+        'other' => 'Other / not sure',
+    ];
+}
+
+function sacrament_formation_grade_other_error(string $grade, string $otherGrade): ?string
+{
+    $otherGrade = trim($otherGrade);
+    if ($grade === 'other' && $otherGrade === '') {
+        return 'Describe the other grade level or preparation situation.';
+    }
+    if (mb_strlen($otherGrade) > 100) {
+        return 'The other grade level description must be 100 characters or fewer.';
+    }
+
+    return null;
+}
+
+function first_communion_grade_options(): array
+{
+    $grades = sacrament_formation_grade_options();
+    $grades['not_enrolled'] = 'Out-of-School Youth (OSY)';
+    $grades['not_applicable'] = 'Not Applicable / Adult / Out-of-School';
+
+    return $grades;
+}
+
+function first_communion_formation_input_error(string $path, string $grade, string $schoolYear): ?string
+{
+    if ($path === 'batch') {
+        if ($grade === 'general') {
+            return preg_match('/^\d{4}$/D', trim($schoolYear)) === 1
+                ? null
+                : 'Enter a four-digit calendar year for the group.';
+        }
+        $path = 'parish_based';
+    }
+    if (!in_array($path, ['school_based', 'parish_based', 'individual_catchup'], true)) {
+        return 'Choose a formation pathway.';
+    }
+
+    $gradeOptions = first_communion_grade_options();
+    if ($path === 'individual_catchup') {
+        if ($grade !== '' && strcasecmp($grade, 'N/A') !== 0 && !array_key_exists($grade, $gradeOptions)) {
+            return 'Choose a valid current grade level.';
+        }
+        return null;
+    }
+
+    if ($grade === '' || !array_key_exists($grade, $gradeOptions) || $grade === 'not_applicable') {
+        return 'Choose a valid current grade level for the selected group pathway.';
+    }
+    if ($path === 'school_based' && $grade === 'not_enrolled') {
+        return 'Choose a school grade for a school-based group. Out-of-School Youth should select a parish-based group.';
+    }
+
+    $schoolYear = trim($schoolYear);
+    if ($path === 'school_based' && $schoolYear === '') {
+        return 'A school year is required for a school-based group, for example 2026-2027.';
+    }
+    if ($schoolYear !== ''
+        && (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $years) !== 1
+            || (int) $years[2] !== (int) $years[1] + 1)) {
+        return 'Enter the school year as two consecutive years, for example 2026-2027.';
+    }
+
+    return null;
+}
+
+function sacrament_formation_input_error(string $path, string $grade, string $schoolYear): ?string
+{
+    if (!in_array($path, ['batch', 'individual_catchup', 'not_sure'], true)) {
+        return 'Choose a formation pathway.';
+    }
+    if ($path === 'batch' && $grade === 'general') {
+        return preg_match('/^\d{4}$/D', trim($schoolYear)) === 1
+            ? null
+            : 'Enter a four-digit calendar year for the group.';
+    }
+    if ($path === 'individual_catchup') {
+        if ($grade !== '' && !array_key_exists($grade, sacrament_formation_grade_options())) {
+            return 'Choose a valid current grade level.';
+        }
+    } elseif (!array_key_exists($grade, sacrament_formation_grade_options())) {
+        return 'Choose a valid current grade level.';
+    }
+    if ($schoolYear === '' || strtoupper($schoolYear) === 'N/A') {
+        return $path === 'batch'
+            ? 'A school year is required for a group request, for example 2026-2027.'
+            : null;
+    }
+    if (preg_match('/^(\d{4})-(\d{4})$/', $schoolYear, $years) !== 1
+        || (int) $years[2] !== (int) $years[1] + 1) {
+        return 'Enter the school year as two consecutive years, for example 2026-2027.';
+    }
+
+    return null;
+}
+
+/**
+ * Keys of requirements still marked "not_received" in an application's
+ * requirements JSON. Rows marked not applicable, received or verified do not count.
+ */
+function application_outstanding_requirement_keys(?string $requirementsJson): array
+{
+    $requirements = json_decode((string) $requirementsJson, true);
+    if (!is_array($requirements)) {
+        return [];
+    }
+    $outstanding = [];
+    foreach ($requirements as $key => $item) {
+        if (is_array($item) && ($item['status'] ?? '') === 'not_received') {
+            $outstanding[] = (string) $key;
+        }
+    }
+    return $outstanding;
 }
 
 /**
@@ -411,6 +744,30 @@ function calculate_age(string $birthdate): int
     return $birth->diff($today)->y;
 }
 
+/** Validate a report month/year together, falling back to the current period if either is invalid. */
+function validated_report_period(mixed $month, mixed $year, ?DateTimeImmutable $currentDate = null): array
+{
+    $currentDate ??= new DateTimeImmutable('today');
+    $currentMonth = (int) $currentDate->format('n');
+    $currentYear = (int) $currentDate->format('Y');
+
+    $monthValue = is_int($month) || (is_string($month) && preg_match('/\A[0-9]+\z/', $month))
+        ? (int) $month
+        : null;
+    $yearValue = is_int($year) || (is_string($year) && preg_match('/\A[0-9]+\z/', $year))
+        ? (int) $year
+        : null;
+
+    if (
+        $monthValue === null || $monthValue < 1 || $monthValue > 12
+        || $yearValue === null || $yearValue < 2000 || $yearValue > $currentYear + 1
+    ) {
+        return [$currentMonth, $currentYear];
+    }
+
+    return [$monthValue, $yearValue];
+}
+
 /** Return the configured age range for a sacrament. */
 function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
 {
@@ -423,7 +780,11 @@ function sacrament_eligibility_range(PDO $pdo, string $sacramentType): array
             'min_key' => 'confirmation_min_age',
             'min_default' => 12,
         ],
-        default => throw new InvalidArgumentException('Age eligibility is only configured for First Communion and Confirmation.'),
+        'marriage' => [
+            'min_key' => 'marriage_min_age',
+            'min_default' => 18,
+        ],
+        default => throw new InvalidArgumentException('Age eligibility is only configured for Holy Communion, Confirmation, and Marriage.'),
     };
 
     $stmt = $pdo->prepare('SELECT setting_key, setting_value FROM settings WHERE setting_key = ?');
@@ -500,12 +861,16 @@ function notify_newly_age_eligible_persons(PDO $pdo): int
 
         $sacraments = [
             'first_communion' => [
-                'label' => 'First Communion',
+                'label' => 'Holy Communion',
                 'type' => 'age_eligible_first_communion',
             ],
             'confirmation' => [
                 'label' => 'Confirmation',
                 'type' => 'age_eligible_confirmation',
+            ],
+            'marriage' => [
+                'label' => 'Marriage',
+                'type' => 'age_eligible_marriage',
             ],
         ];
         $ranges = [];
@@ -523,7 +888,8 @@ function notify_newly_age_eligible_persons(PDO $pdo): int
         );
         $alreadyReceivedStmt = $pdo->prepare(
             'SELECT 1 FROM sacrament_records
-             WHERE person_id = ? AND sacrament_type = ?
+             WHERE sacrament_type = ?
+               AND (person_id = ? OR spouse_person_id = ?)
              LIMIT 1'
         );
         $insertStmt = $pdo->prepare(
@@ -548,7 +914,7 @@ function notify_newly_age_eligible_persons(PDO $pdo): int
                     continue;
                 }
 
-                $alreadyReceivedStmt->execute([(int) $person['id'], $sacramentType]);
+                $alreadyReceivedStmt->execute([$sacramentType, (int) $person['id'], (int) $person['id']]);
                 if ($alreadyReceivedStmt->fetchColumn()) {
                     continue;
                 }
@@ -792,6 +1158,126 @@ function record_public_submission(PDO $pdo, array $emails, string $formType, ?st
 /**
  * Validation helpers for public forms.
  */
+/**
+ * Eligibility rule for one marriage party (groom or bride).
+ *
+ * Keeps the panel-approved rule in ONE small function so it is easy to
+ * change in one place:
+ *   - Blocks a party whose marital_status is 'married_elsewhere' (and the
+ *     legacy value 'married').
+ *   - Blocks a party whose previous_marriage is 'church' or 'civil' while
+ *     marital_status is 'single' (the answers contradict each other).
+ *   - Allows 'widowed' or 'annulled' with a previous marriage; the
+ *     secretary checks the supporting documents later.
+ *
+ * @param string $maritalStatus   One of the individual marital-status values.
+ * @param string $previousMarriage  'no', 'church', or 'civil'.
+ * @return string|null  The visitor-facing block message, or NULL when allowed.
+ */
+function marriage_party_eligibility_error(string $maritalStatus, string $previousMarriage): ?string
+{
+    if (in_array($maritalStatus, ['married_elsewhere', 'married'], true)) {
+        return 'Applicants currently married (civilly or in church) to another person cannot apply for a Catholic wedding until the prior marriage is legally annulled and declared null by the Church.';
+    }
+
+    if (in_array($previousMarriage, ['church', 'civil'], true) && $maritalStatus === 'single') {
+        return 'Applicants currently married (civilly or in church) to another person cannot apply for a Catholic wedding until the prior marriage is legally annulled and declared null by the Church.';
+    }
+
+    return null;
+}
+
+function marriage_status_pair_error(string $groomStatus, string $brideStatus): ?string
+{
+    if ($groomStatus === '' || $brideStatus === '') {
+        return null;
+    }
+
+    if (($groomStatus === 'civilly_married') !== ($brideStatus === 'civilly_married')) {
+        return "If you are civilly married to each other, both the groom and bride must select 'Civilly Married (to each other)'.";
+    }
+
+    return null;
+}
+
+function marriage_sacrament_record_assessment(?array $record, string $selectedAnswer): array
+{
+    $hasRecord = $record !== null;
+    $answer = in_array($selectedAnswer, ['yes', 'no'], true) ? $selectedAnswer : '';
+
+    return [
+        'record_found' => $hasRecord,
+        'suggested_answer' => $hasRecord ? 'yes' : null,
+        'selected_answer' => $answer,
+        'answer_conflicts' => $hasRecord && $answer === 'no',
+    ];
+}
+
+function marriage_marital_status_label(string $status): string
+{
+    return match ($status) {
+        'single' => 'Single',
+        'civilly_married' => 'Civilly Married (to each other)',
+        'widowed' => 'Widowed',
+        'annulled' => 'Annulled / Declared Null',
+        'married_elsewhere', 'married' => 'Married (to someone else)',
+        default => '—',
+    };
+}
+
+function format_yes_no_display_value(mixed $value): ?string
+{
+    if (is_bool($value)) {
+        return $value ? 'Yes' : 'No';
+    }
+    if (!is_scalar($value)) {
+        return null;
+    }
+
+    $text = trim((string) $value);
+    if ($text === '') {
+        return null;
+    }
+
+    $parts = preg_split('/\s*\/\s*/', $text);
+    if (!is_array($parts) || $parts === []) {
+        return null;
+    }
+
+    $labels = [];
+    foreach ($parts as $part) {
+        $labels[] = match (strtolower(trim($part))) {
+            'yes' => 'Yes',
+            'no' => 'No',
+            default => '',
+        };
+        if ($labels[array_key_last($labels)] === '') {
+            return null;
+        }
+    }
+
+    return implode(' / ', $labels);
+}
+
+/**
+ * Human-readable label for a party's previous-marriage answer, used on the
+ * marriage review screen. Empty or unrecognized values remain visibly unset.
+ */
+function marriage_previous_marriage_label(string $previousMarriage): string
+{
+    $yesNoLabel = format_yes_no_display_value($previousMarriage);
+    if ($yesNoLabel !== null) {
+        return $yesNoLabel;
+    }
+
+    return match (strtolower(trim($previousMarriage))) {
+        'church' => 'Yes — Church',
+        'civil' => 'Yes — Civil',
+        default => '—',
+    };
+}
+
+
 
 
 
@@ -838,14 +1324,49 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+function format_name_part(string $value, bool $isSuffix = false): string
+{
+    $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+    if ($value === '' || strcasecmp($value, 'N/A') === 0) {
+        return $value;
+    }
+    $words = explode(' ', $value);
+    foreach ($words as $i => $word) {
+        if (!preg_match('/\p{L}/u', $word)) {
+            continue;
+        }
+        if ($isSuffix && preg_match('/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i', $word)) {
+            $words[$i] = mb_strtoupper($word);
+            continue;
+        }
+        if ($word !== mb_strtolower($word) && $word !== mb_strtoupper($word)) {
+            continue;
+        }
+        $words[$i] = (string) preg_replace_callback(
+            '/(^|[-\'’.])(\p{L})/u',
+            static fn(array $m): string => $m[1] . mb_strtoupper($m[2]),
+            mb_strtolower($word)
+        );
+    }
+
+    return implode(' ', $words);
+}
+
 function compose_person_name(array $values, string $prefix): string
 {
     $parts = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $value = $values[$prefix . '_' . $part] ?? '';
         if (is_scalar($value) && trim((string) $value) !== '') {
-            $parts[] = trim((string) $value);
+            $parts[] = format_name_part((string) $value, $part === 'suffix');
         }
+    }
+    $providedParts = array_filter($parts, static fn(string $part): bool => $part !== '');
+    if (
+        $providedParts !== []
+        && count(array_filter($providedParts, static fn(string $part): bool => strcasecmp($part, 'N/A') === 0)) === count($providedParts)
+    ) {
+        return 'N/A';
     }
 
     return implode(' ', $parts);
@@ -858,6 +1379,21 @@ function compose_person_name_rows(array $values, string $prefix): array
 
 function compose_person_name_rows_by_index(array $values, string $prefix): array
 {
+    $fullNames = $values[$prefix . '_full_name'] ?? null;
+    if (is_array($fullNames)) {
+        $names = [];
+        foreach ($fullNames as $rowIndex => $fullName) {
+            if (!is_scalar($fullName)) {
+                continue;
+            }
+            $name = trim((string) $fullName);
+            if ($name !== '') {
+                $names[$rowIndex] = $name;
+            }
+        }
+        return $names;
+    }
+
     $rows = [];
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $field = $values[$prefix . '_' . $part] ?? [];
@@ -884,6 +1420,11 @@ function compose_person_name_rows_by_index(array $values, string $prefix): array
 
 function person_name_row_count(array $values, string $prefix): int
 {
+    $fullNames = $values[$prefix . '_full_name'] ?? null;
+    if (is_array($fullNames)) {
+        return count($fullNames);
+    }
+
     $count = 0;
     foreach (['first', 'middle', 'last', 'suffix'] as $part) {
         $field = $values[$prefix . '_' . $part] ?? [];
@@ -893,6 +1434,58 @@ function person_name_row_count(array $values, string $prefix): int
     }
 
     return $count;
+}
+
+function validate_parent_name_or_na(array $values, string $prefix, string $label): ?string
+{
+    $parts = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $value = $values[$prefix . '_' . $part] ?? '';
+        $parts[$part] = is_scalar($value) ? trim((string) $value) : '';
+    }
+    $providedParts = array_filter($parts, static fn(string $part): bool => $part !== '');
+    if ($providedParts === []) {
+        return "{$label}: enter the first and last name, or enter N/A if unknown.";
+    }
+
+    $hasNa = count(array_filter(
+        $providedParts,
+        static fn(string $part): bool => strcasecmp($part, 'N/A') === 0
+    )) > 0;
+    if ($hasNa) {
+        $hasOtherValue = count(array_filter(
+            $providedParts,
+            static fn(string $part): bool => strcasecmp($part, 'N/A') !== 0
+        )) > 0;
+
+        return $hasOtherValue ? "{$label}: enter a name or enter N/A by itself if unknown." : null;
+    }
+
+    if ($parts['first'] === '' || $parts['last'] === '') {
+        return "{$label}: enter the first and last name, or enter N/A if unknown.";
+    }
+
+    return validate_full_name(compose_person_name($values, $prefix));
+}
+
+function validate_required_parent_name(array $values, string $prefix, string $label): ?string
+{
+    $parts = [];
+    foreach (['first', 'middle', 'last', 'suffix'] as $part) {
+        $value = $values[$prefix . '_' . $part] ?? '';
+        $parts[$part] = is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    foreach ($parts as $part) {
+        if (strcasecmp($part, 'N/A') === 0) {
+            return "{$label}: enter the full name; N/A is not accepted.";
+        }
+    }
+    if ($parts['first'] === '' || $parts['last'] === '') {
+        return "{$label}: enter the first and last name.";
+    }
+
+    return validate_full_name(compose_person_name($values, $prefix));
 }
 
 function validate_person_name_fields(array $values, string $prefix, string $label, bool $required = true): ?string
@@ -917,6 +1510,24 @@ function validate_person_name_fields(array $values, string $prefix, string $labe
 function validate_person_name_rows(array $values, string $prefix, string $label): array
 {
     $errors = [];
+    $fullNames = $values[$prefix . '_full_name'] ?? null;
+    if (is_array($fullNames)) {
+        foreach ($fullNames as $fullName) {
+            if (!is_scalar($fullName)) {
+                $errors[] = "{$label}'s full name must be text.";
+                continue;
+            }
+            $name = trim((string) $fullName);
+            if ($name === '') {
+                continue;
+            }
+            if (($error = validate_full_name($name)) !== null) {
+                $errors[] = "{$label}: {$error}";
+            }
+        }
+        return array_values(array_unique($errors));
+    }
+
     $rowCount = person_name_row_count($values, $prefix);
     for ($rowIndex = 0; $rowIndex < $rowCount; $rowIndex++) {
         $person = [];
@@ -942,22 +1553,53 @@ function validate_person_name_rows(array $values, string $prefix, string $label)
     return array_values(array_unique($errors));
 }
 
+function validate_marriage_principal_sponsors(array $values): array
+{
+    $godfathers = compose_person_name_rows($values, 'godfather');
+    $godmothers = compose_person_name_rows($values, 'godmother');
+    $errors = [];
+
+    if ($godfathers === []) {
+        $errors[] = 'At least one principal godfather is required.';
+    }
+    if ($godmothers === []) {
+        $errors[] = 'At least one principal godmother is required.';
+    }
+    if (count($godfathers) + count($godmothers) > 4) {
+        $errors[] = 'No more than 4 principal sponsors may be entered.';
+    }
+
+    return array_values(array_unique(array_merge(
+        $errors,
+        validate_person_name_rows($values, 'godfather', 'Principal godfather'),
+        validate_person_name_rows($values, 'godmother', 'Principal godmother')
+    )));
+}
+
 function person_name_fields(
     string $prefix,
     string $label,
     array $values,
     bool $required = true,
-    ?int $rowIndex = null
+    ?int $rowIndex = null,
+    ?string $hint = null,
+    bool $withSuffix = true,
+    bool $requireFirstAndLast = false
 ): string {
     $isList = $rowIndex !== null;
-    $optionalHint = $required
-        ? ' <span class="field-hint">(required; enter First Name or Last Name; other parts are optional)</span>'
-        : ' <span class="field-hint">(optional)</span>';
+    $optionalHint = $hint !== null
+        ? ' <span class="field-hint">(' . e($hint) . ')</span>'
+        : ($required
+            ? ' <span class="field-hint">(required; enter First Name or Last Name; other parts are optional)</span>'
+            : ' <span class="field-hint">(optional)</span>');
     $markup = '<div class="structured-name-fields" role="group" aria-label="' . e($label) . '"><p><strong>' . e($label) . '</strong>' . $optionalHint . '</p>';
 
     foreach ([['first', 'middle'], ['last', 'suffix']] as $group) {
         $markup .= '<div class="inline-fields">';
         foreach ($group as $part) {
+            if ($part === 'suffix' && !$withSuffix) {
+                continue;
+            }
             $partLabel = match ($part) {
                 'first' => 'First Name',
                 'middle' => 'Middle Name',
@@ -986,10 +1628,13 @@ function person_name_fields(
                 'suffix' => ' <span class="field-hint">(optional)</span>',
                 default => '',
             };
+            $requiredAttribute = $required && $requireFirstAndLast && in_array($part, ['first', 'last'], true)
+                ? ' required'
+                : '';
 
             $markup .= '<label' . $forAttribute . '>' . e($partLabel) . $hint
                 . '<input type="text"' . $idAttribute . ' name="' . e($inputName) . '" autocomplete="' . $autocomplete
-                . '" value="' . e($value) . '"></label>';
+                . '"' . $requiredAttribute . ' value="' . e($value) . '"></label>';
         }
         $markup .= '</div>';
     }
@@ -1463,6 +2108,39 @@ function validate_full_name(string $name): ?string
     return null;
 }
 
+function communion_roster_candidates(string $roster): array
+{
+    $lines = preg_split('/\R/u', $roster) ?: [];
+    $candidates = [];
+    foreach ($lines as $line) {
+        $fullName = trim($line);
+        if ($fullName === '') {
+            continue;
+        }
+        if (mb_strlen($fullName, 'UTF-8') > 150) {
+            throw new InvalidArgumentException('Each candidate name must be 150 characters or fewer.');
+        }
+        if (($nameError = validate_full_name($fullName)) !== null) {
+            throw new InvalidArgumentException($nameError);
+        }
+        $parts = preg_split('/\s+/u', $fullName) ?: [];
+        if (count($parts) < 2) {
+            throw new InvalidArgumentException('Enter each candidate’s full name, including a first and last name.');
+        }
+
+        $candidates[] = ['full_name' => $fullName];
+        if (count($candidates) > 100) {
+            throw new InvalidArgumentException('A group can include no more than 100 candidates.');
+        }
+    }
+
+    if ($candidates === []) {
+        throw new InvalidArgumentException('Enter at least one candidate name, one name per line.');
+    }
+
+    return $candidates;
+}
+
 function search_middle_initial(string $token): ?string
 {
     return preg_match('/^([\p{L}])\.?$/u', trim($token), $matches) === 1
@@ -1729,7 +2407,7 @@ function security_headers(): void
     header("Content-Security-Policy: default-src 'self'; "
         . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
         . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
-        . "font-src 'self' https://fonts.gstatic.com; "
+        . "font-src 'self' https://fonts.gstatic.com data:; "
         . "img-src 'self' data:; "
         . "connect-src 'self'");
 }
@@ -1814,7 +2492,7 @@ function notify(PDO $pdo, string $type, string $title, string $message, string $
  * @param string $newStatus    The status just written (must be in the notifications.type ENUM).
  * @param string $sacramentType   'baptism', 'confirmation', 'first_communion', 'marriage'.
  * @param string $requestNo       application request_no (from sacrament_applications).
- * @param string $extra        Optional suffix appended after the first sentence.
+ * @param string $extra        Optional schedule note appended to notifications and email.
  */
 function notify_sacrament_application_status(
     PDO $pdo,
@@ -1823,7 +2501,9 @@ function notify_sacrament_application_status(
     string $requestNo,
     string $extra = ''
 ): void {
-    $kind = ucwords(str_replace('_', ' ', $sacramentType));
+    $kind = $sacramentType === 'first_communion'
+        ? 'Holy Communion'
+        : ucwords(str_replace('_', ' ', $sacramentType));
     $state = status_label('application', $newStatus);
     notify(
         $pdo,
@@ -1893,7 +2573,16 @@ function notify_sacrament_application_status(
         }
         $kind .= ' Application';
         foreach ($uniqueEmails as $recipient) {
-            mail_status_update($recipient['email'], $recipient['reference'], $state, $kind, $pdo, 'sacrament_application', $applicationId ?: null);
+            mail_status_update(
+                $recipient['email'],
+                $recipient['reference'],
+                $state,
+                $kind,
+                $pdo,
+                'sacrament_application',
+                $applicationId ?: null,
+                $extra !== '' ? $extra : null
+            );
         }
     } catch (Throwable $e) {
         error_log('SRS-SPPO application status email failed: ' . $e->getMessage());
@@ -1915,7 +2604,7 @@ function notify_sacrament_application_status(
 function cert_request_transition_valid(string $from, string $to): bool
 {
     static $map = [
-        'new'                       => ['matched', 'rejected'],
+        'new'                       => ['matched', 'rejected', 'cancelled'],
         'matched'                   => ['for_signature', 'rejected'],
         'for_signature'             => ['ready', 'rejected'],
         'ready'                     => ['released', 'rejected'],
@@ -2335,7 +3024,7 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
             $missing[] = 'Pre-Cana / marriage seminar not completed.';
         }
         if (empty($ext['banns_date_1']) || empty($ext['banns_date_2']) || empty($ext['banns_date_3'])) {
-            $missing[] = 'Banns must be posted on all three dates (Tawag sa Kasal).';
+            $missing[] = 'Marriage banns must be posted on all three dates.';
         }
         if (($ext['groom_baptismal_cert_status'] ?? '') !== 'submitted') {
             $missing[] = "Groom's baptismal certificate not submitted.";
@@ -2371,10 +3060,10 @@ function can_approve_sacrament_application(PDO $pdo, int $applicationId, string 
             $counts[$row['godparent_type']] = (int) $row['c'];
         }
         if ($counts['godfather'] < 1) {
-            $missing[] = 'At least one godfather (ninong) must be recorded.';
+            $missing[] = 'At least one godfather must be recorded.';
         }
         if ($counts['godmother'] < 1) {
-            $missing[] = 'At least one godmother (ninang) must be recorded.';
+            $missing[] = 'At least one godmother must be recorded.';
         }
         return ['ok' => $missing === [], 'missing' => $missing];
     }
@@ -2630,6 +3319,64 @@ function event_times_overlap(?string $aStart, ?string $aEnd, ?string $bStart, ?s
     return $aStartTs < $bEndTs && $bStartTs < $aEndTs;
 }
 
+function schedule_events_overlap_as_conflict(array $eventA, array $eventB): bool
+{
+    if (($eventA['event_type'] ?? '') === 'baptism'
+        && ($eventB['event_type'] ?? '') === 'baptism') {
+        return false;
+    }
+
+    $aStart = $eventA['start_time'] ?? null;
+    $aEnd = $eventA['end_time'] ?? null;
+    $bStart = $eventB['start_time'] ?? null;
+    $bEnd = $eventB['end_time'] ?? null;
+
+    return event_times_overlap(
+        is_string($aStart) && $aStart !== '' ? $aStart : null,
+        is_string($aEnd) && $aEnd !== '' ? $aEnd : null,
+        is_string($bStart) && $bStart !== '' ? $bStart : null,
+        is_string($bEnd) && $bEnd !== '' ? $bEnd : null
+    );
+}
+
+function application_schedule_available_slots(string $eventType, array $events): array
+{
+    if (!in_array($eventType, ['baptism', 'wedding', 'mass', 'other'], true)) {
+        throw new InvalidArgumentException('Choose a valid schedule event type.');
+    }
+
+    $slots = [];
+    for ($startMinutes = 8 * 60; $startMinutes + 60 <= 17 * 60; $startMinutes += 60) {
+        $start = sprintf('%02d:%02d', intdiv($startMinutes, 60), $startMinutes % 60);
+        $endMinutes = $startMinutes + 60;
+        $end = sprintf('%02d:%02d', intdiv($endMinutes, 60), $endMinutes % 60);
+        $candidate = [
+            'event_type' => $eventType,
+            'start_time' => $start . ':00',
+            'end_time' => $end . ':00',
+        ];
+
+        $conflicts = false;
+        foreach ($events as $event) {
+            if (schedule_events_overlap_as_conflict($candidate, $event)) {
+                $conflicts = true;
+                break;
+            }
+        }
+        if ($conflicts) {
+            continue;
+        }
+
+        $slots[] = [
+            'start_time' => $start,
+            'end_time' => $end,
+            'label' => format_event_time_range($candidate['start_time'], $candidate['end_time']),
+        ];
+    }
+
+    return $slots;
+}
+
 /**
  * Format a start/end time pair as "10:00 AM–11:00 AM" (or just the start
  * time when there's no end). Returns '' when there's no start time.
@@ -2651,16 +3398,17 @@ function status_label(string $kind, string $value): string
             'ready' => 'Ready for pickup',
             'released' => 'Given to the requester',
             'rejected' => 'Declined',
+            'cancelled' => 'Closed — no follow-up',
             'pending' => 'Needs action',
         ],
         'application' => [
-            'new' => 'New application',
-            'reviewing' => 'Being checked',
-            'requirements_pending' => 'Waiting for documents',
-            'approved' => "Approved, date not yet set",
-            'scheduled' => 'Date set',
-            'completed' => 'Done and recorded',
-            'rejected' => 'Declined',
+            'new' => 'New',
+            'reviewing' => 'Under review',
+            'requirements_pending' => 'Pending: missing documents',
+            'approved' => 'Approved',
+            'scheduled' => 'Scheduled',
+            'completed' => 'Completed',
+            'rejected' => 'Closed',
         ],
     ];
     if (isset($map[$kind][$value])) {

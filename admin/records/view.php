@@ -135,13 +135,37 @@ foreach ($personIds as $personId) {
     }
 }
 
-function record_view_value($value): string
+function record_view_value($value, string $emptyLabel = 'Not recorded'): string
 {
-    if ($value === null || $value === '') {
-        return 'Not recorded';
+    if ($value === null || (is_string($value) && trim($value) === '')) {
+        return $emptyLabel;
+    }
+    $yesNoLabel = format_yes_no_display_value($value);
+    if ($yesNoLabel !== null) {
+        return $yesNoLabel;
     }
     if (is_array($value) || is_object($value)) {
-        return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $normalize = static function (mixed $item) use (&$normalize, $emptyLabel): mixed {
+            if ($item === null || (is_string($item) && trim($item) === '')) {
+                return $emptyLabel;
+            }
+            $label = format_yes_no_display_value($item);
+            if ($label !== null) {
+                return $label;
+            }
+            if (is_array($item)) {
+                foreach ($item as $key => $nestedValue) {
+                    $item[$key] = $normalize($nestedValue);
+                }
+            } elseif (is_object($item)) {
+                $item = get_object_vars($item);
+                foreach ($item as $key => $nestedValue) {
+                    $item[$key] = $normalize($nestedValue);
+                }
+            }
+            return $item;
+        };
+        return (string) json_encode($normalize($value), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
     return (string) $value;
 }
@@ -230,7 +254,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <div><dt>Entry / Book / Page / Line</dt><dd><?= e($registerReference !== '' ? $registerReference : 'Not recorded') ?></dd></div>
                 <div><dt>Source</dt><dd><?= e(record_view_label((string) ($record['source'] ?? ''))) ?></dd></div>
                 <?php if ($record['sacrament_type'] === 'baptism'): ?>
-                    <div><dt>Parents' union</dt><dd><?= e(record_view_label((string) ($record['parents_union_type'] ?? 'Not recorded'))) ?></dd></div>
+                    <div><dt>Parents' union</dt><dd><?= e(parents_union_type_label($record['parents_union_type'] ?? null)) ?></dd></div>
+                    <?php if (!empty($record['parents_marriage_parish'])): ?>
+                        <div><dt>Parish of parents' marriage</dt><dd><?= e((string) $record['parents_marriage_parish']) ?></dd></div>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <div><dt>Book verification</dt><dd><?= !empty($record['book_verified_at']) ? 'Verified on ' . e($record['book_verified_at']) : 'Not verified' ?></dd></div>
                 <div><dt>Created</dt><dd><?= e(record_view_value($record['created_at'] ?? null)) ?></dd></div>
@@ -242,7 +269,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <dl class="record-detail-list">
                     <?php foreach ($record['details'] as $key => $value): ?>
                         <?php if (strtolower((string) $key) === 'legitimacy') continue; ?>
-                        <div><dt><?= e(record_view_label((string) $key)) ?></dt><dd><?= e(record_view_value($value)) ?></dd></div>
+                        <div><dt><?= e(record_view_label((string) $key)) ?></dt><dd><?= e(record_view_value(
+                            $value,
+                            ($record['sacrament_type'] ?? '') === 'marriage' ? '—' : 'Not recorded'
+                        )) ?></dd></div>
                     <?php endforeach; ?>
                 </dl>
             <?php endif; ?>

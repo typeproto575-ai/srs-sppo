@@ -28,7 +28,7 @@ $selfReturn = '/admin/records/first-communion.php' . ((($_SERVER['QUERY_STRING']
 $editReturnInput = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['return'] ?? null) : ($_GET['return'] ?? null);
 $editReturnUrl = is_string($editReturnInput) ? safe_internal_return_url($editReturnInput) : null;
 
-$pageTitle = 'First Communion Records';
+$pageTitle = 'Holy Communion Records';
 $errors  = [];
 $duplicateMatches = [];
 $success = null;
@@ -145,12 +145,40 @@ if (!empty($_GET['from_application']) && $_SERVER['REQUEST_METHOD'] !== 'POST') 
         $_POST['domicile'] = (string) ($application['address'] ?? '');
         $_POST['father_name'] = (string) ($application['father_name'] ?? '');
         $_POST['mother_maiden_name'] = (string) ($application['mother_maiden_name'] ?? '');
+        $_POST['minister_name'] = trim((string) ($applicationDetails['preferred_priest'] ?? ''));
         $_POST['remarks'] = 'Encoded from application ' . $application['request_no'];
     } elseif ($application) {
         $prefillNotice = 'Application ' . $application['request_no'] . ' must be approved or scheduled before it can be encoded into the register.';
         $prefillReviewUrl = $basePath . '/admin/requests/applications-queue.php?' . http_build_query(['q' => $application['request_no']]);
     } else {
-        $errors[] = 'The requested First Communion application could not be found.';
+        $errors[] = 'The requested Holy Communion application could not be found.';
+    }
+}
+
+$personIdentity = null;
+$personIdInput = $_POST['person_id'] ?? $_GET['person_id'] ?? null;
+if ($personIdInput !== null && $personIdInput !== '') {
+    $selectedPersonId = is_scalar($personIdInput)
+        ? filter_var((string) $personIdInput, FILTER_VALIDATE_INT)
+        : false;
+    if ($selectedPersonId === false || $selectedPersonId < 1) {
+        $errors[] = 'The selected person profile is invalid.';
+    } else {
+        $personStmt = $pdo->prepare(
+            'SELECT id, first_name, middle_name, last_name, suffix, birth_date,
+                    father_name, mother_maiden_name, address
+             FROM persons WHERE id = ?'
+        );
+        $personStmt->execute([(int) $selectedPersonId]);
+        $personIdentity = $personStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$personIdentity) {
+            $errors[] = 'The selected person profile could not be found.';
+        } else {
+            $_POST['person_id'] = (string) $personIdentity['id'];
+            $_POST['domicile'] ??= (string) ($personIdentity['address'] ?? '');
+            $_POST['father_name'] ??= (string) ($personIdentity['father_name'] ?? '');
+            $_POST['mother_maiden_name'] ??= (string) ($personIdentity['mother_maiden_name'] ?? '');
+        }
     }
 }
 
@@ -164,18 +192,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
     $entryNo = trim((string) ($_POST['entry_no'] ?? ''));
     $communionDate = trim((string) ($_POST['communion_date'] ?? ''));
-    $communicantFirst = trim((string) ($_POST['communicant_first_name'] ?? ''));
-    $communicantMiddle = trim((string) ($_POST['communicant_middle_name'] ?? ''));
-    $communicantLast = trim((string) ($_POST['communicant_last_name'] ?? ''));
-    $communicantSuffix = trim((string) ($_POST['communicant_suffix'] ?? ''));
+    $place = trim((string) ($_POST['place'] ?? ''));
+    $communicantFirst = trim((string) ($personIdentity['first_name'] ?? $_POST['communicant_first_name'] ?? ''));
+    $communicantMiddle = trim((string) ($personIdentity['middle_name'] ?? $_POST['communicant_middle_name'] ?? ''));
+    $communicantLast = trim((string) ($personIdentity['last_name'] ?? $_POST['communicant_last_name'] ?? ''));
+    $communicantSuffix = trim((string) ($personIdentity['suffix'] ?? $_POST['communicant_suffix'] ?? ''));
     $communicantName = compose_structured_name($communicantFirst, $communicantMiddle, $communicantLast, $communicantSuffix);
     $domicile = trim((string) ($_POST['domicile'] ?? ''));
     $fatherName = compose_person_name($_POST, 'father') ?: trim((string) ($_POST['father_name'] ?? ''));
     $motherMaidenName = compose_person_name($_POST, 'mother') ?: trim((string) ($_POST['mother_maiden_name'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister') ?: trim((string) ($_POST['minister_name'] ?? ''));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
 
-    if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
+    if ($communionDate === '')   $errors[] = 'Date of Holy Communion is required.';
+    if ($place === '') $errors[] = 'Enter the actual place of Holy Communion.';
+    if ($ministerName === '') $errors[] = 'Enter the officiating minister’s full name.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
     if (empty($_POST['person_id']) && empty($_POST['from_application'])) {
         $duplicateMatches = sd_find_possible_person_matches($pdo, [
@@ -231,13 +262,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
 
             $stmt = $pdo->prepare(
                 "INSERT INTO sacrament_records
-                    (sacrament_type, person_id, source, event_date, minister_name, entry_no,
+                    (sacrament_type, person_id, source, event_date, place, minister_name, entry_no,
                      book_no, page_no, line_no, details, remarks, encoded_by)
-                 VALUES ('first_communion', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES ('first_communion', ?, 'this_parish', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $stmt->execute([
                 $personId,
                 $communionDate,
+                $place,
                 $ministerName,
                 $entryNo,
                 $bookNo,
@@ -250,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
             $recordId = (int) $pdo->lastInsertId();
 
             log_activity($pdo, current_user()['id'], 'first_communion_record_encoded', 'sacrament_records', $recordId,
-                "First Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
+                "Holy Communion record encoded for {$communicantName}" . ($shifted > 0 ? " — {$shifted} later entries renumbered" : ''));
             $appDone = '';
             if ($application) {
                 $completed = $pdo->prepare(
@@ -261,12 +293,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_record']) && csrf
                 );
                 $completed->execute([$recordId, current_user()['id'], (int) $application['id']]);
                 log_activity($pdo, current_user()['id'], 'application_recorded_in_register', 'sacrament_applications', (int) $application['id'],
-                    "First Communion encoded into register (record #{$recordId}); application completed.");
+                    "Holy Communion encoded into register (record #{$recordId}); application completed.");
                 $appDone = '&app_completed=1';
             }
             $pdo->commit();
             if ($application) {
-                notify_sacrament_application_status($pdo, 'completed', 'first_communion', (string) $application['request_no'], "First Communion encoded into register (record #{$recordId}).");
+                notify_sacrament_application_status($pdo, 'completed', 'first_communion', (string) $application['request_no']);
+            }
+            if ($editReturnUrl) {
+                redirect_to($editReturnUrl);
+                exit;
             }
             redirect_to('/admin/records/first-communion.php?added=1' . ($shifted > 0 ? '&shifted=' . $shifted : '') . $appDone);
             exit;
@@ -286,6 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
 
     $editId = (int) ($_POST['edit_id'] ?? 0);
     $communionDate = trim((string) ($_POST['communion_date'] ?? ''));
+    $place = trim((string) ($_POST['place'] ?? ''));
     $domicile = trim((string) ($_POST['domicile'] ?? ''));
     $communicantFirst = trim((string) ($_POST['communicant_first_name'] ?? ''));
     $communicantMiddle = trim((string) ($_POST['communicant_middle_name'] ?? ''));
@@ -294,14 +331,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
     $communicantName = compose_structured_name($communicantFirst, $communicantMiddle, $communicantLast, $communicantSuffix);
     $fatherName = compose_person_name($_POST, 'father') ?: trim((string) ($_POST['father_name'] ?? ''));
     $motherMaidenName = compose_person_name($_POST, 'mother') ?: trim((string) ($_POST['mother_maiden_name'] ?? ''));
-    $ministerName = compose_person_name($_POST, 'minister') ?: trim((string) ($_POST['minister_name'] ?? ''));
+    $ministerName = trim((string) ($_POST['minister_name'] ?? ''));
     $remarks = trim((string) ($_POST['remarks'] ?? ''));
     $bookNo = trim((string) ($_POST['book_no'] ?? ''));
     $pageNo = trim((string) ($_POST['page_no'] ?? ''));
     $lineNo = trim((string) ($_POST['line_no'] ?? ''));
     $correctionReason = trim((string) ($_POST['correction_reason'] ?? ''));
 
-    if ($communionDate === '')   $errors[] = 'Date of First Communion is required.';
+    if ($communionDate === '')   $errors[] = 'Date of Holy Communion is required.';
     if ($communicantName === '') $errors[] = "Communicant's full name is required.";
     if ($editId <= 0)            $errors[] = 'Invalid record selected for update.';
     if (strlen($correctionReason) < 5 || strlen($correctionReason) > 500) $errors[] = 'A correction reason of at least 5 characters is required.';
@@ -322,12 +359,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_record']) && c
             $details = json_encode(['domicile' => $domicile], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
             $stmt = $pdo->prepare(
                 "UPDATE sacrament_records
-                 SET event_date = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?,
+                 SET event_date = ?, place = ?, minister_name = ?, entry_no = ?, book_no = ?, page_no = ?,
                      line_no = ?, details = ?, remarks = ?, person_id = ?
                  WHERE id = ? AND sacrament_type = 'first_communion'"
             );
             $stmt->execute([
                 $communionDate,
+                $place !== '' ? $place : null,
                 $ministerName,
                 trim((string) ($_POST['entry_no'] ?? '')),
                 $bookNo,
@@ -369,7 +407,7 @@ if (isset($_GET['edit'])) {
     $editId = (int) $_GET['edit'];
     $stmt = $pdo->prepare(
         "SELECT sr.id, sr.event_date AS communion_date, sr.entry_no, sr.book_no, sr.page_no,
-                sr.line_no, sr.minister_name, sr.remarks, sr.person_id, sr.details,
+                sr.line_no, sr.place, sr.minister_name, sr.remarks, sr.person_id, sr.details,
                 p.first_name AS communicant_first_name,
                 p.middle_name AS communicant_middle_name,
                 p.last_name AS communicant_last_name,
@@ -393,7 +431,7 @@ if (isset($_GET['edit'])) {
 }
 $isEdit = $editRecord !== null;
 $isNew = (string) ($_GET['new'] ?? '') === '1';
-$pageTitle = $isEdit ? 'Edit First Communion Record' : 'New First Communion Record';
+$pageTitle = $isEdit ? 'Edit Holy Communion Record' : 'New Holy Communion Record';
 
 // Suggested next logbook numbers for the encode dialog (create mode only).
 $suggest = $isEdit
@@ -402,19 +440,22 @@ $suggest = $isEdit
 $communicantParts = $isEdit ? structured_name_parts((string) $editRecord['communicant_full_name']) : ['', '', '', ''];
 $recordNameFormValues = $_POST;
 foreach ([
-    'father' => $isEdit ? structured_name_parts((string) ($editRecord['father_name'] ?? '')) : ['', '', '', ''],
-    'mother' => $isEdit ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? '')) : ['', '', '', ''],
-    'minister' => $isEdit ? structured_name_parts((string) ($editRecord['minister_name'] ?? '')) : ['', '', '', ''],
+    'father' => $isEdit
+        ? structured_name_parts((string) ($editRecord['father_name'] ?? ''))
+        : structured_name_parts((string) ($_POST['father_name'] ?? '')),
+    'mother' => $isEdit
+        ? structured_name_parts((string) ($editRecord['mother_maiden_name'] ?? ''))
+        : structured_name_parts((string) ($_POST['mother_maiden_name'] ?? '')),
 ] as $prefix => $parts) {
     foreach (['first', 'middle', 'last', 'suffix'] as $index => $part) {
         $recordNameFormValues[$prefix . '_' . $part] ??= $parts[$index];
     }
 }
 
-if (isset($_GET['added'])) $success = 'First Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
-if (isset($_GET['app_completed'])) $success = 'First Communion record saved and application completed.';
-if (isset($_GET['updated'])) $success = 'First Communion record updated.';
-if (isset($_GET['deleted'])) $success = 'First Communion record deleted.';
+if (isset($_GET['added'])) $success = 'Holy Communion record saved.' . (isset($_GET['shifted']) ? ' Following entries were renumbered to make room.' : '');
+if (isset($_GET['app_completed'])) $success = 'Holy Communion record saved and application completed.';
+if (isset($_GET['updated'])) $success = 'Holy Communion record updated.';
+if (isset($_GET['deleted'])) $success = 'Holy Communion record deleted.';
 
 // --- Filter / paginate (shared component) --------------------------------
 $rfConfig = [
@@ -541,7 +582,7 @@ $isSecretary = (current_user()['role'] ?? '') === 'secretary';
 require_once __DIR__ . '/../../includes/admin-header.php';
 ?>
         <div class="page-heading">
-            <h1><?= $isEdit ? 'Edit First Communion Record' : 'New First Communion Record' ?></h1>
+            <h1><?= $isEdit ? 'Edit Holy Communion Record' : 'New Holy Communion Record' ?></h1>
             <a class="btn btn-secondary btn-small" href="<?= e($basePath . '/admin/records/index.php') ?>">Back to All Records</a>
         </div>
         <p class="field-hint">Tracked as a one-time received/not-received event, not per-Mass attendance.</p>
@@ -556,7 +597,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
                 <?php if (!defined('SRS_UNIFIED_RECORD_EDITOR')): ?>
                 <?php rf_render_bar($basePath . '/admin/records/first-communion.php', $rfConfig, $rf); ?>
-        <div class="table-scroll" tabindex="0" role="region" aria-label="First Communion register records; scroll horizontally to view all columns">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Holy Communion register records; scroll horizontally to view all columns">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -564,7 +605,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                     <th><a class="table-sort-link<?= $sort === 'page' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('page')) ?>">Page<?= first_communion_sort_indicator('page') ?></a></th>
                     <th><a class="table-sort-link<?= $sort === 'line' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('line')) ?>">Line<?= first_communion_sort_indicator('line') ?></a></th>
                     <th><a class="table-sort-link<?= $sort === 'name' ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url('name')) ?>">Full Name<?= first_communion_sort_indicator('name') ?></a></th>
-                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date of First Communion<?= first_communion_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
+                    <th><a class="table-sort-link<?= in_array($sort, ['date_desc', 'date_asc'], true) ? ' is-active' : '' ?>" href="<?= e(first_communion_sort_url($sort === 'date_desc' ? 'date_asc' : 'date_desc')) ?>">Date of Holy Communion<?= first_communion_sort_indicator($sort === 'date_desc' || $sort === 'date_asc' ? $sort : 'date_desc') ?></a></th>
                     <th>Linked</th>
                     <th>Options</th>
                 </tr>
@@ -573,7 +614,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                 <?php if (empty($records)): ?>
                     <tr>
                         <td colspan="7" class="empty-table-row">
-                            <div class="empty-state"><h2>No First Communion records found</h2><p><?= $rf['q'] !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
+                            <div class="empty-state"><h2>No Holy Communion records found</h2><p><?= $rf['q'] !== '' ? 'No matches for "' . e($rf['q']) . '".' : 'New records will appear here after they are encoded.' ?></p></div>
                         </td>
                     </tr>
                 <?php else: ?>
@@ -606,7 +647,7 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
         <dialog id="encode-dialog" class="encode-dialog"<?= ($isEdit || $isNew || !empty($errors) || $fromApplicationId > 0) ? ' data-autoshow' : '' ?><?= $editReturnUrl ? ' data-return-url="' . e($basePath . $editReturnUrl) . '"' : '' ?>>
             <div class="dialog-head">
-                <h2><?= $isEdit ? 'Edit First Communion Record #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'New First Communion Record' ?></h2>
+                <h2><?= $isEdit ? 'Edit Holy Communion Record #' . (int) $editRecord['id'] . ' - ' . e($editRecord['communicant_full_name']) : 'New Holy Communion Record' ?></h2>
                 <button type="button" class="dialog-close" data-close-dialog aria-label="Close">&times;</button>
             </div>
             <div class="dialog-body">
@@ -616,9 +657,9 @@ require_once __DIR__ . '/../../includes/admin-header.php';
         <?php if (!empty($errors)): ?>
             <div class="alert alert-error"><ul><?php foreach ($errors as $err): ?><li><?= e($err) ?></li><?php endforeach; ?></ul></div>
         <?php endif; ?>
-        <form autocomplete="off" method="post" action="" data-review data-review-title="Review First Communion Entry" data-review-confirm="Confirm and Save">
+        <form autocomplete="off" method="post" action="" data-review data-review-title="Review Holy Communion Entry" data-review-confirm="Confirm and Save">
             <?= csrf_field() ?><!-- CSRF token: pairs with the guard above -->
-            <?php if ($isEdit && $editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
+            <?php if ($editReturnUrl): ?><input type="hidden" name="return" value="<?= e($editReturnUrl) ?>"><?php endif; ?>
             <?php if ($isEdit): ?><input type="hidden" name="edit_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
             <input type="hidden" name="entry_no" value="<?= e($_POST['entry_no'] ?? $editRecord['entry_no'] ?? '') ?>">
             <input type="hidden" name="from_application" value="<?= (int) ($_POST['from_application'] ?? $fromApplicationId) ?>">
@@ -634,23 +675,37 @@ require_once __DIR__ . '/../../includes/admin-header.php';
 
             <fieldset>
                 <legend>Communicant</legend>
-                <div class="inline-fields structured-name-fields">
-                    <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_first_name" value="<?= e($_POST['communicant_first_name'] ?? $editRecord['communicant_first_name'] ?? $communicantParts[0]) ?>" required></label>
-                    <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="communicant_middle_name" value="<?= e($_POST['communicant_middle_name'] ?? $editRecord['communicant_middle_name'] ?? $communicantParts[1]) ?>"></label>
-                    <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_last_name" value="<?= e($_POST['communicant_last_name'] ?? $editRecord['communicant_last_name'] ?? $communicantParts[2]) ?>" required></label>
-                    <label>Suffix <input autocomplete="off" type="text" name="communicant_suffix" value="<?= e($_POST['communicant_suffix'] ?? $editRecord['communicant_suffix'] ?? $communicantParts[3]) ?>"></label>
-                </div>
-                <input type="hidden" name="communicant_full_name" value="<?= e($_POST['communicant_full_name'] ?? $editRecord['communicant_full_name'] ?? '') ?>">
-                <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
-                    <label>Find possible people
-                        <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
-                    </label>
-                    <button type="button" class="btn btn-secondary btn-small" data-person-find>Find possible people</button>
-                    <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
-                    <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
-                    <div class="person-finder-results" data-person-results></div>
-                    <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
-                </div>
+                <?php if ($personIdentity): ?>
+                    <input type="hidden" name="person_id" value="<?= (int) $personIdentity['id'] ?>">
+                    <p><strong><?= e(person_identity_label($personIdentity)) ?></strong></p>
+                    <p>Father: <?= e((string) ($personIdentity['father_name'] ?: 'Not recorded')) ?></p>
+                    <p>Mother's maiden name: <?= e((string) ($personIdentity['mother_maiden_name'] ?: 'Not recorded')) ?></p>
+                    <p class="field-hint">Linked to this master person profile. The person's identity is read-only here.</p>
+                    <input type="hidden" name="communicant_full_name" value="<?= e(compose_structured_name(
+                        (string) $personIdentity['first_name'],
+                        (string) ($personIdentity['middle_name'] ?? ''),
+                        (string) $personIdentity['last_name'],
+                        (string) ($personIdentity['suffix'] ?? '')
+                    )) ?>">
+                <?php else: ?>
+                    <div class="inline-fields structured-name-fields">
+                        <label>First Name <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_first_name" value="<?= e($_POST['communicant_first_name'] ?? $editRecord['communicant_first_name'] ?? $communicantParts[0]) ?>" required></label>
+                        <label>Middle Name <span class="field-hint">(optional)</span> <input autocomplete="off" type="text" name="communicant_middle_name" value="<?= e($_POST['communicant_middle_name'] ?? $editRecord['communicant_middle_name'] ?? $communicantParts[1]) ?>"></label>
+                        <label>Surname <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="text" name="communicant_last_name" value="<?= e($_POST['communicant_last_name'] ?? $editRecord['communicant_last_name'] ?? $communicantParts[2]) ?>" required></label>
+                        <label>Suffix <input autocomplete="off" type="text" name="communicant_suffix" value="<?= e($_POST['communicant_suffix'] ?? $editRecord['communicant_suffix'] ?? $communicantParts[3]) ?>"></label>
+                    </div>
+                    <input type="hidden" name="communicant_full_name" value="<?= e($_POST['communicant_full_name'] ?? $editRecord['communicant_full_name'] ?? '') ?>">
+                    <div class="person-finder" data-person-finder data-endpoint="<?= e($basePath . '/admin/api/person-search.php') ?>">
+                        <label>Find possible people
+                            <input autocomplete="off" type="search" data-person-search placeholder="Enter the name first, then search">
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-small" data-person-find>Find possible people</button>
+                        <input type="hidden" name="person_id" data-person-id value="<?= e($_POST['person_id'] ?? $editRecord['person_id'] ?? '') ?>">
+                        <div class="person-finder-selection" data-person-selection aria-live="polite"></div>
+                        <div class="person-finder-results" data-person-results></div>
+                        <p class="field-hint">Review possible matches before selecting. If there is no match, saving creates a master person profile for this record.</p>
+                    </div>
+                <?php endif; ?>
                 <?php if ($duplicateMatches): ?>
                     <div class="alert alert-warning">
                         <strong>Possible existing profiles</strong>
@@ -660,7 +715,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
                         <label><input type="checkbox" name="confirm_new_person" value="1"<?= (($_POST['confirm_new_person'] ?? '') === '1') ? ' checked' : '' ?>> I reviewed these matches and still need a separate person profile.</label>
                     </div>
                 <?php endif; ?>
-                <label>Date of First Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
+                <label>Date of Holy Communion <span class="required-marker" aria-hidden="true">*</span> <input autocomplete="off" type="date" name="communion_date" value="<?= e($_POST['communion_date'] ?? $editRecord['communion_date'] ?? '') ?>" required></label>
+                <label>Place of Holy Communion<?= !$isEdit ? ' *' : '' ?>
+                    <input autocomplete="off" type="text" name="place" maxlength="150" value="<?= e($_POST['place'] ?? $editRecord['place'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                </label>
                 <label>Residence (Domicile) / Address <input autocomplete="off" type="text" name="domicile" value="<?= e($_POST['domicile'] ?? $editRecord['domicile'] ?? '') ?>"></label>
                 <div class="inline-fields">
                     <?= person_name_fields('father', "Father's Name", $recordNameFormValues, false) ?>
@@ -669,24 +727,10 @@ require_once __DIR__ . '/../../includes/admin-header.php';
             </fieldset>
 
             <fieldset>
-                <legend>Prerequisite</legend>
-                <div class="baptismal-finder" data-baptismal-finder>
-                    <label>Find possible Baptismal records
-                        <input autocomplete="off" type="search" data-baptismal-search placeholder="Search after entering the person details">
-                    </label>
-                    <div class="mapper-actions">
-                        <button type="button" class="btn btn-secondary btn-small" data-baptismal-find data-endpoint="<?= e($basePath . '/admin/api/baptismal-record-search.php') ?>">Find possible matches</button>
-                    </div>
-                    <input type="hidden" name="baptismal_record_id" data-baptismal-id value="<?= e($_POST['baptismal_record_id'] ?? $editRecord['baptismal_record_id'] ?? '') ?>">
-                    <div class="baptismal-finder-selection" data-baptismal-selection aria-live="polite"></div>
-                    <div class="baptismal-finder-results" data-baptismal-results></div>
-                    <p class="field-hint">Select a record to link it. Leave blank if the Baptismal record is not known yet.</p>
-                </div>
-            </fieldset>
-
-            <fieldset>
                 <legend>Other</legend>
-                <?= person_name_fields('minister', 'Officiating Minister', $recordNameFormValues, false) ?>
+                <label>Officiating Minister's full name<?= !$isEdit ? ' *' : '' ?>
+                    <input type="text" name="minister_name" maxlength="150" value="<?= e($_POST['minister_name'] ?? $editRecord['minister_name'] ?? '') ?>"<?= !$isEdit ? ' required' : '' ?>>
+                </label>
                 <label>Remarks <textarea autocomplete="off" name="remarks"><?= e($_POST['remarks'] ?? $editRecord['remarks'] ?? '') ?></textarea></label>
                 <?php if ($isEdit): ?>
                     <label>Correction reason <textarea name="correction_reason" minlength="5" maxlength="500" required><?= e($_POST['correction_reason'] ?? '') ?></textarea></label>

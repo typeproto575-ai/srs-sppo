@@ -50,7 +50,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
 {
     $isMarriage = $type === 'marriage';
     $isConfirmation = $type === 'confirmation';
-    $title = $isMarriage ? 'HOLY MATRIMONY' : ($isConfirmation ? 'CONFIRMATION' : 'FIRST HOLY COMMUNION');
+    $title = $isMarriage ? 'HOLY MATRIMONY' : ($isConfirmation ? 'CONFIRMATION' : 'HOLY COMMUNION');
     $subject = $isMarriage
         ? trim((string) ($source['husband_full_name'] ?? $source['party_a_full_name'] ?? '') . '  &  ' . (string) ($source['wife_maiden_name'] ?? $source['party_b_full_name'] ?? ''))
         : (string) ($source[$isConfirmation ? 'confirmand_full_name' : 'communicant_full_name'] ?? '');
@@ -58,26 +58,36 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $date = $isMarriage
         ? ($source['marriage_date'] ?? $source['date_of_marriage'] ?? null)
         : ($isConfirmation ? ($source['confirmation_date'] ?? $source['date_of_confirmation'] ?? null) : ($source['communion_date'] ?? $source['date_of_first_communion'] ?? null));
-    $dateLabel = $isMarriage ? 'were united in the Sacrament of Holy Matrimony on' : ($isConfirmation ? 'received the Sacrament of Confirmation on' : 'received First Holy Communion on');
+    $dateLabel = $isMarriage ? 'were united in the Sacrament of Holy Matrimony on' : ($isConfirmation ? 'received the Sacrament of Confirmation on' : 'received the Sacrament of Holy Communion on');
+    $minister = trim((string) ($source['minister_name'] ?? ''));
+    if ($minister === '') {
+        $minister = trim((string) ($source['officiating_minister'] ?? ''));
+    }
+    $minister = $minister !== '' ? cert_format_title_case($minister) : 'Not recorded';
+    $father = trim((string) ($source['father_name'] ?? ''));
+    if ($father === '') {
+        $father = trim((string) ($source['father_full_name'] ?? ''));
+    }
+    $father = $father !== '' ? cert_format_title_case($father) : 'Not recorded';
     $rows = [];
     if ($isMarriage) {
         $rows = [
             ['Husband', cert_format_title_case($source['husband_full_name'] ?? $source['party_a_full_name'] ?? '—')],
             ['Wife (maiden name)', cert_format_title_case($source['wife_maiden_name'] ?? $source['party_b_full_name'] ?? '—')],
-            ['Officiating minister', cert_format_title_case($source['officiating_minister'] ?? $source['minister_name'] ?? '—')],
+            ['Officiating minister', $minister],
         ];
     } elseif ($isConfirmation) {
         $rows = [
             ['Sponsor', cert_format_title_case($source['sponsor_name'] ?? '—')],
-            ['Bishop / minister', cert_format_title_case($source['minister_name'] ?? $source['officiating_minister'] ?? '—')],
-            ['Father', cert_format_title_case($source['father_name'] ?? $source['father_full_name'] ?? '—')],
+            ['Bishop / minister', $minister],
+            ['Father', $father],
             ['Mother', cert_format_title_case($source['mother_maiden_name'] ?? $source['mother_full_name'] ?? '—')],
         ];
     } else {
         $rows = [
-            ['Father', cert_format_title_case($source['father_name'] ?? $source['father_full_name'] ?? '—')],
+            ['Father', $father],
             ['Mother', cert_format_title_case($source['mother_maiden_name'] ?? $source['mother_full_name'] ?? '—')],
-            ['Minister', cert_format_title_case($source['minister_name'] ?? $source['officiating_minister'] ?? '—')],
+            ['Minister', $minister],
         ];
     }
     $register = implode(' / ', array_filter([$source['book_no'] ?? '', $source['page_no'] ?? '', $source['line_no'] ?? ''])) ?: 'Not stated';
@@ -115,7 +125,7 @@ function sacramental_certificate_svg(string $type, array $source, array $req): s
     $y = 57 + $dy;
     foreach ($rows as [$label, $value]) {
         $out[] = sc_svg_text($label, 12, $y, 2.05, 25, ['family' => 'Calibri,Arial,sans-serif', 'fill' => $muted, 'max' => true]);
-        $out[] = sc_svg_text((string) $value, 38, $y, 2.65, 50, ['fill' => '#000', 'max' => true]);
+        $out[] = sc_svg_text((string) ($value === '—' ? '' : $value), 38, $y, 2.65, 50, ['fill' => '#000', 'max' => true]);
         $out[] = sc_svg_rule(37.5, $y + .7, 52, $ink, .15);
         $y += 6.1;
     }

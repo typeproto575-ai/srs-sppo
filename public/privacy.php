@@ -24,8 +24,7 @@ require_once __DIR__ . '/../includes/header.php';
         <h1>Privacy Notice</h1>
         <p class="legal-document__subtitle">How the Parish Office collects, uses, shares, keeps and protects your personal data, in line with the Data Privacy Act of 2012 (Republic Act No. 10173).</p>
         <div class="legal-document__meta">
-            <span>Effective: [DATE]</span>
-            <span>Last Updated: [DATE]</span>
+            <span>Draft for demonstration. Not yet in effect.</span>
         </div>
     </header>
 
@@ -52,8 +51,8 @@ require_once __DIR__ . '/../includes/header.php';
             <ol class="legal-subclauses">
                 <li><span class="legal-term">Requester details:</span> name, email address, contact number, and relationship to the person concerned, when applicable. Some onsite requests may also include a mailing address.</li>
                 <li><span class="legal-term">Record details:</span> the name, birthdate, birthplace, parents' names and sacrament dates needed for staff to review the request against the parish register.</li>
-                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include current address, religion, marital status, previous marriage, baptism and Confirmation status, and the names of parents, godparents, or sponsors.</li>
-                <li><span class="legal-term">Children's data:</span> a child's name, birthdate, parent or guardian details, and information needed for sacrament preparation. A parent or legal guardian must submit the application and consent for a child.</li>
+                <li><span class="legal-term">Sacrament application details:</span> depending on the form, this may include current address, religion, marital status, previous marriage, baptism and Confirmation status, proposed sponsors, and a student's grade, school year, and requested formation pathway.</li>
+                <li><span class="legal-term">Children's data:</span> a child's name, birthdate, parent or guardian details, and information needed for sacrament preparation. A parent or legal guardian must submit the application and provide the required privacy consent. Pastoral formation commitments and readiness are followed up by the Parish Office after review.</li>
                 <li><span class="legal-term">Technical data:</span> IP address and the time of requests, kept in an audit log for security and to prevent misuse.</li>
             </ol>
             <p>Religion, age, and civil status are <span class="legal-term">sensitive personal information</span> under Section 3(l) of the Act. We collect them only when needed to review a sacrament application.</p>
@@ -64,7 +63,7 @@ require_once __DIR__ . '/../includes/header.php';
             <h2 class="legal-clause__title">Why We Use Your Data</h2>
             <ol class="legal-subclauses">
                 <li>To receive an online pre-application or an onsite request/application and issue a reference number.</li>
-                <li>To review and verify submitted details against the parish register during staff review. Public pages never reveal whether a register record exists.</li>
+                <li>To review and verify submitted details against the parish register during staff review. On a sacrament pre-application, entering a valid person reference displays the matching profile's biographical details and a summary of linked sacrament records for reference; other public searches do not disclose whether a register record exists.</li>
                 <li>To contact you about status, missing information, and pickup.</li>
                 <li>To keep parish sacramental records.</li>
                 <li>To record payment manually as a status after payment is handled outside this system. The system never takes or processes money.</li>
@@ -88,7 +87,7 @@ require_once __DIR__ . '/../includes/header.php';
         <section class="legal-clause" id="retention">
             <h2 class="legal-clause__title">How Long We Keep It</h2>
             <ol class="legal-subclauses">
-                <li>The permanent parish sacramental registers — persons, baptismal records, confirmation records, First Communion records, marriage records, and marriage witnesses — are never purged, anonymized, or flagged as disposable.</li>
+                <li>The permanent parish sacramental registers — persons, baptismal records, confirmation records, Holy Communion records, marriage records, and marriage witnesses — are never purged, anonymized, or flagged as disposable.</li>
                 <li>Online requests and applications are anonymized after <strong>60 months</strong> (5 years) from completion or cancellation.</li>
                 <li>Audit and security logs (including IP addresses) are retained for <strong>36 months</strong> (3 years); once the period ends, IP addresses and user agents are removed and only the action and date remain.</li>
                 <li>Disposable operational logs (rate-limit attempts, email delivery log, notifications, expired or used password reset tokens) are deleted when they become older than <strong>30 days</strong> (rate-limit attempts) or <strong>36 months</strong> (all other listed logs).</li>
@@ -98,7 +97,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause" id="security">
             <h2 class="legal-clause__title">How We Protect It</h2>
-            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
+            <p>We use access controls for staff accounts, password hashing, session timeouts, request rate limits, and an audit log. Keep your person reference private: anyone who enters it on a sacrament pre-application can view the matching profile's biographical details and a summary of linked sacrament records. Certificates are released in person only after the Parish Office verifies the request and recorded payment. A claim stub or payment slip, if issued, helps locate the request but is not required if missing. The Acknowledgment Receipt is placed with the completed certificate in its folder. An authorized representative must also present a signed authorization letter from the person named on the certificate. Supporting documents are shown in person at the Parish Office only. The system never receives or stores documents — please do not email or message identity documents or other personal papers.</p>
             <p>If a breach puts your data at risk of serious harm, we will notify you and the National Privacy Commission as the law requires.</p>
         </section>
 
@@ -130,7 +129,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <section class="legal-clause" id="changes">
             <h2 class="legal-clause__title">Changes</h2>
-            <p>We may update this notice. The "Last Updated" date above shows the latest revision. See also our <a href="<?= e($basePath . '/public/terms.php') ?>">Terms and Conditions</a>.</p>
+            <p>We may update this notice. See also our <a href="<?= e($basePath . '/public/terms.php') ?>">Terms and Conditions</a>.</p>
         </section>
 
     </div>

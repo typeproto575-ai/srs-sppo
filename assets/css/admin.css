@@ -116,10 +116,23 @@ textarea {
 .review-actions { display: flex; gap: 0.65rem; justify-content: flex-end; padding: 1rem 1.5rem 1.25rem; background: #f5f3ed; border-top: 1px solid rgba(31, 61, 43, 0.12); }
 .review-actions button:focus-visible { outline: 3px solid var(--admin-amber); outline-offset: 2px; }
 
+.baptism-parent-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem 1rem;
+    align-items: start;
+    margin-top: 0.9rem;
+}
+
+.baptism-parent-grid > label { min-width: 0; }
+.baptism-parent-marriage-parish { grid-column: 1 / -1; }
+
 @media (max-width: 560px) {
     .review-dialog { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); }
     .review-head, .review-body { padding-left: 1rem; padding-right: 1rem; }
     .review-list { display: block; }
+    .baptism-parent-grid { grid-template-columns: minmax(0, 1fr); }
+    .baptism-parent-marriage-parish { grid-column: auto; }
     .review-list dt { padding-bottom: 0.2rem; }
     .review-list dd { padding-top: 0.1rem; border-left: 0; }
     .review-list dd + dt { margin-top: 0.5rem; border-top: 1px solid rgba(31, 61, 43, 0.08); }
@@ -872,7 +885,11 @@ textarea {
     color: var(--admin-muted);
     font-size: 0.84rem;
 }
-.application-queue-detail-row > td { padding: 0.45rem 0.75rem; }
+.application-queue-detail-row > td {
+    width: 100%;
+    padding: 0.45rem 0.75rem;
+    overflow: hidden;
+}
 .application-queue-review > summary { display: none; }
 .application-queue-review .application-review-card { box-shadow: none; }
 
@@ -1669,6 +1686,21 @@ textarea {
     color: var(--admin-warning-text);
 }
 
+.birthplace-verification-note {
+    display: block;
+    width: fit-content;
+    max-width: 48rem;
+    margin: 0.4rem 0 0;
+    padding: 0.4rem 0.55rem;
+    border-radius: 7px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.birthplace-needs-verification {
+    border-color: var(--admin-warning-text) !important;
+}
+
 /* --- Dashboard --- */
 .dashboard-shell {
     display: flex;
@@ -1702,6 +1734,71 @@ textarea {
     margin: 0;
     font-size: clamp(1.6rem, 3vw, 2.2rem);
     color: var(--admin-ink);
+}
+
+.dashboard-search,
+.dashboard-work {
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-section-heading {
+    margin-bottom: 0.75rem;
+}
+
+.dashboard-section-heading h2 {
+    margin: 0;
+    color: var(--admin-ink);
+    font-size: 1.15rem;
+}
+
+.dashboard-section-heading p {
+    margin: 0.2rem 0 0;
+    color: var(--admin-muted);
+    font-size: 0.88rem;
+}
+
+.dashboard-search .search-form {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+.dashboard-search .search-form input[type="search"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.dashboard-search .field-hint {
+    margin-top: 0.5rem;
+}
+
+.dashboard-search .search-form .btn {
+    flex: 0 0 auto;
+}
+
+.dashboard-work .stat-cards {
+    margin-top: 0;
+}
+
+.dashboard-work .stat-card {
+    min-width: 0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.dashboard-work .stat-card:hover {
+    border-color: var(--admin-green);
+    box-shadow: 0 8px 20px rgba(20, 32, 26, 0.09);
+    transform: translateY(-1px);
+}
+
+.dashboard-work .stat-card:focus-visible {
+    outline: 3px solid var(--admin-focus, #286344);
+    outline-offset: 3px;
+}
+
+.dashboard-work .stat-card .stat-label {
+    overflow-wrap: anywhere;
 }
 
 .dashboard-subtitle {
@@ -1758,6 +1855,7 @@ textarea {
     font-size: 1.6rem;
     font-weight: 800;
     line-height: 1.1;
+    font-variant-numeric: tabular-nums;
     color: var(--admin-ink);
 }
 
@@ -1770,6 +1868,26 @@ textarea {
 
 .registry-summary {
     padding: 1.15rem;
+}
+
+@media (max-width: 560px) {
+    .dashboard-search .search-form {
+        flex-direction: column;
+    }
+
+    .dashboard-search .search-form .btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-work .stat-card {
+        transition: none;
+    }
+
+    .dashboard-work .stat-card:hover {
+        transform: none;
+    }
 }
 
 .registry-summary h2 {
@@ -1824,6 +1942,7 @@ textarea {
     font-size: 1.8rem;
     font-weight: 800;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
 }
 
 .registry-card-action {
@@ -2284,6 +2403,25 @@ textarea {
 }
 
 @media (max-width: 640px) {
+    .walk-in-dedicated-progress {
+        grid-template-columns: repeat(4, minmax(8.5rem, 1fr));
+        overflow-x: auto;
+    }
+
+    .walk-in-dedicated-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .walk-in-dedicated-actions [data-dedicated-submit] {
+        grid-column: 1 / -1;
+        margin-left: 0;
+    }
+
+    .walk-in-dedicated-review {
+        grid-template-columns: 1fr;
+    }
+
     html,
     body {
         overflow-x: hidden;
@@ -3265,6 +3403,218 @@ textarea {
     gap: 0.85rem;
 }
 
+.walk-in-page .walk-in-dedicated-shell {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.walk-in-dedicated-progress {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0 0 0.65rem;
+    list-style: none;
+    border-bottom: 1px solid var(--admin-border);
+}
+
+.walk-in-dedicated-progress li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-panel);
+    color: var(--admin-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.walk-in-dedicated-progress li > span:first-child {
+    display: grid;
+    place-items: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: 0 0 1.65rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 50%;
+    background: #fff;
+}
+
+.walk-in-dedicated-progress li.is-current {
+    border-color: rgba(31, 61, 43, 0.45);
+    background: var(--admin-green-soft);
+    color: var(--admin-green-dark);
+}
+
+.walk-in-dedicated-progress li.is-current > span:first-child,
+.walk-in-dedicated-progress li.is-done > span:first-child {
+    border-color: var(--admin-green);
+    background: var(--admin-green);
+    color: #fff;
+}
+
+.walk-in-dedicated-status,
+.walk-in-dedicated-error {
+    margin: 0;
+}
+
+.walk-in-dedicated-status {
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.walk-in-dedicated-error {
+    padding: 0.7rem 0.85rem;
+    border-left: 4px solid #a63e36;
+    border-radius: 6px;
+    background: #fff3f1;
+    color: #702a25;
+    font-weight: 700;
+}
+
+.walk-in-dedicated-panel {
+    min-width: 0;
+}
+
+.walk-in-dedicated-panel[hidden],
+.walk-in-dedicated-actions [hidden] {
+    display: none !important;
+}
+
+.walk-in-dedicated-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.walk-in-dedicated-actions [data-dedicated-submit] {
+    margin-left: auto;
+}
+
+.walk-in-dedicated-review {
+    display: grid;
+    grid-template-columns: minmax(9rem, 0.35fr) minmax(0, 1fr);
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+}
+
+.walk-in-dedicated-review dt,
+.walk-in-dedicated-review dd {
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--admin-border);
+    overflow-wrap: anywhere;
+}
+
+.walk-in-dedicated-review dt {
+    background: var(--admin-panel-weak);
+    color: var(--admin-muted);
+    font-weight: 700;
+}
+
+.walk-in-page .walk-in-form-section {
+    min-width: 0;
+    padding: clamp(1rem, 2.5vw, 1.4rem);
+    border: 1px solid rgba(31, 61, 43, 0.15);
+    border-radius: 12px;
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.walk-in-page .walk-in-form-section h2 {
+    margin: 0 0 0.85rem;
+    color: var(--admin-green-dark);
+    font-size: 1.15rem;
+}
+
+.walk-in-page .person-match-form {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.walk-in-person-identity,
+.walk-in-requester-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.walk-in-person-identity {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.walk-in-person-identity label {
+    grid-column: span 2;
+}
+
+.walk-in-person-identity label:nth-last-child(2),
+.walk-in-person-identity label:last-child {
+    grid-column: span 3;
+}
+
+.walk-in-page .walk-in-person-search {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.walk-in-page .walk-in-person-search label {
+    margin: 0;
+}
+
+/* Walk-in intake fields stay in paired, compact columns. These direct
+   rules prevent inherited fieldset and stacked-form styles from overriding
+   the intended desktop layout. */
+.walk-in-requester-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.walk-in-requester-grid .walk-in-field,
+.walk-in-requester-grid > .walk-in-grid-full {
+    min-width: 0;
+}
+
+.walk-in-page .walk-in-field {
+    min-width: 0;
+}
+
+.walk-in-page .walk-in-field label {
+    margin-bottom: 0.35rem;
+}
+
+.walk-in-page .walk-in-grid-full {
+    grid-column: 1 / -1;
+}
+
+.walk-in-page .walk-in-person-identity label,
+.walk-in-page .walk-in-requester-grid label {
+    margin: 0;
+}
+
+.walk-in-page .walk-in-person-identity > label:last-child,
+.walk-in-page .walk-in-requester-grid > :last-child {
+    grid-column: 1 / -1;
+}
+
+.walk-in-page .person-finder {
+    gap: 0.75rem;
+}
+
+.walk-in-page .person-finder > [data-person-find] {
+    justify-self: start;
+}
+
 .walk-in-page .walk-in-wizard-shell {
     display: grid;
     gap: 0.9rem;
@@ -3659,6 +4009,36 @@ textarea {
 
     .walk-in-page .walk-in-review-list dd {
         padding-top: 0.15rem;
+    }
+
+    .walk-in-page .walk-in-person-identity,
+    .walk-in-page .walk-in-requester-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .walk-in-page .walk-in-person-identity label,
+    .walk-in-page .walk-in-person-identity label:nth-last-child(2),
+    .walk-in-page .walk-in-person-identity label:last-child {
+        grid-column: auto;
+    }
+
+    .walk-in-page .walk-in-person-search {
+        grid-template-columns: 1fr;
+    }
+
+    .walk-in-page .walk-in-person-search [data-person-find] {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .walk-in-page .walk-in-person-identity > label:last-child,
+    .walk-in-page .walk-in-requester-grid > :last-child {
+        grid-column: auto;
+    }
+
+    .walk-in-page .person-finder > [data-person-find] {
+        width: 100%;
+        justify-content: center;
     }
 }
 
@@ -4123,7 +4503,7 @@ textarea {
 .age-eligibility-notice__mark { display: grid; flex: 0 0 1.45rem; width: 1.45rem; height: 1.45rem; place-items: center; border-radius: 50%; color: #fff; background: #9a7836; font-family: Georgia, serif; font-size: .9rem; font-weight: 700; }
 .age-eligibility-notice strong { color: #4b402a; font-size: .83rem; }
 .age-eligibility-notice p { margin: .15rem 0 0; color: #685e49; font-size: .81rem; line-height: 1.5; }
-.age-eligibility-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.age-eligibility-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
 .age-eligibility-tab { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 76px; padding: .9rem 1rem; border: 1px solid #deded3; border-radius: 12px; color: var(--admin-ink); background: #fff; text-decoration: none; box-shadow: 0 3px 10px rgba(31,48,38,.025); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .age-eligibility-tab:hover { transform: translateY(-2px); border-color: #97ad94; box-shadow: 0 9px 20px rgba(31,48,38,.08); }
 .age-eligibility-tab.is-active { border-color: #2f5e3f; box-shadow: inset 4px 0 #c6a45e, 0 8px 18px rgba(31,70,46,.1); }
@@ -4136,10 +4516,15 @@ textarea {
 .age-eligibility-filters__heading strong { color: var(--admin-ink); font-family: var(--admin-font-serif); font-size: 1.08rem; font-weight: 600; }
 .age-eligibility-filters__heading > span { color: var(--admin-muted); font-size: .75rem; }
 .age-eligibility-filters__eyebrow { color: var(--admin-green); font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.age-eligibility-filters__controls { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; }
+.age-eligibility-filters__controls {
+    display: grid;
+    grid-template-columns: minmax(220px, .7fr) minmax(260px, 1fr) auto;
+    align-items: end;
+    gap: .75rem;
+}
 .age-eligibility-filter-field { display: grid; gap: .35rem; min-width: min(100%, 220px); margin: 0; color: var(--admin-ink); font-size: .76rem; font-weight: 750; }
 .age-eligibility-filter-field select { min-height: 42px; }
-.age-eligibility-custom-range { display: grid; align-content: end; gap: .35rem; min-height: 100%; }
+.age-eligibility-custom-range { display: grid; align-content: end; gap: .35rem; min-height: 42px; }
 .age-eligibility-custom-range[hidden] { display: none; }
 .age-eligibility-custom-range > strong { color: var(--admin-ink); font-size: .76rem; font-weight: 750; }
 .age-eligibility-custom-range__inputs { display: flex; align-items: flex-end; gap: .55rem; }
@@ -4195,6 +4580,15 @@ textarea {
     .person-profile-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+@media (max-width: 980px) {
+    .age-eligibility-filters__controls {
+        grid-template-columns: minmax(180px, 1fr) minmax(240px, 1fr);
+    }
+    .age-eligibility-filters__actions {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 680px) {
     .person-parent-links { grid-template-columns: minmax(0, 1fr); }
     .age-eligibility-heading,
@@ -4205,7 +4599,7 @@ textarea {
     .age-eligibility-heading__stat span { margin: 0; }
     .age-eligibility-tabs { grid-template-columns: 1fr; }
     .age-eligibility-filters__heading { align-items: flex-start; flex-direction: column; gap: .3rem; }
-    .age-eligibility-filters__controls { align-items: stretch; }
+    .age-eligibility-filters__controls { grid-template-columns: 1fr; align-items: stretch; }
     .age-eligibility-filter-field { width: 100%; }
     .age-eligibility-custom-range { flex-wrap: wrap; }
     .age-eligibility-filters__actions { width: 100%; }
@@ -4681,5 +5075,519 @@ textarea {
     .certificate-link-form,
     .certificate-link-form .btn {
         width: 100%;
+    }
+}
+
+.sacrament-groups-page {
+    display: grid;
+    gap: 1rem;
+    max-width: 1380px;
+    margin-inline: auto;
+}
+
+.sacrament-groups-page .sacrament-groups-heading {
+    margin: 0;
+}
+
+.sacrament-groups-heading .admin-queue-actions .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.sacrament-group-workflow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .65rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sacrament-group-workflow li {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    min-width: 0;
+    padding: .8rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 11px;
+    background: var(--admin-panel);
+}
+
+.sacrament-group-workflow li > span {
+    display: grid;
+    flex: 0 0 1.8rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--admin-green-dark);
+    background: var(--admin-green-soft);
+    font-size: .68rem;
+    font-weight: 800;
+}
+
+.sacrament-group-workflow strong {
+    display: block;
+    color: var(--admin-ink);
+    font-size: .82rem;
+}
+
+.sacrament-group-workflow p {
+    margin: .2rem 0 0;
+    color: var(--admin-muted);
+    font-size: .74rem;
+    line-height: 1.4;
+}
+
+.sacrament-group-record-note {
+    margin: -.45rem 0 0;
+    color: var(--admin-muted);
+    font-size: .78rem;
+    line-height: 1.45;
+}
+
+.sacrament-group-record-note strong {
+    color: var(--admin-ink);
+}
+
+.sacrament-groups-page .sacrament-group-card {
+    min-width: 0;
+    margin: 0;
+    padding: clamp(1rem, 2.2vw, 1.4rem);
+    border: 1px solid var(--admin-border);
+    border-radius: 14px;
+    background: var(--admin-panel);
+    box-shadow: var(--admin-shadow-sm);
+}
+
+.sacrament-group-section-heading,
+.sacrament-group-manager-heading,
+.sacrament-group-subheading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.sacrament-group-section-heading {
+    margin-bottom: 1rem;
+}
+
+.sacrament-group-section-heading h2,
+.sacrament-group-manager-heading h2 {
+    margin: 0;
+    color: var(--admin-ink);
+    font: 600 1.35rem/1.2 var(--admin-font-serif);
+}
+
+.sacrament-group-section-heading > p,
+.sacrament-group-manager-heading > div > p:last-child {
+    max-width: 34rem;
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: .84rem;
+    line-height: 1.5;
+}
+
+.sacrament-group-eyebrow {
+    margin: 0 0 .25rem;
+    color: var(--admin-green);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.sacrament-group-create-form {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    align-items: end;
+    gap: .7rem;
+}
+
+.sacrament-group-create-form > label {
+    min-width: 0;
+    margin: 0;
+    color: var(--admin-ink);
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.sacrament-group-create-form .field-hint {
+    display: inline;
+    font-size: .72rem;
+    font-weight: 400;
+}
+
+.sacrament-group-create-form .btn {
+    align-self: end;
+    min-height: 43px;
+    margin: 0;
+    padding-inline: 1rem;
+    white-space: nowrap;
+}
+
+.sacrament-group-hint {
+    margin: .75rem 0 0;
+    color: var(--admin-muted);
+    font-size: .78rem;
+    line-height: 1.45;
+}
+
+.sacrament-group-manager {
+    scroll-margin-top: 6rem;
+}
+
+.sacrament-group-manager-heading {
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.sacrament-group-manager-heading > div > p:last-child {
+    margin-top: .35rem;
+}
+
+.sacrament-group-review-actions {
+    margin: 0 0 .85rem;
+}
+
+.sacrament-group-review-actions form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+}
+
+.sacrament-group-review-actions .field-hint { margin: 0; }
+
+.sacrament-group-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: .32rem .7rem;
+    border: 1px solid #e6deca;
+    border-radius: 999px;
+    color: #705d32;
+    background: #faf5e8;
+    font-size: .72rem;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.sacrament-group-status.is-scheduled {
+    border-color: #c9e2cd;
+    color: #28643a;
+    background: #edf7ee;
+}
+
+.sacrament-group-confirmed-schedule {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem .7rem;
+    margin: 0 0 1rem;
+    padding: .75rem .9rem;
+    border: 1px solid #c9e2cd;
+    border-radius: 9px;
+    color: #285238;
+    background: #f0f7ef;
+    font-size: .85rem;
+}
+
+.sacrament-group-assignment,
+.sacrament-group-assigned,
+.sacrament-group-schedule {
+    margin-top: 1.25rem;
+    padding-top: 1.15rem;
+    border-top: 1px solid var(--admin-border);
+}
+
+.sacrament-group-subheading {
+    align-items: flex-end;
+    margin-bottom: .7rem;
+}
+
+.sacrament-group-subheading h3 {
+    margin: 0;
+    color: var(--admin-ink);
+    font-size: 1rem;
+}
+
+.sacrament-group-subheading p {
+    margin: .2rem 0 0;
+    color: var(--admin-muted);
+    font-size: .78rem;
+    line-height: 1.45;
+}
+
+.sacrament-group-subheading > span {
+    color: var(--admin-muted);
+    font-size: .76rem;
+    font-weight: 700;
+}
+
+.sacrament-group-applicant-list,
+.sacrament-group-assigned-list {
+    display: grid;
+    gap: .5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sacrament-group-applicant-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sacrament-group-applicant {
+    display: grid;
+    grid-template-columns: 1.1rem minmax(0, 1fr);
+    align-items: center;
+    gap: .1rem .65rem;
+    min-height: 60px;
+    margin: 0;
+    padding: .65rem .75rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 9px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.sacrament-group-applicant input {
+    grid-row: span 2;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--admin-green);
+}
+
+.sacrament-group-applicant__name {
+    color: var(--admin-ink);
+    font-size: .84rem;
+    font-weight: 700;
+}
+
+.sacrament-group-applicant__meta {
+    overflow-wrap: anywhere;
+    color: var(--admin-muted);
+    font-size: .73rem;
+    line-height: 1.4;
+}
+
+.sacrament-group-assignment > .btn {
+    margin-top: .75rem;
+}
+
+.sacrament-group-assigned-list li {
+    display: flex;
+    align-items: center;
+    gap: .65rem 1rem;
+    min-width: 0;
+    padding: .7rem .75rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 9px;
+    background: #fff;
+}
+
+.sacrament-group-assigned-person {
+    display: grid;
+    flex: 1 1 14rem;
+    min-width: 0;
+    gap: .16rem;
+}
+
+.sacrament-group-assigned-person strong {
+    overflow-wrap: anywhere;
+    color: var(--admin-ink);
+    font-size: .84rem;
+}
+
+.sacrament-group-assigned-person > span {
+    overflow-wrap: anywhere;
+    color: var(--admin-muted);
+    font-size: .72rem;
+    line-height: 1.4;
+}
+
+.sacrament-group-review {
+    color: var(--admin-green-dark);
+    font-size: .78rem;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.sacrament-group-remove-form {
+    margin: 0;
+}
+
+.sacrament-group-empty {
+    margin: 0;
+    padding: .85rem;
+    border: 1px dashed var(--admin-border);
+    border-radius: 9px;
+    color: var(--admin-muted);
+    background: var(--admin-panel-weak);
+    font-size: .81rem;
+    line-height: 1.5;
+}
+
+.sacrament-group-empty a {
+    color: var(--admin-green-dark);
+    font-weight: 700;
+}
+
+.sacrament-group-schedule-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, .8fr)) auto;
+    align-items: end;
+    gap: .7rem;
+}
+
+.sacrament-group-schedule-form label {
+    min-width: 0;
+    margin: 0;
+    color: var(--admin-ink);
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.sacrament-group-schedule-form .btn {
+    min-height: 43px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.sacrament-group-list {
+    display: grid;
+    gap: .6rem;
+}
+
+.sacrament-group-list-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(5rem, .45fr) minmax(10rem, .9fr) auto;
+    align-items: center;
+    gap: .8rem 1rem;
+    min-width: 0;
+    padding: .85rem .95rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.sacrament-group-list-item__main {
+    min-width: 0;
+}
+
+.sacrament-group-list-item h3 {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--admin-ink);
+    font-size: .9rem;
+}
+
+.sacrament-group-list-item__main p {
+    margin: .22rem 0 0;
+    color: var(--admin-muted);
+    font-size: .75rem;
+}
+
+.sacrament-group-list-item__metric {
+    display: grid;
+    gap: .15rem;
+    min-width: 0;
+}
+
+.sacrament-group-list-item__metric > span {
+    color: var(--admin-muted);
+    font-size: .68rem;
+    font-weight: 750;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.sacrament-group-list-item__metric > strong {
+    overflow-wrap: anywhere;
+    color: var(--admin-ink);
+    font-size: .8rem;
+}
+
+@media (max-width: 1050px) {
+    .sacrament-group-create-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sacrament-group-create-form .btn {
+        justify-self: start;
+    }
+
+    .sacrament-group-schedule-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sacrament-group-list-item {
+        grid-template-columns: minmax(0, 1fr) minmax(5rem, .35fr) minmax(9rem, .7fr) auto;
+    }
+}
+
+@media (max-width: 760px) {
+    .sacrament-group-workflow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .sacrament-group-section-heading,
+    .sacrament-group-manager-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .sacrament-groups-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .sacrament-group-list-item {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .sacrament-group-list-item__main {
+        grid-column: 1 / -1;
+    }
+
+    .sacrament-group-list-item > .btn {
+        justify-self: start;
+    }
+}
+
+@media (max-width: 520px) {
+    .sacrament-group-workflow,
+    .sacrament-group-create-form,
+    .sacrament-group-applicant-list,
+    .sacrament-group-schedule-form,
+    .sacrament-group-list-item {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sacrament-group-create-form .btn,
+    .sacrament-group-schedule-form .btn,
+    .sacrament-group-list-item > .btn {
+        justify-self: stretch;
+        width: 100%;
+    }
+
+    .sacrament-group-list-item__main {
+        grid-column: auto;
+    }
+
+    .sacrament-group-manager-heading {
+        gap: .65rem;
+    }
+
+    .sacrament-group-assigned-list li {
+        align-items: flex-start;
+        flex-wrap: wrap;
     }
 }

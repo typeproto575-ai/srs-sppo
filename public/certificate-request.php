@@ -4,12 +4,14 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/sacrament-data.php';
+require_once __DIR__ . '/../includes/public-person-lookup.php';
 
 $basePath = $basePath ?? base_path();
 $pageTitle = (current_user()['role'] ?? '') === 'secretary'
     ? 'Walk-in Certificate Request'
     : 'Request a Certificate';
 $trackingNumber = null;
+$requestNumber = null;
 
 if (($_GET['person_lookup'] ?? '') === '1') {
     header('Content-Type: application/json; charset=utf-8');
@@ -27,40 +29,26 @@ if (($_GET['person_lookup'] ?? '') === '1') {
     $attempts[] = $now;
     $_SESSION['public_person_lookup_attempts'] = $attempts;
 
-    $fullName = trim(is_string($_GET['name'] ?? null) ? $_GET['name'] : '');
-    $birthDate = trim(is_string($_GET['birth_date'] ?? null) ? $_GET['birth_date'] : '');
-    $parts = preg_split('/\s+/', $fullName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-    $date = DateTime::createFromFormat('Y-m-d', $birthDate);
-    if (count($parts) < 2 || strlen($fullName) > 150 || !$date || $date->format('Y-m-d') !== $birthDate) {
+    $reference = strtoupper(trim(is_string($_GET['reference'] ?? null) ? $_GET['reference'] : ''));
+    $preapplicationLookup = ($_GET['lookup_context'] ?? '') === 'preapplication';
+    if (preg_match('/^SPPO-P-[A-Z0-9]{8,40}$/', $reference) !== 1) {
         http_response_code(400);
-        echo json_encode(['error' => 'Enter a full name and valid date of birth to search.']);
+        echo json_encode(['error' => 'Enter a valid person reference to search.']);
         exit;
     }
 
-    $parts = array_values(array_filter($parts, static fn($part) => strlen($part) >= 2));
-    if (count($parts) < 2) {
-        echo json_encode(['results' => []]);
-        exit;
-    }
-
-    $conditions = [];
-    $params = [$birthDate];
-    foreach ($parts as $part) {
-        $conditions[] = "(first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR suffix LIKE ?)";
-        $term = '%' . addcslashes($part, '\\_%') . '%';
-        array_push($params, $term, $term, $term, $term);
-    }
-    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place, father_name, mother_maiden_name
+    $sql = 'SELECT id, first_name, middle_name, last_name, suffix, birth_date, birth_place,
+                   address, contact_number, email, father_name, mother_maiden_name
             FROM persons
-            WHERE birth_date = ? AND ' . implode(' AND ', $conditions) . '
-            ORDER BY last_name, first_name
-            LIMIT 5';
+            WHERE public_reference = ? AND is_deceased = 0
+            LIMIT 1';
+    $params = [$reference];
     try {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $results = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
-            $results[] = [
+            $result = [
                 'id' => (int) $person['id'],
                 'first_name' => $person['first_name'],
                 'middle_name' => $person['middle_name'] ?? '',
@@ -68,9 +56,46 @@ if (($_GET['person_lookup'] ?? '') === '1') {
                 'suffix' => $person['suffix'] ?? '',
                 'birth_date' => $person['birth_date'],
                 'birth_place' => $person['birth_place'] ?? '',
+                'address' => $person['address'] ?? '',
+                'contact_number' => $person['contact_number'] ?? '',
+                'email' => $person['email'] ?? '',
                 'father_name' => $person['father_name'] ?? '',
                 'mother_maiden_name' => $person['mother_maiden_name'] ?? '',
             ];
+            if (trim((string) $result['birth_place']) === '') {
+                $birthPlaceStmt = $pdo->prepare(
+                    "SELECT place
+                     FROM sacrament_records
+                     WHERE person_id = ? AND sacrament_type = 'baptism'
+                       AND source = 'this_parish' AND NULLIF(TRIM(place), '') IS NOT NULL
+                     ORDER BY (book_verified_at IS NOT NULL) DESC, id DESC
+                     LIMIT 1"
+                );
+                $birthPlaceStmt->execute([(int) $person['id']]);
+                $result['birth_place'] = (string) ($birthPlaceStmt->fetchColumn() ?: '');
+            }
+            $verifiedRecordsStmt = $pdo->prepare(
+                "SELECT sacrament_type
+                 FROM sacrament_records
+                 WHERE person_id = ? AND source = 'this_parish'
+                   AND book_verified_at IS NOT NULL
+                   AND sacrament_type IN ('baptism', 'first_communion', 'confirmation')"
+            );
+            $verifiedRecordsStmt->execute([(int) $person['id']]);
+            $result['verified_records'] = [
+                'baptism' => false,
+                'first_communion' => false,
+                'confirmation' => false,
+            ];
+            foreach ($verifiedRecordsStmt->fetchAll(PDO::FETCH_COLUMN) as $recordType) {
+                $result['verified_records'][$recordType] = true;
+            }
+            if ($preapplicationLookup) {
+                $result['sacrament_records'] = public_person_lookup_record_summary(
+                    sd_get_person_records($pdo, (int) $person['id'])
+                );
+            }
+            $results[] = $result;
         }
         echo json_encode(['results' => $results], JSON_UNESCAPED_UNICODE);
     } catch (PDOException $e) {
@@ -84,7 +109,10 @@ if (($_GET['person_lookup'] ?? '') === '1') {
 $submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
 if ($submitted && is_string($_SESSION['certificate_success'] ?? null)) {
     $trackingNumber = $_SESSION['certificate_success'];
-    unset($_SESSION['certificate_success']);
+    $requestNumber = is_string($_SESSION['certificate_success_request_no'] ?? null)
+        ? $_SESSION['certificate_success_request_no']
+        : '';
+    unset($_SESSION['certificate_success'], $_SESSION['certificate_success_request_no']);
 }
 
 $values = [
@@ -107,23 +135,23 @@ $values = [
 ];
 $certificateTypes = [
     'baptism' => 'Baptism',
-    'first_communion' => 'First Communion',
+    'first_communion' => 'Holy Communion',
     'confirmation' => 'Confirmation',
     'marriage' => 'Marriage',
 ];
 $certificatePreparation = [
     'baptism' => [
         'The name and birthdate recorded in the parish register.',
-        "The father's name and mother's maiden name, if known.",
+        "The father's name and mother's maiden name.",
         'The approximate Baptism date, if known.',
     ],
     'first_communion' => [
         'The name and birthdate recorded in the parish register.',
-        'Parent names and the approximate First Communion date, if known.',
+        "The parents' names and the approximate Holy Communion date, if known.",
     ],
     'confirmation' => [
         'The name and birthdate recorded in the parish register.',
-        'Parent names and the approximate Confirmation date, if known.',
+        "The parents' names and the approximate Confirmation date, if known.",
     ],
     'marriage' => [
         'Both spouses’ names and the approximate marriage date.',
@@ -252,8 +280,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
         if ($values['requester_email'] === '' || !filter_var($values['requester_email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Enter a valid email address.';
         }
-        if ($values['requester_contact_number'] !== '' && strlen($values['requester_contact_number']) > 30) {
+        if ($values['requester_contact_number'] === '') {
+            $errors[] = 'Enter your contact number.';
+        } elseif (strlen($values['requester_contact_number']) > 30) {
             $errors[] = 'The contact number must be 30 characters or fewer.';
+        }
+        if ($values['mother_maiden_name'] === '' || strcasecmp($values['mother_maiden_name'], 'N/A') === 0) {
+            $errors[] = "Enter the person's mother's maiden name; N/A is not accepted.";
+        } elseif (strlen($values['mother_maiden_name']) > 150) {
+            $errors[] = "The mother's maiden name must be 150 characters or fewer.";
+        } elseif (($e = validate_full_name($values['mother_maiden_name'])) !== null) {
+            $errors[] = $e;
         }
         if (!in_array($values['purpose'], $purposeLabels, true)) {
             $errors[] = 'Choose a purpose.';
@@ -281,7 +318,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                     $personMiddle,
                     $personLast,
                     $personSuffix,
-                    $values['birth_date']
+                    $values['birth_date'],
+                    true
                 );
             } catch (InvalidArgumentException $e) {
                 $errors[] = $e->getMessage();
@@ -330,24 +368,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                 $requestId = null;
                 $requestNo = '';
                 $personReference = '';
-                $inputPersonId = $selectedPersonId;
+                $requestPersonId = $walkInRecord ? $selectedPersonId : null;
                 try {
                     for ($attempt = 0; $attempt < 3; $attempt++) {
                         $requestNo = generate_request_no($pdo, 'certificate_requests');
                         try {
                             $pdo->beginTransaction();
-                            [$subjectFirst, $subjectMiddle, $subjectLast, $subjectSuffix] = structured_name_parts($values['subject_name']);
-                            $personProfile = public_person_reference($pdo, $inputPersonId, [
-                                'first_name' => $subjectFirst,
-                                'middle_name' => $subjectMiddle,
-                                'last_name' => $subjectLast,
-                                'suffix' => $subjectSuffix,
-                                'birth_date' => $values['birth_date'],
-                                'father_name' => $values['father_name'],
-                                'mother_maiden_name' => $values['mother_maiden_name'],
-                            ]);
-                            $selectedPersonId = $personProfile['person_id'];
-                            $personReference = $personProfile['reference'];
                             if ($walkInRecord) {
                                 $stmt = $pdo->prepare(
                                     "INSERT INTO certificate_requests
@@ -358,13 +384,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                      VALUES (?, 'onsite', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW(), 'matched')"
                                 );
                             } else {
+                                $retentionEligibility = $channel === 'online' ? 'NOW()' : 'NULL';
                                 $stmt = $pdo->prepare(
                                     "INSERT INTO certificate_requests
                                         (request_no, channel, sacrament_type, subject_name, subject_details,
                                          requester_name, requester_relationship, requester_relationship_other,
                                          requester_email, requester_contact_number, purpose, purpose_other,
-                                         privacy_consent_at, person_id, status)
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new')"
+                                         privacy_consent_at, person_id, status, retention_eligible_at)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'new', {$retentionEligibility})"
                                 );
                             }
                             $insertParams = [$requestNo];
@@ -383,7 +410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $requesterContact,
                                 $purposeValue,
                                 $purposeOther,
-                                $selectedPersonId,
+                                $requestPersonId,
                             );
                             if ($walkInRecord) {
                                 array_push($insertParams, $walkInRecordId, (int) current_user()['id']);
@@ -428,6 +455,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
 
                 if ($inserted) {
                     if ($channel === 'online') {
+                        notify(
+                            $pdo,
+                            'request_new',
+                            'New certificate request',
+                            $readableType . ' certificate request (' . $requestNo . ') is ready for review.',
+                            '/admin/requests/certificate-detail.php?id=' . (int) $requestId
+                        );
                         try {
                             mail_certificate_request_received(
                                 $values['requester_email'],
@@ -436,7 +470,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                                 $personReference,
                                 $pdo,
                                 $requestId,
-                                $values['requester_relationship'] === 'self'
+                                $values['requester_relationship'] === 'self',
+                                $requestNo
                             );
                         } catch (Throwable $e) {
                             error_log('SRS-SPPO certificate request email failed: ' . $e->getMessage());
@@ -446,8 +481,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$submitted) {
                         redirect_to('/admin/requests/queue.php?added=' . rawurlencode($requestNo));
                         exit;
                     }
-                    $_SESSION['certificate_success'] = $personReference;
-                    $trackingNumber = $personReference;
+                    $_SESSION['certificate_success'] = $requestNo;
+                    $_SESSION['certificate_success_request_no'] = $requestNo;
+                    $trackingNumber = $requestNo;
                     header('Location: ' . $basePath . '/public/certificate-request.php?submitted=1');
                     exit;
                 }
@@ -463,11 +499,12 @@ require_once __DIR__ . '/../includes/header.php';
     <h1>Thank you</h1>
     <?php if ($trackingNumber): ?>
         <?php
-        $successHeading = 'Keep this reference number';
+        $successHeading = 'Keep this request number';
         $successIsApplication = false;
-        $successPersonReferences = [['name' => '', 'reference' => $trackingNumber]];
+        $successRequestNumber = $requestNumber ?? '';
+        $successPersonReferences = [];
         $successRequiredDocuments = [
-            'Bring your person reference. If the secretary gave you a claim stub or payment slip, bring it too.',
+            'Keep your request number. If the secretary gave you a claim stub or payment slip, bring it too.',
             'For an authorized representative: signed authorization letter from the person named on the certificate',
             'Original supporting document and origin parish transfer or permission letter when requested for an external record',
         ];
@@ -487,7 +524,7 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if ($isSecretary): ?>
         <p>Use this form when someone is requesting a certificate at the Parish Office. Choose the sacrament, enter the requester's details, and submit it to the Certificate Requests queue. To start from an existing verified register entry, open that record and choose “Start walk-in certificate request.”</p>
     <?php else: ?>
-        <p>Use this form to request a certificate for a sacrament that has already taken place. Choose Baptism, First Communion, Confirmation, or Marriage, then enter the details that will help the Parish Office find the register entry.</p>
+        <p>Use this form to request a certificate for a sacrament that has already taken place. Choose Baptism, Holy Communion, Confirmation, or Marriage, then enter the details that will help the Parish Office find the register entry.</p>
     <?php endif; ?>
     <?php if ($errors): ?>
         <div class="alert alert-error" role="alert">
@@ -498,7 +535,7 @@ require_once __DIR__ . '/../includes/header.php';
             </ul>
         </div>
     <?php endif; ?>
-    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form certificate-request-wizard" data-certificate-wizard data-certificate-prefilled="<?= $walkInRecordId ? '1' : '0' ?>">
+    <form method="post" action="<?= e($basePath . '/public/certificate-request.php') ?>" class="stacked-form certificate-request-wizard" data-certificate-wizard data-certificate-prefilled="<?= $walkInRecordId ? '1' : '0' ?>" data-preserve-scroll="false">
         <?= csrf_field() ?>
         <input type="hidden" name="certificate_wizard_step" value="1" data-certificate-current-step>
         <div data-certificate-phase="record">
@@ -519,7 +556,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <?php $selectedPreparation = $certificatePreparation[$values['certificate_type']] ?? []; ?>
         <section class="online-intake-notice requirements-notice" aria-label="Certificate request preparation">
-            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Before: prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Before: choose a certificate type and review what to prepare' ?></strong>
+            <strong id="certificate-preparation-heading"><?= $values['certificate_type'] !== '' ? 'Prepare for a ' . e($certificateTypes[$values['certificate_type']]) . ' certificate request' : 'Choose a certificate type and review what to prepare' ?></strong>
             <ul id="certificate-preparation-list" aria-live="polite">
                 <?php if ($selectedPreparation): ?>
                     <?php foreach ($selectedPreparation as $item): ?><li><?= e($item) ?></li><?php endforeach; ?>
@@ -531,8 +568,25 @@ require_once __DIR__ . '/../includes/header.php';
         </section>
 
         <h2 class="form-stage-heading">Certificate details</h2>
+        <div class="public-person-lookup" data-public-person-lookup
+             data-lookup-context="certificate"
+             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
+             data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
+             data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
+             data-requester-name-field="requester_name" data-relationship-field="requester_relationship"
+             data-requester-email-field="requester_email" data-requester-contact-field="requester_contact_number">
+            <h3 class="lookup-title">Already registered with the parish?</h3>
+            <p class="field-hint">Enter a person reference to fill in recorded details. Without a reference, enter the person’s name and date of birth manually.</p>
+            <div data-person-results aria-live="polite"></div>
+        </div>
+        <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
+
+        <h3 class="form-subheading">Person on the certificate</h3>
         <label for="subject_name"><?= $values['certificate_type'] === 'marriage' ? 'Groom\'s full name *' : 'Full name on the certificate *' ?></label>
         <input type="text" id="subject_name" name="subject_name" required maxlength="150" value="<?= e($values['subject_name']) ?>">
+
+        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
+        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
 
         <div id="marriage-only" <?= $values['certificate_type'] === 'marriage' ? '' : 'hidden' ?>>
             <label for="spouse_name">Bride's full name *</label>
@@ -541,23 +595,11 @@ require_once __DIR__ . '/../includes/header.php';
             <input type="date" id="marriage_date" name="marriage_date" value="<?= e($values['marriage_date']) ?>">
         </div>
 
-        <label for="birth_date">Date of birth<?= $walkInRecordId ? ' (optional for linked record)' : ' *' ?></label>
-        <input type="date" id="birth_date" name="birth_date" value="<?= e($values['birth_date']) ?>"<?= $walkInRecordId ? '' : ' required' ?>>
-        <input type="hidden" name="person_id" value="<?= e($values['person_id']) ?>">
-        <div class="public-person-lookup" data-public-person-lookup
-             data-endpoint="<?= e($basePath . '/public/certificate-request.php') ?>"
-             data-name-inputs="subject_name" data-birth-field="birth_date" data-person-id-field="person_id"
-             data-father-inputs="father_name" data-mother-inputs="mother_maiden_name"
-             data-requester-name-field="requester_name" data-relationship-field="requester_relationship">
-            <p class="field-hint">Search the parish person index by full name and date of birth. Selecting a result fills matching details; you can still continue without a match.</p>
-            <div data-person-results aria-live="polite"></div>
-        </div>
-
         <label for="father_name">Father's full name (optional)</label>
         <input type="text" id="father_name" name="father_name" maxlength="150" value="<?= e($values['father_name']) ?>">
 
-        <label for="mother_maiden_name">Mother's maiden name (optional)</label>
-        <input type="text" id="mother_maiden_name" name="mother_maiden_name" maxlength="150" value="<?= e($values['mother_maiden_name']) ?>">
+        <label for="mother_maiden_name">Mother's maiden name *</label>
+        <input type="text" id="mother_maiden_name" name="mother_maiden_name" maxlength="150" value="<?= e($values['mother_maiden_name']) ?>" required>
 
         <label for="event_date">Approximate date of the sacrament (optional)</label>
         <input type="date" id="event_date" name="event_date" value="<?= e($values['event_date']) ?>">
@@ -583,8 +625,8 @@ require_once __DIR__ . '/../includes/header.php';
         <label for="requester_email">Email *</label>
         <input type="email" id="requester_email" name="requester_email" required maxlength="150" value="<?= e($values['requester_email']) ?>">
 
-        <label for="requester_contact_number">Contact number (optional)</label>
-        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>">
+        <label for="requester_contact_number">Contact number *</label>
+        <input type="text" id="requester_contact_number" name="requester_contact_number" maxlength="30" value="<?= e($values['requester_contact_number']) ?>" required>
         </div>
 
         <div data-certificate-phase="purpose">
@@ -616,20 +658,20 @@ require_once __DIR__ . '/../includes/header.php';
             <h2 class="form-stage-heading">Review your request</h2>
             <p>Check the details before submitting. Payment is recorded at the Parish Office after submission.</p>
             <dl class="certificate-request-review" data-certificate-review></dl>
+            <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
+                <strong>After submission: review, payment, and pickup</strong>
+                <ol>
+                    <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
+                    <li>If asked to proceed, handle payment at the Parish Office.</li>
+                    <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. A parent or legal guardian requesting for a minor does not need an authorization letter from the child. Any other representative must bring a signed authorization letter from the person named on the certificate; if that person is a minor, the letter must be signed by their parent or legal guardian. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring.</li>
+                    <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
+                </ol>
+                <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
+            </section>
         </div>
 
         <button type="submit" class="btn" data-certificate-submit>Submit request</button>
     </form>
-    <section class="online-intake-notice requirements-notice" aria-label="What happens after a certificate request">
-        <strong>After submission: review, payment, and pickup</strong>
-        <ol>
-            <li>The Parish Office reviews your request and will contact you about the next step or any supporting documents needed.</li>
-            <li>If asked to proceed, handle payment at the Parish Office. Keep any claim stub or payment slip the secretary gives you.</li>
-            <li>When the certificate is ready, collect it in person. The secretary verifies the request and recorded payment. If you selected Self, bring a valid ID with a name matching the person on the certificate. The Acknowledgment Receipt is placed with the completed certificate in its folder; it is not a document you need to bring. An authorized representative must bring a signed authorization letter from the person named on the certificate.</li>
-            <li>For an external parish record, bring the original supporting document and transfer or permission letter if the Parish Office requests them.</li>
-        </ol>
-        <p>The Parish Office confirms which supporting documents apply. Certificates are not issued online.</p>
-    </section>
     <script>
         (function () {
             var typeSelect = document.getElementById('certificate_type');
@@ -644,8 +686,8 @@ require_once __DIR__ . '/../includes/header.php';
                 document.getElementById('spouse_name').required = isMarriage;
                 subjectLabel.textContent = isMarriage ? 'Groom\'s full name *' : 'Full name on the certificate *';
                 preparationHeading.textContent = typeSelect.value
-                    ? 'Before: prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
-                    : 'Before: choose a certificate type and review what to prepare';
+                    ? 'Prepare for a ' + typeSelect.options[typeSelect.selectedIndex].text + ' certificate request'
+                    : 'Choose a certificate type and review what to prepare';
                 preparationList.replaceChildren();
                 var details = preparationDetails[typeSelect.value] || [
                     'Select a certificate type to see the details that can help the Parish Office find the record.'

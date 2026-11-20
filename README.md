@@ -54,8 +54,11 @@ Plain PHP (no framework), MySQL/MariaDB, built for XAMPP.
 9. Set `SRS_APP_URL` to the public HTTPS address of this installation (for
    example, `https://parish.example.org` or
    `https://example.org/srs-sppo`). It can be set in the server environment or
-   in server-only `config/local.php`. A non-local host automatically enables
-   HTTPS enforcement.
+   in server-only `config/local.php`. Include the app subdirectory when the
+   site is installed below the domain root (for example,
+   `https://example.org/srs-sppo`). A non-local host automatically enables
+   HTTPS enforcement. Email tracking links use the detected app path, falling
+   back to the configured URL path when the web root maps directly to the app.
 10. Email delivery is disabled unless explicitly configured. Public person-
    reference lookup requires an enabled email service to send its one-time
    access code. To use Gmail SMTP, enable 2-Step Verification on the sending
@@ -186,6 +189,14 @@ staff account, notifications, or audit entries.
 The seed uses fixed IDs and is **not repeatable**. Never import it into a
 database that already contains records. It does not truncate or clear tables.
 
+For an isolated staging install with original Japanese-inspired fictional
+profiles, use `database/v2/anime_demo_seed_v2.sql` after `database/v2/schema.sql`
+on a new, empty database. It adds a visible staging disclaimer, sample records
+for all four sacraments, and sample requests without creating a staff account
+or clearing existing data. The seed has fixed IDs and is not repeatable. It
+does not select a database, so choose the staging database in phpMyAdmin before
+importing it. Never use it on the live parish database.
+
 To remove only rows recognizable from the previous full V2 demo seed, back up
 the database and review `database/cleanup_public_demo.sql` first. On a hosted
 database, change the script's `USE` statement to the database name from the
@@ -194,6 +205,13 @@ The cleanup uses fixed seed fingerprints, preserves non-matching records and
 all users, and does not truncate tables. It can leave a seed row behind if that
 row no longer matches its original fingerprint or is still referenced by other
 data.
+
+On shared hosting such as InfinityFree, create the staging database in the
+hosting panel, select it in phpMyAdmin, and import a copy of `database/v2/schema.sql`
+with its `CREATE DATABASE` and `USE srs_sppo_db` statements removed. Shared
+hosts assign prefixed database names and do not allow the application to create
+databases. Keep the host's database credentials in a server-only
+`config/local.php`; never upload the local copy.
 
 ## Folder structure
 
@@ -221,6 +239,7 @@ srs-sppo/
 │   ├── sacrament-applications/   Baptism, Confirmation, First Communion, Marriage
 │   ├── how-it-works.php          explained workflow for parishioners
 │   └── requirements.php          documentary requirements per sacrament
+├── angular-app/                  separate Angular parish services frontend
 ├── admin/                        secretary only, login required
 │   ├── login.php / logout.php / dashboard.php
 │   ├── requests/                 queues + walk-in encoding + marriage detail page
@@ -241,6 +260,17 @@ srs-sppo/
 - **Live office workflow:** Parish Secretary dashboard, certificate and application queues, walk-in encoding, sacramental records, person mapping, Marriage clearance details, certificate generation/preview, print and pickup history, schedule, reports, request status management, and the shared System tools. Applicants use one stable person reference across linked requests; public request status lookup additionally requires a one-time email access code. All staff accounts use the same parish secretary access level.
 - **Email delivery:** Disabled by default (`MAIL_ENABLED = false`). The application sends through PHPMailer SMTP, records delivery attempts, and safely continues when mail is unavailable. Configure the server-only mail settings in `config/local.php`; never commit credentials. `MAIL_SITE_URL` defaults to the origin derived from `SRS_APP_URL`.
 - Certificate generation renders a **print-ready certificate** (parish header, certifying text, curated per-sacrament details, signature line) using the shared `.cert-paper` styles. The template still needs to be aligned with the parish's official certificate stock before production use.
+
+## Separate Angular parish services frontend
+
+The independent Angular project is in `angular-app/`. It reuses the existing public and staff
+styles. The public Angular routes currently include Office Services, How It Works, Requirements,
+Privacy Notice, and Terms and Conditions; submission forms and request tracking continue to use PHP.
+An Angular staff dashboard uses additive
+authenticated PHP APIs for overview and person search. The remaining forms, queues, and staff pages
+continue using PHP while the full interface is migrated module by module.
+See
+[`angular-app/README.md`](angular-app/README.md) for local development and deployment instructions.
 
 ## Design decisions
 

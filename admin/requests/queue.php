@@ -17,6 +17,102 @@ require_role('secretary');
 
 // Subfolder-safe URL prefix for links on this page (base_path from functions.php).
 $basePath = $basePath ?? base_path();
+$retentionNotice = null;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'close_overdue_requests') {
+    if (!csrf_verify()) {
+        $retentionNotice = ['error', 'Your session token is invalid or expired. Refresh the page and try again.'];
+    } else {
+        try {
+            $pdo->beginTransaction();
+            $overdueStmt = $pdo->query(
+                "SELECT id, request_no
+                 FROM certificate_requests
+                 WHERE channel = 'online'
+                   AND status = 'new'
+                   AND person_id IS NULL
+                   AND record_id IS NULL
+                   AND paid_at IS NULL
+                   AND anonymized_at IS NULL
+                   AND retention_eligible_at <= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                 ORDER BY id
+                 FOR UPDATE"
+            );
+            $overdueRequests = $overdueStmt->fetchAll(PDO::FETCH_ASSOC);
+            $anonymize = $pdo->prepare(
+                "UPDATE certificate_requests
+                 SET status = 'cancelled',
+                     subject_name = 'Anonymized certificate request',
+                     subject_details = NULL,
+                     requester_name = 'Anonymized requester',
+                     requester_relationship = 'other',
+                     requester_relationship_other = NULL,
+                     requester_email = CONCAT('redacted+', id, '@example.invalid'),
+                     requester_contact_number = NULL,
+                     purpose = NULL,
+                     purpose_other = NULL,
+                     privacy_consent_at = NULL,
+                     person_id = NULL,
+                     record_id = NULL,
+                     matched_by = NULL,
+                     matched_at = NULL,
+                     notes = NULL,
+                     rejection_reason = 'Closed after 90 days without follow-up; personal details anonymized.',
+                     anonymized_at = NOW()
+                 WHERE id = ?"
+            );
+            foreach ($overdueRequests as $overdueRequest) {
+                $requestId = (int) $overdueRequest['id'];
+                $anonymize->execute([$requestId]);
+                log_activity(
+                    $pdo,
+                    (int) current_user()['id'],
+                    'certificate.close_no_followup',
+                    'certificate_requests',
+                    $requestId,
+                    'Certificate request ' . (string) $overdueRequest['request_no'] . ' closed and anonymized after 90 days without follow-up.'
+                );
+            }
+            $pdo->commit();
+            redirect_to('/admin/requests/queue.php?closed_no_followup=' . count($overdueRequests));
+            exit;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('SRS-SPPO overdue certificate request cleanup failed: ' . $e->getMessage());
+            $retentionNotice = ['error', 'The overdue requests could not be closed. No changes were saved.'];
+        }
+    }
+}
+
+if (isset($_GET['closed_no_followup']) && ctype_digit((string) $_GET['closed_no_followup'])) {
+    $closedCount = (int) $_GET['closed_no_followup'];
+    $retentionNotice = [
+        'success',
+        $closedCount === 1
+            ? 'One overdue request was closed and anonymized.'
+            : $closedCount . ' overdue requests were closed and anonymized.',
+    ];
+}
+
+$retentionCountsStmt = $pdo->query(
+    "SELECT
+        SUM(retention_eligible_at <= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            AND retention_eligible_at > DATE_SUB(NOW(), INTERVAL 90 DAY)) AS followup_due,
+        SUM(retention_eligible_at <= DATE_SUB(NOW(), INTERVAL 90 DAY)) AS closure_due
+     FROM certificate_requests
+     WHERE channel = 'online'
+       AND status = 'new'
+       AND person_id IS NULL
+       AND record_id IS NULL
+       AND paid_at IS NULL
+       AND anonymized_at IS NULL
+       AND retention_eligible_at IS NOT NULL"
+);
+$retentionCounts = $retentionCountsStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$followupDueCount = (int) ($retentionCounts['followup_due'] ?? 0);
+$closureDueCount = (int) ($retentionCounts['closure_due'] ?? 0);
 
 // Status changes are handled on certificate-detail.php (which enforces
 // transition validation and captures rejection reasons). The queue is a
@@ -78,7 +174,7 @@ $rfConfig = [
             'options' => [
                 'baptism'        => 'Baptism',
                 'confirmation'   => 'Confirmation',
-                'first_communion'=> 'First Communion',
+                'first_communion'=> 'Holy Communion',
                 'marriage'       => 'Marriage',
             ]],
     ],
